@@ -1,0 +1,6 @@
+the_rom_image:
+{
+  [bootloader, destination_cpu=apu-0, checksum=sha2] fsbl.elf
+  [destination_device=pl, checksum=sha2, load=0x200000] system.bit
+  [destination_cpu=apu-0, checksum=sha2] u-boot.elf
+}

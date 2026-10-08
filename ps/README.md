@@ -1,19 +1,29 @@
 # ps/ — 处理系统软件（PS）
 
-双核 A35 上的 Linux 应用。职责边界见 [docs/06-软件与UI.md](../docs/06-软件与UI.md)：调度状态机、NPU 推理、UI、存储、网络，不搬像素。
+双核 A35 上的 Linux 应用。职责见 [docs/06-软件与UI.md](../docs/06-软件与UI.md)，开发环境见 [docs/09-开发环境与构建.md](../docs/09-开发环境与构建.md)。
 
-规划布局：
+## 布局
 
 ```
 ps/
-├── scheduler/      # 调度状态机与物料跟踪队列（C/C++）
+├── common/         # AXI-Lite 寄存器头文件（与 docs/03 同源）、/dev/mem 访问封装、label_list 加载、配置
+├── scheduler/      # 跟踪表、抓取调度、停带 / 翻板决策、机械臂 IK
+├── vision/         # 取帧、视觉定位 (x, y, θ)、ROI
 ├── inference/      # NPU 推理封装（ArmNN + Alnpu backend）
-├── ui-qt/          # Qt 本地 UI（framebuffer/EGLFS，HDMI）
-├── ui-web/         # Web UI 后端（REST + WebSocket + MJPEG）
-└── common/         # AXI-Lite 寄存器头文件、label_list 加载、配置
+├── bus/            # CAN（SocketCAN）、RS485 Modbus
+├── ui-qt/          # HDMI 本地界面（Qt 5.15，板上已有运行库）
+└── storage/        # SQLite（amalgamation 编入）+ NG 图片
 ```
 
-约定：
+## 编译与运行
 
-- `common/` 中的寄存器偏移定义必须与 `docs/03-PL设计.md` 同源，改动同一次提交完成。
-- 类别表从 `models/label_list.json` 加载，此处禁止手抄副本。
+- 交叉编译器：FD 自带 `toolchain\gcc\aarch64_linux\bin\aarch64-linux-gnu-gcc`（glibc 2.25，与板上一致）。**不要用 WSL apt 装的 aarch64 gcc**（glibc 2.35，板上跑不了）。
+- 板上以 root 运行；PL 寄存器经 `/dev/mem` mmap 访问（已验证可用）。
+- 部署：`scp` 到板上（根分区持久化，拷一次一直在）。
+- 摄像头 / NPU 接口参考厂家 `demo/sdk/face_detection.tar.gz`（`yolo_demo_hdmi_camera` 源码）。
+
+## 约定
+
+- `common/` 中的寄存器偏移必须与 `docs/03-PL设计.md` 同源，改动同一次提交完成。
+- 类别表从 `models/label_list.json` 加载，禁止手抄。
+- 时间戳、计数、统计接口随功能一起写（测试报告用）。

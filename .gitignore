@@ -1,0 +1,39 @@
+# 构建产物 / 大文件（见 AGENTS.md「大文件不入库」）
+*.img
+*.img.gz
+BOOT.bin
+*.bit
+*.hpf
+*.elf
+*.o
+*.onnx
+*.pt
+*.zip
+*.tar.gz
+scripts/bootbin/parts/
+scripts/sd_image/flash_log.txt
+
+# 安路 TD 工程产物
+**/*_Runs/
+**/.Xil/
+*.log
+*.logw
+*.db
+*.timing
+*.rpt
+
+# FD / Eclipse 工作区
+.metadata/
+**/build/
+
+# 数据集
+datasets/
+models/runs/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+.DS_Store
+System Volume Information/
