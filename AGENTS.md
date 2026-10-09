@@ -32,11 +32,11 @@
 4. **PL 贡献要真实**：评分规则"全部功能仅 PS 实现扣分"——时序关键的脉冲、总线帧、IO 采样放在 PL。
 5. **实测与口径诚实**：指令分辨率 vs 实测精度、"采集 / 显示实时性" vs "推理按物料触发"分开报告；未实测的标 ⚠。
 6. **定量数据进 log**：实测数字写 `docs/log/YYYY-MM-DD-主题.md`，设计文档只保留结论与引用。
-7. **不入库**：数据集、模型权重、压缩包、比特流、`BOOT.bin`、SD 镜像、厂家二进制（FSBL / U-Boot 由脚本从本地厂家资料提取）。采购清单、价格、链接也不放进本仓库。
+7. **不入库**：数据集、模型权重、压缩包、SD 镜像、内核/rootfs/ArmNN 二进制。采购清单、价格、链接也不放进本仓库。**白名单例外**（2026-10-09 决定）：① `pl/soc_base/`（厂家 soc_prj 底板工程，含加密 IP，见第 9 条）；② `scripts/bootbin/parts/` 的 `fsbl.elf`、`u-boot.elf`（BOOT.bin 中不随 PL/应用重编而变的固定零件，有 MD5 记录）；`*.bit`/`*.hpf`/`*.elf` 仍总体忽略，BOOT.bin 不入库、打包产出。
 8. **测试埋点随代码一起写**：时间戳、计数器、统计接口不能等最后补。
 9. **第三方源码入库边界**（详见 [docs/10-第三方代码引用规范](docs/10-第三方代码引用规范.md)）：
-   - **可入库**：安路官方 MIT 授权源码（face_detection 推理链，已入 `ps/vision/` 作为零件检测改造起点；mipicam 驱动入 `ps/kernel_modules/`）、安路 soc_prj 中明文 Verilog（作修改底板时只入库改过的文件到 `pl/soc_patch/`）、安路 GPL-2.0 内核驱动源码（入 `ps/kernel_modules/`，保留 GPL 头并注明）。
-   - **禁止入库**：米联客培训 demo 源码（"All rights reserved, only for learning"，只在本机 `reference_src/` 参考）；加密 `.enc.v` 与 NPU 软核 IP（闭源）；U-Boot / 内核 / rootfs / ArmNN 二进制。
+   - **可入库**：安路官方 MIT 授权源码（face_detection 推理链，已入 `ps/vision/` 作为零件检测改造起点；mipicam 驱动入 `ps/kernel_modules/`）、厂家 soc_prj 底板工程整体（`pl/soc_base/`，含加密 IP——作为底板使用，不单独分发加密文件；我们的改动只入 `pl/soc_patch/`）、安路 GPL-2.0 内核驱动源码（入 `ps/kernel_modules/`，保留 GPL 头并注明）。
+   - **禁止入库 / 禁止提取**：米联客培训 demo 源码（"All rights reserved, only for learning"，只在本机 `reference_src/` 参考）；从 soc_prj 提取加密 `.enc.v` 单独分发或反向；内核 / rootfs / ArmNN 二进制。
    - **入库格式**：原样拷贝时保留原版权头不许删；基于厂家文件修改时，文件头注明"derived from Anlogic \<原路径\>，修改：…"。仓库整体 MIT 不覆盖第三方文件的原始许可。
 
 ## 工作流

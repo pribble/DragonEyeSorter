@@ -2,15 +2,25 @@
 *.img
 *.img.gz
 BOOT.bin
+# *.bit / *.hpf / *.elf 总体忽略；厂家底板与 boot 零件按 2026-10-09 决定白名单入库：
+#   pl/soc_base/soc_prj.hpf（打开工程必需）
+#   pl/soc_base/design_0/**（含 .v/.xml，无 .bit/.elf）
+#   scripts/bootbin/parts/fsbl.elf、u-boot.elf（FSBL/U-Boot 不随 PL 重编而变）
 *.bit
+!pl/soc_base/**/*.bit
 *.hpf
+!pl/soc_base/*.hpf
 *.elf
+!scripts/bootbin/parts/fsbl.elf
+!scripts/bootbin/parts/u-boot.elf
 *.o
 *.onnx
 *.pt
 *.zip
 *.tar.gz
-scripts/bootbin/parts/
+scripts/bootbin/parts/*
+!scripts/bootbin/parts/fsbl.elf
+!scripts/bootbin/parts/u-boot.elf
 scripts/sd_image/flash_log.txt
 
 # 安路 TD 工程产物

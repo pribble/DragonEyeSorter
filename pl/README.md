@@ -11,18 +11,20 @@ pl/
 │   ├── stepper_ctrl.v       # 步进脉冲 + 加减速 + 定位（P0）
 │   ├── servo_bus_master.v   # 德晟总线主机 SYNC WRITE + 遥测（P0）
 │   └── io_sync.v            # 急停锁存/对射/限位 去抖 + 统一时间戳（P0）
+├── soc_base/       # 厂家 NPU demo 底板工程 soc_prj（2026-10-09 入库，含闭源加密 IP，
+│                   #   许可与使用边界见其 README；TD 2026.1 SP2 打开，接受格式升级）
 ├── constrs/        # TODO 自研模块管脚/时序约束片段（CEP = BANK11，3.3V）
 ├── sim/            # TODO testbench（时序关键模块须能导出时间戳/计数）
-├── soc_patch/      # 对官方 soc_prj 的改动（只放改过的源文件，覆盖回本机底板复现）
+├── soc_patch/      # 对 soc_base 底板的改动（只放改过的源文件，覆盖回底板复现）
 └── test/           # 独立验证工程（不跑 Linux 时 JTAG 下载）
     └── step_test/  # 步进驱动器点动：100MHz 分频方波驱动 TB6600
 ```
 
-## 与官方工程的关系
+## 与底板工程（soc_base）的关系
 
-- 主工程 = 厂家 NPU demo `soc_prj`（MIPI / ISP / VDMA / HDMI / NPU 软核），**工程本体不入库**（体积大、含厂家源码与加密 IP）。本机底板在仓库外 `../reference_src/npu_demo_soc_prj/`（73MB 汇总，见其 README）。
-- 本目录只放**自研模块**（rtl/、constrs/、sim/、test/）与**对官方文件的改动**（soc_patch/，按原相对路径镜像）。复现方法：把 `soc_patch/` 覆盖回底板工程即可。
-- 官方工程用 **TD 6.2.1** 打开（勿用 2026.1，防格式升级）；编译出的 `.bit` 用 [scripts/bootbin](../scripts/bootbin/) 打包。
+- 底板 = 厂家 NPU demo `soc_prj`（MIPI / ISP / VDMA / HDMI / NPU 软核），**已入库 `soc_base/`**（2026-10-09 决定，原"工程不入库"作废；加密 IP 仅随底板使用，见其 README）。
+- 本目录自研模块（rtl/、constrs/、sim/、test/）与**对底板的改动**（soc_patch/，按原相对路径镜像）分开放。复现方法：把 `soc_patch/` 覆盖回 `soc_base/` 即可；TD 6.2.2 首次打开产生的格式升级 diff 不提交。
+- 用本机 **TD 2026.1 SP2** 打开（2026-10-09 决定接受格式升级，不装 6.2.1；原版底板在 git 历史）；编译出的 `.bit` 用 [scripts/bootbin](../scripts/bootbin/) 打包（FSBL/U-Boot 用仓库内零件）。
 
 ## 资源预算（依据官方 P&R 报告，见 reference_src/npu_demo_pr_reports/）
 
