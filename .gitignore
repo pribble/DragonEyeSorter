@@ -21,6 +21,10 @@ scripts/sd_image/flash_log.txt
 *.db
 *.timing
 *.rpt
+*.area
+*.ts
+*.qor
+.*.f
 
 # FD / Eclipse 工作区
 .metadata/
