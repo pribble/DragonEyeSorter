@@ -11,6 +11,9 @@ case "${1:-des_axi}" in
     iverilog -g2005 -o "$T/sim" tb_des_axi.v "$T/des_regs.v" \
       $P/design_0/ip/design_0_fvdma_ctrl_0/RTL/fvdma_ctrl_300e9b49f7b5.v
     ;;
+  servo_bus)
+    iverilog -g2005 -o "$T/sim" tb_servo_bus.v ../rtl/servo_bus.v
+    ;;
   *) echo "unknown test: $1"; exit 1 ;;
 esac
 vvp -n "$T/sim"
