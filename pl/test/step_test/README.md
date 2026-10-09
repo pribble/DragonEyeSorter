@@ -29,7 +29,16 @@
 所以 3.3V 属于**偏低但通常可用**（大量 3.3V MCU 直驱 TB6600 的实践）。
 不动 → 把 `DRIVESTRENGTH` 从 8 提到 12/16 再试；还不动就等 74HCT245 + 5V。
 
-## TD 操作步骤
+## 命令行编译（不开图形界面）
+
+```bat
+cd pl\test\step_test
+D:\ANLU\TD\bin\td_commands_prompt.exe build.tcl < NUL
+```
+
+几十秒出 `step_test.bit`（2026-10-09 用 TD 6.2.1 实测通过）。
+
+## TD 操作步骤（图形界面）
 
 1. TD 新建工程，器件选 **DR1M90GEG400**（和 `02_fpga_start` 同款）
 2. 加入 `step_test.v`，设为 Top
