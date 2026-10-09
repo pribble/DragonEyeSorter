@@ -36,11 +36,12 @@ static int status(void)
     printf("ID           0x%08x %s\n", id, id == DES_ID_VALUE ? "(ok)" : "(UNEXPECTED: bitstream lacks des_regs)");
     if (id != DES_ID_VALUE) return 2;
     uint32_t ver = rd(DES_REG_VERSION);
-    printf("VERSION      0x%08x\n", ver);
+    int integrated = ver >= 2 && ver < 0x10000;     /* v1 held a build date (0x20261010) here */
+    printf("VERSION      0x%08x%s\n", ver, integrated ? "" : " (v1: register channel only)");
     printf("SCRATCH      0x%08x\n", rd(DES_REG_SCRATCH));
     printf("FREE_CNT     %u\n", rd(DES_REG_FREE_CNT));
     printf("LED_CTRL     0x%08x\n", rd(DES_REG_LED_CTRL));
-    if (ver >= 2) {
+    if (integrated) {
         uint32_t p = rd(DES_REG_FRAME_PERIOD);
         printf("FRAME_CNT    %u\n", rd(DES_REG_FRAME_CNT));
         printf("FRAME_PERIOD %u ticks = %.3f ms = %.2f fps\n", p, p * 1e3 / DES_FREE_CNT_HZ,
