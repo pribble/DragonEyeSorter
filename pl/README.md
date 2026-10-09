@@ -1,27 +1,38 @@
 # pl/ — 可编程逻辑（PL）
 
-模块划分与寄存器映射见 [docs/03-PL设计.md](../docs/03-PL设计.md)，IO 分配见 [docs/05-硬件与接线.md](../docs/05-硬件与接线.md)，构建与打包见 [docs/09-开发环境与构建.md](../docs/09-开发环境与构建.md)。
+模块划分与寄存器映射见 [docs/03-PL设计](../docs/03-PL设计.md)，IO 分配见 [docs/05-硬件与接线](../docs/05-硬件与接线.md)，构建与打包见 [docs/09-开发环境与构建](../docs/09-开发环境与构建.md)，第三方代码边界见 [docs/10-第三方代码引用规范](../docs/10-第三方代码引用规范.md)。
 
 ## 布局
 
 ```
 pl/
-├── rtl/            # 自研模块源码（stepper_ctrl、servo_bus_master、io_sync、axi_lite_regs …）
-├── constrs/        # 自研模块的管脚 / 时序约束片段（CEP = BANK11，3.3V）
-├── sim/            # 仿真 testbench
-├── soc_patch/      # 对官方 soc_prj 的改动（system_top.v、design_0 等），只放改过的源文件
+├── rtl/            # 自研模块（下表）；当前为骨架版，随寄存器位义细化迭代
+│   ├── axi_lite_regs.v      # AXI-Lite 寄存器堆（P0）
+│   ├── stepper_ctrl.v       # 步进脉冲 + 加减速 + 定位（P0）
+│   ├── servo_bus_master.v   # 德晟总线主机 SYNC WRITE + 遥测（P0）
+│   └── io_sync.v            # 急停锁存/对射/限位 去抖 + 统一时间戳（P0）
+├── constrs/        # TODO 自研模块管脚/时序约束片段（CEP = BANK11，3.3V）
+├── sim/            # TODO testbench（时序关键模块须能导出时间戳/计数）
+├── soc_patch/      # 对官方 soc_prj 的改动（只放改过的源文件，覆盖回本机底板复现）
 └── test/           # 独立验证工程（不跑 Linux 时 JTAG 下载）
-    └── step_test/  # 步进驱动器点动：100MHz 分频出方波驱动 TB6600
+    └── step_test/  # 步进驱动器点动：100MHz 分频方波驱动 TB6600
 ```
 
 ## 与官方工程的关系
 
-- 主工程是厂家 NPU demo 的 `soc_prj`（MIPI / ISP / VDMA / HDMI / NPU 软核），**整个工程不入库**（体积大、含厂家源码）。本目录只放自研模块和对官方工程的改动，按 `soc_patch/` 里的文件覆盖回本地 `soc_prj` 即可复现。
-- 官方 `soc_prj` 用 **TD 6.2.1** 打开，放在无中文、无空格的路径。
-- 编译出的 `.bit` 用 [scripts/bootbin](../scripts/bootbin/) 打包成 `BOOT.bin`。
+- 主工程 = 厂家 NPU demo `soc_prj`（MIPI / ISP / VDMA / HDMI / NPU 软核），**工程本体不入库**（体积大、含厂家源码与加密 IP）。本机底板在仓库外 `../reference_src/npu_demo_soc_prj/`（73MB 汇总，见其 README）。
+- 本目录只放**自研模块**（rtl/、constrs/、sim/、test/）与**对官方文件的改动**（soc_patch/，按原相对路径镜像）。复现方法：把 `soc_patch/` 覆盖回底板工程即可。
+- 官方工程用 **TD 6.2.1** 打开（勿用 2026.1，防格式升级）；编译出的 `.bit` 用 [scripts/bootbin](../scripts/bootbin/) 打包。
+
+## 资源预算（依据官方 P&R 报告，见 reference_src/npu_demo_pr_reports/）
+
+官方 demo 基线已用 slice 85.8% / ERAM 92.5% / DSP 59.6%（WNS −4.12ns，违规集中在跨时钟域）。
+自研 P0 模块预算 ≤4000 LUT / ≤10 ERAM：总线 UART 用小 FIFO、PL 内不做乘除法（加减速表 PS 算）、
+加自研跨域路径后须补 `set_clock_groups`。超支砍单顺序：亚像素 → 形态学 → overlay。
 
 ## 约定
 
-- 寄存器偏移与 `docs/03-PL设计.md`、`ps/common/` 头文件同一次提交更新。
-- 自研图像算子尽量复用官方 line_buffer / `matrix_3x3` 框架，保持 `*_valid` / `*_data` 握手风格一致。
-- 每个模块配 testbench；时序关键模块（步进、总线、IO 采样）要能导出测试报告用的时间戳 / 计数。
+- 寄存器偏移与 `docs/03-PL设计.md`、`ps/common/pl_regs.h` 同一次提交更新。
+- 自研图像算子（P1/P2）复用官方 line_buffer / `matrix_3x3` 框架时，走 soc_patch 标注 derived。
+- 每个模块配 testbench；时序关键模块要能导出测试报告用的时间戳 / 计数。
+- **禁止参考米联客 demo 代码拷贝**（"only for learning" 无开源许可）——学思路自己写，见 docs/10。

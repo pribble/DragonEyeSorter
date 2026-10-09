@@ -37,3 +37,6 @@ models/runs/
 Thumbs.db
 .DS_Store
 System Volume Information/
+
+# 本机参考底板（仓库外，见 docs/10）
+/reference_src/

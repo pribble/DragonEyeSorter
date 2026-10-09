@@ -34,6 +34,10 @@
 6. **定量数据进 log**：实测数字写 `docs/log/YYYY-MM-DD-主题.md`，设计文档只保留结论与引用。
 7. **不入库**：数据集、模型权重、压缩包、比特流、`BOOT.bin`、SD 镜像、厂家二进制（FSBL / U-Boot 由脚本从本地厂家资料提取）。采购清单、价格、链接也不放进本仓库。
 8. **测试埋点随代码一起写**：时间戳、计数器、统计接口不能等最后补。
+9. **第三方源码入库边界**（详见 [docs/10-第三方代码引用规范](docs/10-第三方代码引用规范.md)）：
+   - **可入库**：安路官方 MIT 授权源码（face_detection 推理链，已入 `ps/vision/` 作为零件检测改造起点；mipicam 驱动入 `ps/kernel_modules/`）、安路 soc_prj 中明文 Verilog（作修改底板时只入库改过的文件到 `pl/soc_patch/`）、安路 GPL-2.0 内核驱动源码（入 `ps/kernel_modules/`，保留 GPL 头并注明）。
+   - **禁止入库**：米联客培训 demo 源码（"All rights reserved, only for learning"，只在本机 `reference_src/` 参考）；加密 `.enc.v` 与 NPU 软核 IP（闭源）；U-Boot / 内核 / rootfs / ArmNN 二进制。
+   - **入库格式**：原样拷贝时保留原版权头不许删；基于厂家文件修改时，文件头注明"derived from Anlogic \<原路径\>，修改：…"。仓库整体 MIT 不覆盖第三方文件的原始许可。
 
 ## 工作流
 

@@ -1,0 +1,13 @@
+{
+  "comment": "类别表唯一源：训练/NPU JSON/分拣映射/UI/数据库都从本文件生成或加载，禁止手抄（AGENTS.md 约定1）。ID 顺序 = 模型输出通道顺序，改动须同步重训/重导出模型。",
+  "labels": [
+    { "id": 0, "label": "gear_ok",    "cn": "齿轮-良品",        "kind": "gear", "verdict": "OK",     "action": "arm_pick",   "dest": "gear_box" },
+    { "id": 1, "label": "gear_short", "cn": "齿轮-缺料",        "kind": "gear", "verdict": "NG",     "action": "flap",       "dest": "scrap" },
+    { "id": 2, "label": "gear_flash", "cn": "齿轮-飞边",        "kind": "gear", "verdict": "NG",     "action": "flap",       "dest": "rework" },
+    { "id": 3, "label": "gear_dirty", "cn": "齿轮-黑点/脏污",   "kind": "gear", "verdict": "NG",     "action": "flap",       "dest": "scrap" },
+    { "id": 4, "label": "rack_ok",    "cn": "齿条-良品",        "kind": "rack", "verdict": "OK",     "action": "arm_pick",   "dest": "rack_box" },
+    { "id": 5, "label": "rack_short", "cn": "齿条-缺料",        "kind": "rack", "verdict": "NG",     "action": "flap",       "dest": "scrap" },
+    { "id": 6, "label": "rack_flash", "cn": "齿条-飞边",        "kind": "rack", "verdict": "NG",     "action": "flap",       "dest": "rework" },
+    { "id": 7, "label": "rack_dirty", "cn": "齿条-黑点/脏污",   "kind": "rack", "verdict": "NG",     "action": "flap",       "dest": "scrap" }
+  ]
+}
