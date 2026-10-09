@@ -13,6 +13,8 @@ BOOT.bin
 scripts/bootbin/parts/
 scripts/sd_image/flash_log.txt
 
+ps/tools/desreg
+
 # 安路 TD 工程产物
 **/*_Runs/
 **/.Xil/

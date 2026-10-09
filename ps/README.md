@@ -22,6 +22,16 @@ ps/
 - 部署：`scp` 到板上（根分区持久化，拷一次一直在）。
 - 摄像头 / NPU 接口参考厂家 `demo/sdk/face_detection.tar.gz`（`yolo_demo_hdmi_camera` 源码）。
 
+## 工具
+
+`tools/desreg`：读写 PL 寄存器（`desreg` 状态 / `r <off>` / `w <off> <val>` / `led on|off|auto` / `lat [n]` 测 PS→PL 读延迟）。
+写之前会核对 `DES_ID`，比特流里没有 `des_regs` 时拒绝写 —— 否则该窗口别名到厂家相机 DMA 寄存器，写入会让相机 DMA 写乱内存。
+
+```bat
+D:\ANLU\FD\toolchain\gcc\aarch64_linux\bin\aarch64-linux-gnu-gcc.exe -O2 -Wall -o ps\tools\desreg ps\tools\desreg.c
+scp -i %USERPROFILE%\.ssh\id_ed25519_anlu ps\tools\desreg root@192.168.137.100:/root/bin/
+```
+
 ## 约定
 
 - `common/` 中的寄存器偏移必须与 `docs/03-PL设计.md` 同源，改动同一次提交完成。
