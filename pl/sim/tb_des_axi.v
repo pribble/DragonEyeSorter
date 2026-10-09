@@ -27,9 +27,12 @@ module tb_des_axi;
         .s_axi_rdata(rdata), .s_axi_rresp(rresp), .s_axi_rvalid(rvalid), .s_axi_rready(rready)
     );
 
+    reg sof_toggle = 0;
+    wire [31:0] ts;
     des_regs regs (
         .clk(des_clk), .wr(des_wr), .waddr(des_waddr), .wdata(des_wdata),
-        .raddr(des_raddr), .rdata(des_rdata), .led_ovr(led_ovr), .led_val(led_val)
+        .raddr(des_raddr), .rdata(des_rdata), .sof_toggle(sof_toggle), .ts(ts),
+        .led_ovr(led_ovr), .led_val(led_val)
     );
 
     integer errors = 0;
@@ -86,7 +89,7 @@ module tb_des_axi;
         check("one des_wr pulse per write", wr_pulses, 1);
 
         axi_read(16'h1000, r);  check("DES_ID @0x1000", r, 32'h44455301);
-        axi_read(16'h1004, r);  check("DES_BUILD @0x1004", r, 32'h20261010);
+        axi_read(16'h1004, r);  check("DES_VERSION @0x1004", r, 32'd2);
         axi_read(16'h1008, r);  check("scratch @0x1008", r, 32'hCAFEBABE);
         axi_read(16'h0000, r);  check("vendor slv_reg0 @0x0000", r, 32'h12345678);
 
@@ -104,6 +107,11 @@ module tb_des_axi;
 
         axi_write(16'h0004, 32'h1, 0);
         check("vendor camera_start pulse register path", {31'd0, camera_start}, 1);
+
+        // camera start-of-frame counter: 3 toggles 1000 cycles apart
+        repeat (3) begin sof_toggle = ~sof_toggle; repeat (1000) @(posedge clk); end
+        axi_read(16'h1014, r);  check("FRAME_CNT", r, 3);
+        axi_read(16'h101C, r);  check("FRAME_PERIOD ~1000 cycles", (r >= 998 && r <= 1002) ? 1 : 0, 1);
 
         if (errors == 0) $display("ALL TESTS PASSED"); else $display("%0d TESTS FAILED", errors);
         $finish;
