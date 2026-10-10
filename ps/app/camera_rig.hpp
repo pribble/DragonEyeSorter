@@ -18,9 +18,11 @@ struct CapturedFrame {
     int buf = -1;
     const uint8_t *bgra = nullptr;   // 4 bytes per pixel, valid until the ring wraps (buffers - 2 more frames)
     int width = 0, height = 0, stride = 0;
-    uint32_t pl_frame = 0;      // PL start-of-frame count read right after the completion
-    uint32_t pl_ts = 0;         // FREE_CNT at that read
-    int32_t step_pos = 0;       // stepper POS at that read (TODO v5: PL latches it at the frame start)
+    uint32_t pl_frame = 0;      // PL start-of-frame count of this frame
+    uint32_t pl_ts = 0;         // FREE_CNT when the frame writer started it
+    int32_t step_pos = 0;       // belt position (steps) when the first row arrived
+    int32_t step_pos_end = 0;   // belt position when the last row was written
+    bool latched = false;       // true: PL-latched at the frame start / done (v5); false: read after completion
     uint64_t t_us = 0;          // CLOCK_MONOTONIC at completion
     uint32_t pl_gap = 0;        // PL frames since the previous capture (1 = nothing skipped)
     double wait_us = 0;         // blocked in WaitFinish

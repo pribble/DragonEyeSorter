@@ -49,6 +49,17 @@ typedef struct {
 
 void des_frame_read(const des_hw_t *h, des_frame_t *f);
 
+/* last completed DMA capture, latched by the PL (VERSION >= 5) */
+typedef struct {
+    uint32_t seq;          /* completed captures */
+    uint32_t frame;        /* FRAME_CNT at the writer start */
+    uint32_t t0, t1;       /* FREE_CNT at writer start / done */
+    int32_t pos0, pos1;    /* belt position (steps) at writer start / done */
+} des_capture_t;
+
+#define DES_VERSION_CAPTURE 5u
+int des_capture_read(const des_hw_t *h, des_capture_t *c);   /* DES_E_ARG on bitstreams before v5 */
+
 /* ---- servo bus (Desheng protocol v4.01; PL adds FF FF header and checksum) ---- */
 typedef struct {
     int rc;                /* DES_OK / DES_E_* */
@@ -87,6 +98,7 @@ void     des_step_zero(des_hw_t *h);
 int32_t  des_step_pos(const des_hw_t *h);
 uint32_t des_step_status(const des_hw_t *h);
 double   des_step_speed(const des_hw_t *h);                    /* current |speed| in steps/s */
+int32_t  des_step_brake_steps(const des_hw_t *h);              /* v5+: steps to ramp down; -1 before v5 */
 
 #ifdef __cplusplus
 }

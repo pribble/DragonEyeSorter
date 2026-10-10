@@ -4,6 +4,8 @@
 // Speed is a phase increment per clock in Q0.32 steps (v[steps/s] = inc * CLK_HZ / 2^32); PS converts units.
 // Every ACC_DIV clocks the speed moves by ACC_INC toward its target. Position mode decelerates when the
 // remaining distance is <= the steps spent accelerating (symmetric ramp), then stops exactly at TARGET.
+// TARGET may be rewritten while moving (belt "stop at" for picking). If it ends up behind the direction of
+// travel (written too late), the move ramps down and stops past it instead of freezing (STATUS AT_TARGET = 0).
 //
 // Register block (byte offsets inside the 0x200 window):
 //   0x00 CTRL     W: b0 ENABLE, b1 START (pulse), b2 STOP (ramp down, pulse), b3 HALT (immediate, pulse),
@@ -17,6 +19,7 @@
 //   0x18 POS      R  signed position (steps)
 //   0x1C CUR_INC  R  current speed
 //   0x20 STEPS    R  total steps emitted
+//   0x24 BRAKE    R  steps needed to ramp down from the current speed (= steps spent accelerating)
 module stepper_ctrl #(
     parameter integer CLK_HZ   = 75_000_000,
     parameter integer ACC_DIV  = 7500,              // ramp tick = 10 kHz at 75 MHz
@@ -32,7 +35,8 @@ module stepper_ctrl #(
     input  wire        estop,           // 1 = stop pulses immediately
     output wire        pul_n,
     output wire        dir_n,
-    output wire        ena_o            // pin level: 1 = driver energised, 0 = released (TB6600 ENA- low = off-line)
+    output wire        ena_o,           // pin level: 1 = driver energised, 0 = released (TB6600 ENA- low = off-line)
+    output wire [31:0] pos_o            // current position, for the camera capture latch
 );
     localparam integer PULSE_CLK = CLK_HZ / 1_000_000 * PULSE_US;
     localparam integer SETUP_CLK = CLK_HZ / 1_000_000 * DIR_SETUP_US;
@@ -58,11 +62,12 @@ module stepper_ctrl #(
     wire at_target = (pos == target);
 
     // speed target for this tick
+    wire overshoot = mode && dist[31];          // target now behind the direction of travel
     wire decel_pos = mode && (remaining <= accel_steps);
-    wire want_down = stopping || decel_pos;
+    wire want_down = stopping || decel_pos || overshoot;
 
     wire [32:0] phase_next = {1'b0, phase} + {1'b0, cur_inc};
-    wire step_now = moving && (setup_cnt == 0) && phase_next[32] && !(mode && remaining == 0);
+    wire step_now = moving && (setup_cnt == 0) && phase_next[32] && !(mode && !overshoot && remaining == 0);
 
     always @(posedge clk) begin
         // ---------- register writes ----------
@@ -118,7 +123,7 @@ module stepper_ctrl #(
                     if (cur_inc > vmin_inc + acc_inc) cur_inc <= cur_inc - acc_inc;
                     else begin
                         cur_inc <= vmin_inc;
-                        if (stopping) begin moving <= 0; stopping <= 0; end   // velocity-mode stop complete
+                        if (stopping || overshoot) begin moving <= 0; stopping <= 0; end   // ramped down: stop
                     end
                 end else if (cur_inc < vmax_inc) begin
                     cur_inc <= (vmax_inc - cur_inc > acc_inc) ? cur_inc + acc_inc : vmax_inc;
@@ -143,6 +148,7 @@ module stepper_ctrl #(
     assign pul_n = ~(pulse_cnt != 0);
     assign dir_n = ~dir;
     assign ena_o = enable;
+    assign pos_o = pos;
 
     always @(*) begin
         case (raddr)
@@ -155,6 +161,7 @@ module stepper_ctrl #(
             8'h18: rdata = pos;
             8'h1C: rdata = cur_inc;
             8'h20: rdata = steps_total;
+            8'h24: rdata = accel_steps;
             default: rdata = 32'hDEAD_BEEF;
         endcase
     end

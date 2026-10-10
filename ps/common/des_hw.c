@@ -66,6 +66,23 @@ void des_frame_read(const des_hw_t *h, des_frame_t *f)
     f->cnt = c;
 }
 
+int des_capture_read(const des_hw_t *h, des_capture_t *c)
+{
+    if (h->version < DES_VERSION_CAPTURE) return DES_E_ARG;
+    /* the set only changes on a done interrupt; re-read if one landed in between */
+    uint32_t s;
+    do {
+        s = des_rd(h, DES_REG_CAP_SEQ);
+        c->frame = des_rd(h, DES_REG_CAP_FCNT);
+        c->t0 = des_rd(h, DES_REG_CAP_T0);
+        c->t1 = des_rd(h, DES_REG_CAP_T1);
+        c->pos0 = (int32_t)des_rd(h, DES_REG_CAP_POS0);
+        c->pos1 = (int32_t)des_rd(h, DES_REG_CAP_POS1);
+    } while (s != des_rd(h, DES_REG_CAP_SEQ));
+    c->seq = s;
+    return DES_OK;
+}
+
 /* ---------------- servo bus ---------------- */
 
 static uint8_t rx_byte(const des_hw_t *h, int i)
@@ -237,4 +254,9 @@ uint32_t des_step_status(const des_hw_t *h) { return des_rd(h, DES_ST_STATUS); }
 double des_step_speed(const des_hw_t *h)
 {
     return des_rd(h, DES_ST_CUR_INC) * (double)DES_FREE_CNT_HZ / 4294967296.0;
+}
+
+int32_t des_step_brake_steps(const des_hw_t *h)
+{
+    return h->version >= DES_VERSION_CAPTURE ? (int32_t)des_rd(h, DES_ST_BRAKE) : -1;
 }

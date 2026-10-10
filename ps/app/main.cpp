@@ -54,9 +54,7 @@ static void usage()
 
 static bool parse(int argc, char **argv, Args &a)
 {
-    if (argc < 2) return false;
-    a.mode = argv[1];
-    for (int i = 2; i < argc; i++) {
+    for (int i = 1; i < argc; i++) {
         std::string k = argv[i];
         auto val = [&](void) -> const char * { return i + 1 < argc ? argv[++i] : nullptr; };
         const char *v = nullptr;
@@ -68,10 +66,11 @@ static bool parse(int argc, char **argv, Args &a)
         else if (k == "--gain" && (v = val())) a.gain = atoi(v);
         else if (k == "--dump" && (v = val())) a.dump = v;
         else if (k == "--belt" && (v = val())) a.belt = atof(v);
+        else if (a.mode.empty() && k[0] != '-') a.mode = k;   // first plain word is the mode
         else if (k[0] != '-' || (k.size() > 1 && (isdigit(k[1]) || k[1] == '.'))) a.pos.push_back(atof(k.c_str()));
         else return false;
     }
-    return true;
+    return !a.mode.empty();
 }
 
 static void go_realtime()
@@ -203,8 +202,11 @@ static int run_track(des_hw_t &hw, const AppConfig &cfg, const Args &a)
         if (!err.empty()) { fprintf(stderr, "%s\n", err.c_str()); break; }
         FrameObs obs;
         obs.frame = f.pl_frame;
-        obs.belt_mm = f.step_pos * mmps;
+        // belt position at mid-frame; each part is corrected to the instant its own rows were read out
+        double b0 = f.step_pos * mmps, b1 = f.step_pos_end * mmps;
+        obs.belt_mm = 0.5 * (b0 + b1);
         obs.dets = loc.run(f.bgra, f.width, f.height, f.stride, cfg.px_to_table);
+        for (Detection &d : obs.dets) d.p.x -= float((b1 - b0) * (d.img_v - 0.5f));
         tr.update(obs);
 
         Picker::Input in;

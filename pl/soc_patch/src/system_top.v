@@ -232,6 +232,13 @@ wire pwm_out_unused;
     // DragonEyeSorter: one toggle per camera frame, counted in des_regs.
     // isp_top passes its *input* tuser straight to O_tuser, so it is not aligned with O_tvalid: use the edge alone.
     reg des_sof_d = 1'b0, des_sof_toggle = 1'b0;
+    // DragonEyeSorter v5: frame writer start / done-interrupt events for the capture latch in des_regs
+    wire cap_start_tgl;
+    reg  cap_done_d = 1'b0, cap_done_tgl = 1'b0;
+    always @(posedge pll_clk_150) begin
+        cap_done_d <= f2p_irq;
+        if (f2p_irq && !cap_done_d) cap_done_tgl <= ~cap_done_tgl;
+    end
     always @(posedge S_hs_rx_clk) begin
         des_sof_d <= S_ISP_O_tuser;
         if (S_ISP_O_tuser && !des_sof_d) des_sof_toggle <= ~des_sof_toggle;
@@ -373,6 +380,7 @@ wire pwm_out_unused;
 	.O_fmda_wbuf  (fdma_wbuf),	
 	.O_fdma_wirq  (fdma_wirq),	
 	
+	.O_W_start_tgl      ( cap_start_tgl ),
 	.camera_start       ( camera_start ),
 	.camera_done        ( f2p_irq       ),
 	.camera_clear_intr  ( camera_clear)
@@ -469,9 +477,11 @@ wire pwm_out_unused;
     always @(posedge des_clk) des_estop_sync <= {des_estop_sync[1:0], ESTOP_IN};
     wire des_estop = ~des_estop_sync[2];
 
-    des_regs #(.VERSION(32'd3)) des_regs_inst (
+    wire [31:0] st_pos;
+    des_regs #(.VERSION(32'd5)) des_regs_inst (
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h0), .waddr(des_waddr), .wdata(des_wdata),
         .raddr(des_raddr), .rdata(regs_rdata), .sof_toggle(des_sof_toggle), .ts(des_ts),
+        .cap_start_toggle(cap_start_tgl), .cap_done_toggle(cap_done_tgl), .pos(st_pos),
         .led_ovr(des_led_ovr), .led_val(des_led_val)
     );
 
@@ -484,7 +494,7 @@ wire pwm_out_unused;
     stepper_ctrl stepper_inst (
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h2), .waddr(des_waddr[7:0]), .wdata(des_wdata),
         .raddr(des_raddr[7:0]), .rdata(st_rdata), .estop(des_estop),
-        .pul_n(st_pul_n), .dir_n(st_dir_n), .ena_o(st_ena)
+        .pul_n(st_pul_n), .dir_n(st_dir_n), .ena_o(st_ena), .pos_o(st_pos)
     );
     // TB6600 common-cathode wiring (PUL-/DIR-/ENA- to GND, PUL+/DIR+/ENA+ from these pins): pulse active high,
     // ENA high releases the motor. Set to 0 for the common-anode + 74HCT245 wiring.

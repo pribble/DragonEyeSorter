@@ -81,6 +81,7 @@ std::vector<Detection> Locator::run(const uint8_t *bgra, int width, int height, 
         else          { d.len = lb; d.wid = la; d.axis = wrap_axis(std::atan2(sb.y, sb.x)); }
         d.partial = br.x <= b || br.y <= b || br.x + br.width >= gw_ - b || br.y + br.height >= gh_ - b;
         d.merged = area_mm2 > cfg_.max_area_mm2;
+        d.img_v = (pts[0].y + pts[1].y + pts[2].y + pts[3].y) * 0.25f / gh_;
         out.push_back(d);
         rects_px_.push_back({pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[2].x, pts[2].y, pts[3].x, pts[3].y});
     }

@@ -119,13 +119,25 @@ std::string CameraRig::next(CapturedFrame &f, bool need_pixels)
     p.cam->SubmitAndStart(p.bufs[nxt]->phys_addr, p.bufs[nxt]->virt_addr);
     uint64_t t2 = now_us();
 
-    des_frame_t fr;
-    des_frame_read(hw_, &fr);
-    f.pl_frame = fr.cnt;
-    f.pl_ts = des_now(hw_);
-    f.step_pos = des_step_pos(hw_);
-    f.pl_gap = p.have_prev ? fr.cnt - p.prev_frame : 1;
-    p.prev_frame = fr.cnt;
+    des_capture_t cap;
+    if (des_capture_read(hw_, &cap) == DES_OK) {
+        // v5: exact frame identity and belt position at its first / last row
+        f.latched = true;
+        f.pl_frame = cap.frame;
+        f.pl_ts = cap.t0;
+        f.step_pos = cap.pos0;
+        f.step_pos_end = cap.pos1;
+    } else {
+        // older bitstreams: read right after the completion (belt has moved for about one frame time)
+        des_frame_t fr;
+        des_frame_read(hw_, &fr);
+        f.latched = false;
+        f.pl_frame = fr.cnt;
+        f.pl_ts = des_now(hw_);
+        f.step_pos = f.step_pos_end = des_step_pos(hw_);
+    }
+    f.pl_gap = p.have_prev ? f.pl_frame - p.prev_frame : 1;
+    p.prev_frame = f.pl_frame;
     p.have_prev = true;
 
     f.buf = p.cur;

@@ -8,13 +8,21 @@
 #define DES_PL_SPAN      0x1000u
 
 #define DES_REG_ID           0x000u    /* R  : 0x44455301 */
-#define DES_REG_VERSION      0x004u    /* R  : 1 register channel (v1 reads 0x20261010 here), 2 integrated */
+#define DES_REG_VERSION      0x004u    /* R  : 1 register channel (v1 reads 0x20261010 here), 2 integrated,
+                                          3 SOF fix, 4 INCK 27 MHz (60 fps), 5 capture latch */
 #define DES_REG_SCRATCH      0x008u    /* RW */
 #define DES_REG_FREE_CNT     0x00Cu    /* R  : 75 MHz free-running counter */
 #define DES_REG_LED_CTRL     0x010u    /* RW : b0 override LED1, b1 LED1 value */
 #define DES_REG_FRAME_CNT    0x014u    /* R  : camera start-of-frame count (v2) */
 #define DES_REG_FRAME_TS     0x018u    /* R  : FREE_CNT at latest start of frame */
 #define DES_REG_FRAME_PERIOD 0x01Cu    /* R  : FREE_CNT ticks between the last two frames */
+/* last completed DMA capture (v5): updated on the done interrupt, stable for one frame period */
+#define DES_REG_CAP_SEQ      0x020u    /* R  : completed captures */
+#define DES_REG_CAP_FCNT     0x024u    /* R  : FRAME_CNT when the writer started the frame */
+#define DES_REG_CAP_T0       0x028u    /* R  : FREE_CNT at writer start */
+#define DES_REG_CAP_T1       0x02Cu    /* R  : FREE_CNT at done */
+#define DES_REG_CAP_POS0     0x030u    /* R  : belt position (stepper POS) at writer start */
+#define DES_REG_CAP_POS1     0x034u    /* R  : belt position at done */
 
 /* servo_bus, PL_BASE + 0x100 */
 #define DES_SB_CTRL          0x100u    /* W  : b0 go, b1 expect reply, b2 clear, b[14:8] body bytes */
@@ -39,6 +47,7 @@
 #define DES_ST_POS           0x218u
 #define DES_ST_CUR_INC       0x21Cu
 #define DES_ST_STEPS         0x220u
+#define DES_ST_BRAKE         0x224u    /* R  : steps needed to ramp down from the current speed (v5) */
 #define DES_ST_RAMP_HZ       10000u    /* ramp ticks per second */
 
 #define DES_ID_VALUE     0x44455301u

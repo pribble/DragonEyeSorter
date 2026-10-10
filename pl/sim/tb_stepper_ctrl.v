@@ -1,5 +1,6 @@
 `timescale 1ns/1ps
-// stepper_ctrl: position moves, direction setup time, velocity mode stop, halt and estop
+// stepper_ctrl: position moves, direction setup time, velocity mode stop, halt and estop,
+// target rewritten while moving (stop-at ahead / target already passed), BRAKE register
 module tb_stepper_ctrl;
     reg clk = 0;
     always #6.6667 clk = ~clk;                     // 75 MHz
@@ -13,7 +14,8 @@ module tb_stepper_ctrl;
 
     // ramp tick 1 MHz to keep the simulation short
     stepper_ctrl #(.ACC_DIV(75)) dut (.clk(clk), .wr(wr), .waddr(waddr), .wdata(wdata), .raddr(raddr), .rdata(rdata),
-                                     .estop(estop), .pul_n(pul_n), .dir_n(dir_n), .ena_o(ena_o));
+                                     .estop(estop), .pul_n(pul_n), .dir_n(dir_n), .ena_o(ena_o), .pos_o(pos_o));
+    wire [31:0] pos_o;
 
     // speed units: inc = v * 2^32 / 75e6
     function [31:0] inc_of(input real v); inc_of = v * 4294967296.0 / 75.0e6; endfunction
@@ -124,7 +126,36 @@ module tb_stepper_ctrl;
         estop = 0;
         reg_rd(8'h04, r); check("HALTED after estop", r[3], 1);
 
-        // 6) release
+        // 6) belt "stop at": cruise toward a far target, then rewrite TARGET to a point ahead
+        reg_wr(8'h08, 32'd200000);
+        reg_wr(8'h00, 32'h13);
+        #(3_000_000);
+        reg_rd(8'h24, r); check_ge("BRAKE steps while cruising", r, 1.0);
+        reg_rd(8'h18, r);
+        check("pos_o port == POS register", $signed(pos_o), $signed(r));
+        t_start = $signed(r) + 3000;
+        reg_wr(8'h08, $signed(r) + 3000);
+        wait_idle;
+        reg_rd(8'h18, r); check("stopped exactly at rewritten target", $signed(r), $rtoi(t_start));
+        reg_rd(8'h04, r); check("AT_TARGET after stop-at", r[2], 1);
+        reg_rd(8'h24, r); check("BRAKE steps 0 at rest", r, 0);
+
+        // 7) TARGET rewritten behind the direction of travel: must ramp down and stop, not freeze
+        reg_wr(8'h08, 32'd400000);
+        reg_wr(8'h00, 32'h13);
+        #(3_000_000);
+        reg_rd(8'h18, r);
+        t_start = $signed(r);
+        reg_wr(8'h08, $signed(r) - 50);
+        t_end = $realtime;
+        wait_idle;
+        $display("     overshoot stop took %0.2f us", ($realtime - t_end) / 1000.0);
+        reg_rd(8'h04, r); check("stopped (not frozen) after target passed", r[0], 0);
+        check("AT_TARGET 0 after overshoot", r[2], 0);
+        reg_rd(8'h18, r); check_ge("ran past the passed target", $signed(r), t_start);
+        check("hw pos == monitor after overshoot", $signed(r), mon_pos);
+
+        // 8) release
         reg_wr(8'h00, 32'h10);
         @(posedge clk); #1;
         check("ENA pin low when released", ena_o, 0);

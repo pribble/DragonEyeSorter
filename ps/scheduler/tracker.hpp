@@ -23,6 +23,7 @@ struct Detection {
     float conf = 0;
     bool partial = false;   // touches the image border: presence only, geometry unreliable
     bool merged = false;    // blob larger than any single part: several touching parts
+    float img_v = 0.5f;     // image row of the center, 0 = top .. 1 = bottom (rolling-shutter timing)
 };
 
 struct FrameObs {

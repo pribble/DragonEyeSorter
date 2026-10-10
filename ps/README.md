@@ -32,6 +32,7 @@ ps/
 - 坐标约定见 `scheduler/geom.hpp`：图像 px → 台面 mm（单应矩阵，配置 `px_to_table`）；件在带上的坐标 `s = x − B`（B = 带走过的距离），停带 / 反转都不用特殊处理。
 - 停带 = 给步进位置模式写「停在 B = 抓取线 − s」，减速由 PL 梯形曲线完成（`stepper_ctrl`）。⚠ 目标不能给在身后（会卡在 moving），调度器已按刹车距离判断来不及就转复检。
 - 取帧：厂家帧 DMA 是「提交一块写一帧」，完成后立即重新提交下一块（4 块环形缓冲）。**实测 SCHED_FIFO 与普通调度都 0 丢帧**，重新提交 0.2µs —— 厂家 demo 的 28fps 是它的串行流水造成的，不是硬件限制。
+  PL v4 起相机 59.83fps，`des_app.json` 的 `camera.vmax = 2276` 补到 **60.02fps**（20s 1201 帧 0 丢帧）。PL v5 起每帧带 PL 锁存的拍摄时刻带位置（`CAP_*`），旧比特流自动退回「完成后读」。
 - 定位：1/4 降采样灰度（480×270）+ Otsu（下限钳位）+ 开运算 + 外轮廓 + minAreaRect，板上 6.8ms/帧。1/2 降采样要 21ms（DMA 缓冲读像素慢），超帧预算。
 - 配置：`app/des_app.json`（所有标定值，标 TODO 的待实物标定）；类别规则从 `models/label_list.json` 读。板上部署到 `/root/des/`（`des_app`、`des_app.json`、`label_list.json`）。
 
@@ -55,7 +56,8 @@ ps/
 ```bash
 # Windows Git Bash（FD 自带 make 与交叉 gcc）；Linux 上传 CROSS= / SDK= 覆盖
 D:/ANLU/FD/toolchain/build-tools/bin/make.exe -C ps            # → ps/build/{desreg,test_scheduler,des_app}
-scp -i ~/.ssh/id_ed25519_anlu ps/build/des_app ps/app/des_app.json models/label_list.json root@192.168.137.100:/root/des/
+scp -i ~/.ssh/id_ed25519_anlu ps/build/des_app ps/app/des_app.sh ps/app/des_app.json models/label_list.json root@192.168.137.100:/root/des/
+# 板上运行：/root/des/des_app.sh probe -n 10   （mipicam.ko 开机不自动加载，脚本缺模块时先 insmod）
 ```
 
 - `des_app` 需要厂家 NPU demo 的 `libs/`（OpenCV 4.7 + ArmNN，CMA 分配在 libarmnn 里），Makefile 变量 `SDK` 指向它；不入库（113MB）。
