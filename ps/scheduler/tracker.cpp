@@ -116,11 +116,13 @@ void Tracker::update(const FrameObs &obs)
         fuse(tracks_[p.t], obs.dets[p.d], B, obs.frame);
     }
 
-    // missed tracks: only count frames where the part should have been visible
+    // missed tracks: only count frames where the whole part should have been visible. Decided tracks are leaving
+    // the view (or waiting at the pick line): the belt position carries them, misses no longer matter.
+    // (Counting by the center alone dropped 50 mm racks near the FOV exit as "lost": HIL test 10-10.)
     for (size_t ti = 0; ti < tracks_.size(); ti++) {
         Track &t = tracks_[ti];
-        if (t_used[ti] || t.state == TrackState::Picking || t.state == TrackState::Done) continue;
-        if (!in_view(t.x_at(B))) continue;
+        if (t_used[ti] || (t.state != TrackState::New && t.state != TrackState::Tracking)) continue;
+        if (!fully_in_view(t, B)) continue;
         t.misses++;
         if (t.state == TrackState::New && t.misses > cfg_.max_miss_new) {
             t.state = TrackState::Done; t.why = "noise"; stats.noise++;

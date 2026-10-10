@@ -105,7 +105,13 @@ public:
 private:
     void fuse(Track &t, const Detection &d, double belt_mm, uint32_t frame);
     void decide(Track &t);
-    bool in_view(float x) const { return x > cfg_.fov_x0 + cfg_.edge_margin && x < cfg_.fov_x1 - cfg_.edge_margin; }
+    // the whole footprint (extent along x from len / wid / axis) lies inside the FOV minus the edge margin
+    bool fully_in_view(const Track &t, double belt_mm) const
+    {
+        float x = t.x_at(belt_mm);
+        float ext = 0.5f * (t.len * std::fabs(std::cos(t.axis)) + t.wid * std::fabs(std::sin(t.axis)));
+        return x - ext > cfg_.fov_x0 + cfg_.edge_margin && x + ext < cfg_.fov_x1 - cfg_.edge_margin;
+    }
 
     TrackerConfig cfg_;
     std::vector<Track> tracks_;

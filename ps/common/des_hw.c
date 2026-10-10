@@ -256,6 +256,9 @@ double des_step_speed(const des_hw_t *h)
     return des_rd(h, DES_ST_CUR_INC) * (double)DES_FREE_CNT_HZ / 4294967296.0;
 }
 
+void des_step_set_target(des_hw_t *h, int32_t target) { des_wr(h, DES_ST_TARGET, (uint32_t)target); }
+int32_t des_step_target(const des_hw_t *h) { return (int32_t)des_rd(h, DES_ST_TARGET); }
+
 int32_t des_step_brake_steps(const des_hw_t *h)
 {
     return h->version >= DES_VERSION_CAPTURE ? (int32_t)des_rd(h, DES_ST_BRAKE) : -1;

@@ -92,6 +92,10 @@ int des_servo_sync_pos(des_hw_t *h, const uint8_t *ids, const uint16_t *pos, con
 void     des_step_enable(des_hw_t *h, int on);                 /* off = ENA released, no torque */
 void     des_step_vel(des_hw_t *h, double steps_per_s, double acc);   /* signed speed, acc in steps/s^2 */
 void     des_step_move(des_hw_t *h, int32_t target, double vmax, double acc);  /* absolute position mode */
+/* Rewrite TARGET while a position move is running (the deceleration point is recomputed in PL). A target behind
+ * the direction of travel makes the move ramp down and stop past it (v5+). */
+void     des_step_set_target(des_hw_t *h, int32_t target);
+int32_t  des_step_target(const des_hw_t *h);
 void     des_step_stop(des_hw_t *h);                           /* ramp down */
 void     des_step_halt(des_hw_t *h);                           /* immediate, no more pulses */
 void     des_step_zero(des_hw_t *h);
