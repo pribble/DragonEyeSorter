@@ -43,6 +43,8 @@ struct AppConfig {
     PickerConfig picker;
     ArmConfig arm;
     std::string label_list = "models/label_list.json";
+    std::string calib_file = "calib.json";     // written by des_app calib-cam, merged over this file if present
+    std::string calib_loaded;                  // path actually merged (empty = none)
     std::vector<std::string> bins = {"gear_box", "rack_box"};          // pick destinations (arm drop poses)
     std::vector<std::string> outlets = {"recheck", "scrap", "rework"};  // flap outlets, index 0 = recheck
 };

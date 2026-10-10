@@ -6,8 +6,9 @@
   "locate": { "scale": 4, "thresh": 0, "min_thresh": 60, "open_iter": 1, "border_px": 2,
               "min_area_mm2": 40, "max_area_mm2": 3000 },
 
-  "px_to_table_comment": "TODO 标定：image px -> table mm, row-major 3x3。默认 = 视野宽 300mm / 1920px，x 沿图像 u，y 以图像中线为 0",
-  "px_to_table": [0.15625, 0, 0,  0, 0.15625, -84.375,  0, 0, 1],
+  "px_to_table_comment": "未标定时的占位：视野宽 300mm / 1920px，x 沿图像向右（皮带前进方向），y 沿图像向上（右手系，z 朝上），原点 = 左边缘中点。用 des_app calib-cam 标定后由 calib.json 覆盖",
+  "px_to_table": [0.15625, 0, 0,  0, -0.15625, 84.375,  0, 0, 1],
+  "calib_file": "calib.json",
 
   "belt": { "mm_per_step": 0.03, "dir": 1, "run_speed": 50, "accel": 400 },
 

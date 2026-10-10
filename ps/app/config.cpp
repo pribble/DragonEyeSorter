@@ -149,6 +149,25 @@ std::string load_config(const std::string &path, AppConfig &cfg)
         return path + ": " + e.what();
     }
     for (size_t i = 0; i < 6; i++) if (!cfg.arm.joint[i].id) cfg.arm.joint[i].id = uint8_t(i + 1);
+    get(j, "calib_file", cfg.calib_file);
+    std::string cp = cfg.calib_file;
+    if (!cp.empty() && cp[0] != '/') cp = dir_of(path) + "/" + cp;
+    std::ifstream cf(cp);
+    if (cf) {
+        try {
+            json c;
+            cf >> c;
+            if (c.contains("px_to_table") && c["px_to_table"].size() == 9)
+                for (int i = 0; i < 9; i++) cfg.px_to_table.h[i] = c["px_to_table"][i].get<double>();
+            if (c.contains("tracker")) {
+                get(c["tracker"], "fov_x0", cfg.tracker.fov_x0);
+                get(c["tracker"], "fov_x1", cfg.tracker.fov_x1);
+            }
+            cfg.calib_loaded = cp;
+        } catch (const std::exception &e) {
+            return cp + ": " + e.what();
+        }
+    }
     cfg.picker.tail_x = cfg.tracker.tail_x;
     cfg.picker.recheck_outlet = 0;
 

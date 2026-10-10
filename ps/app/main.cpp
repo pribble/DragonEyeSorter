@@ -6,6 +6,8 @@
 //   des_app ik     <x> <y> [z] [axis_deg]                           table-frame target -> joint angles / servo counts
 //   des_app display [-n sec]                                        camera -> HDMI at 60 fps (BGRA->BGR + page flip), timing
 //   des_app live   [-n sec] [--belt mm/s]                           60 fps HDMI with locate / tracking overlays (2 cores)
+//   des_app calib-cam [--board 9x6] [--square mm] [--travel right|left|down|up] [--image f.png] [--out calib.json]
+//                                                                   checkerboard on the belt -> px_to_table (calib.json)
 // common: -c <config.json> (default /root/des/des_app.json), --no-rt
 //
 // Bring-up order: probe (60 fps without skips) -> locate (thresholds, homography) -> track (belt + tracker)
@@ -23,6 +25,10 @@
 
 #include <opencv2/imgproc.hpp>
 
+#include <opencv2/core/utility.hpp>
+#include <opencv2/imgcodecs.hpp>
+
+#include "calib.hpp"
 #include "camera_rig.hpp"
 #include "config.hpp"
 #include "des_hw.h"
@@ -44,6 +50,9 @@ static double now_s()
 
 struct Args {
     std::string mode, config = "/root/des/des_app.json", dump;
+    std::string board = "9x6", travel = "right", image, out;
+    double square = 0;
+    bool exhaustive = false;
     double n = 0;
     int vmax = -1, exp_us = -1, gain = -1;
     bool rt = true;
@@ -54,8 +63,10 @@ struct Args {
 static void usage()
 {
     fprintf(stderr,
-            "usage: des_app probe|locate|track|display|live|ik [options]\n"
-            "  -c cfg.json  -n N  --vmax N  --exp us  --gain dB*10  --dump file.png  --belt mm/s  --no-rt\n");
+            "usage: des_app probe|locate|track|display|live|calib-cam|ik [options]\n"
+            "  -c cfg.json  -n N  --vmax N  --exp us  --gain dB*10  --dump file.png  --belt mm/s  --no-rt\n"
+            "  calib-cam: --board <cols>x<rows> (inner corners)  --square <mm>  --travel right|left|down|up\n"
+            "             --image <file> (instead of the camera)  --out <calib.json>  --exhaustive\n");
 }
 
 static bool parse(int argc, char **argv, Args &a)
@@ -65,6 +76,7 @@ static bool parse(int argc, char **argv, Args &a)
         auto val = [&](void) -> const char * { return i + 1 < argc ? argv[++i] : nullptr; };
         const char *v = nullptr;
         if (k == "--no-rt") a.rt = false;
+        else if (k == "--exhaustive") a.exhaustive = true;
         else if (k == "-c" && (v = val())) a.config = v;
         else if (k == "-n" && (v = val())) a.n = atof(v);
         else if (k == "--vmax" && (v = val())) a.vmax = atoi(v);
@@ -72,6 +84,11 @@ static bool parse(int argc, char **argv, Args &a)
         else if (k == "--gain" && (v = val())) a.gain = atoi(v);
         else if (k == "--dump" && (v = val())) a.dump = v;
         else if (k == "--belt" && (v = val())) a.belt = atof(v);
+        else if (k == "--board" && (v = val())) a.board = v;
+        else if (k == "--square" && (v = val())) a.square = atof(v);
+        else if (k == "--travel" && (v = val())) a.travel = v;
+        else if (k == "--image" && (v = val())) a.image = v;
+        else if (k == "--out" && (v = val())) a.out = v;
         else if (a.mode.empty() && k[0] != '-') a.mode = k;   // first plain word is the mode
         else if (k[0] != '-' || (k.size() > 1 && (isdigit(k[1]) || k[1] == '.'))) a.pos.push_back(atof(k.c_str()));
         else return false;
@@ -325,6 +342,78 @@ static int run_live_mode(des_hw_t &hw, const AppConfig &cfg, const Args &a)
 }
 
 // ---------------------------------------------------------------- ik
+// ---------------------------------------------------------------- calib-cam
+static int run_calib(des_hw_t *hw, const AppConfig &cfg, const Args &a)
+{
+    cv::setNumThreads(1);   // no OpenCV worker threads before detect_board_timeout forks
+    BoardSpec b;
+    if (sscanf(a.board.c_str(), "%dx%d", &b.cols, &b.rows) != 2 || b.cols < 3 || b.rows < 3) {
+        fprintf(stderr, "--board wants <cols>x<rows> inner corners, e.g. 9x6\n");
+        return 1;
+    }
+    if (a.square <= 0) {
+        fprintf(stderr, "--square <mm> is required: measure one square on the board with a caliper\n");
+        return 1;
+    }
+    b.square_mm = float(a.square);
+    Travel travel;
+    if (!parse_travel(a.travel, travel)) { fprintf(stderr, "--travel right|left|down|up\n"); return 1; }
+
+    cv::Mat bgr, gray;
+    if (!a.image.empty()) {
+        bgr = cv::imread(a.image, cv::IMREAD_COLOR);
+        if (bgr.empty()) { fprintf(stderr, "cannot read %s\n", a.image.c_str()); return 1; }
+    } else {
+        if (!hw) { fprintf(stderr, "PL not available\n"); return 1; }
+        CameraRig cam(hw);
+        if (open_camera(cam, cfg, a)) return 1;
+        CapturedFrame f;
+        for (int i = 0; i < 20; i++)   // let exposure settle, keep the last frame
+            if (!cam.next(f, i == 19).empty()) return 1;
+        cv::Mat src(f.height, f.width, CV_8UC4, const_cast<uint8_t *>(f.bgra));
+        cv::cvtColor(src, bgr, cv::COLOR_BGRA2BGR);
+    }
+    cv::cvtColor(bgr, gray, cv::COLOR_BGR2GRAY);
+    const double timeout_s = a.exhaustive ? 120 : 20;
+    printf("looking for a %dx%d inner-corner board (gives up after %.0f s)...\n", b.cols, b.rows, timeout_s);
+    fflush(stdout);
+    double t0 = now_s();
+    std::vector<cv::Point2f> corners;
+    int found = detect_board_timeout(gray, b, a.exhaustive, timeout_s, corners);
+    CalibResult r;
+    if (found == 1) {
+        r = calibrate_from_corners(corners, gray.size(), b, travel);
+    } else {
+        r.err = found < 0 ? "no board after the time limit: is --board the INNER corner count (squares - 1)? "
+                            "is the whole board in view and in focus?"
+                          : "board not found (check --board inner-corner count, focus, lighting; whole board in view)";
+    }
+    r.detect_ms = (now_s() - t0) * 1e3;
+    if (!r.ok) {
+        fprintf(stderr, "calibration failed: %s\n", r.err.c_str());
+        if (!a.dump.empty()) cv::imwrite(a.dump, bgr);
+        return 2;
+    }
+    printf("board %dx%d inner corners, %.3f mm squares, travel %s: found %zu corners in %.0f ms\n", b.cols, b.rows,
+           b.square_mm, to_str(travel), r.corners.size(), r.detect_ms);
+    printf("fit residual rms %.3f mm, max %.3f mm; %.4f mm/px at the center\n", r.rms_mm, r.max_mm, r.mm_per_px);
+    printf("FOV along the belt x %.1f .. %.1f mm; corners (table mm):", r.fov_x0, r.fov_x1);
+    for (const Vec2 &v : r.fov_corners) printf(" (%.1f, %.1f)", v.x, v.y);
+    printf("\n");
+    std::string out = a.out;
+    if (out.empty()) {
+        size_t k = a.config.find_last_of('/');
+        out = (k == std::string::npos ? std::string(".") : a.config.substr(0, k)) + "/calib.json";
+    }
+    std::string err = save_calib(out, r, b, travel);
+    printf("saved %s: %s\n", out.c_str(), err.empty() ? "ok" : err.c_str());
+    if (!a.dump.empty()) {
+        draw_calib(bgr, r);
+        printf("dump %s: %s\n", a.dump.c_str(), cv::imwrite(a.dump, bgr) ? "ok" : "FAILED");
+    }
+    return err.empty() ? 0 : 1;
+}
+
 static int run_ik(const AppConfig &cfg, const Args &a)
 {
     if (a.pos.size() < 2) { usage(); return 1; }
@@ -353,7 +442,11 @@ int main(int argc, char **argv)
     AppConfig cfg;
     std::string err = load_config(a.config, cfg);
     if (!err.empty()) fprintf(stderr, "config: %s (using defaults)\n", err.c_str());
+    if (!cfg.calib_loaded.empty()) printf("config: camera calibration from %s\n", cfg.calib_loaded.c_str());
+    else if (a.mode != "calib-cam") printf("config: no %s, camera mapping is the uncalibrated placeholder\n",
+                                            cfg.calib_file.c_str());
     if (a.mode == "ik") return run_ik(cfg, a);
+    if (a.mode == "calib-cam" && !a.image.empty()) return run_calib(nullptr, cfg, a);
 
     des_hw_t hw;
     int rc = des_hw_open(&hw);
@@ -371,6 +464,7 @@ int main(int argc, char **argv)
     else if (a.mode == "track") rc = run_track(hw, cfg, a);
     else if (a.mode == "display") rc = run_display(hw, cfg, a);
     else if (a.mode == "live") rc = run_live_mode(hw, cfg, a);
+    else if (a.mode == "calib-cam") rc = run_calib(&hw, cfg, a);
     else { usage(); rc = 1; }
     des_hw_close(&hw);
     return rc;

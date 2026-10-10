@@ -29,6 +29,7 @@ ps/
 | `des_app track [-n 秒] [--belt mm/s]` | 取帧 + 定位 + 跟踪表 + 调度（不动机械臂），打印建轨 / 判定 / 停带计划 |
 | `des_app ik <x> <y> [z] [角度]` | 台面坐标 → 关节角 / 舵机码（空跑） |
 | `des_app live [-n 秒] [--belt mm/s] [--dump x.png]` | **合成主循环**：核 0 取帧 + HDMI 60fps + 叠加（跟踪框按当前帧带位置重投影、原始 blob、判定线、状态栏），核 1 定位 + 跟踪表 + 调度。实测 20s 1200 帧 59.96fps、工作线程处理 99.9% 的帧 |
+| `des_app calib-cam --board 9x6 --square <mm> [--travel right] [--image f.png] [--dump x.png]` | 棋盘格平放在皮带上 → 像素→台面毫米单应矩阵，写 `calib.json`（`load_config` 自动合并）。坐标系与操作见 docs/02「相机标定」；合成图测试 `build/test_calib` |
 | `des_app display [-n 秒]` | 相机 → HDMI 60fps：每帧 BGRA→BGR 进 CMA 显示缓冲 + 写显示 VDMA `START_1` 翻页（实测转换 6.2ms/帧，60fps）；退出恢复 fb0 |
 
 - 坐标约定见 `scheduler/geom.hpp`：图像 px → 台面 mm（单应矩阵，配置 `px_to_table`）；件在带上的坐标 `s = x − B`（B = 带走过的距离），停带 / 反转都不用特殊处理。
