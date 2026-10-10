@@ -7,7 +7,7 @@
 # SDK    vendor NPU demo libs dir (demo.zip -> face_detection/libs): armnn_lib/ + ffmpeg_opencv4.7.0_aarch64/.
 #        Same files as /opt/armnn_lib and /opt/ffmpeg_opencv4.7.0_aarch64 on the board. Kept out of the repo (113 MB).
 #
-# Targets: desreg (C, no deps), test_scheduler (C++, no deps), test_calib / des_app (C++, need SDK), all, clean.
+# Targets: desreg (C, no deps), test_scheduler (C++, no deps), test_calib / test_measure / des_app (C++, need SDK), all, clean.
 # Deploy:  scp -i ~/.ssh/id_ed25519_anlu build/<prog> root@192.168.137.100:/root/bin/
 
 CROSS ?= D:/ANLU/FD/toolchain/gcc/aarch64_linux/bin/aarch64-linux-gnu-
@@ -32,7 +32,7 @@ APP_SRC := app/main.cpp app/camera_rig.cpp app/locate.cpp app/config.cpp app/hdm
 OPENCV_LIBS := -lopencv_calib3d -lopencv_features2d -lopencv_flann -lopencv_imgproc -lopencv_imgcodecs -lopencv_core
 
 .PHONY: all clean
-all: $(BUILD)/desreg $(BUILD)/test_scheduler $(BUILD)/test_calib $(BUILD)/test_belt_hil $(BUILD)/test_can $(BUILD)/canplc $(BUILD)/des_app
+all: $(BUILD)/desreg $(BUILD)/test_scheduler $(BUILD)/test_calib $(BUILD)/test_measure $(BUILD)/test_belt_hil $(BUILD)/test_can $(BUILD)/canplc $(BUILD)/des_app
 
 $(BUILD):
 	mkdir -p $(BUILD)
@@ -42,6 +42,10 @@ $(BUILD)/desreg: tools/desreg.c common/des_hw.c common/des_hw.h common/des_regs.
 
 $(BUILD)/test_scheduler: tests/test_scheduler.cpp $(SCHED_SRC) $(wildcard scheduler/*.hpp) | $(BUILD)
 	$(CXX) $(CXXFLAGS) -Ischeduler -o $@ tests/test_scheduler.cpp $(SCHED_SRC)
+
+$(BUILD)/test_measure: tests/test_measure.cpp app/measure.cpp app/measure.hpp scheduler/geom.hpp | $(BUILD)
+	$(CXX) $(CXXFLAGS) -Iapp -Ischeduler -I$(OPENCV)/include/opencv4 -o $@ tests/test_measure.cpp app/measure.cpp \
+	    -L$(OPENCV)/lib -Wl,-rpath-link,$(OPENCV)/lib $(RPATH) -lopencv_imgproc -lopencv_core -lpthread
 
 $(BUILD)/canplc: tools/canplc.c bus/can_link.c bus/can_link.h bus/can_proto.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ibus -o $@ tools/canplc.c bus/can_link.c
