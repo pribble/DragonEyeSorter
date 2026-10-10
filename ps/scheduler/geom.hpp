@@ -44,6 +44,18 @@ struct Homography {
         double w = h[6] * p.x + h[7] * p.y + h[8];
         return {float((h[0] * p.x + h[1] * p.y + h[2]) / w), float((h[3] * p.x + h[4] * p.y + h[5]) / w)};
     }
+    // table mm -> image px (for drawing tracks back onto the frame)
+    Homography inverse() const
+    {
+        double a = h[0], b = h[1], c = h[2], d = h[3], e = h[4], f = h[5], g = h[6], k = h[7], i = h[8];
+        double A = e * i - f * k, B = f * g - d * i, C = d * k - e * g;
+        double D = c * k - b * i, E = a * i - c * g, F = b * g - a * k;
+        double G = b * f - c * e, H = c * d - a * f, I = a * e - b * d;
+        double det = a * A + b * B + c * C;
+        Homography r;
+        r.h = {A / det, D / det, G / det, B / det, E / det, H / det, C / det, F / det, I / det};
+        return r;
+    }
 };
 
 // Oriented rectangle: center, half extents along its own axes, axis angle of the "len" side.

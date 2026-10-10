@@ -69,6 +69,16 @@ static void test_geom()
     h.h = {0.2, 0, -10, 0, 0.2, 5, 0, 0, 1};
     Vec2 m = h.map({100, 50});
     CHECK(std::fabs(m.x - 10) < 1e-4f && std::fabs(m.y - 15) < 1e-4f, "homography affine");
+    Homography p;   // perspective
+    p.h = {0.16, 0.004, -12, -0.003, 0.155, -80, 1e-5, -2e-5, 1};
+    Homography pi = p.inverse();
+    float worst = 0;
+    for (float u = 0; u <= 1920; u += 480)
+        for (float v = 0; v <= 1080; v += 270) {
+            Vec2 back = pi.map(p.map({u, v}));
+            worst = std::fmax(worst, std::hypot(back.x - u, back.y - v));
+        }
+    CHECK(worst < 0.01f, "homography inverse round trip %.4f px", worst);
 }
 
 static void test_tracker()

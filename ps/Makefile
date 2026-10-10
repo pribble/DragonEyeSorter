@@ -28,7 +28,7 @@ RPATH  := -Wl,-rpath,/opt/armnn_lib/lib:/opt/ffmpeg_opencv4.7.0_aarch64/lib
 SCHED_SRC := scheduler/tracker.cpp scheduler/picker.cpp scheduler/arm.cpp
 # camera capture reuses the vendor-derived driver wrapper in vision/ (MIT); no NPU code is linked yet
 VISION_SRC := vision/mipi_camera.cpp vision/logger_forward.cpp vision/flow_common_types.cpp
-APP_SRC := app/main.cpp app/camera_rig.cpp app/locate.cpp app/config.cpp
+APP_SRC := app/main.cpp app/camera_rig.cpp app/locate.cpp app/config.cpp app/hdmi_out.cpp app/live.cpp
 
 .PHONY: all clean
 all: $(BUILD)/desreg $(BUILD)/test_scheduler $(BUILD)/des_app

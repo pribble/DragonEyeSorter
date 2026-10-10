@@ -95,6 +95,19 @@ std::vector<Detection> Locator::run(const uint8_t *bgra, int width, int height, 
     return out;
 }
 
+std::vector<std::array<float, 8>> Locator::rects_full() const
+{
+    const float s = float(std::max(1, cfg_.scale)), off = 0.5f * (s - 1);
+    std::vector<std::array<float, 8>> out;
+    out.reserve(rects_px_.size());
+    for (const auto &r : rects_px_) {
+        std::array<float, 8> f;
+        for (int i = 0; i < 8; i++) f[i] = r[i] * s + off;
+        out.push_back(f);
+    }
+    return out;
+}
+
 bool Locator::dump(const char *path) const
 {
     if (gray_.empty()) return false;

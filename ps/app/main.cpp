@@ -5,16 +5,15 @@
 //   des_app track  [-n sec] [--belt mm/s]                           capture + locate + tracking table + picker, no arm
 //   des_app ik     <x> <y> [z] [axis_deg]                           table-frame target -> joint angles / servo counts
 //   des_app display [-n sec]                                        camera -> HDMI at 60 fps (BGRA->BGR + page flip), timing
+//   des_app live   [-n sec] [--belt mm/s]                           60 fps HDMI with locate / tracking overlays (2 cores)
 // common: -c <config.json> (default /root/des/des_app.json), --no-rt
 //
 // Bring-up order: probe (60 fps without skips) -> locate (thresholds, homography) -> track (belt + tracker)
 // -> arm (after the servos are wired). The NPU pipeline from vision/ attaches classes to detections later.
-#include <fcntl.h>
 #include <sched.h>
 #include <signal.h>
 #include <sys/mman.h>
 #include <time.h>
-#include <unistd.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -25,9 +24,10 @@
 #include <opencv2/imgproc.hpp>
 
 #include "camera_rig.hpp"
-#include "flow_common_types.hpp"
 #include "config.hpp"
 #include "des_hw.h"
+#include "hdmi_out.hpp"
+#include "live.hpp"
 #include "locate.hpp"
 
 using namespace des;
@@ -54,7 +54,7 @@ struct Args {
 static void usage()
 {
     fprintf(stderr,
-            "usage: des_app probe|locate|track|display|ik [options]\n"
+            "usage: des_app probe|locate|track|display|live|ik [options]\n"
             "  -c cfg.json  -n N  --vmax N  --exp us  --gain dB*10  --dump file.png  --belt mm/s  --no-rt\n");
 }
 
@@ -263,72 +263,65 @@ static int run_track(des_hw_t &hw, const AppConfig &cfg, const Args &a)
 }
 
 // ---------------------------------------------------------------- display
-// HDMI scan-out is the vendor "vdma" at 0x8020_0000 reading 24 bpp BGR (H_SIZE / stride 5760) from START_1
-// (0x5C, normally the fb0 memory 0x17D0_0000). The camera writes 32 bpp BGRA, so every frame is converted
-// into one of two BGR buffers and START_1 is pointed at it (page flip). Restored on exit.
-static constexpr uint32_t kVdmaBase = 0x80200000u, kVdmaStart1 = 0x5C;
-
+// camera -> HDMI only (no overlays): measures the BGRA->BGR conversion + page flip cost (docs/06)
 static int run_display(des_hw_t &hw, const AppConfig &cfg, const Args &a)
 {
     CameraRig cam(&hw);
     if (open_camera(cam, cfg, a)) return 1;
-    int fd = open("/dev/mem", O_RDWR | O_SYNC);
-    void *vp = fd >= 0 ? mmap(nullptr, 0x1000, PROT_READ | PROT_WRITE, MAP_SHARED, fd, kVdmaBase) : MAP_FAILED;
-    if (vp == MAP_FAILED) { perror("map vdma"); return 1; }
-    volatile uint32_t *vdma = static_cast<volatile uint32_t *>(vp);
-    const uint32_t start_orig = vdma[kVdmaStart1 / 4];
-    printf("vdma: V %u lines, H %u bytes, stride %u, START_1 0x%08x\n", vdma[0x50 / 4], vdma[0x54 / 4],
-           vdma[0x58 / 4], start_orig);
-    if (vdma[0x54 / 4] != 1920 * 3) { fprintf(stderr, "display is not 1920 x 24 bpp, refusing\n"); return 1; }
-
-    CmaBuf out[2] = {CmaBuf(1920 * 1080 * 3), CmaBuf(1920 * 1080 * 3)};
-    for (auto &b : out)
-        if (!b || !b->phys_addr || (b->phys_addr >> 32)) { fprintf(stderr, "CMA alloc for display failed\n"); return 1; }
+    HdmiOut hdmi;
+    std::string err = hdmi.open();
+    if (!err.empty()) { fprintf(stderr, "hdmi: %s\n", err.c_str()); return 1; }
 
     double secs = a.n > 0 ? a.n : 10, t_start = now_s(), t_sec = t_start;
     double sum_conv = 0, max_conv = 0, sum_flush = 0;
     uint64_t frames = 0, skipped = 0, sec_frames = 0;
-    int k = 0;
     CapturedFrame f;
     char text[96];
     while (!g_stop && now_s() - t_start < secs) {
-        std::string err = cam.next(f, true);
+        err = cam.next(f, true);
         if (!err.empty()) { fprintf(stderr, "%s\n", err.c_str()); break; }
         if (frames) skipped += f.pl_gap - 1;
         double t0 = now_s();
         cv::Mat src(f.height, f.width, CV_8UC4, const_cast<uint8_t *>(f.bgra));
-        cv::Mat dst(1080, 1920, CV_8UC3, out[k]->virt_addr);
+        cv::Mat dst = hdmi.back();
         cv::cvtColor(src, dst, cv::COLOR_BGRA2BGR);
         snprintf(text, sizeof text, "PL frame %u  skipped %llu", f.pl_frame, (unsigned long long)skipped);
         cv::rectangle(dst, cv::Rect(20, 20, 560, 50), cv::Scalar(0, 0, 0), cv::FILLED);
         cv::putText(dst, text, cv::Point(30, 56), cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 255, 0), 2);
         double t1 = now_s();
-        out[k].sync_device();
-        vdma[kVdmaStart1 / 4] = uint32_t(out[k]->phys_addr);
-        double t2 = now_s();
-        k ^= 1;
+        hdmi.flip();
         frames++;
         sec_frames++;
         sum_conv += t1 - t0;
         max_conv = std::max(max_conv, t1 - t0);
-        sum_flush += t2 - t1;
-        if (t2 - t_sec >= 1.0) {
-            printf("%5.1f fps shown, convert avg %.1f ms, skipped %llu\n", sec_frames / (t2 - t_sec),
+        sum_flush += hdmi.last_flush_ms() / 1e3;
+        if (now_s() - t_sec >= 1.0) {
+            printf("%5.1f fps shown, convert avg %.1f ms, skipped %llu\n", sec_frames / (now_s() - t_sec),
                    sum_conv / frames * 1e3, (unsigned long long)skipped);
             fflush(stdout);
-            t_sec = t2;
+            t_sec = now_s();
             sec_frames = 0;
         }
     }
-    vdma[kVdmaStart1 / 4] = start_orig;   // back to the fb0 console
+    hdmi.close();
     double el = now_s() - t_start;
     printf("\n== display: %llu frames in %.2f s = %.2f fps; skipped %llu; convert avg %.2f ms max %.2f ms; "
            "flush avg %.2f ms\n",
            (unsigned long long)frames, el, frames / el, (unsigned long long)skipped,
            frames ? sum_conv / frames * 1e3 : 0.0, max_conv * 1e3, frames ? sum_flush / frames * 1e3 : 0.0);
-    munmap(vp, 0x1000);
-    close(fd);
     return 0;
+}
+
+// ---------------------------------------------------------------- live
+static int run_live_mode(des_hw_t &hw, const AppConfig &cfg, const Args &a)
+{
+    CameraRig cam(&hw);
+    if (open_camera(cam, cfg, a)) return 1;
+    LiveOptions opt;
+    opt.seconds = a.n;
+    opt.belt_mm_s = a.belt;
+    opt.dump = a.dump;
+    return run_live(hw, cfg, cam, opt, g_stop);
 }
 
 // ---------------------------------------------------------------- ik
@@ -377,6 +370,7 @@ int main(int argc, char **argv)
     else if (a.mode == "locate") rc = run_locate(hw, cfg, a);
     else if (a.mode == "track") rc = run_track(hw, cfg, a);
     else if (a.mode == "display") rc = run_display(hw, cfg, a);
+    else if (a.mode == "live") rc = run_live_mode(hw, cfg, a);
     else { usage(); rc = 1; }
     des_hw_close(&hw);
     return rc;

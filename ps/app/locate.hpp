@@ -4,6 +4,7 @@
 // class is attached later by matching boxes (cls stays -1 here).
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -27,6 +28,8 @@ public:
 
     // Save the last gray / binary image with the found rectangles drawn (PNG), for tuning.
     bool dump(const char *path) const;
+    // Corners (x0,y0..x3,y3) of each blob of the last run in full-resolution image px, same order as run()'s result.
+    std::vector<std::array<float, 8>> rects_full() const;
 
 private:
     LocateConfig cfg_;
