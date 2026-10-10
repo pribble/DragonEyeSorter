@@ -1,0 +1,44 @@
+{
+  "comment": "des_app 配置。所有带 TODO 的值必须在实物上标定（camera homography / belt mm_per_step / arm 几何与零位 / 料盒姿态）。label_list 相对本文件所在目录；部署时把 models/label_list.json 一起拷到 /root/des/。",
+
+  "camera": { "vmax": 2276, "buffers": 4, "realtime": true },
+
+  "locate": { "scale": 4, "thresh": 0, "min_thresh": 60, "open_iter": 1, "border_px": 2,
+              "min_area_mm2": 40, "max_area_mm2": 3000 },
+
+  "px_to_table_comment": "TODO 标定：image px -> table mm, row-major 3x3。默认 = 视野宽 300mm / 1920px，x 沿图像 u，y 以图像中线为 0",
+  "px_to_table": [0.15625, 0, 0,  0, 0.15625, -84.375,  0, 0, 1],
+
+  "belt": { "mm_per_step": 0.03, "dir": 1, "run_speed": 50, "accel": 400 },
+
+  "tracker": { "fov_x0": 0, "fov_x1": 300, "edge_margin": 10, "decide_x": 270, "tail_x": 600,
+               "gate_s": 12, "gate_y": 12, "min_hits": 3, "max_miss_new": 2, "max_miss": 8,
+               "min_conf": 0.5, "pick_unclassified": false, "unclassified_bin": 0 },
+
+  "picker": { "pick_x": 450, "pick_tol": 3, "reach_y0": -80, "reach_y1": 80, "brake_margin": 5,
+              "finger_w": 12, "finger_t": 6, "grip_clear": 4, "max_open": 60, "round_ratio": 1.3,
+              "neighbor_gap": 2, "flap_lead": 0, "flap_conflict": 30 },
+
+  "arm_comment": "TODO 全部实测：连杆长度对应关系、base_xy/base_yaw（臂安装位置）、belt_z、各关节 zero_count 与方向、夹爪开合码、home 与料盒姿态",
+  "arm": {
+    "base_h": 107.5, "l_upper": 82.85, "l_fore": 82.85, "l_wrist": 79.05, "l_tool": 50,
+    "base_xy": [450, -170], "base_yaw_deg": 90, "belt_z": 0, "grip_axis_at_zero_deg": 0,
+    "joints": [
+      { "id": 1, "zero_count": 2048, "counts_per_deg": 13.65, "min_deg": -135, "max_deg": 135 },
+      { "id": 2, "zero_count": 2048, "counts_per_deg": 13.65, "min_deg": -10,  "max_deg": 150 },
+      { "id": 3, "zero_count": 2048, "counts_per_deg": 13.65, "min_deg": -150, "max_deg": 10 },
+      { "id": 4, "zero_count": 2048, "counts_per_deg": 13.65, "min_deg": -135, "max_deg": 135 },
+      { "id": 5, "zero_count": 2048, "counts_per_deg": 13.65, "min_deg": -90,  "max_deg": 90 },
+      { "id": 6, "zero_count": 2048, "counts_per_deg": 22.75, "min_deg": -90,  "max_deg": 90 }
+    ],
+    "grip_open_count": 2600, "grip_closed_count": 1500, "grip_max_open": 60, "grip_squeeze": 2,
+    "z_safe": 60, "z_grasp": 6, "joint_speed": 120,
+    "min_ms": 150, "descend_ms": 400, "close_ms": 300, "open_ms": 250,
+    "home_deg": [0, 60, -120, -30, 0],
+    "bins_deg": [[150, 40, -100, -30, 0], [-150, 40, -100, -30, 0]]
+  },
+
+  "bins": ["gear_box", "rack_box"],
+  "outlets": ["recheck", "scrap", "rework"],
+  "label_list": "label_list.json"
+}
