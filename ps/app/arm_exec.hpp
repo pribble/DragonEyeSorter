@@ -40,6 +40,8 @@ public:
     // Executes the waypoints in order (waits each move time + settle). on_belt_clear runs right after the frame
     // flagged belt_clear (the belt may move again). dry = print instead of sending.
     Result run(const std::vector<ServoFrame> &wp, bool dry, const std::function<void()> &on_belt_clear = nullptr);
+    // Same timing as run() without touching the bus (no servos / bring-up of the rest of the line). Always "grasped".
+    Result simulate(const std::vector<ServoFrame> &wp, const std::function<void()> &on_belt_clear = nullptr);
 
     const ArmConfig &config() const { return cfg_; }
     uint8_t id(int joint) const { return cfg_.joint[joint].id; }

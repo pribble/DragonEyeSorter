@@ -95,6 +95,8 @@ void     des_step_move(des_hw_t *h, int32_t target, double vmax, double acc);  /
 /* Rewrite TARGET while a position move is running (the deceleration point is recomputed in PL). A target behind
  * the direction of travel makes the move ramp down and stop past it (v5+). */
 void     des_step_set_target(des_hw_t *h, int32_t target);
+/* Change the cruise speed of the running move; PL ramps to it with the current acceleration. */
+void     des_step_set_vmax(des_hw_t *h, double steps_per_s);
 int32_t  des_step_target(const des_hw_t *h);
 void     des_step_stop(des_hw_t *h);                           /* ramp down */
 void     des_step_halt(des_hw_t *h);                           /* immediate, no more pulses */

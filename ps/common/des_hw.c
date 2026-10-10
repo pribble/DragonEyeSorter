@@ -257,6 +257,10 @@ double des_step_speed(const des_hw_t *h)
 }
 
 void des_step_set_target(des_hw_t *h, int32_t target) { des_wr(h, DES_ST_TARGET, (uint32_t)target); }
+void des_step_set_vmax(des_hw_t *h, double steps_per_s)
+{
+    des_wr(h, DES_ST_VMAX_INC, des_step_inc(steps_per_s < 0 ? -steps_per_s : steps_per_s));
+}
 int32_t des_step_target(const des_hw_t *h) { return (int32_t)des_rd(h, DES_ST_TARGET); }
 
 int32_t des_step_brake_steps(const des_hw_t *h)

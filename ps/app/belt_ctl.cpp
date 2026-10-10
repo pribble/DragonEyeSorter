@@ -19,7 +19,9 @@ void BeltDriver::enable(bool on) { des_step_enable(hw_, on); }
 
 void BeltDriver::set_speed(double mm_s)
 {
-    if (mm_s > 0) sps_ = mm_s / cfg_.mm_per_step;
+    if (mm_s <= 0) return;
+    sps_ = mm_s / cfg_.mm_per_step;
+    if (!stopped()) des_step_set_vmax(hw_, sps_);   // takes effect now; PL ramps to the new cruise speed
 }
 
 int32_t BeltDriver::steps_for(double belt_mm) const
@@ -28,7 +30,10 @@ int32_t BeltDriver::steps_for(double belt_mm) const
 }
 
 double BeltDriver::belt_mm() const { return des_step_pos(hw_) * cfg_.mm_per_step * sign_; }
-double BeltDriver::speed_mm_s() const { return des_step_speed(hw_) * cfg_.mm_per_step; }
+double BeltDriver::speed_mm_s() const
+{
+    return stopped() ? 0.0 : des_step_speed(hw_) * cfg_.mm_per_step;   // CUR_INC keeps VMIN after a stop
+}
 bool BeltDriver::stopped() const { return !(des_step_status(hw_) & DES_ST_STATUS_MOVING); }
 
 double BeltDriver::brake_mm() const

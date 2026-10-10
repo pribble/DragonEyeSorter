@@ -12,6 +12,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <memory>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -64,6 +65,8 @@ struct Snapshot {
     BeltPlan plan;
     Tracker::Stats st;
     uint64_t processed = 0, stale = 0;
+    std::string run_line;                       // Runner status (run mode)
+    cv::Mat panel;                              // status panel, rendered by the worker (~10 Hz), blitted per frame
 };
 
 struct Shared {
@@ -74,10 +77,33 @@ struct Shared {
     uint64_t job_seq = 0;
     Snapshot snap;
     std::atomic<uint64_t> cap_seq{0};
+    std::atomic<float> disp_fps{0};             // display stats for the panel text (written by the main thread)
+    std::atomic<uint64_t> disp_skipped{0};
     bool quit = false;
 };
 
-void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg)
+// Hershey text is expensive (three lines at thickness 2 ~5 ms): rendered here on core 1, never on the capture core.
+cv::Mat render_panel(const Snapshot &s, const Shared &sh, uint32_t pl_frame, uint64_t lag, double belt_mm)
+{
+    static const char *plans[] = {"run", "stop-at", "hold"};
+    char l1[160], l2[160], l3[160];
+    snprintf(l1, sizeof l1, "DragonEyeSorter %s  %.1f fps  PL frame %u  skipped %llu  worker lag %llu",
+             s.run_line.empty() ? "live" : "run", sh.disp_fps.load(), pl_frame,
+             (unsigned long long)sh.disp_skipped.load(), (unsigned long long)lag);
+    snprintf(l2, sizeof l2, "locate %.1f ms (worker %.1f ms)  blobs %zu  tracks %zu  belt %.1f mm",
+             (s.tm.gray_us + s.tm.thresh_us + s.tm.contour_us) / 1e3, s.work_ms, s.blobs.size(), s.tracks.size(), belt_mm);
+    snprintf(l3, sizeof l3, "pick %llu  flap %llu  recheck %llu  noise %llu  belt plan %s",
+             (unsigned long long)s.st.decided_pick, (unsigned long long)s.st.decided_flap,
+             (unsigned long long)s.st.decided_recheck, (unsigned long long)s.st.noise, plans[s.plan.kind]);
+    cv::Mat panel(118, 1150, CV_8UC3, cv::Scalar(0, 0, 0));
+    cv::putText(panel, l1, cv::Point(14, 34), cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 255, 0), 2);
+    cv::putText(panel, l2, cv::Point(14, 70), cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(255, 255, 255), 2);
+    cv::putText(panel, s.run_line.empty() ? l3 : s.run_line.c_str(), cv::Point(14, 104), cv::FONT_HERSHEY_SIMPLEX, 0.7,
+                s.run_line.empty() ? cv::Scalar(255, 255, 255) : cv::Scalar(0, 255, 255), 2);
+    return panel;
+}
+
+void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner)
 {
     pin_to_core(1);
     sched_param sp{};
@@ -89,6 +115,8 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg)
     const double mmps = cfg.belt.mm_per_step * cfg.belt.dir;
     const uint64_t max_age = uint64_t(cfg.camera.buffers > 2 ? cfg.camera.buffers - 1 : 1);
     uint64_t processed = 0, stale = 0;
+    cv::Mat panel;
+    double last_panel = 0;
 
     for (;;) {
         CapturedFrame f;
@@ -117,13 +145,18 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg)
         for (Detection &d : obs.dets) d.p.x -= float((b1 - b0) * (d.img_v - 0.5f));   // rolling-shutter row timing
         tr.update(obs);
 
-        Picker::Input in;
-        in.belt_mm = des_step_pos(&hw) * mmps;
-        double v = des_step_speed(&hw) * cfg.belt.mm_per_step;
-        in.brake_mm = v * v / (2 * cfg.belt.accel);
-        in.belt_stopped = !(des_step_status(&hw) & DES_ST_STATUS_MOVING);
-        Picker::Output out = pk.tick(tr, in);
-        if (out.have_job) pk.job_done(tr, out.job.track_id, true);   // no arm yet: pretend the pick succeeded
+        Picker::Output out;
+        if (runner) {
+            runner->cycle(tr, pk);   // state machine, belt, arm, CAN
+        } else {
+            Picker::Input in;
+            in.belt_mm = des_step_pos(&hw) * mmps;
+            double v = des_step_speed(&hw) * cfg.belt.mm_per_step;
+            in.brake_mm = v * v / (2 * cfg.belt.accel);
+            in.belt_stopped = !(des_step_status(&hw) & DES_ST_STATUS_MOVING);
+            out = pk.tick(tr, in);
+            if (out.have_job) pk.job_done(tr, out.job.track_id, true);   // dry: pretend the pick succeeded
+        }
         processed++;
 
         Snapshot s;
@@ -135,11 +168,17 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg)
         s.st = tr.stats;
         s.processed = processed;
         s.stale = stale;
+        if (runner) s.run_line = runner->status_line();
         for (const Track &t : tr.tracks())
             if (t.state != TrackState::Done)
                 s.tracks.push_back({t.id, t.state, t.disp, t.s, t.y, t.len, t.wid, t.axis, t.why});
-        tr.retire(in.belt_mm);
+        tr.retire(des_step_pos(&hw) * mmps);
         s.work_ms = (now_s() - t0) * 1e3;
+        if (now_s() - last_panel >= 0.1) {   // after the snapshot is complete (tracks, timing)
+            panel = render_panel(s, sh, f.pl_frame, sh.cap_seq.load() - seq, obs.belt_mm);
+            last_panel = now_s();
+        }
+        s.panel = panel;   // reference-counted: the main thread only reads it
         std::lock_guard<std::mutex> lk(sh.m);
         sh.snap = std::move(s);
     }
@@ -165,8 +204,7 @@ void line_at_x(cv::Mat &img, const Homography &hinv, float x, const char *label,
         cv::putText(img, label, cv::Point2f(m.x + 6, img.rows - 20), cv::FONT_HERSHEY_SIMPLEX, 0.7, col, 2);
 }
 
-void draw(cv::Mat &img, const Snapshot &s, const Homography &hinv, double belt_mm, const AppConfig &cfg,
-          const char *status1)
+void draw(cv::Mat &img, const Snapshot &s, const Homography &hinv, double belt_mm, const AppConfig &cfg)
 {
     // raw blobs of the frame the worker last processed (thin)
     for (const auto &r : s.blobs) {
@@ -197,26 +235,9 @@ void draw(cv::Mat &img, const Snapshot &s, const Homography &hinv, double belt_m
     line_at_x(img, hinv, cfg.tracker.decide_x, "decide", cv::Scalar(255, 255, 255));
     line_at_x(img, hinv, cfg.picker.pick_x, "pick", cv::Scalar(0, 210, 0));
 
-    // Status panel. Measured on the board: three thick putText lines cost ~5 ms, so the text is re-rendered at
-    // 10 Hz in a cached Mat and only blitted (memcpy rows, ~0.3 ms) on the other frames.
-    static cv::Mat panel(118, 1150, CV_8UC3, cv::Scalar(0, 0, 0));
-    static int frame_no = 0;
-    if (frame_no++ % 6 != 0) {
-        for (int r = 0; r < panel.rows; r++) memcpy(img.ptr(r), panel.ptr(r), size_t(panel.cols) * 3);
-        return;
-    }
-    static const char *plans[] = {"run", "stop-at", "hold"};
-    char l2[160], l3[160];
-    snprintf(l2, sizeof l2, "locate %.1f ms (worker %.1f ms)  blobs %zu  tracks %zu  belt %.1f mm", s.tm.gray_us / 1e3 +
-             s.tm.thresh_us / 1e3 + s.tm.contour_us / 1e3, s.work_ms, s.blobs.size(), s.tracks.size(), belt_mm);
-    snprintf(l3, sizeof l3, "pick %llu  flap %llu  recheck %llu  noise %llu  belt plan %s",
-             (unsigned long long)s.st.decided_pick, (unsigned long long)s.st.decided_flap,
-             (unsigned long long)s.st.decided_recheck, (unsigned long long)s.st.noise, plans[s.plan.kind]);
-    panel.setTo(cv::Scalar(0, 0, 0));
-    cv::putText(panel, status1, cv::Point(14, 34), cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 255, 0), 2);
-    cv::putText(panel, l2, cv::Point(14, 70), cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(255, 255, 255), 2);
-    cv::putText(panel, l3, cv::Point(14, 104), cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(255, 255, 255), 2);
-    for (int r = 0; r < panel.rows; r++) memcpy(img.ptr(r), panel.ptr(r), size_t(panel.cols) * 3);
+    // status panel: rendered by the worker, blitted with wide stores (the display buffer is uncached)
+    if (!s.panel.empty())
+        for (int r = 0; r < s.panel.rows; r++) memcpy(img.ptr(r), s.panel.ptr(r), size_t(s.panel.cols) * 3);
 }
 
 }  // namespace
@@ -236,13 +257,22 @@ int run_live(des_hw_t &hw, const AppConfig &cfg, CameraRig &cam, const LiveOptio
     }
     const Homography hinv = cfg.px_to_table.inverse();
     const double mmps = cfg.belt.mm_per_step * cfg.belt.dir;
-    if (opt.belt_mm_s != 0) {
+    if (opt.belt_mm_s != 0 && !opt.run) {
         des_step_vel(&hw, opt.belt_mm_s / cfg.belt.mm_per_step * cfg.belt.dir, cfg.belt.accel / cfg.belt.mm_per_step);
         printf("belt: velocity mode %.1f mm/s (picker plans are only displayed)\n", opt.belt_mm_s);
     }
 
+    std::unique_ptr<Runner> runner;
+    if (opt.run) {
+        runner.reset(new Runner(&hw, cfg, opt.run_opt));
+        err = runner->start();
+        if (!err.empty()) {
+            fprintf(stderr, "run: %s\n", err.c_str());
+            return 1;
+        }
+    }
     Shared sh;
-    std::thread th(worker, std::ref(sh), std::ref(hw), std::cref(cfg));
+    std::thread th(worker, std::ref(sh), std::ref(hw), std::cref(cfg), runner.get());
     pin_to_core(0);
 
     uint64_t frames = 0, skipped = 0, sec_frames = 0;
@@ -251,7 +281,6 @@ int run_live(des_hw_t &hw, const AppConfig &cfg, CameraRig &cam, const LiveOptio
     const bool no_worker = getenv("LIVE_NO_WORKER") != nullptr, no_overlay = getenv("LIVE_NO_OVERLAY") != nullptr;
     CapturedFrame f;
     Snapshot snap;
-    char status1[160] = "starting";
     while (!stop && (opt.seconds <= 0 || now_s() - t_start < opt.seconds)) {
         err = cam.next(f, true);
         if (!err.empty()) {
@@ -275,9 +304,9 @@ int run_live(des_hw_t &hw, const AppConfig &cfg, CameraRig &cam, const LiveOptio
         cv::Mat dst = hdmi.back();
         cv::cvtColor(src, dst, cv::COLOR_BGRA2BGR);
         double tc = now_s();
-        snprintf(status1, sizeof status1, "DragonEyeSorter live  %.1f fps  PL frame %u  skipped %llu  worker lag %llu",
-                 fps, f.pl_frame, (unsigned long long)skipped, (unsigned long long)(seq - snap.seq));
-        if (!no_overlay) draw(dst, snap, hinv, 0.5 * (f.step_pos + f.step_pos_end) * mmps, cfg, status1);
+        sh.disp_fps.store(float(fps));
+        sh.disp_skipped.store(skipped);
+        if (!no_overlay) draw(dst, snap, hinv, 0.5 * (f.step_pos + f.step_pos_end) * mmps, cfg);
         double td = now_s();
         if (!opt.dump.empty() && seq == 180) {
             cv::Mat copy = dst.clone();   // slow read from the uncached buffer, once
@@ -311,7 +340,8 @@ int run_live(des_hw_t &hw, const AppConfig &cfg, CameraRig &cam, const LiveOptio
     }
     sh.cv.notify_all();
     th.join();
-    if (opt.belt_mm_s != 0) des_step_stop(&hw);
+    if (opt.belt_mm_s != 0 && !opt.run) des_step_stop(&hw);
+    runner.reset();   // stops the arm thread and the belt
     hdmi.close();
     double el = now_s() - t_start;
     printf("\n== live: %llu frames in %.2f s = %.2f fps shown, skipped %llu; display avg %.2f ms max %.2f ms; "

@@ -7,6 +7,7 @@
 #include "camera_rig.hpp"
 #include "config.hpp"
 #include "des_hw.h"
+#include "runner.hpp"
 
 namespace des {
 
@@ -14,6 +15,8 @@ struct LiveOptions {
     double seconds = 0;        // 0 = until Ctrl-C
     double belt_mm_s = 0;      // != 0: run the belt in velocity mode (bring-up); picker plans are only shown
     std::string dump;          // save the displayed image (PNG) once, 3 s in, for checking the overlay remotely
+    bool run = false;          // production: belt + arm + CAN through Runner (else dry tracking only)
+    RunOptions run_opt;
 };
 
 // cam must already be open. Returns 0 on success.

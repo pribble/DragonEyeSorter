@@ -62,6 +62,19 @@ int ArmExec::send(const std::array<uint16_t, 6> &pos, uint16_t ms)
     return des_servo_sync_pos(hw_, ids, pos.data(), t, 6);
 }
 
+ArmExec::Result ArmExec::simulate(const std::vector<ServoFrame> &wp, const std::function<void()> &on_belt_clear)
+{
+    Result res;
+    const double t0 = now_ms();
+    for (const ServoFrame &f : wp) {
+        sleep_ms(f.ms + 80);
+        if (f.belt_clear && on_belt_clear) on_belt_clear();
+    }
+    res.ok = res.grasped = true;
+    res.ms = now_ms() - t0;
+    return res;
+}
+
 ArmExec::Result ArmExec::run(const std::vector<ServoFrame> &wp, bool dry, const std::function<void()> &on_belt_clear)
 {
     Result res;

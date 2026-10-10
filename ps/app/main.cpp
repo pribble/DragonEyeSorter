@@ -6,6 +6,7 @@
 //   des_app ik     <x> <y> [z] [axis_deg]                           table-frame target -> joint angles / servo counts
 //   des_app display [-n sec]                                        camera -> HDMI at 60 fps (BGRA->BGR + page flip), timing
 //   des_app live   [-n sec] [--belt mm/s]                           60 fps HDMI with locate / tracking overlays (2 cores)
+//   des_app run    [-n sec] [--can can0] [--go] [--belt mm/s]      production: live + belt + arm + CAN "PLC"
 //   des_app arm scan|read|teach|torque-on|torque-off      servo bring-up (no motion)
 //   des_app arm home|goto <x> <y> [z] [axis]|pick <x> <y> [axis_deg] [bin]   motion: dry run unless --go
 //   des_app calib-cam [--board 9x6] [--square mm] [--travel right|left|down|up] [--image f.png] [--out calib.json]
@@ -58,6 +59,7 @@ struct Args {
     bool exhaustive = false;
     std::string sub;       // second plain word (arm sub-command)
     bool go = false;       // arm: really move (default: print the frames only)
+    std::string can_if;    // run: CAN interface for the PLC link
     double n = 0;
     int vmax = -1, exp_us = -1, gain = -1;
     bool rt = true;
@@ -68,7 +70,7 @@ struct Args {
 static void usage()
 {
     fprintf(stderr,
-            "usage: des_app probe|locate|track|display|live|calib-cam|arm|ik [options]\n"
+            "usage: des_app probe|locate|track|display|live|run|calib-cam|arm|ik [options]\n"
             "  -c cfg.json  -n N  --vmax N  --exp us  --gain dB*10  --dump file.png  --belt mm/s  --no-rt\n"
             "  calib-cam: --board <cols>x<rows> (inner corners)  --square <mm>  --travel right|left|down|up\n"
             "             --image <file> (instead of the camera)  --out <calib.json>  --exhaustive\n"
@@ -85,6 +87,7 @@ static bool parse(int argc, char **argv, Args &a)
         if (k == "--no-rt") a.rt = false;
         else if (k == "--exhaustive") a.exhaustive = true;
         else if (k == "--go") a.go = true;
+        else if (k == "--can" && (v = val())) a.can_if = v;
         else if (k == "-c" && (v = val())) a.config = v;
         else if (k == "-n" && (v = val())) a.n = atof(v);
         else if (k == "--vmax" && (v = val())) a.vmax = atoi(v);
@@ -347,6 +350,13 @@ static int run_live_mode(des_hw_t &hw, const AppConfig &cfg, const Args &a)
     opt.seconds = a.n;
     opt.belt_mm_s = a.belt;
     opt.dump = a.dump;
+    if (a.mode == "run") {
+        opt.run = true;
+        opt.run_opt.can_if = a.can_if;
+        opt.run_opt.arm_go = a.go;
+        opt.run_opt.speed_mm_s = a.belt;
+        opt.belt_mm_s = 0;
+    }
     return run_live(hw, cfg, cam, opt, g_stop);
 }
 
@@ -576,7 +586,7 @@ int main(int argc, char **argv)
     else if (a.mode == "locate") rc = run_locate(hw, cfg, a);
     else if (a.mode == "track") rc = run_track(hw, cfg, a);
     else if (a.mode == "display") rc = run_display(hw, cfg, a);
-    else if (a.mode == "live") rc = run_live_mode(hw, cfg, a);
+    else if (a.mode == "live" || a.mode == "run") rc = run_live_mode(hw, cfg, a);
     else if (a.mode == "calib-cam") rc = run_calib(&hw, cfg, a);
     else if (a.mode == "arm") rc = run_arm(hw, cfg, a);
     else { usage(); rc = 1; }
