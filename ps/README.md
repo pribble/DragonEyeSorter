@@ -44,6 +44,6 @@ scp -i %USERPROFILE%\.ssh\id_ed25519_anlu ps\tools\desreg root@192.168.137.100:/
 
 ## 约定
 
-- `common/pl_regs.h` 与 `docs/03-PL设计.md`、PL 端 `pl/rtl/axi_lite_regs.v` 同一次提交更新。
+- `common/des_regs.h` 与 `docs/03-PL设计.md`、PL 端 `pl/rtl/des_regs.v` / `servo_bus.v` / `stepper_ctrl.v` 同一次提交更新（2026-10-10 统一；`common/pl_regs.h` 已被取代，保留待删）。
 - 类别表从 `models/label_list.json` 加载，禁止手抄。
 - 时间戳、计数、统计接口随功能一起写（测试报告用）。
