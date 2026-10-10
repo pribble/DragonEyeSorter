@@ -16,9 +16,9 @@ module system_top(
     output   [2:0] led,
 
     // DragonEyeSorter: CEP J12 (BANK11, 3.3V)
-    output         STEP_PUL,     // CEP PIN3  Y12, active low via 74HCT245
+    output         STEP_PUL,     // CEP PIN3  Y12, TB6600 PUL+ (common cathode, active high)
     output         STEP_DIR,     // CEP PIN4  Y13
-    output         STEP_ENA,     // CEP PIN5  T9, high = driver energised
+    output         STEP_ENA,     // CEP PIN5  T9, TB6600 ENA+ (common cathode: low = energised)
     input          ESTOP_IN,     // CEP PIN15 V11, low = emergency stop (pull-up)
     inout          SERVO_BUS,    // CEP PIN19 Y9, via BSS138, open-drain
     
@@ -229,11 +229,12 @@ wire pwm_out_unused;
 	assign ud_wvs    = S_ISP_O_tuser ; 
 	assign ud_wde    = S_ISP_O_tvalid ; 
 
-    // DragonEyeSorter: one toggle per camera frame, counted in des_regs
+    // DragonEyeSorter: one toggle per camera frame, counted in des_regs.
+    // isp_top passes its *input* tuser straight to O_tuser, so it is not aligned with O_tvalid: use the edge alone.
     reg des_sof_d = 1'b0, des_sof_toggle = 1'b0;
     always @(posedge S_hs_rx_clk) begin
-        des_sof_d <= S_ISP_O_tuser & S_ISP_O_tvalid;
-        if ((S_ISP_O_tuser & S_ISP_O_tvalid) && !des_sof_d) des_sof_toggle <= ~des_sof_toggle;
+        des_sof_d <= S_ISP_O_tuser;
+        if (S_ISP_O_tuser && !des_sof_d) des_sof_toggle <= ~des_sof_toggle;
     end
 	assign ud_wdata  = S_ISP_O_tdata; //{{8'd0, O_axi_data[8-1:0],O_axi_data[16-1:8],O_axi_data[23:16]}, {8'd0, O_axi_data[32-1:24],O_axi_data[40-1:32],O_axi_data[47:40]}, {8'd0, O_axi_data[56-1:48],O_axi_data[64-1:56],O_axi_data[71:64]}, {8'd0, O_axi_data[80-1:72],O_axi_data[88-1:80],O_axi_data[95:88]}} ;  //{{8'd0, O_axi_data[23:0]}, {8'd0, O_axi_data[47:24]}, {8'd0, O_axi_data[71:48]}, {8'd0, O_axi_data[95:72]}} ; //S_vi_256b_data ; //{S_vi_256b_data[96*1-1:96*0],S_vi_256b_data[96*2-1:96*1],S_vi_256b_data[96*3-1:96*2]，S_vi_256b_data[96*4-1:96*3]}; //synthesis keep
 	
@@ -468,7 +469,7 @@ wire pwm_out_unused;
     always @(posedge des_clk) des_estop_sync <= {des_estop_sync[1:0], ESTOP_IN};
     wire des_estop = ~des_estop_sync[2];
 
-    des_regs #(.VERSION(32'd2)) des_regs_inst (
+    des_regs #(.VERSION(32'd3)) des_regs_inst (
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h0), .waddr(des_waddr), .wdata(des_wdata),
         .raddr(des_raddr), .rdata(regs_rdata), .sof_toggle(des_sof_toggle), .ts(des_ts),
         .led_ovr(des_led_ovr), .led_val(des_led_val)
@@ -485,8 +486,11 @@ wire pwm_out_unused;
         .raddr(des_raddr[7:0]), .rdata(st_rdata), .estop(des_estop),
         .pul_n(st_pul_n), .dir_n(st_dir_n), .ena_o(st_ena)
     );
-    assign STEP_PUL = st_pul_n;
+    // TB6600 common-cathode wiring (PUL-/DIR-/ENA- to GND, PUL+/DIR+/ENA+ from these pins): pulse active high,
+    // ENA high releases the motor. Set to 0 for the common-anode + 74HCT245 wiring.
+    localparam STEP_COMMON_CATHODE = 1;
+    assign STEP_PUL = STEP_COMMON_CATHODE ? ~st_pul_n : st_pul_n;
     assign STEP_DIR = st_dir_n;
-    assign STEP_ENA = st_ena;
+    assign STEP_ENA = STEP_COMMON_CATHODE ? ~st_ena : st_ena;
 
 endmodule
