@@ -39,10 +39,16 @@ static int status(void)
                f.period ? (double)DES_FREE_CNT_HZ / f.period : 0.0);
         printf("SERVO frames %u, timeouts %u, rx errors %u\n",
                rd(DES_SB_CNT_FRAMES), rd(DES_SB_CNT_TIMEOUT), rd(DES_SB_CNT_RX_ERR));
+        des_capture_t c;
+        if (des_capture_read(&hw, &c) == DES_OK)
+            printf("CAPTURE      seq %u, frame %u, start->done %.3f ms, belt pos %d -> %d\n", c.seq, c.frame,
+                   (c.t1 - c.t0) * 1e3 / DES_FREE_CNT_HZ, c.pos0, c.pos1);
         uint32_t s = des_step_status(&hw);
-        printf("STEPPER      pos %d, status 0x%x%s%s%s\n", des_step_pos(&hw), s,
+        printf("STEPPER      pos %d, status 0x%x%s%s%s", des_step_pos(&hw), s,
                s & DES_ST_STATUS_MOVING ? " moving" : "", s & DES_ST_STATUS_HALTED ? " halted" : "",
                s & DES_ST_STATUS_ENABLED ? " enabled" : "");
+        if (des_step_brake_steps(&hw) >= 0) printf(", brake %d steps", des_step_brake_steps(&hw));
+        printf("\n");
     }
     return 0;
 }
