@@ -61,6 +61,18 @@ const char *arm_to_counts(const ArmConfig &c, const JointAngles &j, float grip_m
     return nullptr;
 }
 
+JointAngles arm_from_counts(const ArmConfig &c, const std::array<uint16_t, 6> &pos, float &grip_mm)
+{
+    JointAngles j;
+    for (int i = 0; i < 5; i++) {
+        float cpd = c.joint[i].counts_per_deg;
+        j.q[i] = cpd != 0 ? (pos[i] - c.joint[i].zero_count) / cpd : 0.f;
+    }
+    float span = c.grip_open_count - c.grip_closed_count;
+    grip_mm = span != 0 ? (pos[5] - c.grip_closed_count) / span * c.grip_max_open : 0.f;
+    return j;
+}
+
 static uint16_t move_ms(const ArmConfig &c, const std::array<uint16_t, 6> &a, const std::array<uint16_t, 6> &b)
 {
     float worst = 0;
@@ -83,6 +95,11 @@ const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, 
     if (bin < 0 || size_t(bin) >= c.bins.size()) return "no drop pose for bin";
     drop.q = c.bins[bin];
     home.q = c.home_deg;
+    // taught poses bypass the IK limit check: check them here
+    for (int i = 0; i < 5; i++) {
+        if (drop.q[i] < c.joint[i].min_deg || drop.q[i] > c.joint[i].max_deg) return "bin pose outside joint limits";
+        if (home.q[i] < c.joint[i].min_deg || home.q[i] > c.joint[i].max_deg) return "home pose outside joint limits";
+    }
     float held = std::max(part_wid - c.grip_squeeze, 0.f);
 
     ServoFrame f;

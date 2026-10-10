@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <random>
+#include <string>
 
 #include "arm.hpp"
 #include "geom.hpp"
@@ -223,6 +224,28 @@ static void test_arm()
     CHECK(worst < 0.01f, "ik/fk round trip error %.4f mm", worst);
     JointAngles j;
     CHECK(arm_ik(c, {400, 0, 0}, 0, j) != nullptr, "far point must be out of reach");
+
+    // counts <-> angles round trip (teaching by hand reads counts back)
+    JointAngles ja;
+    ja.q = {30.f, 45.f, -90.f, -45.f, 12.5f};
+    std::array<uint16_t, 6> cnt{};
+    CHECK(!arm_to_counts(c, ja, 35.f, cnt), "arm_to_counts in range");
+    float grip = 0;
+    JointAngles jb = arm_from_counts(c, cnt, grip);
+    float worst_q = 0;
+    for (int i = 0; i < 5; i++) worst_q = std::fmax(worst_q, std::fabs(jb.q[i] - ja.q[i]));
+    CHECK(worst_q < 0.1f, "counts -> angles round trip error %.3f deg", worst_q);   // 1 count = 0.073 deg
+    CHECK(std::fabs(grip - 35.f) < 0.1f, "gripper round trip %.2f mm", grip);
+
+    // a taught bin pose outside the joint limits must be refused
+    ArmConfig lim = c;
+    lim.joint[0].min_deg = -135;
+    lim.joint[0].max_deg = 135;
+    lim.bins = {{{-150, 40, -100, -30, 0}}};
+    std::vector<ServoFrame> wp2;
+    std::array<uint16_t, 6> home2{{2048, 2048, 2048, 2048, 2048, 2048}};
+    const char *w2 = plan_pick(lim, {c.base_xy.x + 10.f, c.base_xy.y + 120.f}, 0.f, 40, 30, 0, home2, wp2);
+    CHECK(w2 && std::string(w2) == "bin pose outside joint limits", "bin outside limits: %s", w2 ? w2 : "accepted");
 
     std::array<uint16_t, 6> home{{2048, 2048, 2048, 2048, 2048, 2048}};
     std::vector<ServoFrame> wp;

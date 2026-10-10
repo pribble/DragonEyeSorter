@@ -36,7 +36,7 @@
     "z_safe": 60, "z_grasp": 6, "joint_speed": 120,
     "min_ms": 150, "descend_ms": 400, "close_ms": 300, "open_ms": 250,
     "home_deg": [0, 60, -120, -30, 0],
-    "bins_deg": [[150, 40, -100, -30, 0], [-150, 40, -100, -30, 0]]
+    "bins_deg": [[120, 40, -100, -30, 0], [-120, 40, -100, -30, 0]]
   },
 
   "bins": ["gear_box", "rack_box"],

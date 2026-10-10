@@ -80,6 +80,8 @@ float table_axis_to_arm(const ArmConfig &c, float axis_table);
 
 // joint angles (+ gripper opening mm) -> servo counts; nullptr on success, else the joint that is out of range
 const char *arm_to_counts(const ArmConfig &c, const JointAngles &j, float grip_mm, std::array<uint16_t, 6> &pos);
+// servo counts -> joint angles + gripper opening (mm), the inverse of arm_to_counts (teaching by hand)
+JointAngles arm_from_counts(const ArmConfig &c, const std::array<uint16_t, 6> &pos, float &grip_mm);
 
 // Waypoints for one pick: above -> descend -> close -> lift (belt clear) -> bin -> open -> home.
 // prev = counts the arm is at now (sizes the first move time).

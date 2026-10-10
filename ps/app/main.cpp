@@ -6,6 +6,8 @@
 //   des_app ik     <x> <y> [z] [axis_deg]                           table-frame target -> joint angles / servo counts
 //   des_app display [-n sec]                                        camera -> HDMI at 60 fps (BGRA->BGR + page flip), timing
 //   des_app live   [-n sec] [--belt mm/s]                           60 fps HDMI with locate / tracking overlays (2 cores)
+//   des_app arm scan|read|teach|torque-on|torque-off      servo bring-up (no motion)
+//   des_app arm home|goto <x> <y> [z] [axis]|pick <x> <y> [axis_deg] [bin]   motion: dry run unless --go
 //   des_app calib-cam [--board 9x6] [--square mm] [--travel right|left|down|up] [--image f.png] [--out calib.json]
 //                                                                   checkerboard on the belt -> px_to_table (calib.json)
 // common: -c <config.json> (default /root/des/des_app.json), --no-rt
@@ -28,6 +30,7 @@
 #include <opencv2/core/utility.hpp>
 #include <opencv2/imgcodecs.hpp>
 
+#include "arm_exec.hpp"
 #include "calib.hpp"
 #include "camera_rig.hpp"
 #include "config.hpp"
@@ -53,6 +56,8 @@ struct Args {
     std::string board = "9x6", travel = "right", image, out;
     double square = 0;
     bool exhaustive = false;
+    std::string sub;       // second plain word (arm sub-command)
+    bool go = false;       // arm: really move (default: print the frames only)
     double n = 0;
     int vmax = -1, exp_us = -1, gain = -1;
     bool rt = true;
@@ -63,10 +68,12 @@ struct Args {
 static void usage()
 {
     fprintf(stderr,
-            "usage: des_app probe|locate|track|display|live|calib-cam|ik [options]\n"
+            "usage: des_app probe|locate|track|display|live|calib-cam|arm|ik [options]\n"
             "  -c cfg.json  -n N  --vmax N  --exp us  --gain dB*10  --dump file.png  --belt mm/s  --no-rt\n"
             "  calib-cam: --board <cols>x<rows> (inner corners)  --square <mm>  --travel right|left|down|up\n"
-            "             --image <file> (instead of the camera)  --out <calib.json>  --exhaustive\n");
+            "             --image <file> (instead of the camera)  --out <calib.json>  --exhaustive\n"
+            "  arm: scan | read | teach | torque-on | torque-off | home | goto x y [z] [axis] | pick x y [axis] [bin]\n"
+            "       motion commands only print the servo frames unless --go\n");
 }
 
 static bool parse(int argc, char **argv, Args &a)
@@ -77,6 +84,7 @@ static bool parse(int argc, char **argv, Args &a)
         const char *v = nullptr;
         if (k == "--no-rt") a.rt = false;
         else if (k == "--exhaustive") a.exhaustive = true;
+        else if (k == "--go") a.go = true;
         else if (k == "-c" && (v = val())) a.config = v;
         else if (k == "-n" && (v = val())) a.n = atof(v);
         else if (k == "--vmax" && (v = val())) a.vmax = atoi(v);
@@ -90,6 +98,7 @@ static bool parse(int argc, char **argv, Args &a)
         else if (k == "--image" && (v = val())) a.image = v;
         else if (k == "--out" && (v = val())) a.out = v;
         else if (a.mode.empty() && k[0] != '-') a.mode = k;   // first plain word is the mode
+        else if (a.sub.empty() && isalpha((unsigned char)k[0])) a.sub = k;   // then an optional sub-command
         else if (k[0] != '-' || (k.size() > 1 && (isdigit(k[1]) || k[1] == '.'))) a.pos.push_back(atof(k.c_str()));
         else return false;
     }
@@ -342,6 +351,110 @@ static int run_live_mode(des_hw_t &hw, const AppConfig &cfg, const Args &a)
 }
 
 // ---------------------------------------------------------------- ik
+// ---------------------------------------------------------------- arm
+static Vec2 arm_to_table(const ArmConfig &c, Vec3 p)
+{
+    float cy = std::cos(c.base_yaw), sy = std::sin(c.base_yaw);
+    return {c.base_xy.x + cy * p.x - sy * p.y, c.base_xy.y + sy * p.x + cy * p.y};
+}
+
+static int run_arm(des_hw_t &hw, const AppConfig &cfg, const Args &a)
+{
+    const ArmConfig &ac = cfg.arm;
+    ArmExec ex(&hw, ac);
+    const std::string s = a.sub.empty() ? "scan" : a.sub;
+    const bool dry = !a.go;
+    auto ok_or = [](int rc) { return rc == DES_OK ? "ok" : des_strerror(rc); };
+
+    if (s == "scan") {
+        int alive = 0;
+        for (int j = 0; j < 6; j++) {
+            ServoInfo i = ex.probe(j);
+            if (!i.alive) {
+                printf("joint %d (id %u): no reply\n", j + 1, ex.id(j));
+                continue;
+            }
+            alive++;
+            float deg = j < 5 ? (i.pos - ac.joint[j].zero_count) / ac.joint[j].counts_per_deg : 0.f;
+            printf("joint %d (id %u): pos %4d (%+7.1f deg)  %4d mA  %3d C  status 0x%02x%s%s%s\n", j + 1, ex.id(j), i.pos,
+                   deg, i.current_ma, i.temp_c, i.status, i.status & 0x20 ? " OVERLOAD" : "",
+                   i.status & 0x04 ? " OVER-TEMP" : "", i.status & 0x01 ? " VOLTAGE" : "");
+        }
+        printf("%d / 6 servos answered%s\n", alive,
+               alive ? "" : " (power, BSS138 wiring, CEP PIN19, ids 1..6? see docs/05)");
+        return alive == 6 ? 0 : 2;
+    }
+    if (s == "read" || s == "teach") {
+        std::array<uint16_t, 6> pos{};
+        if (!ex.read_positions(pos)) { fprintf(stderr, "not all servos answered (arm scan)\n"); return 2; }
+        float grip = 0;
+        JointAngles j = arm_from_counts(ac, pos, grip);
+        Vec3 tip = arm_fk(ac, j);
+        Vec2 tt = arm_to_table(ac, tip);
+        printf("counts %u %u %u %u %u | grip %u\n", pos[0], pos[1], pos[2], pos[3], pos[4], pos[5]);
+        printf("angles q1..q5 = %.1f %.1f %.1f %.1f %.1f deg, gripper %.1f mm\n", j.q[0], j.q[1], j.q[2], j.q[3], j.q[4],
+               grip);
+        printf("grasp point: arm (%.1f, %.1f, %.1f) mm, table (%.1f, %.1f) mm, %.1f mm above the belt\n", tip.x, tip.y,
+               tip.z, tt.x, tt.y, tip.z - ac.belt_z);
+        if (s == "teach")
+            printf("paste into des_app.json arm.home_deg or arm.bins_deg:  [%.1f, %.1f, %.1f, %.1f, %.1f]\n", j.q[0], j.q[1],
+                   j.q[2], j.q[3], j.q[4]);
+        return 0;
+    }
+    if (s == "torque-on" || s == "torque-off") {
+        int rc = ex.torque(s == "torque-on");
+        printf("torque %s (broadcast): %s\n", s == "torque-on" ? "on" : "off", ok_or(rc));
+        return rc == DES_OK ? 0 : 2;
+    }
+
+    // ---- motion
+    std::array<uint16_t, 6> now{};
+    bool have_now = !dry && ex.read_positions(now);
+    if (!have_now) {   // dry run / no read back: assume the arm sits at home
+        JointAngles h;
+        h.q = ac.home_deg;
+        arm_to_counts(ac, h, ac.grip_max_open, now);
+    }
+    std::vector<ServoFrame> wp;
+    if (s == "home" || s == "goto") {
+        JointAngles target;
+        float grip = ac.grip_max_open;
+        if (s == "home") {
+            target.q = ac.home_deg;
+        } else {
+            if (a.pos.size() < 2) { usage(); return 1; }
+            float z = a.pos.size() > 2 ? float(a.pos[2]) : ac.z_safe;
+            float axis = a.pos.size() > 3 ? float(a.pos[3]) * kPi / 180 : 0.f;
+            if (const char *why = arm_ik(ac, table_to_arm(ac, {float(a.pos[0]), float(a.pos[1])}, z),
+                                         table_axis_to_arm(ac, axis), target)) {
+                fprintf(stderr, "unreachable: %s\n", why);
+                return 2;
+            }
+        }
+        ServoFrame f;
+        if (const char *why = arm_to_counts(ac, target, grip, f.pos)) { fprintf(stderr, "%s\n", why); return 2; }
+        f.ms = 1500;   // single moves from an unknown pose: slow on purpose
+        f.what = s == "home" ? "home" : "goto";
+        wp.push_back(f);
+    } else if (s == "pick") {
+        if (a.pos.size() < 2) { usage(); return 1; }
+        float axis = a.pos.size() > 2 ? float(a.pos[2]) * kPi / 180 : 0.f;
+        int bin = a.pos.size() > 3 ? int(a.pos[3]) : 0;
+        if (const char *why = plan_pick(ac, {float(a.pos[0]), float(a.pos[1])}, axis, 40.f, 30.f, bin, now, wp)) {
+            fprintf(stderr, "plan_pick: %s\n", why);
+            return 2;
+        }
+    } else {
+        usage();
+        return 1;
+    }
+    printf("%s %s, %zu frame(s)%s\n", dry ? "DRY RUN" : "MOVING", s.c_str(), wp.size(),
+           dry ? " (add --go to move the arm)" : "");
+    ArmExec::Result r = ex.run(wp, dry, [] { printf("  (belt may move again)\n"); });
+    printf("done in %.0f ms: %s%s\n", r.ms, r.ok ? "ok" : "FAILED", r.why.empty() ? "" : (" - " + r.why).c_str());
+    return r.ok ? 0 : 2;
+}
+
 // ---------------------------------------------------------------- calib-cam
 static int run_calib(des_hw_t *hw, const AppConfig &cfg, const Args &a)
 {
@@ -465,6 +578,7 @@ int main(int argc, char **argv)
     else if (a.mode == "display") rc = run_display(hw, cfg, a);
     else if (a.mode == "live") rc = run_live_mode(hw, cfg, a);
     else if (a.mode == "calib-cam") rc = run_calib(&hw, cfg, a);
+    else if (a.mode == "arm") rc = run_arm(hw, cfg, a);
     else { usage(); rc = 1; }
     des_hw_close(&hw);
     return rc;
