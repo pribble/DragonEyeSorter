@@ -10,7 +10,7 @@ ps/
 ├── common/         # 自研：寄存器头 des_regs.h（与 docs/03 同源）、des_hw（/dev/mem 上的舵机总线 / 步进 / 帧计数 C 接口）、label_list 加载
 ├── app/            # 自研主程序 des_app：取帧（camera_rig）、视觉定位（locate）、配置（config + des_app.json）
 ├── scheduler/      # 自研纯逻辑库（无硬件 / OpenCV 依赖）：跟踪表 tracker、停带 / 抓取 / 翻板调度 picker、机械臂 IK arm
-├── tests/          # test_scheduler（调度库单元）、test_calib（标定，合成图）、test_belt_hil（传送带控制硬件在环，板上 PL v5）
+├── tests/          # test_scheduler（调度库单元）、test_calib（标定，合成图）、test_belt_hil（传送带控制硬件在环，板上 PL v5）、test_can（CAN 协议与收发，回环自测）
 ├── vision/         # 检测流水线：安路 MIT demo 源码（face_detection）改造起点，后期改成零件检测
 │                   #   相机/HDMI 接口、前处理、NPU 推理封装、YOLOv8 后处理、demo 主程序
 ├── kernel_modules/ # mipicam 驱动（MIT）；GPL 驱动不入库，见目录 README

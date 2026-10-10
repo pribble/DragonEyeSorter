@@ -32,7 +32,7 @@ APP_SRC := app/main.cpp app/camera_rig.cpp app/locate.cpp app/config.cpp app/hdm
 OPENCV_LIBS := -lopencv_calib3d -lopencv_features2d -lopencv_flann -lopencv_imgproc -lopencv_imgcodecs -lopencv_core
 
 .PHONY: all clean
-all: $(BUILD)/desreg $(BUILD)/test_scheduler $(BUILD)/test_calib $(BUILD)/test_belt_hil $(BUILD)/des_app
+all: $(BUILD)/desreg $(BUILD)/test_scheduler $(BUILD)/test_calib $(BUILD)/test_belt_hil $(BUILD)/test_can $(BUILD)/des_app
 
 $(BUILD):
 	mkdir -p $(BUILD)
@@ -42,6 +42,9 @@ $(BUILD)/desreg: tools/desreg.c common/des_hw.c common/des_hw.h common/des_regs.
 
 $(BUILD)/test_scheduler: tests/test_scheduler.cpp $(SCHED_SRC) $(wildcard scheduler/*.hpp) | $(BUILD)
 	$(CXX) $(CXXFLAGS) -Ischeduler -o $@ tests/test_scheduler.cpp $(SCHED_SRC)
+
+$(BUILD)/test_can: tests/test_can.c bus/can_link.c bus/can_link.h bus/can_proto.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ibus -o $@ tests/test_can.c bus/can_link.c
 
 # hardware-in-the-loop: needs the board (PL v5+), no motor
 $(BUILD)/test_belt_hil: tests/test_belt_hil.cpp app/belt_ctl.cpp app/belt_ctl.hpp $(SCHED_SRC) common/des_hw.c | $(BUILD)
