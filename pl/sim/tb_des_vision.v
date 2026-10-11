@@ -72,8 +72,9 @@ module tb_des_vision #(parameter integer LANES = 4);
     endtask
     task rreg(input [7:0] a, output [31:0] d);
         begin
+            // like the AXI bridge (fvdma_ctrl): address and RVALID on one clock, data taken at the next edge
             @(posedge clk); raddr <= a;
-            @(posedge clk); @(posedge clk); d = rdata;
+            @(posedge clk); d = rdata;
         end
     endtask
 

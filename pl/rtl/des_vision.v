@@ -344,22 +344,27 @@ module des_vision #(
             o_cyc   <= res_cyc;
             o_active <= {4'd0, L4, a_thr, 7'd0, a_full, 5'd0, a_mode};
         end
+    end
+
+    // read data must be combinational: the AXI bridge (fvdma_ctrl) presents the address and takes the data at
+    // the next clock edge (a registered mux returned the previous address's data on the board, v7)
+    always @* begin
         case (raddr[7:2])
-            6'h00: rdata <= {23'd0, r_full, 5'd0, r_mode};
-            6'h01: rdata <= {5'd0, r_ethr, 8'd0, r_thr};
-            6'h02: rdata <= {5'd0, r_x1, 5'd0, r_x0};
-            6'h03: rdata <= {5'd0, r_y1, 5'd0, r_y0};
-            6'h05: rdata <= 32'h56495331;
-            6'h08: rdata <= o_seq;
-            6'h09: rdata <= o_area;
-            6'h0A: rdata <= o_bx;
-            6'h0B: rdata <= o_by;
-            6'h0C: rdata <= o_sx;
-            6'h0D: rdata <= o_sy;
-            6'h0E: rdata <= o_edges;
-            6'h0F: rdata <= o_cyc;
-            6'h10: rdata <= o_active;
-            default: rdata <= 32'hDEADBEEF;
+            6'h00: rdata = {23'd0, r_full, 5'd0, r_mode};
+            6'h01: rdata = {5'd0, r_ethr, 8'd0, r_thr};
+            6'h02: rdata = {5'd0, r_x1, 5'd0, r_x0};
+            6'h03: rdata = {5'd0, r_y1, 5'd0, r_y0};
+            6'h05: rdata = 32'h56495331;
+            6'h08: rdata = o_seq;
+            6'h09: rdata = o_area;
+            6'h0A: rdata = o_bx;
+            6'h0B: rdata = o_by;
+            6'h0C: rdata = o_sx;
+            6'h0D: rdata = o_sy;
+            6'h0E: rdata = o_edges;
+            6'h0F: rdata = o_cyc;
+            6'h10: rdata = o_active;
+            default: rdata = 32'hDEADBEEF;
         endcase
     end
 endmodule
