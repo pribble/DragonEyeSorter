@@ -33,6 +33,9 @@ ps/
 | `canplc <if> start\|stop\|pause\|resume\|reset\|speed <mm/s>\|recipe <n>\|monitor [秒]` | 扮「PLC」的命令行工具（`tools/canplc.c`，板上回环测试用，也是 PC 端程序的参考实现） |
 | `des_app arm scan / read / teach / torque-on / torque-off / home / goto x y / pick x y [角度] [料盒] [--go]` | 机械臂上电调试：扫舵机、读位置与角度、手掰示教、回零、走点、整套取放。运动命令默认只打印舵机码，加 `--go` 才动（步骤见 docs/04「上电调试步骤」） |
 | `des_app calib-cam --board 9x6 --square <mm> [--travel right] [--image f.png] [--dump x.png]` | 棋盘格平放在皮带上 → 像素→台面毫米单应矩阵，写 `calib.json`（`load_config` 自动合并）。坐标系与操作见 docs/02「相机标定」；合成图测试 `build/test_calib` |
+| `des_app calib-belt [--belt mm/s] [--steps N]` | 相机标定之后：一个零件放视野上游 → 皮带短走 / 长走 / 退回，出 mm/步、方向、往返误差、横向漂移、等效辊径，写进 `calib.json` 的 `belt` 段（docs/02「传送带标定」） |
+| `des_app collect --cls <类别> [--belt mm/s] [--every N] [--max N] [--full N]` | live + 采训练裁切图（一次一类，按零件分目录；`--full` 另存整帧 + 自动 YOLO 框），见 train/README |
+| `soak.sh [秒] [目录]`（`tools/soak.sh`，部署到 /root/des/） | 长时间运行：des_app run + canplc 当 PLC，每分钟记内存 / 负载 / CAN / PL 帧号，结束出 summary.txt（测试报告「连续运行」） |
 | `des_app measure [-n 帧] [--image f.png] [--out raw.png] [--dump report.png]` | 画面里每个齿轮 / 齿条都测一遍（定位 → ROI → 测量），打印外径 / 孔径 / 偏心 / 齿数 / 缺陷或长度 / 齿距；`-n` > 1 时零件不动、统计每个量的均值 / σ / 极差（重复性，测试报告用）；`--out` 存原始帧以后用 `--image` 离线复测；`--dump` 出标注图（拟合圆、齿条框、r(θ) 曲线）。实物到货后对照卡尺真值用 |
 | `des_app display [-n 秒]` | 相机 → HDMI 60fps：每帧 BGRA→BGR 进 CMA 显示缓冲 + 写显示 VDMA `START_1` 翻页（实测转换 6.2ms/帧，60fps）；退出恢复 fb0 |
 
