@@ -28,7 +28,7 @@ OPENCV := $(SDK)/ffmpeg_opencv4.7.0_aarch64
 # board paths baked in as rpath, so no LD_LIBRARY_PATH is needed at run time
 RPATH  := -Wl,-rpath,/opt/armnn_lib/lib:/opt/ffmpeg_opencv4.7.0_aarch64/lib
 
-SCHED_SRC := scheduler/tracker.cpp scheduler/picker.cpp scheduler/arm.cpp
+SCHED_SRC := scheduler/tracker.cpp scheduler/picker.cpp scheduler/arm.cpp scheduler/flap.cpp
 # camera capture reuses the vendor-derived driver wrapper in vision/ (MIT); no NPU code is linked yet
 VISION_SRC := vision/mipi_camera.cpp vision/logger_forward.cpp vision/flow_common_types.cpp vision/executor.cpp
 APP_SRC := app/main.cpp app/camera_rig.cpp app/locate.cpp app/config.cpp app/hdmi_out.cpp app/live.cpp app/calib.cpp app/belt_ctl.cpp app/arm_exec.cpp app/runner.cpp \

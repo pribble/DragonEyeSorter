@@ -77,6 +77,11 @@ int des_vis_config(des_hw_t *h, int mode, int full, int thr, int edge_thr);
 int des_vis_roi(des_hw_t *h, int x0, int y0, int x1, int y1);   /* pixels, inclusive; also applies */
 int des_vis_read(const des_hw_t *h, des_vis_t *v);
 
+/* ---- belt-end flaps + light (des_pwm, VERSION >= 7) ---- */
+#define DES_VERSION_PWM 7u
+int des_pwm_set(des_hw_t *h, int ch, int us);       /* pulse width in us (0 = no pulses), next period */
+int des_pwm_enable(des_hw_t *h, unsigned ch_mask, int lamp);
+
 /* ---- servo bus (Desheng protocol v4.01; PL adds FF FF header and checksum) ---- */
 typedef struct {
     int rc;                /* DES_OK / DES_E_* */

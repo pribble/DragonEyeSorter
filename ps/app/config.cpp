@@ -145,6 +145,13 @@ std::string load_config(const std::string &path, AppConfig &cfg)
         get(j, "bins", cfg.bins);
         get(j, "outlets", cfg.outlets);
         get(j, "label_list", cfg.label_list);
+        if (j.contains("flaps")) {
+            const json &c = j["flaps"];
+            auto &f = cfg.flaps;
+            get(c, "enabled", f.enabled); get(c, "prepare_mm", f.prepare_mm); get(c, "clear_mm", f.clear_mm);
+            get(c, "f1_pass_us", f.f1_pass_us); get(c, "f1_ng_us", f.f1_ng_us);
+            get(c, "f2_rework_us", f.f2_rework_us); get(c, "f2_scrap_us", f.f2_scrap_us);
+        }
         if (j.contains("npu")) {
             const json &c = j["npu"];
             get(c, "enabled", cfg.npu.enabled); get(c, "model", cfg.npu.model); get(c, "core", cfg.npu.core);

@@ -7,6 +7,7 @@
 
 #include "arm.hpp"
 #include "geom.hpp"
+#include "flap.hpp"
 #include "picker.hpp"
 #include "tracker.hpp"
 
@@ -212,6 +213,30 @@ static void test_votes()
     CHECK(!tr.vote(9999, flash), "vote for a missing track is refused");
 }
 
+// two-stage flaps follow the picker's flap events: set prepare_mm ahead, held until clear_mm past, rest = recheck
+static void test_flaps()
+{
+    FlapConfig fc;   // prepare 40, clear 60, f1 1000 / 1900, f2 1000 / 1900
+    FlapSequencer fs(fc);
+    std::vector<FlapEvent> ev = {{1, 1, 100.0}, {2, 2, 200.0}, {3, 0, 300.0}};   // scrap, rework, recheck
+    auto at = [&](double b) { return fs.update(ev, b); };
+    FlapSequencer::State s = at(50);
+    CHECK(s.track_id == -1 && s.us[0] == 1000, "rest: stage 1 lets parts through to recheck");
+    s = at(61);
+    CHECK(s.track_id == 1 && s.us[0] == 1900 && s.us[1] == 1900, "part 1 (scrap) set 40 mm ahead: %d %d %d",
+          s.track_id, s.us[0], s.us[1]);
+    s = at(159);
+    CHECK(s.track_id == 1, "held while part 1 passes");
+    s = at(160);
+    CHECK(s.track_id == 2 && s.us[0] == 1900 && s.us[1] == 1000, "part 2 (rework) next: %d %d %d", s.track_id, s.us[0],
+          s.us[1]);
+    s = at(261);
+    CHECK(s.track_id == 3 && s.us[0] == 1000, "part 3 (recheck): stage 1 straight");
+    s = at(400);
+    CHECK(s.track_id == -1 && s.us[0] == 1000 && fs.served == 3, "all served, resting (%llu)",
+          (unsigned long long)fs.served);
+}
+
 static void test_picker()
 {
     std::mt19937 rng(2);
@@ -353,6 +378,7 @@ int main()
     test_tracker();
     test_size_rule();
     test_votes();
+    test_flaps();
     test_picker();
     test_arm();
     printf("%d passed, %d failed\n", g_pass, g_fail);

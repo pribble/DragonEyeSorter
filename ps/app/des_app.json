@@ -48,6 +48,10 @@
     "bins_deg": [[120, 40, -100, -30, 0], [-120, 40, -100, -30, 0]]
   },
 
+  "flaps_comment": "带尾两级翻板（des_pwm，v7 比特流；MG996R）：第 1 级 复检 / NG，第 2 级 返修 / 报废。TODO 装好后实测各位置脉宽（us），再开 enabled",
+  "flaps": { "enabled": false, "prepare_mm": 40, "clear_mm": 60,
+             "f1_pass_us": 1000, "f1_ng_us": 1900, "f2_rework_us": 1000, "f2_scrap_us": 1900 },
+
   "storage_comment": "本地存储（赛题硬性项②）：每件判定后一行 CSV（<dir>/<日期>/parts_<会话>.csv）+ 零件裁切图（images: none / ng = 翻板和复检件 / all）。板子没有 RTC，日期目录按系统时钟，测试前先对时",
   "storage": { "enabled": true, "dir": "/root/des/data/log", "images": "ng", "jpeg_quality": 92, "max_queue": 256 },
 

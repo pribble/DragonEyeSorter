@@ -17,6 +17,7 @@
 #include "belt_ctl.hpp"
 #include "can_proto.h"
 #include "config.hpp"
+#include "flap.hpp"
 #include "picker.hpp"
 #include "tracker.hpp"
 
@@ -62,6 +63,9 @@ private:
     std::set<int> reported_;     // track ids already sent as PART
     std::string last_event_;
     double speed_mm_s_ = 0;      // last set belt speed (0 = config run_speed)
+    FlapSequencer flaps_;
+    int flap_us_[2] = {-1, -1};  // last written pulse widths
+    bool pwm_enabled_ = false;
 
     // arm thread hand-off
     std::thread arm_thread_;

@@ -68,6 +68,15 @@
 #define DES_VIS_ACTIVE       0x340u    /* R  settings in use: [2:0] mode [8] full [23:16] threshold */
 #define DES_VIS_ID_VALUE     0x56495331u
 
+/* des_pwm, PL_BASE + 0x400 (v7): belt-end flap servos (2 x 50 Hz) + light enable (pl/rtl/des_pwm.v) */
+#define DES_PWM_CTRL         0x400u    /* RW [1:0] channel enable, [8] LAMP */
+#define DES_PWM_PERIOD       0x404u    /* RW period in us (default 20000) */
+#define DES_PWM_CH0          0x408u    /* RW pulse width in us, applied at the next period start */
+#define DES_PWM_CH1          0x40Cu
+#define DES_PWM_CNT          0x410u    /* R  periods started */
+#define DES_PWM_ID           0x414u    /* R  0x50574D31 */
+#define DES_PWM_ID_VALUE     0x50574D31u
+
 #define DES_ID_VALUE     0x44455301u
 #define DES_FREE_CNT_HZ  75000000u
 

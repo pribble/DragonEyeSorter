@@ -25,7 +25,7 @@ static const char *state_name(uint8_t s)
 }
 
 Runner::Runner(des_hw_t *hw, const AppConfig &cfg, const RunOptions &opt)
-    : hw_(hw), cfg_(cfg), opt_(opt), belt_(hw, cfg.belt), arm_(hw, cfg.arm)
+    : hw_(hw), cfg_(cfg), opt_(opt), belt_(hw, cfg.belt), arm_(hw, cfg.arm), flaps_(cfg.flaps)
 {
     if (opt.speed_mm_s > 0) belt_.set_speed(opt.speed_mm_s);
     JointAngles home;
@@ -184,6 +184,16 @@ void Runner::cycle(Tracker &tr, Picker &pk)
         in.arm_clear = arm_clear_;
         Picker::Output out = pk.tick(tr, in);
         belt_.apply(out.belt);
+        // belt-end flaps follow the picker's flap events (two stages, des_pwm; no-op before v7 or when disabled)
+        if (cfg_.flaps.enabled) {
+            const FlapSequencer::State &fs = flaps_.update(out.flaps, in.belt_mm);
+            for (int ch = 0; ch < 2; ch++)
+                if (fs.us[ch] != flap_us_[ch]) {
+                    des_pwm_set(hw_, ch, fs.us[ch]);
+                    flap_us_[ch] = fs.us[ch];
+                }
+            if (!pwm_enabled_) pwm_enabled_ = des_pwm_enable(hw_, 3u, 1) == DES_OK;   // both flaps + light
+        }
         if (out.have_job) {
             std::lock_guard<std::mutex> lk(m_);
             job_ = out.job;

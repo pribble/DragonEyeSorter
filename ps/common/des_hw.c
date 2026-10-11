@@ -127,6 +127,22 @@ int des_vis_read(const des_hw_t *h, des_vis_t *v)
     return DES_OK;
 }
 
+/* ---------------- flaps + light ---------------- */
+
+int des_pwm_set(des_hw_t *h, int ch, int us)
+{
+    if (h->version < DES_VERSION_PWM || ch < 0 || ch > 1) return DES_E_ARG;
+    des_wr(h, ch ? DES_PWM_CH1 : DES_PWM_CH0, (uint32_t)(us < 0 ? 0 : us));
+    return DES_OK;
+}
+
+int des_pwm_enable(des_hw_t *h, unsigned ch_mask, int lamp)
+{
+    if (h->version < DES_VERSION_PWM) return DES_E_ARG;
+    des_wr(h, DES_PWM_CTRL, (ch_mask & 3u) | (lamp ? 0x100u : 0u));
+    return DES_OK;
+}
+
 /* ---------------- servo bus ---------------- */
 
 static uint8_t rx_byte(const des_hw_t *h, int i)
