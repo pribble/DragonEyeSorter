@@ -44,6 +44,7 @@ public:
     void add(PartRecord r, const cv::Mat &crop);  // non-blocking; crop may be empty
     void close();                                 // flush everything, stop the writer
     bool is_open() const { return th_.joinable(); }
+    void set_images(const std::string &mode) { std::lock_guard<std::mutex> lk(m_); cfg_.images = mode; }   // HMI
     double now_s() const;                         // for PartRecord::t_s
 
     std::string session;                          // YYYYMMDD-HHMMSS of open()

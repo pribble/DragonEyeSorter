@@ -189,6 +189,7 @@ std::string load_config(const std::string &path, AppConfig &cfg)
         return path + ": " + e.what();
     }
     for (size_t i = 0; i < 6; i++) if (!cfg.arm.joint[i].id) cfg.arm.joint[i].id = uint8_t(i + 1);
+    cfg.config_dir = dir_of(path);
     get(j, "calib_file", cfg.calib_file);
     std::string cp = cfg.calib_file;
     if (!cp.empty() && cp[0] != '/') cp = dir_of(path) + "/" + cp;

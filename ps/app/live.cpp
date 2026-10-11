@@ -27,6 +27,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include "hdmi_out.hpp"
+#include "hmi.hpp"
 #include "locate.hpp"
 #include "npu_async.hpp"
 #include "part_log.hpp"
@@ -90,6 +91,7 @@ struct Snapshot {
     uint64_t processed = 0, stale = 0;
     std::string run_line;                       // Runner status (run mode)
     cv::Mat panel;                              // status panel, rendered by the worker (~10 Hz), blitted per frame
+    cv::Mat hmi;                                // operator interface band (Hmi::H rows at Hmi::Y0), same scheme
 };
 
 struct Shared {
@@ -130,7 +132,7 @@ cv::Mat render_panel(const Snapshot &s, const Shared &sh, uint32_t pl_frame, uin
     return panel;
 }
 
-void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, const LiveOptions &opt)
+void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, const LiveOptions &opt, UiInput *input)
 {
     pin_to_core(1);
     sched_param sp{};
@@ -164,6 +166,23 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
         if (!e.empty()) fprintf(stderr, "npu: %s (parts get no NPU class)\n", e.c_str());
         else printf("npu: %s, %s\n", cfg.npu.model.c_str(), npu.model().describe().c_str());
     }
+    // operator interface: parameters from ui_params.json override des_app.json, applied here (the worker owns them)
+    Hmi hmi(cfg, cfg.config_dir + "/ui_params.json");
+    if (!hmi.fonts_ok()) fprintf(stderr, "hmi: Chinese font not found, ASCII fallback\n");
+    auto apply_params = [&](const HmiParams &p) {
+        SizeRule &r = tr.config().size;
+        r.enabled = p.size_rule;
+        r.gear_od = p.gear_od;
+        r.gear_od_tol = p.gear_od_tol;
+        r.rack_len = p.rack_len;
+        r.rack_len_tol = p.rack_len_tol;
+        tr.config().min_conf = p.min_conf;
+        plog.set_images(p.images == 0 ? "none" : p.images == 2 ? "all" : "ng");
+        if (runner) runner->set_speed(p.belt_speed, "HMI");
+    };
+    apply_params(hmi.params());
+    cv::Mat hmi_panel;
+    double last_hmi = 0, prev_work_ms = 0;
     std::map<int, cv::Mat> crops;   // latest part crop per track (from its best measurement frame)
     std::set<int> logged;
     Picker pk(cfg.picker);
@@ -252,12 +271,39 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
             rec.meas = t.meas;
             rec.s = t.s; rec.y = t.y; rec.axis = t.axis; rec.len = t.len; rec.wid = t.wid;
             auto it = crops.find(t.id);
+            hmi.add_part(rec, it != crops.end() ? it->second : cv::Mat(), now_s());
             plog.add(std::move(rec), it != crops.end() ? it->second : cv::Mat());
             if (it != crops.end()) crops.erase(it);
         }
         if (processed % 120 == 0) {   // forget crops of tracks that vanished undecided, and old ids
             for (auto it = crops.begin(); it != crops.end();) it = tr.find(it->first) ? std::next(it) : crops.erase(it);
             while (logged.size() > 5000) logged.erase(logged.begin());
+        }
+
+        // operator interface: status in, clicks / keys -> parameter changes or run commands, redraw ~8 Hz
+        {
+            HmiStatus hs;
+            hs.mode = runner ? "run" : col ? "collect" : "live";
+            hs.run_state = runner ? int(runner->state()) : -1;
+            hs.belt_mm_s = des_step_speed(&hw) * cfg.belt.mm_per_step;
+            hs.worker_ms = float(prev_work_ms);
+            hs.npu_ms = npu.last_npu_ms;
+            hs.npu = npu.running();
+            hs.clock_synced = wall_synced();
+            hs.inputs = input ? input->devices() : 0;
+            hs.tracks = int(tr.tracks().size());
+            hs.logged = plog.written;
+            hs.log_images = plog.images;
+            hmi.status(hs, now_s());
+            if (input)
+                for (const HmiAction &a : hmi.handle(input->take())) {
+                    if (a.kind == HmiAction::Params) apply_params(hmi.params());
+                    else if (runner) runner->command(uint8_t(a.cmd), "HMI");
+                }
+            if (now_s() - last_hmi >= 0.12) {
+                hmi_panel = hmi.render(now_s());
+                last_hmi = now_s();
+            }
         }
 
         Snapshot s;
@@ -287,6 +333,8 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
                 s.tracks.push_back({t.id, t.state, t.disp, t.s, t.y, t.len, t.wid, t.axis, t.why, meas_text(t.meas)});
         tr.retire(des_step_pos(&hw) * mmps);
         s.work_ms = (now_s() - t0) * 1e3;
+        prev_work_ms = s.work_ms;
+        s.hmi = hmi_panel;
         if (now_s() - last_panel >= 0.1) {   // after the snapshot is complete (tracks, timing)
             panel = render_panel(s, sh, f.pl_frame, sh.cap_seq.load() - seq, obs.belt_mm);
             last_panel = now_s();
@@ -318,7 +366,7 @@ void line_at_x(cv::Mat &img, const Homography &hinv, float x, const char *label,
     cv::line(img, cv::Point2f(a.x, a.y), cv::Point2f(b.x, b.y), col, 2, cv::LINE_8);
     Vec2 m = hinv.map({x, 0.f});
     if (m.x > 0 && m.x < img.cols - 120)
-        cv::putText(img, label, cv::Point2f(m.x + 6, img.rows - 20), cv::FONT_HERSHEY_SIMPLEX, 0.7, col, 2);
+        cv::putText(img, label, cv::Point2f(m.x + 6, Hmi::Y0 - 20), cv::FONT_HERSHEY_SIMPLEX, 0.7, col, 2);
 }
 
 void draw(cv::Mat &img, const Snapshot &s, const Homography &hinv, double belt_mm, const AppConfig &cfg)
@@ -356,6 +404,24 @@ void draw(cv::Mat &img, const Snapshot &s, const Homography &hinv, double belt_m
     // status panel: rendered by the worker, blitted with wide stores (the display buffer is uncached)
     if (!s.panel.empty())
         for (int r = 0; r < s.panel.rows; r++) memcpy(img.ptr(r), s.panel.ptr(r), size_t(s.panel.cols) * 3);
+    // operator interface band at the bottom (same scheme)
+    if (!s.hmi.empty() && s.hmi.cols == img.cols)
+        for (int r = 0; r < s.hmi.rows; r++) memcpy(img.ptr(Hmi::Y0 + r), s.hmi.ptr(r), size_t(s.hmi.cols) * 3);
+}
+
+void draw_cursor(cv::Mat &img, const UiInput &in)
+{
+    int x, y;
+    bool vis;
+    in.cursor(x, y, vis);
+    if (!vis) return;
+    const cv::Point pts[] = {{x, y}, {x, y + 22}, {x + 6, y + 17}, {x + 11, y + 27}, {x + 15, y + 25}, {x + 10, y + 15},
+                             {x + 17, y + 15}};
+    cv::fillConvexPoly(img, pts, 3, cv::Scalar(255, 255, 255));
+    std::vector<cv::Point> poly(pts, pts + 7);
+    cv::polylines(img, poly, true, cv::Scalar(0, 0, 0), 1, cv::LINE_8);
+    cv::line(img, pts[0], pts[1], cv::Scalar(255, 255, 255), 2);
+    cv::line(img, pts[0], pts[6], cv::Scalar(255, 255, 255), 2);
 }
 
 }  // namespace
@@ -390,7 +456,9 @@ int run_live(des_hw_t &hw, const AppConfig &cfg, CameraRig &cam, const LiveOptio
         }
     }
     Shared sh;
-    std::thread th(worker, std::ref(sh), std::ref(hw), std::cref(cfg), runner.get(), std::cref(opt));
+    UiInput input(1920, 1080);   // USB mouse / keyboard / touch for the operator interface (hot plug)
+    input.start();
+    std::thread th(worker, std::ref(sh), std::ref(hw), std::cref(cfg), runner.get(), std::cref(opt), &input);
     pin_to_core(0);
 
     uint64_t frames = 0, skipped = 0, sec_frames = 0;
@@ -420,15 +488,24 @@ int run_live(des_hw_t &hw, const AppConfig &cfg, CameraRig &cam, const LiveOptio
         double t0 = now_s();
         cv::Mat src(f.height, f.width, CV_8UC4, const_cast<uint8_t *>(f.bgra));
         cv::Mat dst = hdmi.back();
-        cv::cvtColor(src, dst, cv::COLOR_BGRA2BGR);
+        // the bottom band is covered by the operator interface: convert only the rows that stay visible
+        const int vis_rows = snap.hmi.empty() ? f.height : std::min(f.height, Hmi::Y0);
+        cv::cvtColor(src.rowRange(0, vis_rows), dst.rowRange(0, vis_rows), cv::COLOR_BGRA2BGR);
         double tc = now_s();
         sh.disp_fps.store(float(fps));
         sh.disp_skipped.store(skipped);
         if (!no_overlay) draw(dst, snap, hinv, 0.5 * (f.step_pos + f.step_pos_end) * mmps, cfg);
+        draw_cursor(dst, input);
         double td = now_s();
         if (!opt.dump.empty() && seq == 180) {
             cv::Mat copy = dst.clone();   // slow read from the uncached buffer, once
             printf("dump %s: %s\n", opt.dump.c_str(), cv::imwrite(opt.dump, copy) ? "ok" : "FAILED");
+        }
+        if (input.take_snap()) {   // FIFO "snap" (remote tests of the interface)
+            static int nsnap = 0;
+            char path[64];
+            snprintf(path, sizeof path, "/tmp/des_snap_%d.png", nsnap++);
+            cv::imwrite(path, dst.clone());
         }
         hdmi.flip();
         double dt = now_s() - t0;
@@ -461,6 +538,7 @@ int run_live(des_hw_t &hw, const AppConfig &cfg, CameraRig &cam, const LiveOptio
     }
     sh.cv.notify_all();
     th.join();
+    input.stop();
     if (opt.belt_mm_s != 0 && !opt.run) des_step_stop(&hw);
     runner.reset();   // stops the arm thread and the belt
     hdmi.close();

@@ -132,6 +132,7 @@ public:
     const std::vector<Track> &tracks() const { return tracks_; }
     Track *find(int id);
     const TrackerConfig &config() const { return cfg_; }
+    TrackerConfig &config() { return cfg_; }   // operator changes at run time (HMI): rules, size rule, min_conf
 
     // statistics for the UI / test report
     struct Stats {

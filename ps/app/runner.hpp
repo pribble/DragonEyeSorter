@@ -35,6 +35,11 @@ public:
     std::string start();
     void cycle(Tracker &tr, Picker &pk);   // worker thread, ~60 Hz
     std::string status_line() const;      // for the HDMI overlay
+    // operator / PLC commands (same rules for both; worker thread). Return a CANP_ACK_* result.
+    uint8_t command(uint8_t cmd, const char *who);
+    uint8_t set_speed(double mm_s, const char *who);
+    uint8_t state() const { return state_; }
+    double speed_mm_s() const { return speed_mm_s_; }
 
 private:
     void arm_loop();
@@ -56,6 +61,7 @@ private:
     canp_counts_t counts_{0, 0, 0, 0};
     std::set<int> reported_;     // track ids already sent as PART
     std::string last_event_;
+    double speed_mm_s_ = 0;      // last set belt speed (0 = config run_speed)
 
     // arm thread hand-off
     std::thread arm_thread_;

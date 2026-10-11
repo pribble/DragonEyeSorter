@@ -74,50 +74,59 @@ void Runner::set_state(uint8_t s, const char *why)
     last_status_ = 0;   // report the change on the next cycle
 }
 
+// commands from the PLC (CAN) and the operator (HDMI HMI) follow the same rules; returns a CANP_ACK_* result
+uint8_t Runner::command(uint8_t cmd, const char *who)
+{
+    const uint8_t st = state_;
+    std::string why = std::string(who) + " ";
+    switch (cmd) {
+    case CANP_CMD_START:
+        if (st == CANP_ST_IDLE || st == CANP_ST_PAUSED) set_state(CANP_ST_RUN, (why + "start").c_str());
+        else if (st != CANP_ST_RUN) return CANP_ACK_REJECTED;
+        return CANP_ACK_OK;
+    case CANP_CMD_STOP: set_state(CANP_ST_IDLE, (why + "stop").c_str()); return CANP_ACK_OK;
+    case CANP_CMD_PAUSE:
+        if (st == CANP_ST_RUN) set_state(CANP_ST_PAUSED, (why + "interlock pause").c_str());
+        else if (st != CANP_ST_PAUSED) return CANP_ACK_REJECTED;
+        return CANP_ACK_OK;
+    case CANP_CMD_RESUME:
+        if (st == CANP_ST_PAUSED) set_state(CANP_ST_RUN, (why + "resume").c_str());
+        else return CANP_ACK_REJECTED;
+        return CANP_ACK_OK;
+    case CANP_CMD_RESET_ALARM:
+        alarm_ = 0;
+        if (st == CANP_ST_ESTOP || st == CANP_ST_FAULT) set_state(CANP_ST_IDLE, "alarm reset");
+        return CANP_ACK_OK;
+    default: return CANP_ACK_UNKNOWN;
+    }
+}
+
+uint8_t Runner::set_speed(double mm_s, const char *who)
+{
+    if (mm_s <= 0 || mm_s > 200) return CANP_ACK_BAD_VALUE;
+    belt_.set_speed(mm_s);
+    speed_mm_s_ = mm_s;
+    char e[64];
+    snprintf(e, sizeof e, "%s speed %.1f mm/s", who, mm_s);
+    last_event_ = e;
+    return CANP_ACK_OK;
+}
+
 void Runner::handle_can(double now)
 {
     if (can_fd_ < 0) return;
     canp_frame_t f;
     while (can_recv(can_fd_, &f, 0) == 1) {
         uint8_t result = CANP_ACK_OK;
-        const uint8_t st = state_;
         switch (f.id) {
         case CANP_ID_CMD:
-            switch (f.data[0]) {
-            case CANP_CMD_START:
-                if (st == CANP_ST_IDLE || st == CANP_ST_PAUSED) set_state(CANP_ST_RUN, "PLC start");
-                else if (st != CANP_ST_RUN) result = CANP_ACK_REJECTED;
-                break;
-            case CANP_CMD_STOP: set_state(CANP_ST_IDLE, "PLC stop"); break;
-            case CANP_CMD_PAUSE:
-                if (st == CANP_ST_RUN) set_state(CANP_ST_PAUSED, "PLC interlock pause");
-                else if (st != CANP_ST_PAUSED) result = CANP_ACK_REJECTED;
-                break;
-            case CANP_CMD_RESUME:
-                if (st == CANP_ST_PAUSED) set_state(CANP_ST_RUN, "PLC resume");
-                else result = CANP_ACK_REJECTED;
-                break;
-            case CANP_CMD_RESET_ALARM:
-                alarm_ = 0;
-                if (st == CANP_ST_ESTOP || st == CANP_ST_FAULT) set_state(CANP_ST_IDLE, "alarm reset");
-                break;
-            default: result = CANP_ACK_UNKNOWN; break;
-            }
+            result = command(f.data[0], "PLC");
             send(canp_ack(f.id, f.data[1], result));
             break;
-        case CANP_ID_SPEED: {
-            double v = canp_get16(f.data) / 10.0;
-            if (v <= 0 || v > 200) {
-                result = CANP_ACK_BAD_VALUE;
-            } else {
-                belt_.set_speed(v);
-                char e[48];
-                snprintf(e, sizeof e, "PLC speed %.1f mm/s", v);
-                last_event_ = e;
-            }
+        case CANP_ID_SPEED:
+            result = set_speed(canp_get16(f.data) / 10.0, "PLC");
             send(canp_ack(f.id, f.data[2], result));
             break;
-        }
         case CANP_ID_RECIPE:
             last_event_ = "PLC recipe " + std::to_string(f.data[0]) + " (recipes not implemented yet)";
             send(canp_ack(f.id, f.data[1], CANP_ACK_OK));
