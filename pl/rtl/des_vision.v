@@ -3,7 +3,9 @@
 //
 // Stream: 128-bit beats of 4 pixels (BGRA, B in the low byte of each 32-bit pixel), WIDTH/4 beats per row. Rows are
 // counted from the frame-start edge of tuser exactly like the frame writer does, so coordinates are the ones the PS
-// sees in the DMA buffer. Fixed latency of 4 clocks, no stalls (the frame writer has no back-pressure).
+// sees in the DMA buffer. Fixed latency of 6 clocks, no stalls (the frame writer has no back-pressure). The 3x3
+// filters are split over three pipeline stages: the ISP clock is the MIPI byte clock (up to 156 MHz) and TD does
+// not report that domain (fan-out 0 in the timing summary), so short logic depth is the safety margin.
 //   gray     Y = (77 R + 150 G + 29 B) >> 8 (BT.601)
 //   window   3x3 from two row buffers (one ERAM, WIDTH/4 x 64 bit): Gaussian [1 2 1; 2 4 2; 1 2 1] / 16,
 //            Sobel |Gx| + |Gy| (0..2040)
@@ -123,7 +125,24 @@ module des_vision #(
     wire [31:0] cur_t = lb_rd[63:32], cur_m = lb_rd[31:0], cur_b = g1;
     wire        lb_we = v1;
 
-    // stage 2 -> 3: filter results per output pixel j (centre = column j+1 of the window)
+    // stage 2a: vertical 1-2-1 column sums S[k] (k = 0..5), horizontal 1-2-1 sums of the top / bottom rows per pixel
+    reg [59:0]  sa_s = 60'd0;               // S[k] = t + 2m + b, 10 bits each
+    reg [39:0]  sa_th = 40'd0, sa_bh = 40'd0;
+    reg [31:0]  sa_c = 32'd0;               // centre pixels (column j+1 of the middle row)
+    reg [127:0] da = 128'd0;
+    reg [8:0]   bxa = 9'd0;
+    reg [10:0]  rowa = 11'd0;
+    reg         va = 1'b0, ua = 1'b0, la = 1'b0;
+    // stage 2b: Gaussian sum (S[j] + 2 S[j+1] + S[j+2]), Gx = S[j+2] - S[j], Gy = bottom - top
+    reg [47:0]  sb_g = 48'd0;               // 12 bits each
+    reg [47:0]  sb_gx = 48'd0, sb_gy = 48'd0;   // signed 12 bits each
+    reg [31:0]  sb_c = 32'd0;
+    reg [127:0] db = 128'd0;
+    reg [8:0]   bxb = 9'd0;
+    reg [10:0]  rowb = 11'd0;
+    reg         vb = 1'b0, ub = 1'b0, lb_ = 1'b0;
+
+    // stage 2c -> 3: filter results per output pixel j (centre = column j+1 of the window)
     reg [31:0]  gc3 = 32'd0, ga3 = 32'd0;   // centre gray, Gaussian
     reg [43:0]  mg3 = 44'd0;                // Sobel magnitude, 11 bits per pixel
     reg [127:0] d3 = 128'd0;
@@ -145,9 +164,9 @@ module des_vision #(
     reg [10:0]  res_x0 = 11'h7FF, res_x1 = 11'd0, res_y0 = 11'h7FF, res_y1 = 11'd0;
     reg         res_tgl = 1'b0;
 
-    integer j;
-    reg [7:0]  t0, t1, t2, m0, m1, m2, b0, b1, b2;
-    reg [11:0] gs;
+    integer j, k;
+    reg [7:0]  t0, t1, t2, m1, b0, b1, b2;
+    reg [9:0]  s0, s1, s2;
     reg signed [11:0] gx, gy;
     reg [10:0] ax, ay;
     reg [11:0] mag;
@@ -209,24 +228,40 @@ module des_vision #(
         end
         d2 <= d1; bx2 <= bx1; row2 <= row1; v2 <= v1; u2 <= u1; l2 <= l1;
 
-        // ---- stage 2: Gaussian and Sobel for the 4 output pixels
+        // ---- stage 2a: 1-2-1 sums (column sums over the three rows, row sums of the top / bottom rows)
+        for (k = 0; k < 6; k = k + 1)
+            sa_s[10*k +: 10] <= c2_t[8*k +: 8] + {c2_m[8*k +: 8], 1'b0} + c2_b[8*k +: 8];
         for (j = 0; j < 4; j = j + 1) begin
             t0 = c2_t[8*j +: 8]; t1 = c2_t[8*(j+1) +: 8]; t2 = c2_t[8*(j+2) +: 8];
-            m0 = c2_m[8*j +: 8]; m1 = c2_m[8*(j+1) +: 8]; m2 = c2_m[8*(j+2) +: 8];
             b0 = c2_b[8*j +: 8]; b1 = c2_b[8*(j+1) +: 8]; b2 = c2_b[8*(j+2) +: 8];
-            gs = t0 + {t1, 1'b0} + t2 + {m0, 1'b0} + {m1, 2'b00} + {m2, 1'b0} + b0 + {b1, 1'b0} + b2;
-            gx = $signed({4'd0, t2}) + $signed({3'd0, m2, 1'b0}) + $signed({4'd0, b2})
-               - $signed({4'd0, t0}) - $signed({3'd0, m0, 1'b0}) - $signed({4'd0, b0});
-            gy = $signed({4'd0, b0}) + $signed({3'd0, b1, 1'b0}) + $signed({4'd0, b2})
-               - $signed({4'd0, t0}) - $signed({3'd0, t1, 1'b0}) - $signed({4'd0, t2});
+            sa_th[10*j +: 10] <= t0 + {t1, 1'b0} + t2;
+            sa_bh[10*j +: 10] <= b0 + {b1, 1'b0} + b2;
+            sa_c[8*j +: 8]    <= c2_m[8*(j+1) +: 8];
+        end
+        da <= d2; bxa <= bx2; rowa <= row2; va <= v2; ua <= u2; la <= l2;
+
+        // ---- stage 2b: Gaussian sum, Gx, Gy
+        for (j = 0; j < 4; j = j + 1) begin
+            s0 = sa_s[10*j +: 10]; s1 = sa_s[10*(j+1) +: 10]; s2 = sa_s[10*(j+2) +: 10];
+            sb_g[12*j +: 12]  <= s0 + {s1, 1'b0} + s2;
+            sb_gx[12*j +: 12] <= $signed({2'd0, s2}) - $signed({2'd0, s0});
+            sb_gy[12*j +: 12] <= $signed({2'd0, sa_bh[10*j +: 10]}) - $signed({2'd0, sa_th[10*j +: 10]});
+        end
+        sb_c <= sa_c;
+        db <= da; bxb <= bxa; rowb <= rowa; vb <= va; ub <= ua; lb_ <= la;
+
+        // ---- stage 2c: |Gx| + |Gy|, Gaussian / 16
+        for (j = 0; j < 4; j = j + 1) begin
+            gx = sb_gx[12*j +: 12];
+            gy = sb_gy[12*j +: 12];
             ax = gx[11] ? -gx : gx;
             ay = gy[11] ? -gy : gy;
             mag = ax + ay;
-            gc3[8*j +: 8]  <= m1;
-            ga3[8*j +: 8]  <= gs[11:4];
+            gc3[8*j +: 8]   <= sb_c[8*j +: 8];
+            ga3[8*j +: 8]   <= sb_g[12*j + 4 +: 8];
             mg3[11*j +: 11] <= mag[10:0];
         end
-        d3 <= d2; bx3 <= bx2; row3 <= row2; v3 <= v2; u3 <= u2; l3 <= l2;
+        d3 <= db; bx3 <= bxb; row3 <= rowb; v3 <= vb; u3 <= ub; l3 <= lb_;
 
         // ---- stage 3: output pixels, statistics inputs
         m_tvalid <= v3;

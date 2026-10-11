@@ -1,7 +1,7 @@
 `timescale 1ns/1ps
 // des_vision on a small frame (32 x 12): output pixels of every mode against a behavioural model with the same
 // boundary rules, ROI statistics (area, bounding box, sums, edges), cycles per frame, settings applied only at the
-// next frame start, stream timing (same number of beats, 4-clock latency) with random gaps in tvalid.
+// next frame start, stream timing (same number of beats, 6-clock latency) with random gaps in tvalid.
 module tb_des_vision;
     localparam integer W = 32, H = 12, BEATS = W / 4;
     reg pclk = 0, clk = 0;
@@ -147,8 +147,8 @@ module tb_des_vision;
         join_none
         send_frame;                                       // warm-up frame (fills the row buffer's "row above 0")
         latency = (t_out - t_in) / 8;
-        $sformat(msg, "4-clock latency (%0d)", latency);
-        check(latency == 4, msg);
+        $sformat(msg, "6-clock latency (%0d)", latency);
+        check(latency == 6, msg);
         check(out_beats == W * H / 4, "every input beat comes out");
 
         for (mode = 0; mode <= 5; mode = mode + 1) begin
