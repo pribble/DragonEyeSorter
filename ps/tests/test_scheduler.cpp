@@ -372,6 +372,49 @@ static void test_arm()
     }
 }
 
+static void test_arm_base_fit()
+{
+    // true mounting: base (380, -170), arm +x along table +y (yaw 90 deg) + 3 deg, belt 12 mm above the base plate
+    const Vec2 base{380, -170};
+    const float yaw = (90 + 3) * kPi / 180, belt = 12, h = 8;   // marker 8 mm high
+    const Vec2 tbl[5] = {{250, -40}, {320, 30}, {390, -60}, {300, -90}, {360, 60}};
+    std::vector<Vec3> arm;
+    std::vector<Vec2> table;
+    const float noise[5][3] = {{0.3f, -0.2f, 0.4f}, {-0.4f, 0.1f, -0.3f}, {0.2f, 0.3f, 0.2f}, {-0.1f, -0.4f, -0.2f},
+                               {0.0f, 0.2f, 0.1f}};   // +-0.4 mm hand placement / FK error
+    for (int i = 0; i < 5; i++) {
+        const float dx = tbl[i].x - base.x, dy = tbl[i].y - base.y;
+        const float c = std::cos(yaw), s = std::sin(yaw);
+        arm.push_back({c * dx + s * dy + noise[i][0], -s * dx + c * dy + noise[i][1], belt + h + noise[i][2]});
+        table.push_back(tbl[i]);
+    }
+    ArmBaseFit f = fit_arm_base(arm, table, h);
+    CHECK(f.ok, "arm base fit: %s", f.err.c_str());
+    CHECK(std::fabs(f.base_xy.x - base.x) < 1 && std::fabs(f.base_xy.y - base.y) < 1, "base (%.2f, %.2f)", f.base_xy.x,
+          f.base_xy.y);
+    CHECK(std::fabs(f.base_yaw - yaw) < 0.3f * kPi / 180, "yaw %.3f deg", f.base_yaw * 180 / kPi);
+    CHECK(std::fabs(f.belt_z - belt) < 0.3f, "belt_z %.2f", f.belt_z);
+    CHECK(f.rms < 0.6f && f.max < 1.0f && f.resid.size() == 5, "residual rms %.2f max %.2f", f.rms, f.max);
+    // the fitted transform maps a new table point to the same arm point as the true one (within 1 mm)
+    ArmConfig cfg;
+    cfg.base_xy = f.base_xy;
+    cfg.base_yaw = f.base_yaw;
+    ArmConfig truth;
+    truth.base_xy = base;
+    truth.base_yaw = yaw;
+    Vec3 a1 = table_to_arm(cfg, {330, 0}, 0), a2 = table_to_arm(truth, {330, 0}, 0);
+    CHECK(std::hypot(a1.x - a2.x, a1.y - a2.y) < 1, "pick point through the fit off by %.2f mm",
+          std::hypot(a1.x - a2.x, a1.y - a2.y));
+    // a wrong pair (marker moved after it was located) shows up in the residuals
+    arm[2].x += 15;
+    f = fit_arm_base(arm, table, h);
+    CHECK(f.ok && f.max > 8, "outlier visible (max residual %.1f mm)", f.max);
+    // too few / too close
+    CHECK(!fit_arm_base({arm[0], arm[1]}, {table[0], table[1]}, h).ok, "2 points rejected");
+    CHECK(!fit_arm_base({arm[0], arm[0], arm[0]}, {table[0], {table[0].x + 1, table[0].y}, table[0]}, h).ok,
+          "points 1 mm apart rejected");
+}
+
 int main()
 {
     test_geom();
@@ -381,6 +424,7 @@ int main()
     test_flaps();
     test_picker();
     test_arm();
+    test_arm_base_fit();
     printf("%d passed, %d failed\n", g_pass, g_fail);
     return g_fail;
 }

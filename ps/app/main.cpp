@@ -12,6 +12,7 @@
 //   des_app calib-cam [--board 9x6] [--square mm] [--travel right|left|down|up] [--image f.png] [--out calib.json]
 //                                                                   checkerboard on the belt -> px_to_table (calib.json)
 //   des_app calib-belt [--steps N] [--belt mm/s]                    one part on the belt -> mm_per_step, dir (calib.json)
+//   des_app calib-arm [-n 4] [--marker-h mm]                      hand-eye: arm base_xy / yaw / belt_z (calib.json)
 // NPU: the part classifier (des_app.json "npu", train/export_npu.py) runs in live / run / collect when its model exists
 //   des_app collect --cls <label> [-n sec] [--belt mm/s] [--every N] [--max N] [--full N] [--out dir]
 //                                                                   live + training crops of one class (des_app.json labels)
@@ -79,17 +80,20 @@ struct Args {
     std::string cls;           // collect: class label
     int every = 6, maxpp = 10, full = 0;
     int steps = 0;                // calib-belt: long move (0 = to ~75 % of the view)
+    float marker_h = -1;          // calib-arm: height of the marker top above the belt (mm); < 0 = keep belt_z
 };
 
 static void usage()
 {
     fprintf(stderr,
-            "usage: des_app probe|locate|track|display|live|run|collect|calib-cam|calib-belt|measure|arm|ik [options]\n"
+            "usage: des_app probe|locate|track|display|live|run|collect|calib-cam|calib-belt|calib-arm|measure|arm|ik [options]\n"
             "  -c cfg.json  -n N  --vmax N  --exp us  --gain dB*10  --dump file.png  --belt mm/s  --no-rt\n"
             "  calib-cam: --board <cols>x<rows> (inner corners)  --square <mm>  --travel right|left|down|up\n"
             "             --image <file> (instead of the camera)  --out <calib.json>  --exhaustive\n"
             "  calib-belt: ONE part on the belt near the upstream edge (camera calibrated first); the belt moves\n"
             "             forward and back. --steps <long move>  --belt <mm/s> (default 20)  --out <calib.json>\n"
+            "  calib-arm: interactive hand-eye calibration (camera calibrated, joint zeros right): -n <points, >= 3>\n"
+            "             --marker-h <mm> (marker top above the belt; also fits arm.belt_z)  --out <calib.json>\n"
             "  arm: scan | read | teach | torque-on | torque-off | home | goto x y [z] [axis] | pick x y [axis] [bin]\n"
             "       motion commands only print the servo frames unless --go\n"
             "  collect: --cls <label> (one class per session)  --every <frames>  --max <crops per part>\n"
@@ -125,6 +129,7 @@ static bool parse(int argc, char **argv, Args &a)
         else if (k == "--max" && (v = val())) a.maxpp = atoi(v);
         else if (k == "--full" && (v = val())) a.full = atoi(v);
         else if (k == "--steps" && (v = val())) a.steps = atoi(v);
+        else if (k == "--marker-h" && (v = val())) a.marker_h = float(atof(v));
         else if (a.mode.empty() && k[0] != '-') a.mode = k;   // first plain word is the mode
         else if (a.sub.empty() && isalpha((unsigned char)k[0])) a.sub = k;   // then an optional sub-command
         else if (k[0] != '-' || (k.size() > 1 && (isdigit(k[1]) || k[1] == '.'))) a.pos.push_back(atof(k.c_str()));
@@ -690,6 +695,75 @@ static int run_calib_belt(des_hw_t &hw, const AppConfig &cfg, const Args &a)
     return e.empty() ? 0 : 1;
 }
 
+// ---------------------------------------------------------------- calib-arm
+// Hand-eye: where the arm stands on the table (base_xy, base_yaw) and how high the belt is in the arm frame, from
+// >= 3 marker positions that the camera sees and the gripper tip touches. Interactive (Enter between the steps).
+// The joint zeros / directions must be right first (arm read = geometric angles, docs/04 bring-up step 3).
+static bool wait_enter(const char *prompt)
+{
+    printf("%s ", prompt);
+    fflush(stdout);
+    char line[64];
+    if (!fgets(line, sizeof line, stdin)) return false;
+    return line[0] != 'q' && line[0] != 'Q';
+}
+
+static int run_calib_arm(des_hw_t &hw, const AppConfig &cfg, const Args &a)
+{
+    if (cfg.calib_loaded.empty()) {
+        fprintf(stderr, "calibrate the camera first (des_app calib-cam): marker positions are table mm\n");
+        return 1;
+    }
+    const int n = a.n >= 3 ? int(a.n) : 4;
+    ArmExec ex(&hw, cfg.arm);
+    std::array<uint16_t, 6> pos{};
+    if (!ex.read_positions(pos)) { fprintf(stderr, "not all servos answered (des_app arm scan)\n"); return 2; }
+    CameraRig cam(&hw);
+    if (open_camera(cam, cfg, a)) return 1;
+    Locator loc(cfg.locate);
+    printf("Hand-eye calibration, %d points. Marker: a small flat part (or a 10~20 mm disc) whose centre you can\n"
+           "touch with the gripper tip; spread the points over the part of the view the arm reaches.\n"
+           "The arm torque goes OFF now - hold the arm.\n", n);
+    if (!wait_enter("Enter to switch the torque off (q quits)")) return 1;
+    ex.torque(false);
+    std::vector<Vec3> arm_pts;
+    std::vector<Vec2> tab_pts;
+    for (int i = 0; i < n && !g_stop; i++) {
+        char msg[200];
+        snprintf(msg, sizeof msg, "[%d/%d] put the marker in view (reachable), move the arm out of the picture, Enter:",
+                 i + 1, n);
+        if (!wait_enter(msg)) break;
+        Vec2 p;
+        std::string e = still_position(cam, loc, cfg, p);
+        if (!e.empty()) { printf("  %s - again\n", e.c_str()); i--; continue; }
+        printf("  marker at table (%.1f, %.1f) mm\n", p.x, p.y);
+        if (!wait_enter("  touch the marker centre with the gripper tip (between the fingers), Enter:")) break;
+        if (!ex.read_positions(pos)) { printf("  servo read failed - again\n"); i--; continue; }
+        float grip = 0;
+        JointAngles j = arm_from_counts(cfg.arm, pos, grip);
+        Vec3 tip = arm_fk(cfg.arm, j);
+        printf("  tip at arm (%.1f, %.1f, %.1f) mm (q %.1f %.1f %.1f %.1f)\n", tip.x, tip.y, tip.z, j.q[0], j.q[1],
+               j.q[2], j.q[3]);
+        arm_pts.push_back(tip);
+        tab_pts.push_back(p);
+    }
+    ArmBaseFit f = fit_arm_base(arm_pts, tab_pts, a.marker_h > 0 ? a.marker_h : 0.f);
+    if (!f.ok) { fprintf(stderr, "calib-arm: %s\n", f.err.c_str()); return 2; }
+    for (size_t i = 0; i < f.resid.size(); i++)
+        printf("  point %zu: table (%.1f, %.1f) residual %.2f mm\n", i + 1, tab_pts[i].x, tab_pts[i].y, f.resid[i]);
+    printf("== arm base at table (%.1f, %.1f) mm, arm +x points %.1f deg from table +x; residual rms %.2f, max %.2f mm\n",
+           f.base_xy.x, f.base_xy.y, f.base_yaw * 180 / kPi, f.rms, f.max);
+    if (a.marker_h >= 0) printf("   belt surface %.1f mm above the arm base plate (marker %.1f mm)\n", f.belt_z, a.marker_h);
+    else printf("   belt_z not fitted (give --marker-h to fit it)\n");
+    if (f.max > 3)
+        printf("   max residual > 3 mm: a marker moved, a touch was off, or joint zeros / link lengths are wrong\n");
+    std::string out = a.out.empty() ? cfg.calib_loaded : a.out;
+    std::string e = save_arm_calib(out, f, a.marker_h >= 0);
+    printf("saved %s: %s. Torque is still OFF: des_app arm torque-on before moving.\n", out.c_str(),
+           e.empty() ? "ok" : e.c_str());
+    return e.empty() ? 0 : 1;
+}
+
 // ---------------------------------------------------------------- measure
 // One frame (or -n frames of still parts) -> locate -> measure every gear / rack. For accuracy work with real
 // parts: compare with the caliper values, report the repeatability, keep the raw frame to re-run offline.
@@ -801,6 +875,7 @@ int main(int argc, char **argv)
     else if (a.mode == "live" || a.mode == "run" || a.mode == "collect") rc = run_live_mode(hw, cfg, a);
     else if (a.mode == "calib-cam") rc = run_calib(&hw, cfg, a);
     else if (a.mode == "calib-belt") rc = run_calib_belt(hw, cfg, a);
+    else if (a.mode == "calib-arm") rc = run_calib_arm(hw, cfg, a);
     else if (a.mode == "arm") rc = run_arm(hw, cfg, a);
     else if (a.mode == "measure") rc = run_measure(&hw, cfg, a);
     else { usage(); rc = 1; }

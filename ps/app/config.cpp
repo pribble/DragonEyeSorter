@@ -217,6 +217,13 @@ std::string load_config(const std::string &path, AppConfig &cfg)
                 get(c["belt"], "dir", cfg.belt.dir);
                 cfg.belt_calibrated = true;
             }
+            if (c.contains("arm")) {    // des_app calib-arm (overrides arm.base_xy / base_yaw_deg / belt_z)
+                const json &a = c["arm"];
+                get_vec2(a, "base_xy", cfg.arm.base_xy);
+                if (a.contains("base_yaw_deg")) cfg.arm.base_yaw = a["base_yaw_deg"].get<float>() * kPi / 180.f;
+                get(a, "belt_z", cfg.arm.belt_z);
+                cfg.arm_calibrated = true;
+            }
             cfg.calib_loaded = cp;
         } catch (const std::exception &e) {
             return cp + ": " + e.what();

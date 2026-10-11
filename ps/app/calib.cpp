@@ -274,6 +274,7 @@ std::string save_calib(const std::string &path, const CalibResult &r, const Boar
             try {
                 old >> o;
                 if (o.contains("belt")) j["belt"] = o["belt"];
+                if (o.contains("arm")) j["arm"] = o["arm"];
             } catch (const std::exception &) {
             }
         }
@@ -340,6 +341,38 @@ std::string save_belt_calib(const std::string &path, const BeltCalib &b)
     if (!f) return "cannot write " + path;
     f << j.dump(2) << "\n";
     return f ? "" : "write failed: " + path;
+}
+
+std::string save_arm_calib(const std::string &path, const ArmBaseFit &f, bool with_belt_z)
+{
+    if (!f.ok) return "no arm calibration to save";
+    nlohmann::ordered_json j;
+    {
+        std::ifstream old(path);
+        if (old) {
+            try {
+                old >> j;
+            } catch (const std::exception &e) {
+                return path + ": " + e.what() + " (fix or delete it, then run calib-cam again)";
+            }
+        }
+    }
+    char date[32];
+    time_t now = time(nullptr);
+    strftime(date, sizeof date, "%Y-%m-%d %H:%M", localtime(&now));
+    nlohmann::ordered_json a;
+    a["base_xy"] = {f.base_xy.x, f.base_xy.y};
+    a["base_yaw_deg"] = f.base_yaw * 180.0 / 3.14159265358979;
+    if (with_belt_z) a["belt_z"] = f.belt_z;
+    a["date"] = date;
+    a["rms_mm"] = f.rms;
+    a["max_mm"] = f.max;
+    a["points"] = f.resid.size();
+    j["arm"] = a;
+    std::ofstream o(path);
+    if (!o) return "cannot write " + path;
+    o << j.dump(2) << "\n";
+    return o ? "" : "write failed: " + path;
 }
 
 void draw_calib(cv::Mat &bgr, const CalibResult &r)

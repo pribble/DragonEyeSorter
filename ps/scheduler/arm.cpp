@@ -124,4 +124,41 @@ const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, 
     return nullptr;
 }
 
+ArmBaseFit fit_arm_base(const std::vector<Vec3> &arm, const std::vector<Vec2> &table, float marker_h)
+{
+    ArmBaseFit f;
+    const size_t n = arm.size();
+    if (n != table.size()) { f.err = "point lists differ in length"; return f; }
+    if (n < 3) { f.err = "need at least 3 points (2 fix the transform exactly, a third checks it)"; return f; }
+    double ax = 0, ay = 0, tx = 0, ty = 0, z = 0;
+    for (size_t i = 0; i < n; i++) {
+        ax += arm[i].x; ay += arm[i].y; tx += table[i].x; ty += table[i].y; z += arm[i].z;
+    }
+    ax /= n; ay /= n; tx /= n; ty /= n; z /= n;
+    double sxx = 0, sxy = 0, spread = 0;
+    for (size_t i = 0; i < n; i++) {
+        const double px = arm[i].x - ax, py = arm[i].y - ay, qx = table[i].x - tx, qy = table[i].y - ty;
+        sxx += px * qx + py * qy;
+        sxy += px * qy - py * qx;
+        spread = std::max(spread, std::sqrt(qx * qx + qy * qy));
+    }
+    if (spread < 20) { f.err = "points too close together: spread the marker over >= 40 mm of the reachable view"; return f; }
+    const double yaw = std::atan2(sxy, sxx), c = std::cos(yaw), s = std::sin(yaw);
+    f.base_yaw = float(yaw);
+    f.base_xy = {float(tx - (c * ax - s * ay)), float(ty - (s * ax + c * ay))};
+    f.belt_z = float(z - marker_h);
+    double ss = 0;
+    for (size_t i = 0; i < n; i++) {
+        const double ex = f.base_xy.x + c * arm[i].x - s * arm[i].y - table[i].x;
+        const double ey = f.base_xy.y + s * arm[i].x + c * arm[i].y - table[i].y;
+        const float e = float(std::sqrt(ex * ex + ey * ey));
+        f.resid.push_back(e);
+        f.max = std::max(f.max, e);
+        ss += ex * ex + ey * ey;
+    }
+    f.rms = float(std::sqrt(ss / n));
+    f.ok = true;
+    return f;
+}
+
 }  // namespace des

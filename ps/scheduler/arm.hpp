@@ -12,6 +12,7 @@
 
 #include <array>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "geom.hpp"
@@ -87,5 +88,19 @@ JointAngles arm_from_counts(const ArmConfig &c, const std::array<uint16_t, 6> &p
 // prev = counts the arm is at now (sizes the first move time).
 const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, float open_mm, float part_wid,
                       int bin, const std::array<uint16_t, 6> &prev, std::vector<ServoFrame> &out);
+
+// Hand-eye calibration (des_app calib-arm): the grasp point of taught poses (forward kinematics, arm frame) and the
+// same marker positions seen by the camera (table frame). Least-squares 2D rigid fit table = base + R(yaw) * arm
+// (the convention of table_to_arm), belt height from the touched marker tops. Needs >= 3 points spread >= 40 mm.
+struct ArmBaseFit {
+    bool ok = false;
+    std::string err;
+    Vec2 base_xy;
+    float base_yaw = 0;          // rad
+    float belt_z = 0;            // mean(arm z of the touches) - marker_h
+    float rms = 0, max = 0;      // residual in the table plane (mm)
+    std::vector<float> resid;    // per point (mm)
+};
+ArmBaseFit fit_arm_base(const std::vector<Vec3> &arm, const std::vector<Vec2> &table, float marker_h);
 
 }  // namespace des

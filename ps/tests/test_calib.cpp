@@ -192,6 +192,21 @@ int main(int argc, char **argv)
         std::string t((std::istreambuf_iterator<char>(g)), std::istreambuf_iterator<char>());
         CHECK(t.find("\"mm_per_step\"") != std::string::npos, "calib-cam keeps the belt scale");
     }
+    {   // calib-arm result next to the camera and belt parts, kept by a later calib-cam
+        ArmBaseFit af;
+        af.ok = true;
+        af.base_xy = {380, -170};
+        af.base_yaw = 1.6f;
+        af.belt_z = 12;
+        af.resid = {0.3f, 0.2f, 0.4f};
+        CHECK(save_arm_calib(path, af, true).empty(), "save_arm_calib");
+        CHECK(save_calib(path, r0, b, Travel::Right).empty(), "save_calib after calib-arm");
+        std::ifstream g(path);
+        std::string t((std::istreambuf_iterator<char>(g)), std::istreambuf_iterator<char>());
+        CHECK(t.find("\"base_yaw_deg\"") != std::string::npos && t.find("\"belt_z\"") != std::string::npos &&
+                  t.find("\"mm_per_step\"") != std::string::npos,
+              "calib.json keeps arm + belt sections across calib-cam");
+    }
     printf("%d passed, %d failed\n", g_pass, g_fail);
     return g_fail;
 }

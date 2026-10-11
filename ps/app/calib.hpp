@@ -13,6 +13,7 @@
 
 #include <opencv2/core.hpp>
 
+#include "arm.hpp"
 #include "geom.hpp"
 
 namespace des {
@@ -68,6 +69,8 @@ struct BeltCalib {
 BeltCalib belt_from_positions(Vec2 p0, Vec2 p1, Vec2 p2, Vec2 p3, int32_t s1, int32_t s2, int steps_per_rev = 3200);
 // Adds "belt": {mm_per_step, dir, ...} to the calib JSON (keeps the camera part). Empty string = ok.
 std::string save_belt_calib(const std::string &path, const BeltCalib &b);
+// Adds "arm": {base_xy, base_yaw_deg, belt_z (if with_belt_z), fit residuals} (des_app calib-arm). Empty = ok.
+std::string save_arm_calib(const std::string &path, const ArmBaseFit &f, bool with_belt_z);
 // Draw detected corners, table axes at the origin and a 50 mm grid onto a BGR image.
 void draw_calib(cv::Mat &bgr, const CalibResult &r);
 
