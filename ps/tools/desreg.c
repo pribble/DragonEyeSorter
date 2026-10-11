@@ -173,8 +173,8 @@ int main(int argc, char **argv)
         } else {
             des_vis_t v;
             if (des_vis_read(&hw, &v) != DES_OK) { fprintf(stderr, "bitstream before v6: no des_vision\n"); rc = 2; }
-            else printf("seq %u mode %d full %d thr %d | area %u bbox x %d..%d y %d..%d centroid (%.1f, %.1f) "
-                        "edges %u | %u pixel clocks/frame\n", v.seq, v.mode, v.full, v.thr, v.area, v.x0, v.x1,
+            else printf("seq %u mode %d full %d thr %d lanes %d | area %u bbox x %d..%d y %d..%d centroid (%.1f, %.1f) "
+                        "edges %u | %u pixel clocks/frame\n", v.seq, v.mode, v.full, v.thr, v.lanes, v.area, v.x0, v.x1,
                         v.y0, v.y1, v.cx, v.cy, v.edges, v.cycles);
         }
     } else if (!strcmp(cmd, "step") && argc >= 3) {

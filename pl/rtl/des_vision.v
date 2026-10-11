@@ -35,10 +35,16 @@
 //   0x34 SUMY   R  sum of y
 //   0x38 EDGES  R  edge pixels in the ROI
 //   0x3C CYCLES R  pixel clocks between the last two frame starts (pixel clock = CYCLES x frame rate)
-//   0x40 ACTIVE R  settings in use: [2:0] MODE, [8] FULL, [23:16] THR
+//   0x40 ACTIVE R  settings in use: [2:0] MODE, [8] FULL, [23:16] THR, [27:24] LANES
+//
+// LANES (parameter): pixels filtered per beat. 4 = every pixel. 2 = pixels 0 and 2 of each beat only (about half the
+// filter / statistics logic, for a full device): the filtered image is WIDTH/2 wide, each result is shown on 2
+// pixels, the 3x3 window spans 2-pixel steps horizontally, and the statistics count the processed pixels (x of a
+// processed pixel = its full-resolution x; the PS scales AREA / EDGES by 4 / LANES).
 module des_vision #(
     parameter integer WIDTH  = 1920,
-    parameter integer HEIGHT = 1080
+    parameter integer HEIGHT = 1080,
+    parameter integer LANES  = 4        // 4 or 2 (see above)
 ) (
     // register side
     input  wire         clk,
@@ -59,6 +65,9 @@ module des_vision #(
     output reg          m_tlast
 );
     localparam integer BEATS = WIDTH / 4;
+    localparam integer L = LANES;       // filtered pixels per beat
+    localparam integer STEP = 4 / LANES;   // full-resolution pixels per filtered pixel
+    localparam [3:0] L4 = LANES;
 
     // ======================= register side =======================
     reg [2:0]  r_mode = 3'd0;
@@ -111,48 +120,48 @@ module des_vision #(
         end
     endfunction
 
-    reg [63:0]  lb [0:BEATS-1];         // {row y-2, row y-1} x 4 pixels per beat
-    reg [63:0]  lb_rd = 64'd0;
-    reg [31:0]  g1 = 32'd0;             // gray of the current beat (row y)
+    reg [16*L-1:0] lb [0:BEATS-1];      // {row y-2, row y-1} x L pixels per beat
+    reg [16*L-1:0] lb_rd = {16*L{1'b0}};
+    reg [8*L-1:0]  g1 = {8*L{1'b0}};    // gray of the current beat (row y)
     reg [8:0]   bx1 = 9'd0;
     reg [10:0]  row1 = 11'd0;
     reg         v1 = 1'b0, u1 = 1'b0, l1 = 1'b0;
 
-    // stage 1 -> 2: six window columns (top / mid / bottom)
+    // stage 1 -> 2: L + 2 window columns (top / mid / bottom)
     reg [7:0]   pv_t2 = 8'd0, pv_t3 = 8'd0, pv_m2 = 8'd0, pv_m3 = 8'd0, pv_b2 = 8'd0, pv_b3 = 8'd0;
-    reg [47:0]  c2_t = 48'd0, c2_m = 48'd0, c2_b = 48'd0;   // column k in [8k+7:8k], k = 0..5
+    reg [8*(L+2)-1:0] c2_t = {8*(L+2){1'b0}}, c2_m = {8*(L+2){1'b0}}, c2_b = {8*(L+2){1'b0}};   // column k in [8k+7:8k]
     reg [8:0]   bx2 = 9'd0;
     reg [10:0]  row2 = 11'd0;
     reg         v2 = 1'b0, u2 = 1'b0, l2 = 1'b0;
 
-    wire [31:0] cur_t = lb_rd[63:32], cur_m = lb_rd[31:0], cur_b = g1;
+    wire [8*L-1:0] cur_t = lb_rd[16*L-1:8*L], cur_m = lb_rd[8*L-1:0], cur_b = g1;
     wire        lb_we = v1;
 
     // stage 2a: vertical 1-2-1 column sums S[k] (k = 0..5), horizontal 1-2-1 sums of the top / bottom rows per pixel
-    reg [59:0]  sa_s = 60'd0;               // S[k] = t + 2m + b, 10 bits each
-    reg [39:0]  sa_th = 40'd0, sa_bh = 40'd0;
-    reg [31:0]  sa_c = 32'd0;               // centre pixels (column j+1 of the middle row)
+    reg [10*(L+2)-1:0] sa_s = {10*(L+2){1'b0}};   // S[k] = t + 2m + b, 10 bits each
+    reg [10*L-1:0] sa_th = {10*L{1'b0}}, sa_bh = {10*L{1'b0}};
+    reg [8*L-1:0]  sa_c = {8*L{1'b0}};             // centre pixels (column j+1 of the middle row)
     reg [8:0]   bxa = 9'd0;
     reg [10:0]  rowa = 11'd0;
     reg         va = 1'b0, ua = 1'b0, la = 1'b0;
     // stage 2b: Gaussian sum (S[j] + 2 S[j+1] + S[j+2]), Gx = S[j+2] - S[j], Gy = bottom - top
-    reg [47:0]  sb_g = 48'd0;               // 12 bits each
-    reg [47:0]  sb_gx = 48'd0, sb_gy = 48'd0;   // signed 12 bits each
-    reg [31:0]  sb_c = 32'd0;
+    reg [12*L-1:0] sb_g = {12*L{1'b0}};             // 12 bits each
+    reg [12*L-1:0] sb_gx = {12*L{1'b0}}, sb_gy = {12*L{1'b0}};   // signed 12 bits each
+    reg [8*L-1:0]  sb_c = {8*L{1'b0}};
     reg [8:0]   bxb = 9'd0;
     reg [10:0]  rowb = 11'd0;
     reg         vb = 1'b0, ub = 1'b0, lb_ = 1'b0;
 
     // stage 2c -> 3: filter results per output pixel j (centre = column j+1 of the window)
-    reg [31:0]  gc3 = 32'd0, ga3 = 32'd0;   // centre gray, Gaussian
-    reg [43:0]  mg3 = 44'd0;                // Sobel magnitude, 11 bits per pixel
+    reg [8*L-1:0]  gc3 = {8*L{1'b0}}, ga3 = {8*L{1'b0}};   // centre gray, Gaussian
+    reg [11*L-1:0] mg3 = {11*L{1'b0}};                     // Sobel magnitude, 11 bits per pixel
     reg [8:0]   bx3 = 9'd0;
     reg [10:0]  row3 = 11'd0;
     reg         v3 = 1'b0, u3 = 1'b0, l3 = 1'b0;
 
     // stage 3 -> 4: statistics inputs
-    reg [3:0]   sel4 = 4'd0, esel4 = 4'd0;
-    reg [43:0]  c4 = 44'd0;                 // x of the 4 output pixels, 11 bits each
+    reg [L-1:0]    sel4 = {L{1'b0}}, esel4 = {L{1'b0}};
+    reg [11*L-1:0] c4 = {11*L{1'b0}};                      // x of the L results, 11 bits each
     reg [10:0]  r4 = 11'd0;
 
     // accumulators and published results
@@ -171,6 +180,9 @@ module des_vision #(
     reg [10:0] ax, ay;
     reg [11:0] mag;
     reg [7:0]  ov;
+    reg [8*L-1:0] ovl;
+    reg [2:0]  n_edge;
+    integer    i;
     reg [10:0] cx;
     reg        inroi;
     reg [2:0]  n_sel;
@@ -207,7 +219,7 @@ module des_vision #(
             bx <= 9'd0;
             row <= 11'd0;
         end
-        g1   <= {gray_of(s_tdata[127:96]), gray_of(s_tdata[95:64]), gray_of(s_tdata[63:32]), gray_of(s_tdata[31:0])};
+        for (j = 0; j < L; j = j + 1) g1[8*j +: 8] <= gray_of(s_tdata[32*STEP*j +: 32]);
         bx1  <= cur_bx;
         row1 <= cur_row;
         v1   <= s_tvalid;
@@ -217,20 +229,20 @@ module des_vision #(
         // ---- stage 1: row buffer write-back, window columns
         if (lb_we) lb[bx1] <= {cur_m, cur_b};
         if (v1) begin
-            // columns 0, 1 = pixels 2, 3 of the previous beat (the current pixel 0 at a row start)
+            // columns 0, 1 = the last two processed pixels of the previous beat (the current first one at a row start)
             c2_t <= {cur_t, (bx1 == 9'd0) ? {cur_t[7:0], cur_t[7:0]} : {pv_t3, pv_t2}};
             c2_m <= {cur_m, (bx1 == 9'd0) ? {cur_m[7:0], cur_m[7:0]} : {pv_m3, pv_m2}};
             c2_b <= {cur_b, (bx1 == 9'd0) ? {cur_b[7:0], cur_b[7:0]} : {pv_b3, pv_b2}};
-            pv_t2 <= cur_t[23:16]; pv_t3 <= cur_t[31:24];
-            pv_m2 <= cur_m[23:16]; pv_m3 <= cur_m[31:24];
-            pv_b2 <= cur_b[23:16]; pv_b3 <= cur_b[31:24];
+            pv_t2 <= cur_t[8*(L-2) +: 8]; pv_t3 <= cur_t[8*(L-1) +: 8];
+            pv_m2 <= cur_m[8*(L-2) +: 8]; pv_m3 <= cur_m[8*(L-1) +: 8];
+            pv_b2 <= cur_b[8*(L-2) +: 8]; pv_b3 <= cur_b[8*(L-1) +: 8];
         end
         bx2 <= bx1; row2 <= row1; v2 <= v1; u2 <= u1; l2 <= l1;
 
         // ---- stage 2a: 1-2-1 sums (column sums over the three rows, row sums of the top / bottom rows)
-        for (k = 0; k < 6; k = k + 1)
+        for (k = 0; k < L + 2; k = k + 1)
             sa_s[10*k +: 10] <= c2_t[8*k +: 8] + {c2_m[8*k +: 8], 1'b0} + c2_b[8*k +: 8];
-        for (j = 0; j < 4; j = j + 1) begin
+        for (j = 0; j < L; j = j + 1) begin
             t0 = c2_t[8*j +: 8]; t1 = c2_t[8*(j+1) +: 8]; t2 = c2_t[8*(j+2) +: 8];
             b0 = c2_b[8*j +: 8]; b1 = c2_b[8*(j+1) +: 8]; b2 = c2_b[8*(j+2) +: 8];
             sa_th[10*j +: 10] <= t0 + {t1, 1'b0} + t2;
@@ -240,7 +252,7 @@ module des_vision #(
         bxa <= bx2; rowa <= row2; va <= v2; ua <= u2; la <= l2;
 
         // ---- stage 2b: Gaussian sum, Gx, Gy
-        for (j = 0; j < 4; j = j + 1) begin
+        for (j = 0; j < L; j = j + 1) begin
             s0 = sa_s[10*j +: 10]; s1 = sa_s[10*(j+1) +: 10]; s2 = sa_s[10*(j+2) +: 10];
             sb_g[12*j +: 12]  <= s0 + {s1, 1'b0} + s2;
             sb_gx[12*j +: 12] <= $signed({2'd0, s2}) - $signed({2'd0, s0});
@@ -250,7 +262,7 @@ module des_vision #(
         bxb <= bxa; rowb <= rowa; vb <= va; ub <= ua; lb_ <= la;
 
         // ---- stage 2c: |Gx| + |Gy|, Gaussian / 16
-        for (j = 0; j < 4; j = j + 1) begin
+        for (j = 0; j < L; j = j + 1) begin
             gx = sb_gx[12*j +: 12];
             gy = sb_gy[12*j +: 12];
             ax = gx[11] ? -gx : gx;
@@ -266,7 +278,7 @@ module des_vision #(
         m_tvalid <= bypass ? s_tvalid : v3;
         m_tuser  <= bypass ? s_tuser  : u3;
         m_tlast  <= bypass ? s_tlast  : l3;
-        for (j = 0; j < 4; j = j + 1) begin
+        for (j = 0; j < L; j = j + 1) begin
             case (a_mode)
                 3'd1: ov = gc3[8*j +: 8];
                 3'd2: ov = ga3[8*j +: 8];
@@ -275,28 +287,35 @@ module des_vision #(
                 3'd5: ov = (mg3[11*j +: 11] >= a_ethr) ? 8'hFF : 8'h00;
                 default: ov = 8'd0;
             endcase
-            m_tdata[32*j +: 32] <= bypass ? s_tdata[32*j +: 32] : {8'd0, ov, ov, ov};
-            cx = {bx3, 2'b00} + j - 1;                      // x of the result (one left of the window's last column)
+            ovl[8*j +: 8] = ov;
+            cx = {bx3, 2'b00} + STEP * j - STEP;            // x of the result (one left of the window's last column)
             inroi = a_full || (cx >= a_x0 && cx <= a_x1 && row3 - 1'b1 >= a_y0 && row3 - 1'b1 <= a_y1);
             inroi = inroi && !(bx3 == 9'd0 && j == 0) && row3 != 11'd0;   // x = -1 / y = -1 do not exist
             sel4[j]  <= v3 && inroi && (ga3[8*j +: 8] >= a_thr);
             esel4[j] <= v3 && inroi && (mg3[11*j +: 11] >= a_ethr);
             c4[11*j +: 11] <= cx;
         end
+        for (i = 0; i < 4; i = i + 1)   // each result covers STEP output pixels
+            m_tdata[32*i +: 32] <= bypass ? s_tdata[32*i +: 32]
+                                          : {8'd0, ovl[8*(i/STEP) +: 8], ovl[8*(i/STEP) +: 8], ovl[8*(i/STEP) +: 8]};
         r4 <= row3 - 1'b1;
 
         // ---- stage 4: accumulate (cleared at frame start)
-        n_sel = sel4[0] + sel4[1] + sel4[2] + sel4[3];
-        sx_beat = (sel4[0] ? c4[10:0] : 13'd0) + (sel4[1] ? c4[21:11] : 13'd0) + (sel4[2] ? c4[32:22] : 13'd0)
-                + (sel4[3] ? c4[43:33] : 13'd0);
-        bmin = sel4[0] ? c4[10:0] : sel4[1] ? c4[21:11] : sel4[2] ? c4[32:22] : c4[43:33];
-        bmax = sel4[3] ? c4[43:33] : sel4[2] ? c4[32:22] : sel4[1] ? c4[21:11] : c4[10:0];
+        n_sel = 3'd0; n_edge = 3'd0; sx_beat = 13'd0;
+        bmin = c4[11*(L-1) +: 11];      // lowest selected x (lanes are in increasing x)
+        bmax = c4[10:0];                // highest selected x
+        for (j = 0; j < L; j = j + 1) begin
+            n_sel  = n_sel + sel4[j];
+            n_edge = n_edge + esel4[j];
+            if (sel4[j]) begin sx_beat = sx_beat + c4[11*j +: 11]; bmax = c4[11*j +: 11]; end
+            if (sel4[L-1-j]) bmin = c4[11*(L-1-j) +: 11];
+        end
         if (sof) begin
             acc_area <= 21'd0; acc_edges <= 21'd0; acc_sx <= 32'd0; acc_sy <= 32'd0;
             acc_x0 <= 11'h7FF; acc_x1 <= 11'd0; acc_y0 <= 11'h7FF; acc_y1 <= 11'd0;
         end else begin
             acc_area  <= acc_area + n_sel;
-            acc_edges <= acc_edges + esel4[0] + esel4[1] + esel4[2] + esel4[3];
+            acc_edges <= acc_edges + n_edge;
             acc_sx    <= acc_sx + sx_beat;
             acc_sy    <= acc_sy + n_sel * r4;
             if (n_sel != 3'd0) begin
@@ -323,7 +342,7 @@ module des_vision #(
             o_sy    <= res_sy;
             o_edges <= {11'd0, res_edges};
             o_cyc   <= res_cyc;
-            o_active <= {8'd0, a_thr, 7'd0, a_full, 5'd0, a_mode};
+            o_active <= {4'd0, L4, a_thr, 7'd0, a_full, 5'd0, a_mode};
         end
         case (raddr[7:2])
             6'h00: rdata <= {23'd0, r_full, 5'd0, r_mode};

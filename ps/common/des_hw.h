@@ -64,11 +64,12 @@ int des_capture_read(const des_hw_t *h, des_capture_t *c);   /* DES_E_ARG on bit
 enum { DES_VIS_CAMERA = 0, DES_VIS_GRAY, DES_VIS_GAUSS, DES_VIS_BINARY, DES_VIS_SOBEL, DES_VIS_EDGE };
 typedef struct {
     uint32_t seq;          /* frames with published statistics */
-    uint32_t area, edges;  /* bright / edge pixels in the ROI of that frame */
+    uint32_t area, edges;  /* bright / edge pixels in the ROI of that frame (full-resolution equivalent) */
     int x0, x1, y0, y1;    /* bounding box of the bright pixels (x0 > x1: none) */
     double cx, cy;         /* centroid (px), 0 without bright pixels */
     uint32_t cycles;       /* pixel clocks per frame */
     int mode, full, thr;   /* settings in use */
+    int lanes;             /* pixels filtered per beat (4 = every pixel, 2 = every other: counts scaled by 2) */
 } des_vis_t;
 
 #define DES_VERSION_VISION 6u

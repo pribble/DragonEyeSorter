@@ -22,6 +22,9 @@ case "${1:-des_axi}" in
   vision)
     iverilog -g2012 -o "$T/sim" tb_des_vision.v ../rtl/des_vision.v   # the testbench uses join_none
     ;;
+  vision2)
+    iverilog -g2012 -Ptb_des_vision.LANES=2 -o "$T/sim" tb_des_vision.v ../rtl/des_vision.v   # half-width variant
+    ;;
   *) echo "unknown test: $1"; exit 1 ;;
 esac
 vvp -n "$T/sim"

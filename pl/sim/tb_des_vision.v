@@ -2,9 +2,9 @@
 // des_vision on a small frame (32 x 12): output pixels of every mode against a behavioural model with the same
 // boundary rules, ROI statistics (area, bounding box, sums, edges), cycles per frame, settings applied only at the
 // next frame start, stream timing (same number of beats; camera bypass 1 clock, filters 6 clocks) with random gaps
-// in tvalid.
-module tb_des_vision;
-    localparam integer W = 32, H = 12, BEATS = W / 4;
+// in tvalid. LANES = 2 (run_sim.sh vision2): the model works on every other pixel (u = x / 2).
+module tb_des_vision #(parameter integer LANES = 4);
+    localparam integer W = 32, H = 12, BEATS = W / 4, STEP = 4 / LANES, U = W / STEP;
     reg pclk = 0, clk = 0;
     always #4 pclk = ~pclk;                    // 125 MHz pixel clock
     always #6.6667 clk = ~clk;                 // 75 MHz register clock
@@ -18,7 +18,7 @@ module tb_des_vision;
     wire [127:0] m_tdata;
     wire         m_tvalid, m_tuser, m_tlast;
 
-    des_vision #(.WIDTH(W), .HEIGHT(H)) dut (
+    des_vision #(.WIDTH(W), .HEIGHT(H), .LANES(LANES)) dut (
         .clk(clk), .wr(wr), .waddr(waddr), .wdata(wdata), .raddr(raddr), .rdata(rdata),
         .pclk(pclk), .s_tdata(s_tdata), .s_tvalid(s_tvalid), .s_tuser(s_tuser), .s_tlast(s_tlast),
         .m_tdata(m_tdata), .m_tvalid(m_tvalid), .m_tuser(m_tuser), .m_tlast(m_tlast));
@@ -36,13 +36,14 @@ module tb_des_vision;
         img = (x >= 10 && x <= 21 && y >= 3 && y <= 8) ? 8'd200 : 8'd30;
     endfunction
 
-    // model of the module's window: centre (cx, cy), left neighbour of x = 0 is itself, row above 0 = last row
+    // model of the module's window on the processed pixels u (x = u * STEP): centre (cx, cy), left neighbour of
+    // u = 0 is itself, row above 0 = last row
     function [7:0] px(input integer x, input integer y);
         integer xx, yy;
         begin
             xx = (x < 0) ? 0 : x;
             yy = (y < 0) ? H - 1 : y;
-            px = img(xx, yy);
+            px = img(xx * STEP, yy);
         end
     endfunction
     function [7:0] gauss(input integer cx, input integer cy);
@@ -126,11 +127,12 @@ module tb_des_vision;
         end
     end
 
-    // expected value of output pixel at stream position (x, y) for a mode: the result of centre (x-1, y-1)
+    // expected value of output pixel at stream position (x, y) for a mode: the result of centre (u-1, y-1),
+    // u = x / STEP the processed pixel this output pixel shows
     function [7:0] expect_out(input integer mode, input integer x, input integer y);
         integer cx, cy, s;
         begin
-            cx = x - 1; cy = y - 1;
+            cx = x / STEP - 1; cy = y - 1;
             case (mode)
                 1: expect_out = px(cx, cy);
                 2: expect_out = gauss(cx, cy);
@@ -172,7 +174,7 @@ module tb_des_vision;
             capture = 0;
             bad = 0;
             for (y = 1; y < H; y = y + 1)
-                for (x = (mode == 0 ? 0 : 1); x < W; x = x + 1)
+                for (x = (mode == 0 ? 0 : STEP); x < W; x = x + 1)
                     if (outpix[y*W + x] !== expect_out(mode, x, y)) begin
                         if (bad < 3) $display("  mode %0d (%0d,%0d): got %0d want %0d", mode, x, y,
                                               outpix[y*W + x], expect_out(mode, x, y));
@@ -186,10 +188,11 @@ module tb_des_vision;
         send_frame;
         area = 0; sx = 0; sy = 0; edges = 0; x0 = 2047; x1 = 0; y0 = 2047; y1 = 0;
         for (cy = 0; cy <= H - 2; cy = cy + 1)
-            for (cx = 0; cx <= W - 2; cx = cx + 1) begin
+            for (cx = 0; cx <= U - 2; cx = cx + 1) begin
                 if (gauss(cx, cy) >= 128) begin
-                    area = area + 1; sx = sx + cx; sy = sy + cy;
-                    if (cx < x0) x0 = cx; if (cx > x1) x1 = cx; if (cy < y0) y0 = cy; if (cy > y1) y1 = cy;
+                    area = area + 1; sx = sx + cx * STEP; sy = sy + cy;
+                    if (cx * STEP < x0) x0 = cx * STEP; if (cx * STEP > x1) x1 = cx * STEP;
+                    if (cy < y0) y0 = cy; if (cy > y1) y1 = cy;
                 end
                 if (sobel(cx, cy) >= 300) edges = edges + 1;
             end
@@ -201,7 +204,8 @@ module tb_des_vision;
         rreg(8'h34, r); check(r == sy, "SUMY");
         rreg(8'h38, r); $sformat(msg, "EDGES %0d (model %0d)", r, edges); check(r == edges, msg);
         rreg(8'h3C, r); $sformat(msg, "CYCLES %0d per frame", r); check(r > W * H / 4 && r < 4 * W * H, msg);
-        rreg(8'h40, r); check(r[2:0] == 3'd5 && r[8] == 1'b1 && r[23:16] == 8'd128, "ACTIVE settings");
+        rreg(8'h40, r); check(r[2:0] == 3'd5 && r[8] == 1'b1 && r[23:16] == 8'd128 && r[27:24] == LANES,
+                              "ACTIVE settings + LANES");
         $display("  area %0d bbox x %0d..%0d y %0d..%0d centroid (%0.2f, %0.2f) edges %0d", area, x0, x1, y0, y1,
                  1.0 * sx / area, 1.0 * sy / area, edges);
 
@@ -215,11 +219,11 @@ module tb_des_vision;
         send_frame;   // ... whose statistics are published at this frame start
         area = 0; x1 = 0;
         for (cy = 0; cy <= H - 2; cy = cy + 1)
-            for (cx = 0; cx <= 15; cx = cx + 1)
-                if (gauss(cx, cy) >= 128) begin area = area + 1; if (cx > x1) x1 = cx; end
+            for (cx = 0; cx * STEP <= 15; cx = cx + 1)
+                if (gauss(cx, cy) >= 128) begin area = area + 1; if (cx * STEP > x1) x1 = cx * STEP; end
         repeat (20) @(posedge clk);
         rreg(8'h24, r); $sformat(msg, "ROI AREA %0d (model %0d)", r, area); check(r == area, msg);
-        rreg(8'h28, r); check(r[26:16] == x1 && x1 == 15, "ROI clips the bounding box at X1");
+        rreg(8'h28, r); check(r[26:16] == x1 && x1 > 15 - STEP, "ROI clips the bounding box at X1");
 
         // settings written mid-frame do not change the frame in progress
         capture_mode = 3;
@@ -235,7 +239,7 @@ module tb_des_vision;
         capture = 0;
         bad = 0;
         for (y = 1; y < H; y = y + 1)
-            for (x = 1; x < W; x = x + 1)
+            for (x = STEP; x < W; x = x + 1)
                 if (outpix[y*W + x] !== expect_out(3, x, y)) bad = bad + 1;
         check(bad == 0, "mid-frame APPLY waits for the next frame start");
         capture_mode = 0;
@@ -251,7 +255,7 @@ module tb_des_vision;
         repeat (20) @(posedge pclk);
         $sformat(msg, "one frame start out per frame start in (%0d / %0d)", out_sof, in_sof);
         check(out_sof == in_sof, msg);
-        $display("des_vision: %0d passed, %0d failed", passes, fails);
+        $display("des_vision (LANES %0d): %0d passed, %0d failed", LANES, passes, fails);
         $finish;
     end
 endmodule

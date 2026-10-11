@@ -124,6 +124,10 @@ int des_vis_read(const des_hw_t *h, des_vis_t *v)
     v->cx = v->area ? (double)sx / v->area : 0.0;
     v->cy = v->area ? (double)sy / v->area : 0.0;
     v->mode = (int)(act & 7); v->full = (int)((act >> 8) & 1); v->thr = (int)((act >> 16) & 0xFF);
+    v->lanes = (int)((act >> 24) & 0xF);
+    if (v->lanes != 1 && v->lanes != 2) v->lanes = 4;   /* first v6 builds: field absent (0) = every pixel */
+    v->area *= (uint32_t)(4 / v->lanes);                /* counts of processed pixels -> full resolution */
+    v->edges *= (uint32_t)(4 / v->lanes);
     return DES_OK;
 }
 
