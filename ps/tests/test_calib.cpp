@@ -3,6 +3,8 @@
 // checks distances, axis directions, origin and handedness.  ./test_calib [dump_dir]   exit code = failed checks
 #include <cmath>
 #include <cstdio>
+#include <fstream>
+#include <iterator>
 #include <random>
 #include <string>
 
@@ -161,6 +163,35 @@ int main(int argc, char **argv)
         r0 = calibrate_table(img, b, Travel::Right);
     }
     CHECK(save_calib(path, r0, b, Travel::Right).empty(), "save_calib to %s", path.c_str());
+
+    // belt scale (calib-belt): 0.0098 mm/step, part moved 8 mm then 88 mm, back with 0.05 mm slip, 0.4 mm drift
+    const double k = 0.0098;
+    BeltCalib bc = belt_from_positions({20, 1}, {20 + 816 * k, 1.03f}, {20 + 9816 * k, 1.4f}, {20.05f, 1}, 816, 9000);
+    CHECK(bc.ok && std::fabs(bc.mm_per_step - k) < 1e-6 && bc.dir == 1, "belt + dir: %s %.6f %d", bc.err.c_str(),
+          bc.mm_per_step, bc.dir);
+    CHECK(std::fabs(bc.return_err_mm - 0.05) < 1e-3 && std::fabs(bc.drift_mm_per_100 - 0.4 / (9816 * k) * 100) < 1e-3,
+          "belt return %.4f drift %.4f", bc.return_err_mm, bc.drift_mm_per_100);
+    CHECK(std::fabs(bc.roller_d_mm - k * 3200 / 3.14159265) < 1e-3, "roller %.3f", bc.roller_d_mm);
+    // wiring reversed: + steps move the part upstream; the guess was wrong, the long move went the other way
+    bc = belt_from_positions({20, 0}, {20 - 816 * k, 0}, {20 + 8184 * k, 0}, {20, 0}, 816, -9000);
+    CHECK(bc.ok && bc.dir == -1 && std::fabs(bc.mm_per_step - k) < 1e-6, "belt reversed: %s %d %.6f", bc.err.c_str(),
+          bc.dir, bc.mm_per_step);
+    bc = belt_from_positions({20, 0}, {20.3f, 0}, {20.5f, 0}, {20, 0}, 816, 9000);
+    CHECK(!bc.ok, "part that did not move must fail");
+    bc = belt_from_positions({20, 0}, {20 + 816 * k, 0}, {20 + 816 * k + 9000 * k * 0.6, 0}, {20, 0}, 816, 9000);
+    CHECK(!bc.ok, "slipping belt (scale differs by 40 %%) must fail");
+    CHECK(save_belt_calib(path, belt_from_positions({20, 1}, {20 + 816 * k, 1}, {20 + 9816 * k, 1}, {20, 1}, 816, 9000))
+              .empty(), "save_belt_calib");
+    {
+        std::ifstream f(path);
+        std::string s((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+        CHECK(s.find("\"px_to_table\"") != std::string::npos && s.find("\"mm_per_step\"") != std::string::npos,
+              "calib.json keeps the camera part next to the belt");
+        CHECK(save_calib(path, r0, b, Travel::Right).empty(), "save_calib again");
+        std::ifstream g(path);
+        std::string t((std::istreambuf_iterator<char>(g)), std::istreambuf_iterator<char>());
+        CHECK(t.find("\"mm_per_step\"") != std::string::npos, "calib-cam keeps the belt scale");
+    }
     printf("%d passed, %d failed\n", g_pass, g_fail);
     return g_fail;
 }

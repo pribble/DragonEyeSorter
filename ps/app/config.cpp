@@ -211,6 +211,11 @@ std::string load_config(const std::string &path, AppConfig &cfg)
                 get(c["tracker"], "fov_x0", cfg.tracker.fov_x0);
                 get(c["tracker"], "fov_x1", cfg.tracker.fov_x1);
             }
+            if (c.contains("belt")) {   // des_app calib-belt
+                get(c["belt"], "mm_per_step", cfg.belt.mm_per_step);
+                get(c["belt"], "dir", cfg.belt.dir);
+                cfg.belt_calibrated = true;
+            }
             cfg.calib_loaded = cp;
         } catch (const std::exception &e) {
             return cp + ": " + e.what();

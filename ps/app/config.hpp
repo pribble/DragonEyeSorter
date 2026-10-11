@@ -30,7 +30,7 @@ struct LocateConfig {
 };
 
 struct BeltConfig {
-    double mm_per_step = 0.03;   // ⚠ calibrate (des_app calib-belt): roller circumference / 3200
+    double mm_per_step = 0.0098; // ⚠ estimate for the ~10 mm drive roller (pi * 10 / 3200); des_app calib-belt
     int dir = 1;                 // +1: stepper POS increasing moves parts toward +x
     double run_speed = 50;       // mm/s
     double accel = 400;          // mm/s^2
@@ -67,6 +67,7 @@ struct AppConfig {
     std::string label_list = "models/label_list.json";
     std::string calib_file = "calib.json";     // written by des_app calib-cam, merged over this file if present
     std::string calib_loaded;                  // path actually merged (empty = none)
+    bool belt_calibrated = false;              // calib file had a "belt" section (des_app calib-belt)
     std::string config_dir = ".";             // folder of the loaded des_app.json (ui_params.json lives there)
     std::vector<std::string> bins = {"gear_box", "rack_box"};          // pick destinations (arm drop poses)
     std::vector<std::string> outlets = {"recheck", "scrap", "rework"};  // flap outlets, index 0 = recheck

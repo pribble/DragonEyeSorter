@@ -11,6 +11,7 @@
 //   des_app arm home|goto <x> <y> [z] [axis]|pick <x> <y> [axis_deg] [bin]   motion: dry run unless --go
 //   des_app calib-cam [--board 9x6] [--square mm] [--travel right|left|down|up] [--image f.png] [--out calib.json]
 //                                                                   checkerboard on the belt -> px_to_table (calib.json)
+//   des_app calib-belt [--steps N] [--belt mm/s]                    one part on the belt -> mm_per_step, dir (calib.json)
 // NPU: the part classifier (des_app.json "npu", train/export_npu.py) runs in live / run / collect when its model exists
 //   des_app collect --cls <label> [-n sec] [--belt mm/s] [--every N] [--max N] [--full N] [--out dir]
 //                                                                   live + training crops of one class (des_app.json labels)
@@ -24,7 +25,10 @@
 #include <signal.h>
 #include <sys/mman.h>
 #include <time.h>
+#include <unistd.h>
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -74,15 +78,18 @@ struct Args {
     std::vector<double> pos;
     std::string cls;           // collect: class label
     int every = 6, maxpp = 10, full = 0;
+    int steps = 0;                // calib-belt: long move (0 = to ~75 % of the view)
 };
 
 static void usage()
 {
     fprintf(stderr,
-            "usage: des_app probe|locate|track|display|live|run|collect|calib-cam|measure|arm|ik [options]\n"
+            "usage: des_app probe|locate|track|display|live|run|collect|calib-cam|calib-belt|measure|arm|ik [options]\n"
             "  -c cfg.json  -n N  --vmax N  --exp us  --gain dB*10  --dump file.png  --belt mm/s  --no-rt\n"
             "  calib-cam: --board <cols>x<rows> (inner corners)  --square <mm>  --travel right|left|down|up\n"
             "             --image <file> (instead of the camera)  --out <calib.json>  --exhaustive\n"
+            "  calib-belt: ONE part on the belt near the upstream edge (camera calibrated first); the belt moves\n"
+            "             forward and back. --steps <long move>  --belt <mm/s> (default 20)  --out <calib.json>\n"
             "  arm: scan | read | teach | torque-on | torque-off | home | goto x y [z] [axis] | pick x y [axis] [bin]\n"
             "       motion commands only print the servo frames unless --go\n"
             "  collect: --cls <label> (one class per session)  --every <frames>  --max <crops per part>\n"
@@ -117,6 +124,7 @@ static bool parse(int argc, char **argv, Args &a)
         else if (k == "--every" && (v = val())) a.every = atoi(v);
         else if (k == "--max" && (v = val())) a.maxpp = atoi(v);
         else if (k == "--full" && (v = val())) a.full = atoi(v);
+        else if (k == "--steps" && (v = val())) a.steps = atoi(v);
         else if (a.mode.empty() && k[0] != '-') a.mode = k;   // first plain word is the mode
         else if (a.sub.empty() && isalpha((unsigned char)k[0])) a.sub = k;   // then an optional sub-command
         else if (k[0] != '-' || (k.size() > 1 && (isdigit(k[1]) || k[1] == '.'))) a.pos.push_back(atof(k.c_str()));
@@ -570,6 +578,118 @@ static int run_calib(des_hw_t *hw, const AppConfig &cfg, const Args &a)
     return err.empty() ? 0 : 1;
 }
 
+// ---------------------------------------------------------------- calib-belt
+// Belt scale and direction seen by the calibrated camera. The part's table position is the median over still frames
+// (largest blob not touching the image border). Moves: a short one (~8 mm with the configured estimate) for a rough
+// scale and the direction, a long one to ~75 % of the view, then back to the start (slip / backlash). The result
+// uses the whole travel, so the position noise (~0.05 mm) is < 0.1 % of it; the camera scale error adds to it.
+static std::string still_position(CameraRig &cam, Locator &loc, const AppConfig &cfg, Vec2 &p)
+{
+    CapturedFrame f;
+    std::string err;
+    for (int i = 0; i < cfg.camera.buffers + 2; i++)   // the ring may still hold frames exposed during the move
+        if (!(err = cam.next(f, false)).empty()) return err;
+    std::vector<float> xs, ys;
+    int blobs = 0;
+    for (int i = 0; i < 7; i++) {
+        if (!(err = cam.next(f, true)).empty()) return err;
+        std::vector<Detection> d = loc.run(f.bgra, f.width, f.height, f.stride, cfg.px_to_table);
+        const Detection *best = nullptr;
+        for (const Detection &x : d)
+            if (!x.partial && (!best || x.len * x.wid > best->len * best->wid)) best = &x;
+        blobs = std::max(blobs, int(d.size()));
+        if (best) {
+            xs.push_back(best->p.x);
+            ys.push_back(best->p.y);
+        }
+    }
+    if (xs.size() < 4) return "no part fully in view (one part on the belt, inside the view, threshold ok? try locate)";
+    if (blobs > 1) printf("  note: %d blobs in view, using the largest\n", blobs);
+    std::nth_element(xs.begin(), xs.begin() + xs.size() / 2, xs.end());
+    std::nth_element(ys.begin(), ys.begin() + ys.size() / 2, ys.end());
+    p = {xs[xs.size() / 2], ys[ys.size() / 2]};
+    return "";
+}
+
+static std::string belt_move(des_hw_t &hw, int32_t steps, double vmax, double acc)
+{
+    const int32_t target = des_step_pos(&hw) + steps;
+    des_step_move(&hw, target, vmax, acc);
+    const double t0 = now_s(), tmax = std::abs(steps) / vmax + 2 * vmax / acc + 3;
+    usleep(20000);
+    while (des_step_status(&hw) & DES_ST_STATUS_MOVING) {
+        if (g_stop || now_s() - t0 > tmax) {
+            des_step_stop(&hw);
+            return g_stop ? "interrupted" : "move did not finish in time";
+        }
+        usleep(5000);
+    }
+    if (des_step_status(&hw) & DES_ST_STATUS_HALTED) return "stepper halted (e-stop input?)";
+    return des_step_pos(&hw) == target ? "" : "stepper stopped short of the target";
+}
+
+static int run_calib_belt(des_hw_t &hw, const AppConfig &cfg, const Args &a)
+{
+    if (cfg.calib_loaded.empty()) {
+        fprintf(stderr, "calibrate the camera first (des_app calib-cam): belt travel is measured in table mm\n");
+        return 1;
+    }
+    CameraRig cam(&hw);
+    if (open_camera(cam, cfg, a)) return 1;
+    Locator loc(cfg.locate);
+    const double est = std::fabs(cfg.belt.mm_per_step), mm_s = a.belt > 0 ? a.belt : 20.0;
+    const double vmax = mm_s / est, acc = vmax * 2;   // 0.5 s ramps
+    const int dir0 = cfg.belt.dir >= 0 ? 1 : -1;      // configured guess: + steps move parts downstream
+    des_step_enable(&hw, 1);
+    usleep(100000);
+    auto fail = [&](const std::string &e) {
+        fprintf(stderr, "calib-belt: %s\n", e.c_str());
+        des_step_stop(&hw);
+        return 2;
+    };
+    Vec2 p0, p1, p2, p3;
+    std::string e = still_position(cam, loc, cfg, p0);
+    if (!e.empty()) return fail(e);
+    printf("start: part at x %.2f y %.2f mm (view x %.0f .. %.0f); estimate %.5f mm/step, %.0f mm/s\n", p0.x, p0.y,
+           cfg.tracker.fov_x0, cfg.tracker.fov_x1, est, mm_s);
+    // 1. short move downstream (with the configured direction guess)
+    const int32_t s1 = dir0 * int32_t(std::lround(8.0 / est));
+    if (!(e = belt_move(hw, s1, vmax, acc)).empty() || !(e = still_position(cam, loc, cfg, p1)).empty()) return fail(e);
+    const double rough = std::fabs(p1.x - p0.x) / std::abs(s1);
+    printf("short move %d steps: x %.2f -> %.2f mm (%.5f mm/step)\n", s1, p0.x, p1.x, rough);
+    if (std::fabs(p1.x - p0.x) < 1.0)
+        return fail("the part did not move: is the driver powered and enabled, the belt tensioned?");
+    const int s_dir = (p1.x > p0.x) == (s1 > 0) ? 1 : -1;   // sign of steps that move parts downstream
+    // 2. long move downstream to ~75 % of the view (or --steps)
+    int32_t s2 = a.steps;
+    if (!s2) {
+        const double room = cfg.tracker.fov_x0 + 0.75 * (cfg.tracker.fov_x1 - cfg.tracker.fov_x0) - p1.x;
+        if (room < 20) return fail("not enough room downstream: put the part near the upstream edge of the view");
+        s2 = s_dir * int32_t(std::lround(room / rough));
+    }
+    if (!(e = belt_move(hw, s2, vmax, acc)).empty() || !(e = still_position(cam, loc, cfg, p2)).empty()) return fail(e);
+    printf("long move %d steps: x %.2f -> %.2f mm\n", s2, p1.x, p2.x);
+    // 3. back to the start
+    if (!(e = belt_move(hw, -(s1 + s2), vmax, acc)).empty() || !(e = still_position(cam, loc, cfg, p3)).empty())
+        return fail(e);
+    printf("back %d steps: x %.2f (start %.2f)\n", -(s1 + s2), p3.x, p0.x);
+    BeltCalib b = belt_from_positions(p0, p1, p2, p3, s1, s2);
+    if (!b.ok) return fail(b.err);
+    printf("== belt: %.6f mm/step, dir %+d (%.1f mm over %d steps); effective roller %.2f mm at 3200 steps/rev\n",
+           b.mm_per_step, b.dir, b.travel_mm, b.steps, b.roller_d_mm);
+    printf("   return error %+.3f mm after %.1f mm forward + back; lateral drift %+.2f mm per 100 mm\n",
+           b.return_err_mm, b.travel_mm, b.drift_mm_per_100);
+    if (std::fabs(b.mm_per_step - est) > 0.3 * est)
+        printf("   (config estimate was %.5f: %+.0f %%)\n", est, (b.mm_per_step / est - 1) * 100);
+    if (std::fabs(b.drift_mm_per_100) > 2)
+        printf("   lateral drift > 2 mm / 100 mm: the camera x axis is not along the belt (re-run calib-cam with the "
+               "board edge against the side guard) or the belt runs off\n");
+    std::string out = a.out.empty() ? cfg.calib_loaded : a.out;
+    e = save_belt_calib(out, b);
+    printf("saved %s: %s\n", out.c_str(), e.empty() ? "ok" : e.c_str());
+    return e.empty() ? 0 : 1;
+}
+
 // ---------------------------------------------------------------- measure
 // One frame (or -n frames of still parts) -> locate -> measure every gear / rack. For accuracy work with real
 // parts: compare with the caliper values, report the repeatability, keep the raw frame to re-run offline.
@@ -680,6 +800,7 @@ int main(int argc, char **argv)
     else if (a.mode == "display") rc = run_display(hw, cfg, a);
     else if (a.mode == "live" || a.mode == "run" || a.mode == "collect") rc = run_live_mode(hw, cfg, a);
     else if (a.mode == "calib-cam") rc = run_calib(&hw, cfg, a);
+    else if (a.mode == "calib-belt") rc = run_calib_belt(hw, cfg, a);
     else if (a.mode == "arm") rc = run_arm(hw, cfg, a);
     else if (a.mode == "measure") rc = run_measure(&hw, cfg, a);
     else { usage(); rc = 1; }

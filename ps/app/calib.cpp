@@ -267,6 +267,75 @@ std::string save_calib(const std::string &path, const CalibResult &r, const Boar
     nlohmann::json fc = nlohmann::json::array();
     for (const Vec2 &v : r.fov_corners) fc.push_back({v.x, v.y});
     j["fov_corners"] = fc;
+    {   // keep the belt scale of an earlier calib-belt run (it does not depend on the camera pose)
+        std::ifstream old(path);
+        nlohmann::ordered_json o;
+        if (old) {
+            try {
+                old >> o;
+                if (o.contains("belt")) j["belt"] = o["belt"];
+            } catch (const std::exception &) {
+            }
+        }
+    }
+    std::ofstream f(path);
+    if (!f) return "cannot write " + path;
+    f << j.dump(2) << "\n";
+    return f ? "" : "write failed: " + path;
+}
+
+BeltCalib belt_from_positions(Vec2 p0, Vec2 p1, Vec2 p2, Vec2 p3, int32_t s1, int32_t s2, int steps_per_rev)
+{
+    BeltCalib b;
+    const int32_t n = s1 + s2;
+    const double dx = p2.x - p0.x;
+    if (n == 0 || std::fabs(p1.x - p0.x) < 1.0) {
+        b.err = "the part did not move with the belt (driver off / not wired / belt slipping)";
+        return b;
+    }
+    if (s2 != 0) {   // both moves must give the same scale and direction (else the part slid / the belt slipped)
+        const double k1 = (p1.x - p0.x) / s1, k2 = (p2.x - p1.x) / s2;
+        if (k1 * k2 <= 0 || std::fabs(k1 - k2) > 0.25 * std::fabs(k2)) {
+            b.err = "short and long move disagree: the part slid on the belt, the belt slipped or another blob was "
+                    "taken for the part";
+            return b;
+        }
+    }
+    b.steps = n;
+    b.travel_mm = std::fabs(dx);
+    b.mm_per_step = b.travel_mm / std::fabs(double(n));
+    b.dir = (dx > 0) == (n > 0) ? 1 : -1;
+    b.return_err_mm = p3.x - p0.x;
+    b.drift_mm_per_100 = (p2.y - p0.y) / b.travel_mm * 100.0;
+    b.roller_d_mm = b.mm_per_step * steps_per_rev / 3.14159265358979;
+    if (b.travel_mm < 20) {
+        b.err = "travel below 20 mm: too short for a useful scale (move the part upstream, raise --steps)";
+        return b;
+    }
+    b.ok = true;
+    return b;
+}
+
+std::string save_belt_calib(const std::string &path, const BeltCalib &b)
+{
+    if (!b.ok) return "no belt calibration to save";
+    nlohmann::ordered_json j;
+    {
+        std::ifstream old(path);
+        if (old) {
+            try {
+                old >> j;
+            } catch (const std::exception &e) {
+                return path + ": " + e.what() + " (fix or delete it, then run calib-cam again)";
+            }
+        }
+    }
+    char date[32];
+    time_t now = time(nullptr);
+    strftime(date, sizeof date, "%Y-%m-%d %H:%M", localtime(&now));
+    j["belt"] = {{"mm_per_step", b.mm_per_step}, {"dir", b.dir}, {"date", date}, {"travel_mm", b.travel_mm},
+                 {"steps", b.steps}, {"return_err_mm", b.return_err_mm}, {"drift_mm_per_100", b.drift_mm_per_100},
+                 {"roller_d_mm", b.roller_d_mm}};
     std::ofstream f(path);
     if (!f) return "cannot write " + path;
     f << j.dump(2) << "\n";

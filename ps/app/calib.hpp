@@ -52,6 +52,22 @@ CalibResult calibrate_from_corners(const std::vector<cv::Point2f> &corners, cv::
 CalibResult calibrate_table(const cv::Mat &gray, const BoardSpec &board, Travel travel, bool exhaustive = false);
 // Writes px_to_table + tracker fov into a JSON merged by load_config (app/config.cpp). Empty string = ok.
 std::string save_calib(const std::string &path, const CalibResult &r, const BoardSpec &board, Travel travel);
+// Belt scale from one part seen by the calibrated camera (des_app calib-belt): positions (table mm, belt still)
+// p0 at the start, p1 after s1 steps, p2 after s1 + s2 steps, p3 after returning to the start.
+struct BeltCalib {
+    bool ok = false;
+    std::string err;
+    double mm_per_step = 0;      // > 0
+    int dir = 1;                 // +1: stepper POS increasing moves parts toward +x (downstream)
+    double travel_mm = 0;        // |p2 - p0| along x
+    int32_t steps = 0;           // s1 + s2
+    double return_err_mm = 0;    // p3.x - p0.x after moving back by the same steps (slip / backlash)
+    double drift_mm_per_100 = 0; // lateral (y) change per 100 mm of travel: belt or camera not square
+    double roller_d_mm = 0;      // effective drive roller diameter for steps_per_rev
+};
+BeltCalib belt_from_positions(Vec2 p0, Vec2 p1, Vec2 p2, Vec2 p3, int32_t s1, int32_t s2, int steps_per_rev = 3200);
+// Adds "belt": {mm_per_step, dir, ...} to the calib JSON (keeps the camera part). Empty string = ok.
+std::string save_belt_calib(const std::string &path, const BeltCalib &b);
 // Draw detected corners, table axes at the origin and a 50 mm grid onto a BGR image.
 void draw_calib(cv::Mat &bgr, const CalibResult &r);
 
