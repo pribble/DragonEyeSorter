@@ -3,9 +3,11 @@
 //
 // Stream: 128-bit beats of 4 pixels (BGRA, B in the low byte of each 32-bit pixel), WIDTH/4 beats per row. Rows are
 // counted from the frame-start edge of tuser exactly like the frame writer does, so coordinates are the ones the PS
-// sees in the DMA buffer. Fixed latency of 6 clocks, no stalls (the frame writer has no back-pressure). The 3x3
-// filters are split over three pipeline stages: the ISP clock is the MIPI byte clock (up to 156 MHz) and TD does
-// not report that domain (fan-out 0 in the timing summary), so short logic depth is the safety margin.
+// sees in the DMA buffer. No stalls (the frame writer has no back-pressure). MODE 0 is a 1-clock register bypass
+// (the camera data are not carried through the filter pipeline: v6 first try with a 128-bit delay line did not route,
+// 90 % slices); the other modes come out of the pipeline after 6 clocks with alpha = 0. The output source switches
+// on the frame-start clock itself (decided by the new mode), so every frame start reaches the writer exactly once. The 3x3 filters are split over three pipeline stages: the ISP clock is the MIPI byte
+// clock (up to 156 MHz) and TD does not report that domain (fan-out 0 in the timing summary).
 //   gray     Y = (77 R + 150 G + 29 B) >> 8 (BT.601)
 //   window   3x3 from two row buffers (one ERAM, WIDTH/4 x 64 bit): Gaussian [1 2 1; 2 4 2; 1 2 1] / 16,
 //            Sobel |Gx| + |Gy| (0..2040)
@@ -96,6 +98,9 @@ module des_vision #(
     reg [10:0] row = 11'd0;
     wire [8:0]  cur_bx  = sof ? 9'd0 : bx;
     wire [10:0] cur_row = sof ? 11'd0 : row;
+    // output source: decided by the NEW mode on the frame-start clock itself, so that frame's start pulse is passed
+    // exactly once (bypass: now; filters: when it comes out of the pipeline)
+    wire bypass = sof ? (p_mode == 3'd0 || p_mode > 3'd5) : (a_mode == 3'd0 || a_mode > 3'd5);
 
     // stage 0 -> 1: gray of the 4 pixels, row-buffer read
     function [7:0] gray_of(input [31:0] p);
@@ -109,7 +114,6 @@ module des_vision #(
     reg [63:0]  lb [0:BEATS-1];         // {row y-2, row y-1} x 4 pixels per beat
     reg [63:0]  lb_rd = 64'd0;
     reg [31:0]  g1 = 32'd0;             // gray of the current beat (row y)
-    reg [127:0] d1 = 128'd0;
     reg [8:0]   bx1 = 9'd0;
     reg [10:0]  row1 = 11'd0;
     reg         v1 = 1'b0, u1 = 1'b0, l1 = 1'b0;
@@ -117,7 +121,6 @@ module des_vision #(
     // stage 1 -> 2: six window columns (top / mid / bottom)
     reg [7:0]   pv_t2 = 8'd0, pv_t3 = 8'd0, pv_m2 = 8'd0, pv_m3 = 8'd0, pv_b2 = 8'd0, pv_b3 = 8'd0;
     reg [47:0]  c2_t = 48'd0, c2_m = 48'd0, c2_b = 48'd0;   // column k in [8k+7:8k], k = 0..5
-    reg [127:0] d2 = 128'd0;
     reg [8:0]   bx2 = 9'd0;
     reg [10:0]  row2 = 11'd0;
     reg         v2 = 1'b0, u2 = 1'b0, l2 = 1'b0;
@@ -129,7 +132,6 @@ module des_vision #(
     reg [59:0]  sa_s = 60'd0;               // S[k] = t + 2m + b, 10 bits each
     reg [39:0]  sa_th = 40'd0, sa_bh = 40'd0;
     reg [31:0]  sa_c = 32'd0;               // centre pixels (column j+1 of the middle row)
-    reg [127:0] da = 128'd0;
     reg [8:0]   bxa = 9'd0;
     reg [10:0]  rowa = 11'd0;
     reg         va = 1'b0, ua = 1'b0, la = 1'b0;
@@ -137,7 +139,6 @@ module des_vision #(
     reg [47:0]  sb_g = 48'd0;               // 12 bits each
     reg [47:0]  sb_gx = 48'd0, sb_gy = 48'd0;   // signed 12 bits each
     reg [31:0]  sb_c = 32'd0;
-    reg [127:0] db = 128'd0;
     reg [8:0]   bxb = 9'd0;
     reg [10:0]  rowb = 11'd0;
     reg         vb = 1'b0, ub = 1'b0, lb_ = 1'b0;
@@ -145,7 +146,6 @@ module des_vision #(
     // stage 2c -> 3: filter results per output pixel j (centre = column j+1 of the window)
     reg [31:0]  gc3 = 32'd0, ga3 = 32'd0;   // centre gray, Gaussian
     reg [43:0]  mg3 = 44'd0;                // Sobel magnitude, 11 bits per pixel
-    reg [127:0] d3 = 128'd0;
     reg [8:0]   bx3 = 9'd0;
     reg [10:0]  row3 = 11'd0;
     reg         v3 = 1'b0, u3 = 1'b0, l3 = 1'b0;
@@ -208,7 +208,6 @@ module des_vision #(
             row <= 11'd0;
         end
         g1   <= {gray_of(s_tdata[127:96]), gray_of(s_tdata[95:64]), gray_of(s_tdata[63:32]), gray_of(s_tdata[31:0])};
-        d1   <= s_tdata;
         bx1  <= cur_bx;
         row1 <= cur_row;
         v1   <= s_tvalid;
@@ -226,7 +225,7 @@ module des_vision #(
             pv_m2 <= cur_m[23:16]; pv_m3 <= cur_m[31:24];
             pv_b2 <= cur_b[23:16]; pv_b3 <= cur_b[31:24];
         end
-        d2 <= d1; bx2 <= bx1; row2 <= row1; v2 <= v1; u2 <= u1; l2 <= l1;
+        bx2 <= bx1; row2 <= row1; v2 <= v1; u2 <= u1; l2 <= l1;
 
         // ---- stage 2a: 1-2-1 sums (column sums over the three rows, row sums of the top / bottom rows)
         for (k = 0; k < 6; k = k + 1)
@@ -238,7 +237,7 @@ module des_vision #(
             sa_bh[10*j +: 10] <= b0 + {b1, 1'b0} + b2;
             sa_c[8*j +: 8]    <= c2_m[8*(j+1) +: 8];
         end
-        da <= d2; bxa <= bx2; rowa <= row2; va <= v2; ua <= u2; la <= l2;
+        bxa <= bx2; rowa <= row2; va <= v2; ua <= u2; la <= l2;
 
         // ---- stage 2b: Gaussian sum, Gx, Gy
         for (j = 0; j < 4; j = j + 1) begin
@@ -248,7 +247,7 @@ module des_vision #(
             sb_gy[12*j +: 12] <= $signed({2'd0, sa_bh[10*j +: 10]}) - $signed({2'd0, sa_th[10*j +: 10]});
         end
         sb_c <= sa_c;
-        db <= da; bxb <= bxa; rowb <= rowa; vb <= va; ub <= ua; lb_ <= la;
+        bxb <= bxa; rowb <= rowa; vb <= va; ub <= ua; lb_ <= la;
 
         // ---- stage 2c: |Gx| + |Gy|, Gaussian / 16
         for (j = 0; j < 4; j = j + 1) begin
@@ -261,12 +260,12 @@ module des_vision #(
             ga3[8*j +: 8]   <= sb_g[12*j + 4 +: 8];
             mg3[11*j +: 11] <= mag[10:0];
         end
-        d3 <= db; bx3 <= bxb; row3 <= rowb; v3 <= vb; u3 <= ub; l3 <= lb_;
+        bx3 <= bxb; row3 <= rowb; v3 <= vb; u3 <= ub; l3 <= lb_;
 
-        // ---- stage 3: output pixels, statistics inputs
-        m_tvalid <= v3;
-        m_tuser  <= u3;
-        m_tlast  <= l3;
+        // ---- stage 3: output (camera bypass or filtered pixels), statistics inputs
+        m_tvalid <= bypass ? s_tvalid : v3;
+        m_tuser  <= bypass ? s_tuser  : u3;
+        m_tlast  <= bypass ? s_tlast  : l3;
         for (j = 0; j < 4; j = j + 1) begin
             case (a_mode)
                 3'd1: ov = gc3[8*j +: 8];
@@ -276,7 +275,7 @@ module des_vision #(
                 3'd5: ov = (mg3[11*j +: 11] >= a_ethr) ? 8'hFF : 8'h00;
                 default: ov = 8'd0;
             endcase
-            m_tdata[32*j +: 32] <= (a_mode == 3'd0 || a_mode > 3'd5) ? d3[32*j +: 32] : {d3[32*j+24 +: 8], ov, ov, ov};
+            m_tdata[32*j +: 32] <= bypass ? s_tdata[32*j +: 32] : {8'd0, ov, ov, ov};
             cx = {bx3, 2'b00} + j - 1;                      // x of the result (one left of the window's last column)
             inroi = a_full || (cx >= a_x0 && cx <= a_x1 && row3 - 1'b1 >= a_y0 && row3 - 1'b1 <= a_y1);
             inroi = inroi && !(bx3 == 9'd0 && j == 0) && row3 != 11'd0;   // x = -1 / y = -1 do not exist

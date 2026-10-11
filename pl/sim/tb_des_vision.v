@@ -1,7 +1,8 @@
 `timescale 1ns/1ps
 // des_vision on a small frame (32 x 12): output pixels of every mode against a behavioural model with the same
 // boundary rules, ROI statistics (area, bounding box, sums, edges), cycles per frame, settings applied only at the
-// next frame start, stream timing (same number of beats, 6-clock latency) with random gaps in tvalid.
+// next frame start, stream timing (same number of beats; camera bypass 1 clock, filters 6 clocks) with random gaps
+// in tvalid.
 module tb_des_vision;
     localparam integer W = 32, H = 12, BEATS = W / 4;
     reg pclk = 0, clk = 0;
@@ -102,6 +103,15 @@ module tb_des_vision;
     reg [7:0] outpix [0:W*H-1];
     integer out_beats = 0, out_frame = 0, ob = 0;
     reg capture = 0;
+    // every frame start must reach the frame writer exactly once, also across mode switches
+    integer in_sof = 0, out_sof = 0;
+    reg in_u_d = 0, out_u_d = 0;
+    always @(posedge pclk) begin
+        in_u_d <= s_tuser; out_u_d <= m_tuser;
+        if (s_tuser && !in_u_d) in_sof = in_sof + 1;
+        if (m_tuser && !out_u_d) out_sof = out_sof + 1;
+    end
+    integer capture_mode = 0;   // mode the captured frame is expected in (alpha check)
     always @(posedge pclk) begin
         if (m_tuser) begin out_beats = 0; ob = 0; end
         if (m_tvalid) begin
@@ -109,8 +119,8 @@ module tb_des_vision;
             if (capture && ob < W * H / 4) begin
                 outpix[4*ob]   = m_tdata[7:0];   outpix[4*ob+1] = m_tdata[39:32];
                 outpix[4*ob+2] = m_tdata[71:64]; outpix[4*ob+3] = m_tdata[103:96];
-                check(m_tdata[31:24] == 8'hA5 && m_tdata[15:8] == m_tdata[7:0] && m_tdata[23:16] == m_tdata[7:0],
-                      "output pixel = {alpha kept, v, v, v}");
+                check(m_tdata[31:24] == (capture_mode == 0 ? 8'hA5 : 8'h00) && m_tdata[15:8] == m_tdata[7:0] &&
+                      m_tdata[23:16] == m_tdata[7:0], "output pixel = camera, or {0, v, v, v} when filtered");
             end
             ob = ob + 1;
         end
@@ -147,8 +157,8 @@ module tb_des_vision;
         join_none
         send_frame;                                       // warm-up frame (fills the row buffer's "row above 0")
         latency = (t_out - t_in) / 8;
-        $sformat(msg, "6-clock latency (%0d)", latency);
-        check(latency == 6, msg);
+        $sformat(msg, "camera bypass: 1-clock latency (%0d)", latency);
+        check(latency == 1, msg);
         check(out_beats == W * H / 4, "every input beat comes out");
 
         for (mode = 0; mode <= 5; mode = mode + 1) begin
@@ -156,6 +166,7 @@ module tb_des_vision;
             wreg(8'h04, {5'd0, 11'd300, 8'd0, 8'd128});
             wreg(8'h10, 32'd1);                           // apply at the next frame start
             repeat (10) @(posedge pclk);
+            capture_mode = mode;
             capture = 1;
             send_frame;
             capture = 0;
@@ -211,6 +222,7 @@ module tb_des_vision;
         rreg(8'h28, r); check(r[26:16] == x1 && x1 == 15, "ROI clips the bounding box at X1");
 
         // settings written mid-frame do not change the frame in progress
+        capture_mode = 3;
         capture = 1;
         fork
             send_frame;
@@ -226,6 +238,7 @@ module tb_des_vision;
             for (x = 1; x < W; x = x + 1)
                 if (outpix[y*W + x] !== expect_out(3, x, y)) bad = bad + 1;
         check(bad == 0, "mid-frame APPLY waits for the next frame start");
+        capture_mode = 0;
         capture = 1;
         send_frame;
         capture = 0;
@@ -235,6 +248,9 @@ module tb_des_vision;
                 if (outpix[y*W + x] !== img(x, y)) bad = bad + 1;
         check(bad == 0, "... and applies at the next one (camera passthrough)");
 
+        repeat (20) @(posedge pclk);
+        $sformat(msg, "one frame start out per frame start in (%0d / %0d)", out_sof, in_sof);
+        check(out_sof == in_sof, msg);
         $display("des_vision: %0d passed, %0d failed", passes, fails);
         $finish;
     end
