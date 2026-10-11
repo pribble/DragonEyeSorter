@@ -7,6 +7,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <deque>
 #include <mutex>
 #include <set>
 #include <string>
@@ -46,7 +47,9 @@ private:
     void arm_loop();
     void handle_can(double now);
     void set_state(uint8_t s, const char *why);
-    void send(const canp_frame_t &f);
+    void send(const canp_frame_t &f);        // queued: at most one frame per cycle (see flush_tx)
+    void send_now(const canp_frame_t &f);    // ACKs: right away
+    void flush_tx();
 
     des_hw_t *hw_;
     const AppConfig &cfg_;
@@ -54,6 +57,8 @@ private:
     BeltDriver belt_;
     ArmExec arm_;
     int can_fd_ = -1;
+    std::deque<canp_frame_t> txq_;
+    uint64_t tx_dropped_ = 0;
     std::atomic<uint8_t> state_{CANP_ST_IDLE};
     uint8_t alarm_ = 0;
     uint32_t prev_status_ = 0;

@@ -14,7 +14,8 @@ extern "C" {
 
 int can_open(const char *ifname);                              /* fd, or -1 (errno set) */
 void can_close(int fd);
-int can_send(int fd, const canp_frame_t *f);                   /* 0 ok, -1 error */
+int can_send(int fd, const canp_frame_t *f);                   /* 0 ok, -1 error (waits up to 100 ms if the TX queue is full) */
+int can_try_send(int fd, const canp_frame_t *f);               /* one attempt: 0 ok, 1 TX queue full, -1 error */
 int can_recv(int fd, canp_frame_t *f, int timeout_ms);         /* 1 frame, 0 timeout, -1 error */
 /* Interface counters from /sys/class/net/<if>/statistics (tx/rx packets and errors); -1 if unreadable. */
 long can_stat(const char *ifname, const char *name);

@@ -102,7 +102,7 @@ module stepper_ctrl #(
             halted <= 0;
             stopping <= 0;
             accel_steps <= 0;
-            phase <= 0;
+            phase <= 32'hFFFF_FFFF;   // first step right after the DIR setup time, not one start-speed period later
             acc_cnt <= 0;
             cur_inc <= vmin_inc;
             setup_cnt <= SETUP_CLK;

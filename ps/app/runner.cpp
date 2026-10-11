@@ -59,9 +59,32 @@ std::string Runner::start()
     return "";
 }
 
+// Frames written back to back can be lost by the CAN controller (soak 10-11, loopback: 1000 of 108691, 79 of 82
+// lost STATUS frames in seconds with bursts of PART frames; spaced sends at <= 2000 frames/s lose nothing). So
+// everything but ACKs goes through a queue drained one frame per cycle (60 frames/s; normal load ~15 frames/s,
+// a burst of parts is spread over a few hundred ms).
 void Runner::send(const canp_frame_t &f)
 {
+    if (can_fd_ < 0) return;
+    if (txq_.size() >= 256) {   // PLC away / bus off: keep the newest
+        txq_.pop_front();
+        tx_dropped_++;
+    }
+    txq_.push_back(f);
+}
+
+void Runner::send_now(const canp_frame_t &f)
+{
     if (can_fd_ >= 0) can_send(can_fd_, &f);
+}
+
+void Runner::flush_tx()
+{
+    if (can_fd_ < 0 || txq_.empty()) return;
+    const int r = can_try_send(can_fd_, &txq_.front());   // never blocks the worker (no PLC on the bus: queue full)
+    if (r == 1) return;                                    // try again next cycle
+    if (r < 0) tx_dropped_++;
+    txq_.pop_front();
 }
 
 void Runner::set_state(uint8_t s, const char *why)
@@ -121,15 +144,15 @@ void Runner::handle_can(double now)
         switch (f.id) {
         case CANP_ID_CMD:
             result = command(f.data[0], "PLC");
-            send(canp_ack(f.id, f.data[1], result));
+            send_now(canp_ack(f.id, f.data[1], result));
             break;
         case CANP_ID_SPEED:
             result = set_speed(canp_get16(f.data) / 10.0, "PLC");
-            send(canp_ack(f.id, f.data[2], result));
+            send_now(canp_ack(f.id, f.data[2], result));
             break;
         case CANP_ID_RECIPE:
             last_event_ = "PLC recipe " + std::to_string(f.data[0]) + " (recipes not implemented yet)";
-            send(canp_ack(f.id, f.data[1], CANP_ACK_OK));
+            send_now(canp_ack(f.id, f.data[1], CANP_ACK_OK));
             break;
         case CANP_ID_PLC_HB: last_plc_hb_ = now; break;
         case CANP_ID_TIME: {   // the PLC's wall clock (no RTC here): records use our clock + this offset
@@ -244,14 +267,17 @@ void Runner::cycle(Tracker &tr, Picker &pk)
         send(canp_counts(&counts_));
         last_counts_ = now;
     }
+    flush_tx();
 }
 
 std::string Runner::status_line() const
 {
-    char b[200];
-    snprintf(b, sizeof b, "%s  belt %.1f mm/s  arm %s  total %u ok %u ng %u recheck %u  %s%s", state_name(state_),
+    char b[240], q[48] = "";
+    if (txq_.size() > 4 || tx_dropped_)
+        snprintf(q, sizeof q, "CAN txq %zu dropped %llu  ", txq_.size(), (unsigned long long)tx_dropped_);
+    snprintf(b, sizeof b, "%s  belt %.1f mm/s  arm %s  total %u ok %u ng %u recheck %u  %s%s%s", state_name(state_),
              belt_.speed_mm_s(), arm_busy_ ? "busy" : "idle", counts_.total, counts_.ok, counts_.ng, counts_.recheck,
-             can_fd_ >= 0 ? (now_s() - last_plc_hb_ < 1.0 ? "PLC ok  " : "PLC --  ") : "", last_event_.c_str());
+             can_fd_ >= 0 ? (now_s() - last_plc_hb_ < 1.0 ? "PLC ok  " : "PLC --  ") : "", q, last_event_.c_str());
     return b;
 }
 

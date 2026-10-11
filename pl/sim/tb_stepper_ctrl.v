@@ -25,10 +25,12 @@ module tb_stepper_ctrl;
     integer mon_pos = 0, mon_pulses = 0;
     real    t_fall = 0, t_prev_fall = -1, min_period = 1e18, min_width = 1e18, t_dir_change = 0;
     real    min_dir_setup = 1e18;
+    real    t_first = -1;                     // first pulse of the run (START -> first step latency)
     reg     last_dir_n = 1;
     always @(dir_n) begin t_dir_change = $realtime; end
     always @(negedge pul_n) begin
         t_fall = $realtime;
+        if (t_first < 0) t_first = $realtime;
         if (t_prev_fall >= 0 && t_fall - t_prev_fall < min_period) min_period = t_fall - t_prev_fall;
         if (t_fall - t_dir_change < min_dir_setup) min_dir_setup = t_fall - t_dir_change;
         t_prev_fall = t_fall;
@@ -82,6 +84,8 @@ module tb_stepper_ctrl;
         t_end = $realtime;
         reg_rd(8'h18, r); check("pos after +1000 move", $signed(r), 1000);
         check("monitor pos", mon_pos, 1000);
+        // first step right after the 10 us DIR setup, not one start-speed period (1 / VMIN = 500 us) later
+        check("first step within 12 us of START", (t_first - t_start) < 12000.0, 1);
         reg_rd(8'h04, r); check("AT_TARGET", r[2], 1);
         check_ge("min pulse width ns", min_width, 4900.0);
         check_ge("min step period ns (>= 1/VMAX)", min_period, 1.0e9 / VMAX * 0.98);

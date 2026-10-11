@@ -51,6 +51,17 @@ int can_send(int fd, const canp_frame_t *f)
     return -1;
 }
 
+int can_try_send(int fd, const canp_frame_t *f)
+{
+    struct can_frame cf;
+    memset(&cf, 0, sizeof cf);
+    cf.can_id = f->id & CAN_SFF_MASK;
+    cf.can_dlc = f->len > 8 ? 8 : f->len;
+    memcpy(cf.data, f->data, cf.can_dlc);
+    if (write(fd, &cf, sizeof cf) == (ssize_t)sizeof cf) return 0;
+    return (errno == ENOBUFS || errno == EAGAIN) ? 1 : -1;
+}
+
 int can_recv(int fd, canp_frame_t *f, int timeout_ms)
 {
     struct pollfd p = {fd, POLLIN, 0};

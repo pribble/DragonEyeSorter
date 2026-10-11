@@ -52,11 +52,13 @@ ip -s -d link show "$IF" > "$OUT/can_after.txt"
     grep "^== live" "$OUT/run.log"
     awk -F, 'NR==2 {r0=$2} NR>1 {n++; r=$2; if ($2>rmax) rmax=$2; if ($4>lmax) lmax=$4; if (amin==""||$6<amin) amin=$6}
         END {printf "samples %d, RSS first %d kB last %d kB max %d kB, load1 max %s, MemAvailable min %d kB\n", n, r0, r, rmax, lmax, amin}' "$OUT/mon.csv"
-    grep -ciE "error|abort|segfault|cannot|failed [1-9]" "$OUT/run.log" | sed "s/^/run.log error lines: /"
+    grep -v "fps shown" "$OUT/run.log" | grep -ciE "error|abort|segfault|cannot|failed" | sed "s/^/run.log error lines (status lines excluded): /"
     grep "^\[run\]" "$OUT/run.log" | tail -5
     awk '/^STATUS/ {n++; for (i = 1; i <= NF; i++) if ($i == "hb") h = $(i + 1);
                     if (n > 1) { d = (h - p + 256) % 256; if (d == 0) dup++; else lost += d - 1 } p = h;
                     if ($0 ~ /plc-link/) link++ }
          END {printf "PLC side: STATUS frames %d, lost %d, duplicated %d, with plc-link %d\n", n, lost, dup, link}' "$OUT/plc.log"
     grep "^COUNTS.*recheck [0-9]*$" "$OUT/plc.log" | tail -1
+    # interface counters since can_up (loopback: every TX frame should come back as RX)
+    awk '/RX:/ {getline; rx = $2} /TX:/ {getline; tx = $2} END {printf "can0 packets TX %d RX %d (loopback difference %d)\n", tx, rx, tx - rx}' "$OUT/can_after.txt"
 } | tee "$OUT/summary.txt"
