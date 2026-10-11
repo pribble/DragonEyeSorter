@@ -104,6 +104,7 @@ struct Track {
     int hits = 0, misses = 0;
     bool merged = false;
     std::vector<float> score;   // summed confidence per class
+    int votes = 0;              // classifications summed into score (per-frame detector classes or crop votes)
     int cls = -1;
     float cls_conf = 0;     // mean confidence of the voted class
     uint32_t first_frame = 0, last_frame = 0;
@@ -121,6 +122,9 @@ public:
     explicit Tracker(TrackerConfig cfg) : cfg_(std::move(cfg)) {}
 
     void update(const FrameObs &obs);
+    // Soft vote of a crop classifier (NPU on the part crop) for one track: probs[c] added to score[c]. Only while the
+    // track is New / Tracking (a decided part keeps its decision). Returns false if the track is gone or decided.
+    bool vote(int track_id, const std::vector<float> &probs);
     // Drop finished tracks and tracks past the belt end. Call once per cycle with the current belt travel.
     void retire(double belt_mm);
 

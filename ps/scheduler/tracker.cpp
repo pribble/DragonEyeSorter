@@ -30,6 +30,16 @@ const char *to_str(Disposition d)
     return "?";
 }
 
+bool Tracker::vote(int track_id, const std::vector<float> &probs)
+{
+    Track *t = find(track_id);
+    if (!t || (t->state != TrackState::New && t->state != TrackState::Tracking)) return false;
+    if (t->score.size() < probs.size()) t->score.resize(probs.size(), 0.f);
+    for (size_t c = 0; c < probs.size(); c++) t->score[c] += probs[c];
+    t->votes++;
+    return true;
+}
+
 Track *Tracker::find(int id)
 {
     for (auto &t : tracks_)
@@ -46,6 +56,7 @@ void Tracker::fuse(Track &t, const Detection &d, double belt_mm, uint32_t frame)
     if (d.cls >= 0) {
         if (size_t(d.cls) >= t.score.size()) t.score.resize(d.cls + 1, 0.f);
         t.score[d.cls] += d.conf;
+        t.votes++;
     }
     if (d.partial) return;   // presence only: a cut blob has a shifted center and wrong size
     int n = ++t.n_geom;
@@ -100,7 +111,7 @@ void Tracker::decide(Track &t)
     for (size_t c = 0; c < t.score.size(); c++)
         if (t.score[c] > best_score) { best_score = t.score[c]; best = int(c); }
     t.cls = best;
-    t.cls_conf = best >= 0 ? best_score / t.hits : 0.f;
+    t.cls_conf = best >= 0 ? best_score / std::max(1, t.votes) : 0.f;   // mean confidence of the winning class
 
     if (t.merged) {
         t.disp = Disposition::Recheck; t.why = "merged blob";

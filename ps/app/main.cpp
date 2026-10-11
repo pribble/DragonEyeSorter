@@ -11,6 +11,9 @@
 //   des_app arm home|goto <x> <y> [z] [axis]|pick <x> <y> [axis_deg] [bin]   motion: dry run unless --go
 //   des_app calib-cam [--board 9x6] [--square mm] [--travel right|left|down|up] [--image f.png] [--out calib.json]
 //                                                                   checkerboard on the belt -> px_to_table (calib.json)
+// NPU: the part classifier (des_app.json "npu", train/export_npu.py) runs in live / run / collect when its model exists
+//   des_app collect --cls <label> [-n sec] [--belt mm/s] [--every N] [--max N] [--full N] [--out dir]
+//                                                                   live + training crops of one class (des_app.json labels)
 //   des_app measure [-n frames] [--image f.png] [--out raw.png] [--dump report.png]
 //                                                                   measure every gear / rack in view; -n > 1: repeatability
 // common: -c <config.json> (default /root/des/des_app.json), --no-rt
@@ -69,17 +72,21 @@ struct Args {
     bool rt = true;
     double belt = 0;
     std::vector<double> pos;
+    std::string cls;           // collect: class label
+    int every = 6, maxpp = 10, full = 0;
 };
 
 static void usage()
 {
     fprintf(stderr,
-            "usage: des_app probe|locate|track|display|live|run|calib-cam|measure|arm|ik [options]\n"
+            "usage: des_app probe|locate|track|display|live|run|collect|calib-cam|measure|arm|ik [options]\n"
             "  -c cfg.json  -n N  --vmax N  --exp us  --gain dB*10  --dump file.png  --belt mm/s  --no-rt\n"
             "  calib-cam: --board <cols>x<rows> (inner corners)  --square <mm>  --travel right|left|down|up\n"
             "             --image <file> (instead of the camera)  --out <calib.json>  --exhaustive\n"
             "  arm: scan | read | teach | torque-on | torque-off | home | goto x y [z] [axis] | pick x y [axis] [bin]\n"
             "       motion commands only print the servo frames unless --go\n"
+            "  collect: --cls <label> (one class per session)  --every <frames>  --max <crops per part>\n"
+            "           --full <frames> (also full frames + YOLO boxes)  --out <dir>  --belt <mm/s>\n"
             "  measure: -n <frames> (still parts: repeatability)  --image <file> (instead of the camera)\n"
             "           --out <raw.png> (keep the frame for --image later)  --dump <report.png>\n");
 }
@@ -106,6 +113,10 @@ static bool parse(int argc, char **argv, Args &a)
         else if (k == "--travel" && (v = val())) a.travel = v;
         else if (k == "--image" && (v = val())) a.image = v;
         else if (k == "--out" && (v = val())) a.out = v;
+        else if (k == "--cls" && (v = val())) a.cls = v;
+        else if (k == "--every" && (v = val())) a.every = atoi(v);
+        else if (k == "--max" && (v = val())) a.maxpp = atoi(v);
+        else if (k == "--full" && (v = val())) a.full = atoi(v);
         else if (a.mode.empty() && k[0] != '-') a.mode = k;   // first plain word is the mode
         else if (a.sub.empty() && isalpha((unsigned char)k[0])) a.sub = k;   // then an optional sub-command
         else if (k[0] != '-' || (k.size() > 1 && (isdigit(k[1]) || k[1] == '.'))) a.pos.push_back(atof(k.c_str()));
@@ -356,6 +367,22 @@ static int run_live_mode(des_hw_t &hw, const AppConfig &cfg, const Args &a)
     opt.seconds = a.n;
     opt.belt_mm_s = a.belt;
     opt.dump = a.dump;
+    if (a.mode == "collect") {
+        if (a.cls.empty()) { fprintf(stderr, "collect needs --cls <label>\n"); return 1; }
+        for (size_t i = 0; i < cfg.tracker.rules.size(); i++)
+            if (cfg.tracker.rules[i].label == a.cls) opt.collect.label_id = int(i);
+        if (opt.collect.label_id < 0) {
+            fprintf(stderr, "unknown class '%s'; labels:", a.cls.c_str());
+            for (const ClassRule &r : cfg.tracker.rules) fprintf(stderr, " %s", r.label.c_str());
+            fprintf(stderr, "\n");
+            return 1;
+        }
+        opt.collect.label = a.cls;
+        opt.collect.every = std::max(1, a.every);
+        opt.collect.max_per_part = std::max(1, a.maxpp);
+        opt.collect.full_every = std::max(0, a.full);
+        if (!a.out.empty()) opt.collect.out = a.out;
+    }
     if (a.mode == "run") {
         opt.run = true;
         opt.run_opt.can_if = a.can_if;
@@ -651,7 +678,7 @@ int main(int argc, char **argv)
     else if (a.mode == "locate") rc = run_locate(hw, cfg, a);
     else if (a.mode == "track") rc = run_track(hw, cfg, a);
     else if (a.mode == "display") rc = run_display(hw, cfg, a);
-    else if (a.mode == "live" || a.mode == "run") rc = run_live_mode(hw, cfg, a);
+    else if (a.mode == "live" || a.mode == "run" || a.mode == "collect") rc = run_live_mode(hw, cfg, a);
     else if (a.mode == "calib-cam") rc = run_calib(&hw, cfg, a);
     else if (a.mode == "arm") rc = run_arm(hw, cfg, a);
     else if (a.mode == "measure") rc = run_measure(&hw, cfg, a);

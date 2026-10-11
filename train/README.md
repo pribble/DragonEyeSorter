@@ -1,0 +1,48 @@
+# train/ — 零件分类模型（NPU，赛题硬性项④）
+
+**路线（2026-10-11 定）**：PS 用 OpenCV 定位（已在 60fps 主循环里）→ 每个零件按自身方向转正裁一块 **56×56mm → 224×224**（`ps/app/roi_crop`，约 0.25mm/像素）→ NPU 跑 **YOLOv8n-cls@224** 分 8 类（`models/label_list.json`）→ 每件在经过视野时分类 3~6 次，概率软投票（`Tracker::vote`）→ 去向。
+
+为什么不用整帧检测：4.2mm 镜头、相机高约 300mm 时整帧约 0.21mm/像素，整帧缩到 416 输入后约 0.95mm/像素，1mm 的黑点 / 缺料只剩 1 个像素；裁切后同样的缺陷有约 4 个像素。分类模型计算量约为整帧 YOLOv8n@416 的 1/7。
+
+**训练和推理用同一个裁切函数**（`roi_crop`），归一化也一致（RGB、÷255、均值 0），这是精度不掉的前提。
+
+## 流程
+
+```
+采集（板上）  des_app collect --cls gear_ok          一次只放一类零件，每件自动存 ≤10 张裁切图
+     ↓        /root/des/data/collect/<会话>_<类别>/<id>_<类别>/*.jpg
+整理（PC）    prepare_dataset.py                      合并会话，按「零件」分 train / val（不按图片，防止同一零件两边都有）
+     ↓
+训练（PC）    train_cls.py                            YOLOv8n-cls，ImageNet 预训练，温和增强（翻转、亮度；不随机擦除、几乎不随机裁剪）
+     ↓
+导出 + 量化   export_npu.py                           ONNX opset 13 → 去掉 Softmax → ORT quantize_static（QDQ / UINT8 / per-tensor，与厂家 fire_detect 同格式）+ 模型 JSON
+     ↓
+评估（PC）    eval_onnx.py                            fp32 / uint8 准确率、混淆矩阵、OK/NG 两类准确率，导出板上核对用的参考集
+     ↓
+上板          scp 模型 + JSON → /root/des/；test_npu 核对 NPU 与 PC 一致、测推理耗时；des_app live / run 自动加载
+```
+
+## 命令（WSL，训练环境 `~/des-train`：torch CPU 2.14、ultralytics 8.4、onnx 1.23、onnxruntime 1.23）
+
+```bash
+export YOLO_CONFIG_DIR=$HOME/.ultralytics-cfg
+cd /mnt/d/ANLU/DragonEyeSorter/train
+# 真实数据（采集会话拷到 WSL 本地盘再训，/mnt/d 很慢）
+~/des-train/bin/python prepare_dataset.py --src ~/des-work/collect --out ~/des-work/real --val-sessions val_
+~/des-train/bin/python train_cls.py --data ~/des-work/real --epochs 40 --name real --project ~/des-work/runs
+~/des-train/bin/python export_npu.py --weights ~/des-work/runs/real/weights/best.pt --calib ~/des-work/real/train --out ../models/part_cls
+~/des-train/bin/python eval_onnx.py --model ../models/part_cls --val ~/des-work/real/val --refs out/part_cls_refs
+# 板上
+scp ../models/part_cls_uint8.onnx ../models/part_cls.json root@192.168.137.100:/root/des/
+scp -r out/part_cls_refs root@192.168.137.100:/root/des/
+ssh root@192.168.137.100 /root/bin/test_npu /root/des/part_cls.json /root/des/part_cls_refs 200
+```
+
+**冒烟测试**（零件没到时先验证整条链路）：`synth_crops.py` 生成 8 类合成裁切图（齿轮 / 齿条 + 缺料 / 飞边 / 黑点），走完上面全部步骤。合成数据**只用来验证工具链和测 NPU 耗时**，不代表真实精度。
+
+## 采集建议（每类目标 ≥300 张、≥30 个零件）
+
+- 一个会话只放**一类**；验证集用**另外的零件编号**单独采（会话名里带 `val_`，见 `物料与缺陷样本.md` §6.1 的分配），整理时 `--val-sessions val_`。
+- 皮带低速走（`--belt 30`），零件随机方向、在中线附近；每件存 ≤10 张（`--max`），间隔 6 帧（`--every`）。
+- 光照、相机高度定了以后再采正式数据；之后改了光照要补采。
+- 想要检测模型备选时加 `--full 30`：每 30 帧存整帧 + 定位器自动生成的 YOLO 框。

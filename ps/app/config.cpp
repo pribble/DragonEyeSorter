@@ -145,6 +145,10 @@ std::string load_config(const std::string &path, AppConfig &cfg)
         get(j, "bins", cfg.bins);
         get(j, "outlets", cfg.outlets);
         get(j, "label_list", cfg.label_list);
+        if (j.contains("npu")) {
+            const json &c = j["npu"];
+            get(c, "enabled", cfg.npu.enabled); get(c, "model", cfg.npu.model); get(c, "core", cfg.npu.core);
+        }
         if (j.contains("storage")) {
             const json &c = j["storage"];
             auto &s = cfg.storage;
@@ -207,6 +211,7 @@ std::string load_config(const std::string &path, AppConfig &cfg)
     cfg.picker.tail_x = cfg.tracker.tail_x;
     cfg.picker.recheck_outlet = 0;
 
+    if (!cfg.npu.model.empty() && cfg.npu.model[0] != '/') cfg.npu.model = dir_of(path) + "/" + cfg.npu.model;
     std::string ll = cfg.label_list;
     if (!ll.empty() && ll[0] != '/') ll = dir_of(path) + "/" + ll;
     return load_rules(ll, cfg);

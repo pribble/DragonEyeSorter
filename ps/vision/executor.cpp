@@ -5,11 +5,25 @@
 
 #include "armnnUtils/DataLayoutIndexed.hpp"
 #include "executor.hpp"
+#include <cstdlib>
 #include "armnnALUtils/cma_mem_init.hpp"
+
+// DragonEyeSorter: ARMNN_LOG=trace|debug|info|warning lowers the log threshold (diagnosing model loading)
+static armnn::LogSeverity des_log_severity()
+{
+    const char *e = getenv("ARMNN_LOG");
+    if (!e) return armnn::LogSeverity::Error;
+    std::string s = e;
+    if (s == "trace") return armnn::LogSeverity::Trace;
+    if (s == "debug") return armnn::LogSeverity::Debug;
+    if (s == "info") return armnn::LogSeverity::Info;
+    if (s == "warning") return armnn::LogSeverity::Warning;
+    return armnn::LogSeverity::Error;
+}
 
 NPUExecutor::NPUExecutor(const std::string &modelPath, const std::vector<armnn::BackendId> &backends, std::optional<armnn::INetworkProperties> network_properties)
     : m_runtime(armnn::IRuntime::Create(armnn::IRuntime::CreationOptions())) {
-    armnn::ConfigureLogging(true, false, armnn::LogSeverity::Error);
+    armnn::ConfigureLogging(true, false, des_log_severity());
 
     armnnOnnxParser::IOnnxParserPtr parser = armnnOnnxParser::IOnnxParser::Create();
 
@@ -62,7 +76,7 @@ NPUExecutor::NPUExecutor(
     armnn::INetworkPtr network, std::vector<armnn::BindingPointInfo> inputBindingInfo, std::vector<armnn::BindingPointInfo> outputBindingInfo,
     const std::vector<armnn::BackendId> &backends, std::optional<armnn::INetworkProperties> network_properties)
     : m_runtime(armnn::IRuntime::Create(armnn::IRuntime::CreationOptions())) {
-    armnn::ConfigureLogging(true, false, armnn::LogSeverity::Error);
+    armnn::ConfigureLogging(true, false, des_log_severity());
 
     // Create ArmNN runtime
     armnn::IRuntime::CreationOptions rt_options; // default options

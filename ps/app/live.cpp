@@ -28,6 +28,7 @@
 
 #include "hdmi_out.hpp"
 #include "locate.hpp"
+#include "npu_async.hpp"
 #include "part_log.hpp"
 #include "picker.hpp"
 #include "track_measure.hpp"
@@ -79,6 +80,9 @@ struct Snapshot {
     LocateTiming tm;
     double work_ms = 0;
     double meas_ms = 0;                         // geometric measurement in that cycle (0 = none)
+    bool npu = false;                           // classifier loaded
+    float npu_ms = 0, npu_pre_ms = 0;
+    uint64_t npu_runs = 0, npu_dropped = 0;
     uint64_t measured = 0, meas_failed = 0;
     uint64_t logged = 0, log_images = 0, log_dropped = 0;
     BeltPlan plan;
@@ -109,9 +113,11 @@ cv::Mat render_panel(const Snapshot &s, const Shared &sh, uint32_t pl_frame, uin
     snprintf(l1, sizeof l1, "DragonEyeSorter %s  %.1f fps  PL frame %u  skipped %llu  worker lag %llu",
              s.run_line.empty() ? "live" : "run", sh.disp_fps.load(), pl_frame,
              (unsigned long long)sh.disp_skipped.load(), (unsigned long long)lag);
-    snprintf(l2, sizeof l2, "locate %.1f ms  measure %.1f ms (%llu/%llu)  worker %.1f ms  blobs %zu  tracks %zu  belt %.1f mm",
+    char npu[64] = "npu off";
+    if (s.npu) snprintf(npu, sizeof npu, "npu %.1f ms (%llu)", s.npu_ms, (unsigned long long)s.npu_runs);
+    snprintf(l2, sizeof l2, "locate %.1f ms  measure %.1f ms (%llu/%llu)  %s  worker %.1f ms  tracks %zu  belt %.1f mm",
              (s.tm.gray_us + s.tm.thresh_us + s.tm.contour_us) / 1e3, s.meas_ms, (unsigned long long)s.measured,
-             (unsigned long long)(s.measured + s.meas_failed), s.work_ms, s.blobs.size(), s.tracks.size(), belt_mm);
+             (unsigned long long)(s.measured + s.meas_failed), npu, s.work_ms, s.tracks.size(), belt_mm);
     snprintf(l3, sizeof l3, "pick %llu  flap %llu  recheck %llu  noise %llu  belt plan %s  saved %llu (img %llu)",
              (unsigned long long)s.st.decided_pick, (unsigned long long)s.st.decided_flap,
              (unsigned long long)s.st.decided_recheck, (unsigned long long)s.st.noise, plans[s.plan.kind],
@@ -124,7 +130,7 @@ cv::Mat render_panel(const Snapshot &s, const Shared &sh, uint32_t pl_frame, uin
     return panel;
 }
 
-void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner)
+void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, const LiveOptions &opt)
 {
     pin_to_core(1);
     sched_param sp{};
@@ -138,6 +144,25 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner)
         std::string e = plog.open(cfg.storage);
         if (!e.empty()) fprintf(stderr, "storage: %s (parts are NOT recorded)\n", e.c_str());
         else if (plog.is_open()) printf("storage: %s (images: %s)\n", plog.csv_path.c_str(), cfg.storage.images.c_str());
+    }
+    std::unique_ptr<Collector> col;
+    if (!opt.collect.label.empty()) {
+        col.reset(new Collector(opt.collect, cfg));
+        std::string e = col->open();
+        if (!e.empty()) {
+            fprintf(stderr, "collect: %s\n", e.c_str());
+            col.reset();
+        } else {
+            printf("collect: %s (class %d %s, every %d frames, max %d per part%s)\n", col->dir.c_str(),
+                   opt.collect.label_id, opt.collect.label.c_str(), opt.collect.every, opt.collect.max_per_part,
+                   opt.collect.full_every > 0 ? ", + full frames" : "");
+        }
+    }
+    AsyncClassifier npu;
+    if (cfg.npu.enabled) {
+        std::string e = npu.start(cfg.npu.model, cfg.npu.core);
+        if (!e.empty()) fprintf(stderr, "npu: %s (parts get no NPU class)\n", e.c_str());
+        else printf("npu: %s, %s\n", cfg.npu.model.c_str(), npu.model().describe().c_str());
     }
     std::map<int, cv::Mat> crops;   // latest part crop per track (from its best measurement frame)
     std::set<int> logged;
@@ -174,14 +199,22 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner)
         std::vector<std::array<float, 8>> blobs = loc.rects_full();
         for (Detection &d : obs.dets) d.p.x -= float((b1 - b0) * (d.img_v - 0.5f));   // rolling-shutter row timing
         tr.update(obs);
+        if (col)   // training crops; dropped if the DMA reused the buffer while they were copied
+            col->step(tr, f.bgra, f.width, f.height, f.stride, obs.belt_mm, f.pl_frame, obs.dets, blobs,
+                      [&] { return sh.cap_seq.load() - seq < max_age; });
         // geometric measurement of (at most per_frame) parts nearest the optical axis; it reads the camera buffer
         // again, so its results are dropped if the DMA reused the buffer meanwhile
         auto mres = meas.measure(tr, f.bgra, f.width, f.height, f.stride, obs.belt_mm, b1 - b0, f.pl_frame);
         if (!mres.empty() && sh.cap_seq.load() - seq < max_age) {
             TrackMeasurer::apply(tr, mres);
             for (MeasureResult &r : mres)
-                if (!r.crop.empty()) crops[r.id] = r.crop;
+                if (!r.crop.empty()) {
+                    crops[r.id] = r.crop;
+                    npu.submit(r.id, r.crop);   // classified on the NPU thread, voted in a later cycle
+                }
         }
+
+        for (const auto &v : npu.poll()) tr.vote(v.first, v.second);   // NPU soft votes (before decisions)
 
         Picker::Output out;
         if (runner) {
@@ -237,6 +270,11 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner)
         s.meas_ms = mres.empty() ? 0 : meas.last_ms;
         s.measured = meas.measured;
         s.meas_failed = meas.failed;
+        s.npu = npu.running();
+        s.npu_ms = npu.last_npu_ms;
+        s.npu_pre_ms = npu.last_pre_ms;
+        s.npu_runs = npu.runs;
+        s.npu_dropped = npu.dropped;
         s.logged = plog.written;
         s.log_images = plog.images;
         s.log_dropped = plog.dropped;
@@ -245,6 +283,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner)
         s.processed = processed;
         s.stale = stale;
         if (runner) s.run_line = runner->status_line();
+        else if (col) s.run_line = col->status();
         for (const Track &t : tr.tracks())
             if (t.state != TrackState::Done)
                 s.tracks.push_back({t.id, t.state, t.disp, t.s, t.y, t.len, t.wid, t.axis, t.why, meas_text(t.meas)});
@@ -257,6 +296,10 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner)
         s.panel = panel;   // reference-counted: the main thread only reads it
         std::lock_guard<std::mutex> lk(sh.m);
         sh.snap = std::move(s);
+    }
+    if (col) {
+        col->finish();
+        printf("%s -> %s\n", col->status().c_str(), col->dir.c_str());
     }
 }
 
@@ -349,7 +392,7 @@ int run_live(des_hw_t &hw, const AppConfig &cfg, CameraRig &cam, const LiveOptio
         }
     }
     Shared sh;
-    std::thread th(worker, std::ref(sh), std::ref(hw), std::cref(cfg), runner.get());
+    std::thread th(worker, std::ref(sh), std::ref(hw), std::cref(cfg), runner.get(), std::cref(opt));
     pin_to_core(0);
 
     uint64_t frames = 0, skipped = 0, sec_frames = 0;

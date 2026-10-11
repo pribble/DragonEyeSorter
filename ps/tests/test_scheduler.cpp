@@ -180,6 +180,38 @@ static void test_size_rule()
     }
 }
 
+// NPU crop classifier: blob detections carry no class, a few soft votes per track decide (mean probability)
+static void test_votes()
+{
+    std::mt19937 rng(3);
+    Tracker tr(tracker_cfg());
+    std::vector<SimPart> parts = {{-40, 0, 30, 30, 0.f, -1}, {-120, 10, 30, 30, 0.f, -1}};
+    std::vector<float> flash(8, 0.04f), unsure(8, 0.f);
+    flash[2] = 0.72f;                                   // gear_flash
+    unsure[0] = 0.4f; unsure[2] = 0.35f; unsure[3] = 0.25f;
+    int voted[2] = {0, 0};
+    uint32_t f = 0;
+    for (double B = 0; B < 450; B += 1.0, f++) {
+        tr.update(observe(parts, B, f, rng));
+        for (Track &t : tr.tracks()) {
+            float x = t.x_at(B);
+            for (int i = 0; i < 2; i++)
+                if (std::fabs(t.s - parts[i].s) < 5 && x > 100 && x < 200 && voted[i] < 3 && int(B) % 20 == 0)
+                    voted[i] += tr.vote(t.id, i == 0 ? flash : unsure);
+        }
+    }
+    CHECK(voted[0] == 3 && voted[1] == 3, "votes accepted %d %d", voted[0], voted[1]);
+    for (const Track &t : tr.tracks()) {
+        if (std::fabs(t.s - parts[0].s) < 5)
+            CHECK(t.disp == Disposition::Flap && t.dest == 2 && std::fabs(t.cls_conf - 0.72f) < 1e-3f,
+                  "voted flash -> %s/%d conf %.3f", to_str(t.disp), t.dest, t.cls_conf);
+        if (std::fabs(t.s - parts[1].s) < 5)
+            CHECK(t.disp == Disposition::Recheck && t.why == "low confidence", "unsure votes -> %s (%s)",
+                  to_str(t.disp), t.why.c_str());
+    }
+    CHECK(!tr.vote(9999, flash), "vote for a missing track is refused");
+}
+
 static void test_picker()
 {
     std::mt19937 rng(2);
@@ -320,6 +352,7 @@ int main()
     test_geom();
     test_tracker();
     test_size_rule();
+    test_votes();
     test_picker();
     test_arm();
     printf("%d passed, %d failed\n", g_pass, g_fail);

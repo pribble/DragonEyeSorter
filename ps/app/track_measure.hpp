@@ -20,7 +20,7 @@ namespace des {
 struct MeasureResult {
     int id = 0;          // track id
     PartMeasure m;
-    cv::Mat crop;        // BGR part crop of the same frame (roi_crop.hpp), empty if the measurement failed
+    cv::Mat crop;        // BGR part crop of the same frame (roi_crop.hpp); also when the measurement failed
 };
 
 class TrackMeasurer {

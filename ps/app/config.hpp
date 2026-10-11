@@ -35,6 +35,13 @@ struct BeltConfig {
     double accel = 400;          // mm/s^2
 };
 
+// NPU part classifier (npu_cls.hpp / train/export_npu.py)
+struct NpuConfig {
+    bool enabled = true;
+    std::string model = "part_cls.json";   // model JSON, relative to des_app.json; missing file = no NPU
+    int core = 1;                          // CPU core of the NPU thread (it mostly waits for the NPU)
+};
+
 // local storage of inspection results (part_log.hpp)
 struct StorageConfig {
     bool enabled = true;
@@ -53,7 +60,8 @@ struct AppConfig {
     PickerConfig picker;
     ArmConfig arm;
     TrackMeasureConfig measure;
-    StorageConfig storage;  // geometric measurement + size rule (tracker.size), docs/02 "几何测量"
+    StorageConfig storage;
+    NpuConfig npu;  // geometric measurement + size rule (tracker.size), docs/02 "几何测量"
     std::string label_list = "models/label_list.json";
     std::string calib_file = "calib.json";     // written by des_app calib-cam, merged over this file if present
     std::string calib_loaded;                  // path actually merged (empty = none)

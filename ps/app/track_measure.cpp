@@ -106,14 +106,14 @@ std::vector<MeasureResult> TrackMeasurer::measure(const Tracker &tr, const uint8
             pm.valid = true;
             pm.frame = frame;
             measured++;
-            if (cfg_.crop_px > 0) {
-                CropSpec cs;
-                cs.side_mm = cfg_.crop_side_mm;
-                cs.out_px = cfg_.crop_px;
-                res.crop = crop_part(src, h_, center, axis, cs);
-            }
         } else {
             failed++;
+        }
+        if (cfg_.crop_px > 0) {   // also after a failed measurement (tracked position): defective parts need classes
+            CropSpec cs;
+            cs.side_mm = cfg_.crop_side_mm;
+            cs.out_px = cfg_.crop_px;
+            res.crop = crop_part(src, h_, center, axis, cs);
         }
         res.m = pm;
         out.push_back(std::move(res));

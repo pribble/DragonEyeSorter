@@ -27,9 +27,10 @@ RPATH  := -Wl,-rpath,/opt/armnn_lib/lib:/opt/ffmpeg_opencv4.7.0_aarch64/lib
 
 SCHED_SRC := scheduler/tracker.cpp scheduler/picker.cpp scheduler/arm.cpp
 # camera capture reuses the vendor-derived driver wrapper in vision/ (MIT); no NPU code is linked yet
-VISION_SRC := vision/mipi_camera.cpp vision/logger_forward.cpp vision/flow_common_types.cpp
+VISION_SRC := vision/mipi_camera.cpp vision/logger_forward.cpp vision/flow_common_types.cpp vision/executor.cpp
 APP_SRC := app/main.cpp app/camera_rig.cpp app/locate.cpp app/config.cpp app/hdmi_out.cpp app/live.cpp app/calib.cpp app/belt_ctl.cpp app/arm_exec.cpp app/runner.cpp \
-           app/measure.cpp app/track_measure.cpp app/measure_tool.cpp app/roi_crop.cpp app/part_log.cpp
+           app/measure.cpp app/track_measure.cpp app/measure_tool.cpp app/roi_crop.cpp app/part_log.cpp \
+           app/img_writer.cpp app/collector.cpp app/npu_cls.cpp app/npu_async.cpp
 OPENCV_LIBS := -lopencv_calib3d -lopencv_features2d -lopencv_flann -lopencv_imgproc -lopencv_imgcodecs -lopencv_core
 
 .PHONY: all clean
@@ -69,7 +70,14 @@ $(BUILD)/des_app: $(APP_SRC) $(SCHED_SRC) $(VISION_SRC) common/des_hw.c $(wildca
 	    -I$(ARMNN)/include -I$(OPENCV)/include/opencv4 \
 	    -o $@ $(APP_SRC) $(SCHED_SRC) $(VISION_SRC) $(BUILD)/des_hw.o $(BUILD)/can_link.o \
 	    -L$(ARMNN)/lib -L$(OPENCV)/lib -Wl,-rpath-link,$(ARMNN)/lib:$(OPENCV)/lib $(RPATH) \
-	    $(OPENCV_LIBS) -larmnn -lfmt -lpthread
+	    $(OPENCV_LIBS) -larmnn -larmnnOnnxParser -lfmt -lpthread
+
+# NPU part classifier on the board vs the PC reference (train/eval_onnx.py --refs)
+$(BUILD)/test_npu: tests/test_npu.cpp app/npu_cls.cpp app/npu_cls.hpp $(VISION_SRC) | $(BUILD)
+	$(CXX) $(CXXFLAGS) -Iapp -Ivision -I$(ARMNN)/include -I$(OPENCV)/include/opencv4 \
+	    -o $@ tests/test_npu.cpp app/npu_cls.cpp $(VISION_SRC) \
+	    -L$(ARMNN)/lib -L$(OPENCV)/lib -Wl,-rpath-link,$(ARMNN)/lib:$(OPENCV)/lib $(RPATH) \
+	    -lopencv_imgcodecs -lopencv_imgproc -lopencv_core -larmnn -larmnnOnnxParser -lfmt -lpthread
 
 $(BUILD)/test_calib: tests/test_calib.cpp app/calib.cpp app/calib.hpp scheduler/geom.hpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) -Iapp -Ischeduler -Ivision -I$(OPENCV)/include/opencv4 \
