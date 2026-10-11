@@ -30,6 +30,8 @@ struct TrackMeasureConfig {
     float margin_mm = 3;         // ROI margin around the part footprint
     float improve = 0.75f;       // re-measure when the axis distance drops below improve * stored - 1 mm
     bool axis_from_image = true; // optical axis = image center mapped to the table (else m.axis_table as given)
+    float crop_side_mm = 56;     // part crop taken with every successful measurement (roi_crop.hpp: NPU input,
+    int crop_px = 224;           // NG images, training set); 0 = no crop
     MeasureConfig m;
 };
 

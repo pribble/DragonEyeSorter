@@ -8,24 +8,31 @@
 #pragma once
 
 #include <cstdint>
-#include <utility>
 #include <vector>
+
+#include <opencv2/core.hpp>
 
 #include "measure_config.hpp"
 #include "tracker.hpp"
 
 namespace des {
 
+struct MeasureResult {
+    int id = 0;          // track id
+    PartMeasure m;
+    cv::Mat crop;        // BGR part crop of the same frame (roi_crop.hpp), empty if the measurement failed
+};
+
 class TrackMeasurer {
 public:
     TrackMeasurer(const TrackMeasureConfig &cfg, const Homography &px_to_table);
 
     // bgra: the frame (4 bytes / px); belt_mm: belt travel at mid-exposure (the tracker's frame position);
-    // belt_span_mm: belt travel during the frame readout (rolling shutter). Returns (track id, result) pairs.
-    std::vector<std::pair<int, PartMeasure>> measure(const Tracker &tr, const uint8_t *bgra, int width, int height,
-                                                     int stride, double belt_mm, double belt_span_mm, uint32_t frame);
+    // belt_span_mm: belt travel during the frame readout (rolling shutter).
+    std::vector<MeasureResult> measure(const Tracker &tr, const uint8_t *bgra, int width, int height, int stride,
+                                       double belt_mm, double belt_span_mm, uint32_t frame);
     // store results into the tracks (skips tracks that are gone or already decided)
-    static void apply(Tracker &tr, const std::vector<std::pair<int, PartMeasure>> &res);
+    static void apply(Tracker &tr, const std::vector<MeasureResult> &res);
 
     const MeasureConfig &config() const { return cfg_.m; }
     double last_ms = 0;

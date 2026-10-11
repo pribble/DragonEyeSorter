@@ -145,6 +145,14 @@ std::string load_config(const std::string &path, AppConfig &cfg)
         get(j, "bins", cfg.bins);
         get(j, "outlets", cfg.outlets);
         get(j, "label_list", cfg.label_list);
+        if (j.contains("storage")) {
+            const json &c = j["storage"];
+            auto &s = cfg.storage;
+            get(c, "enabled", s.enabled); get(c, "dir", s.dir); get(c, "images", s.images);
+            get(c, "jpeg_quality", s.jpeg_quality); get(c, "max_queue", s.max_queue);
+            if (s.images != "none" && s.images != "ng" && s.images != "all")
+                return path + ": storage.images must be none / ng / all";
+        }
         if (j.contains("measure")) {   // after "outlets": the size rule names its outlet
             const json &c = j["measure"];
             auto &t = cfg.measure;

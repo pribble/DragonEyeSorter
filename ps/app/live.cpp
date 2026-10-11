@@ -12,7 +12,9 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <map>
 #include <memory>
+#include <set>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -26,6 +28,7 @@
 
 #include "hdmi_out.hpp"
 #include "locate.hpp"
+#include "part_log.hpp"
 #include "picker.hpp"
 #include "track_measure.hpp"
 #include "tracker.hpp"
@@ -77,6 +80,7 @@ struct Snapshot {
     double work_ms = 0;
     double meas_ms = 0;                         // geometric measurement in that cycle (0 = none)
     uint64_t measured = 0, meas_failed = 0;
+    uint64_t logged = 0, log_images = 0, log_dropped = 0;
     BeltPlan plan;
     Tracker::Stats st;
     uint64_t processed = 0, stale = 0;
@@ -108,9 +112,10 @@ cv::Mat render_panel(const Snapshot &s, const Shared &sh, uint32_t pl_frame, uin
     snprintf(l2, sizeof l2, "locate %.1f ms  measure %.1f ms (%llu/%llu)  worker %.1f ms  blobs %zu  tracks %zu  belt %.1f mm",
              (s.tm.gray_us + s.tm.thresh_us + s.tm.contour_us) / 1e3, s.meas_ms, (unsigned long long)s.measured,
              (unsigned long long)(s.measured + s.meas_failed), s.work_ms, s.blobs.size(), s.tracks.size(), belt_mm);
-    snprintf(l3, sizeof l3, "pick %llu  flap %llu  recheck %llu  noise %llu  belt plan %s",
+    snprintf(l3, sizeof l3, "pick %llu  flap %llu  recheck %llu  noise %llu  belt plan %s  saved %llu (img %llu)",
              (unsigned long long)s.st.decided_pick, (unsigned long long)s.st.decided_flap,
-             (unsigned long long)s.st.decided_recheck, (unsigned long long)s.st.noise, plans[s.plan.kind]);
+             (unsigned long long)s.st.decided_recheck, (unsigned long long)s.st.noise, plans[s.plan.kind],
+             (unsigned long long)s.logged, (unsigned long long)s.log_images);
     cv::Mat panel(118, 1150, CV_8UC3, cv::Scalar(0, 0, 0));
     cv::putText(panel, l1, cv::Point(14, 34), cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 255, 0), 2);
     cv::putText(panel, l2, cv::Point(14, 70), cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(255, 255, 255), 2);
@@ -128,6 +133,14 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner)
     Locator loc(cfg.locate);
     Tracker tr(cfg.tracker);
     TrackMeasurer meas(cfg.measure, cfg.px_to_table);
+    PartLog plog;
+    {
+        std::string e = plog.open(cfg.storage);
+        if (!e.empty()) fprintf(stderr, "storage: %s (parts are NOT recorded)\n", e.c_str());
+        else if (plog.is_open()) printf("storage: %s (images: %s)\n", plog.csv_path.c_str(), cfg.storage.images.c_str());
+    }
+    std::map<int, cv::Mat> crops;   // latest part crop per track (from its best measurement frame)
+    std::set<int> logged;
     Picker pk(cfg.picker);
     const double mmps = cfg.belt.mm_per_step * cfg.belt.dir;
     const uint64_t max_age = uint64_t(cfg.camera.buffers > 2 ? cfg.camera.buffers - 1 : 1);
@@ -164,7 +177,11 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner)
         // geometric measurement of (at most per_frame) parts nearest the optical axis; it reads the camera buffer
         // again, so its results are dropped if the DMA reused the buffer meanwhile
         auto mres = meas.measure(tr, f.bgra, f.width, f.height, f.stride, obs.belt_mm, b1 - b0, f.pl_frame);
-        if (!mres.empty() && sh.cap_seq.load() - seq < max_age) TrackMeasurer::apply(tr, mres);
+        if (!mres.empty() && sh.cap_seq.load() - seq < max_age) {
+            TrackMeasurer::apply(tr, mres);
+            for (MeasureResult &r : mres)
+                if (!r.crop.empty()) crops[r.id] = r.crop;
+        }
 
         Picker::Output out;
         if (runner) {
@@ -180,6 +197,38 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner)
         }
         processed++;
 
+        // local storage: one record per newly decided part (+ its crop for NG / recheck)
+        for (const Track &t : tr.tracks()) {
+            if (t.state == TrackState::New || t.state == TrackState::Tracking || t.disp == Disposition::None) continue;
+            if (!logged.insert(t.id).second) continue;
+            PartRecord rec;
+            timespec ts;
+            clock_gettime(CLOCK_REALTIME, &ts);
+            rec.wall_ms = int64_t(ts.tv_sec) * 1000 + ts.tv_nsec / 1000000;
+            rec.t_s = plog.now_s();
+            rec.track_id = t.id;
+            rec.frame_first = t.first_frame;
+            rec.frame_last = t.last_frame;
+            rec.cls = t.cls;
+            rec.label = t.cls >= 0 && size_t(t.cls) < cfg.tracker.rules.size() ? cfg.tracker.rules[t.cls].label
+                                                                              : "unclassified";
+            rec.conf = t.cls_conf;
+            rec.disp = to_str(t.disp);
+            const auto &names = t.disp == Disposition::Pick ? cfg.bins : cfg.outlets;
+            rec.dest = t.disp == Disposition::Recheck ? (cfg.outlets.empty() ? "recheck" : cfg.outlets[0])
+                       : t.dest >= 0 && size_t(t.dest) < names.size() ? names[t.dest] : std::to_string(t.dest);
+            rec.why = t.why;
+            rec.meas = t.meas;
+            rec.s = t.s; rec.y = t.y; rec.axis = t.axis; rec.len = t.len; rec.wid = t.wid;
+            auto it = crops.find(t.id);
+            plog.add(std::move(rec), it != crops.end() ? it->second : cv::Mat());
+            if (it != crops.end()) crops.erase(it);
+        }
+        if (processed % 120 == 0) {   // forget crops of tracks that vanished undecided, and old ids
+            for (auto it = crops.begin(); it != crops.end();) it = tr.find(it->first) ? std::next(it) : crops.erase(it);
+            while (logged.size() > 5000) logged.erase(logged.begin());
+        }
+
         Snapshot s;
         s.seq = seq;
         s.frame = f.pl_frame;
@@ -188,6 +237,9 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner)
         s.meas_ms = mres.empty() ? 0 : meas.last_ms;
         s.measured = meas.measured;
         s.meas_failed = meas.failed;
+        s.logged = plog.written;
+        s.log_images = plog.images;
+        s.log_dropped = plog.dropped;
         s.plan = out.belt;
         s.st = tr.stats;
         s.processed = processed;

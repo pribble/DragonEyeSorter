@@ -8,6 +8,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include "measure.hpp"
+#include "roi_crop.hpp"
 
 namespace des {
 namespace {
@@ -29,11 +30,10 @@ TrackMeasurer::TrackMeasurer(const TrackMeasureConfig &cfg, const Homography &px
 {
 }
 
-std::vector<std::pair<int, PartMeasure>> TrackMeasurer::measure(const Tracker &tr, const uint8_t *bgra, int width,
-                                                                int height, int stride, double belt_mm,
-                                                                double belt_span_mm, uint32_t frame)
+std::vector<MeasureResult> TrackMeasurer::measure(const Tracker &tr, const uint8_t *bgra, int width, int height,
+                                                  int stride, double belt_mm, double belt_span_mm, uint32_t frame)
 {
-    std::vector<std::pair<int, PartMeasure>> out;
+    std::vector<MeasureResult> out;
     if (!cfg_.enabled || cfg_.per_frame <= 0) return out;
     const auto t0 = std::chrono::steady_clock::now();
     if (cfg_.axis_from_image) cfg_.m.axis_table = h_.map({0.5f * width, 0.5f * height});
@@ -78,9 +78,12 @@ std::vector<std::pair<int, PartMeasure>> TrackMeasurer::measure(const Tracker &t
         pm.count++;
         pm.axis_dist = c.d;           // also after a failure: retry only once the part is clearly nearer
         bool ok = false;
+        Vec2 center{c.t->x_at(belt_mm), c.t->y};
+        float axis = c.t->axis;
         if (c.t->len > 0 && c.t->wid / c.t->len > cfg_.gear_ratio) {
             GearMeasure r = measure_gear(g, all, hs, mc);
             if ((ok = r.ok)) {
+                center = r.center;
                 pm.kind = 'g';
                 pm.size = r.od; pm.bore = r.bore_d; pm.ecc = r.ecc; pm.pitch = 0;
                 pm.teeth = r.teeth; pm.short_teeth = r.short_teeth; pm.missing_teeth = r.missing_teeth;
@@ -89,30 +92,41 @@ std::vector<std::pair<int, PartMeasure>> TrackMeasurer::measure(const Tracker &t
         } else {
             RackMeasure r = measure_rack(g, all, hs, mc);
             if ((ok = r.ok)) {
+                center = r.center;
+                axis = r.axis;
                 pm.kind = 'r';
                 pm.size = r.length; pm.bore = 0; pm.ecc = 0; pm.pitch = r.pitch;
                 pm.teeth = r.teeth; pm.short_teeth = r.short_teeth; pm.missing_teeth = r.missing_teeth;
                 pm.flash_gaps = r.flash_gaps; pm.teeth_judged = r.teeth_judged; pm.smear = r.smear_mm;
             }
         }
+        MeasureResult res;
+        res.id = c.t->id;
         if (ok) {
             pm.valid = true;
             pm.frame = frame;
             measured++;
+            if (cfg_.crop_px > 0) {
+                CropSpec cs;
+                cs.side_mm = cfg_.crop_side_mm;
+                cs.out_px = cfg_.crop_px;
+                res.crop = crop_part(src, h_, center, axis, cs);
+            }
         } else {
             failed++;
         }
-        out.push_back({c.t->id, pm});
+        res.m = pm;
+        out.push_back(std::move(res));
     }
     last_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
     return out;
 }
 
-void TrackMeasurer::apply(Tracker &tr, const std::vector<std::pair<int, PartMeasure>> &res)
+void TrackMeasurer::apply(Tracker &tr, const std::vector<MeasureResult> &res)
 {
-    for (const auto &r : res) {
-        Track *t = tr.find(r.first);
-        if (t && (t->state == TrackState::New || t->state == TrackState::Tracking)) t->meas = r.second;
+    for (const MeasureResult &r : res) {
+        Track *t = tr.find(r.id);
+        if (t && (t->state == TrackState::New || t->state == TrackState::Tracking)) t->meas = r.m;
     }
 }
 

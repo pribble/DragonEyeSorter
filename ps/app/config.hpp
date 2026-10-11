@@ -35,6 +35,15 @@ struct BeltConfig {
     double accel = 400;          // mm/s^2
 };
 
+// local storage of inspection results (part_log.hpp)
+struct StorageConfig {
+    bool enabled = true;
+    std::string dir = "/root/des/data/log";
+    std::string images = "ng";   // none | ng (flap + recheck) | all
+    int jpeg_quality = 92;
+    int max_queue = 256;
+};
+
 struct AppConfig {
     CameraConfig camera;
     LocateConfig locate;
@@ -43,7 +52,8 @@ struct AppConfig {
     TrackerConfig tracker;
     PickerConfig picker;
     ArmConfig arm;
-    TrackMeasureConfig measure;  // geometric measurement + size rule (tracker.size), docs/02 "几何测量"
+    TrackMeasureConfig measure;
+    StorageConfig storage;  // geometric measurement + size rule (tracker.size), docs/02 "几何测量"
     std::string label_list = "models/label_list.json";
     std::string calib_file = "calib.json";     // written by des_app calib-cam, merged over this file if present
     std::string calib_loaded;                  // path actually merged (empty = none)

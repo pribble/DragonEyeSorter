@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <cstdlib>
 #include <vector>
 
@@ -11,6 +12,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include "measure.hpp"
+#include "part_log.hpp"
 #include "track_measure.hpp"
 #include "tracker.hpp"
 
@@ -406,8 +408,63 @@ int main()
         gray = cv::max(a2.img, b.img);
         cv::cvtColor(gray, bgra, cv::COLOR_GRAY2BGRA);
         auto res = tm.measure(tr, bgra.data, bgra.cols, bgra.rows, int(bgra.step), 0.0, 0.0, 20);
-        CHECK(res.size() == 1 && res[0].second.count == 2 && res[0].second.axis_dist < 15,
+        CHECK(res.size() == 1 && res[0].m.count == 2 && res[0].m.axis_dist < 15,
               "re-measured nearer the axis (%zu results)", res.size());
+        // the crop that goes with it: 224 x 224 BGR, gear centered (bright center, dark corners)
+        if (!res.empty() && !res[0].crop.empty()) {
+            const cv::Mat &cr = res[0].crop;
+            cv::Mat g1;
+            cv::cvtColor(cr, g1, cv::COLOR_BGR2GRAY);
+            cv::Moments mo = cv::moments(g1 > 130, true);
+            float cx = float(mo.m10 / mo.m00), cy = float(mo.m01 / mo.m00);
+            printf("[crop] %dx%d, bright centroid (%.1f, %.1f), area %.0f px (gear ~ %.0f)\n", cr.cols, cr.rows, cx, cy,
+                   mo.m00, kPi * 16 * 16 / 0.0625 - kPi * 9 / 0.0625 - 30 * 0.36f * 3.35f * 2.25f / 0.0625f);
+            CHECK(cr.cols == 224 && cr.rows == 224 && cr.type() == CV_8UC3, "crop size / type");
+            CHECK(std::fabs(cx - 111.5f) < 1.5f && std::fabs(cy - 111.5f) < 1.5f, "gear centered in the crop");
+        } else {
+            CHECK(false, "no crop returned");
+        }
+    }
+    {   // K: local storage — 3 decided parts, images for the NG / recheck ones only, read back
+        StorageConfig sc;
+        sc.dir = "/tmp/des_logtest";
+        if (system("rm -rf /tmp/des_logtest") != 0) {}
+        PartLog log;
+        std::string e = log.open(sc);
+        CHECK(e.empty() && log.is_open(), "open: %s", e.c_str());
+        cv::Mat crop(224, 224, CV_8UC3, cv::Scalar(30, 200, 30));
+        const char *disp[] = {"pick", "flap", "recheck"};
+        for (int i = 0; i < 3; i++) {
+            PartRecord r;
+            r.track_id = 10 + i;
+            r.cls = i;
+            r.label = i == 0 ? "gear_ok" : i == 1 ? "gear_short" : "unclassified";
+            r.disp = disp[i];
+            r.dest = i == 0 ? "gear_box" : i == 1 ? "scrap" : "recheck";
+            r.why = "test, with a comma";
+            r.meas.valid = true; r.meas.kind = 'g'; r.meas.size = 32.01f; r.meas.teeth = 30;
+            r.t_s = log.now_s();
+            log.add(r, crop);
+        }
+        log.close();
+        FILE *f = fopen(log.csv_path.c_str(), "r");
+        int lines = 0, with_img = 0, fields_ok = 0;
+        char buf[1024];
+        while (f && fgets(buf, sizeof buf, f)) {
+            lines++;
+            if (lines == 1) continue;
+            int commas = 0;
+            for (char *c = buf; *c; c++) commas += *c == ',';
+            fields_ok += commas == 31;   // 32 columns, the comma in "why" was replaced
+            if (strstr(buf, ".jpg")) with_img++;
+        }
+        if (f) fclose(f);
+        printf("[storage] %s: %d lines, %d with image, written %llu images %llu dropped %llu errors %llu\n",
+               log.csv_path.c_str(), lines, with_img, (unsigned long long)log.written.load(),
+               (unsigned long long)log.images.load(), (unsigned long long)log.dropped.load(),
+               (unsigned long long)log.errors.load());
+        CHECK(lines == 4 && fields_ok == 3, "csv lines %d, rows with 32 columns %d", lines, fields_ok);
+        CHECK(with_img == 2 && log.images == 2, "images only for flap / recheck (%d)", with_img);
     }
     printf("%d passed, %d failed\n", g_pass, g_fail);
     return g_fail;

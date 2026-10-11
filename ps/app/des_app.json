@@ -48,6 +48,9 @@
     "bins_deg": [[120, 40, -100, -30, 0], [-120, 40, -100, -30, 0]]
   },
 
+  "storage_comment": "本地存储（赛题硬性项②）：每件判定后一行 CSV（<dir>/<日期>/parts_<会话>.csv）+ 零件裁切图（images: none / ng = 翻板和复检件 / all）。板子没有 RTC，日期目录按系统时钟，测试前先对时",
+  "storage": { "enabled": true, "dir": "/root/des/data/log", "images": "ng", "jpeg_quality": 92, "max_queue": 256 },
+
   "bins": ["gear_box", "rack_box"],
   "outlets": ["recheck", "scrap", "rework"],
   "label_list": "label_list.json"
