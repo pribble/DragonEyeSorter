@@ -8,11 +8,17 @@ PC 扮演产线 PLC，经 CAN（500 kbit/s，协议见 `docs/06` / `ps/bus/can_p
 
 ```bash
 python plc_gui.py --backend virtual        # 无硬件：进程内模拟板子（规则与 ps/app/runner.cpp 相同）
-python plc_gui.py --backend zqwl           # ZQWL-UCAN-101E —— ⚠ 等卖家给的二次开发 SDK（DLL + 头文件）
+python plc_gui.py --backend zqwl           # ZQWL-UCAN-101E：ZLG 兼容 ControlCAN.dll（VCI_*）后端，⚠ 到货后核对
+python plc_gui.py --backend controlcan --dll D:/path/ControlCAN.dll --dev-type 4 --can-index 0
 python plc_gui.py --backend python-can --iface socketcan --channel can0   # Linux / 其他 python-can 设备
 python can_proto.py                        # 协议自检（与 can_proto.h 字节布局一致）
 ```
 
 只依赖 Python 3 标准库（tkinter）；`python-can` 后端需要 `pip install python-can`。
+
+**ControlCAN 后端（10-11 写好，未接实物）**：国产 USB-CAN 大多附带与周立功兼容的 `ControlCAN.dll`。到货后：① 装驱动；
+② 把卖家资料里的 `ControlCAN.dll`（与 Python 同为 64 位）放到本目录或用 `--dll` 指定；③ 按手册填设备类型号 `--dev-type`
+（周立功 USBCAN-2A / CANalyst-II = 4，USBCAN-I = 3）；④ 关掉厂家调试软件（独占设备）。500kbit/s 用 BTR0/BTR1 = 0x00/0x1C。
+如果卖家 SDK 不是 VCI 接口，照 `backends.py` 的 `ControlCanBus` 另写一个类。
 
 **USB-CAN 接线**：适配器 H / L 接板子 CAN 端子 H / L（⚠ 先确认 CAN 引到了板载端子，风险 R7），两端各一个 120Ω 终端电阻（适配器的 RS 端子 / 跳线），GND 共地。

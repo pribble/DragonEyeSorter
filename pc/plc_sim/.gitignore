@@ -1,0 +1,3 @@
+# vendor USB-CAN libraries stay out of the repo (docs/10)
+*.dll
+*.lib

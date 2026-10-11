@@ -1,11 +1,17 @@
 """CAN back ends for the PLC simulator. Each has send(arb_id, data), recv(timeout_s) -> (arb_id, bytes) | None, close().
 
-  virtual  : an in-process fake board that behaves like des_app run (state machine, ACKs, 10 Hz STATUS, 1 Hz
-             COUNTS, random PART results while running) -- exercises the GUI with no hardware
+  virtual    : an in-process fake board that behaves like des_app run (state machine, ACKs, 10 Hz STATUS, 1 Hz
+               COUNTS, random PART results while running) -- exercises the GUI with no hardware
   python-can : any python-can interface, e.g. --iface socketcan --channel can0 (Linux), --iface pcan ...
-  zqwl     : ZQWL-UCAN-101E (智嵌物联) through its Windows SDK DLL -- ⚠ to be filled in when the SDK from the seller
-             is at hand (DLL name, open / init / transmit / receive signatures); see open_bus()
+  controlcan : USB-CAN adapters with the ZLG-compatible Windows library ControlCAN.dll (VCI_OpenDevice / VCI_InitCAN /
+               VCI_Transmit / VCI_Receive) -- what most domestic adapters ship. ⚠ Not yet tried with the
+               ZQWL-UCAN-101E (智嵌物联): when it arrives, put the seller's DLL next to this file (or pass --dll) and
+               check the device type number in their manual (--dev-type; ZLG USBCAN-2A / CANalyst-II = 4,
+               USBCAN-I = 3). If their SDK has another API, add a class like ControlCanBus.
+  zqwl       : alias of controlcan with the defaults above
 """
+import ctypes
+import os
 import queue
 import random
 import threading
@@ -118,12 +124,86 @@ class PythonCanBus:
         self.bus.shutdown()
 
 
-def open_bus(kind, iface="socketcan", channel="can0"):
+class _VciInitConfig(ctypes.Structure):
+    _fields_ = [("AccCode", ctypes.c_uint32), ("AccMask", ctypes.c_uint32), ("Reserved", ctypes.c_uint32),
+                ("Filter", ctypes.c_ubyte), ("Timing0", ctypes.c_ubyte), ("Timing1", ctypes.c_ubyte),
+                ("Mode", ctypes.c_ubyte)]
+
+
+class _VciCanObj(ctypes.Structure):
+    _fields_ = [("ID", ctypes.c_uint32), ("TimeStamp", ctypes.c_uint32), ("TimeFlag", ctypes.c_ubyte),
+                ("SendType", ctypes.c_ubyte), ("RemoteFlag", ctypes.c_ubyte), ("ExternFlag", ctypes.c_ubyte),
+                ("DataLen", ctypes.c_ubyte), ("Data", ctypes.c_ubyte * 8), ("Reserved", ctypes.c_ubyte * 3)]
+
+
+# SJA1000 bit timing (BTR0, BTR1) as in the ZLG manual (16 MHz controller clock)
+VCI_TIMING = {1000000: (0x00, 0x14), 500000: (0x00, 0x1C), 250000: (0x01, 0x1C), 125000: (0x03, 0x1C)}
+
+
+class ControlCanBus:
+    """ZLG-compatible ControlCAN.dll (stdcall). Python and the DLL must have the same bitness (x86 / x64)."""
+
+    def __init__(self, dll=None, dev_type=4, dev_index=0, can_index=0, bitrate=P.BITRATE):
+        here = os.path.dirname(os.path.abspath(__file__))
+        path = dll or os.path.join(here, "ControlCAN.dll")
+        if not os.path.exists(path):
+            raise SystemExit(f"{path} not found: copy the USB-CAN vendor's ControlCAN.dll here or pass --dll")
+        loader = ctypes.WinDLL if os.name == "nt" else ctypes.CDLL
+        try:
+            self.lib = loader(path)
+        except OSError as e:
+            raise SystemExit(f"cannot load {path}: {e} (32/64-bit mismatch with this Python?)")
+        if bitrate not in VCI_TIMING:
+            raise SystemExit(f"bitrate {bitrate} not in {sorted(VCI_TIMING)}")
+        self.t, self.d, self.c = dev_type, dev_index, can_index
+        if self.lib.VCI_OpenDevice(self.t, self.d, 0) != 1:
+            raise SystemExit(f"VCI_OpenDevice(type {self.t}, index {self.d}) failed: plugged in, driver installed, "
+                             "vendor tool closed, right --dev-type?")
+        t0, t1 = VCI_TIMING[bitrate]
+        cfg = _VciInitConfig(0, 0xFFFFFFFF, 0, 1, t0, t1, 0)   # accept everything, normal mode
+        if self.lib.VCI_InitCAN(self.t, self.d, self.c, ctypes.byref(cfg)) != 1:
+            self.lib.VCI_CloseDevice(self.t, self.d)
+            raise SystemExit("VCI_InitCAN failed")
+        self.lib.VCI_ClearBuffer(self.t, self.d, self.c)
+        if self.lib.VCI_StartCAN(self.t, self.d, self.c) != 1:
+            self.lib.VCI_CloseDevice(self.t, self.d)
+            raise SystemExit("VCI_StartCAN failed")
+        self.buf = (_VciCanObj * 64)()
+        self.pending = []
+
+    def send(self, arb_id, data):
+        d = bytes(data)
+        o = _VciCanObj()
+        o.ID, o.SendType, o.RemoteFlag, o.ExternFlag, o.DataLen = arb_id, 0, 0, 0, len(d)
+        for i, b in enumerate(d):
+            o.Data[i] = b
+        if self.lib.VCI_Transmit(self.t, self.d, self.c, ctypes.byref(o), 1) != 1:
+            raise IOError("VCI_Transmit failed (bus off / no other node acknowledging?)")
+
+    def recv(self, timeout):
+        end = time.time() + timeout
+        while not self.pending:
+            n = self.lib.VCI_Receive(self.t, self.d, self.c, self.buf, len(self.buf), 0)
+            if n == 0xFFFFFFFF or n < 0:   # some DLLs return -1 on error
+                n = 0
+            for k in range(n):
+                o = self.buf[k]
+                if not o.ExternFlag and not o.RemoteFlag:
+                    self.pending.append((o.ID, bytes(o.Data[: o.DataLen])))
+            if self.pending or time.time() >= end:
+                break
+            time.sleep(0.002)
+        return self.pending.pop(0) if self.pending else None
+
+    def close(self):
+        self.lib.VCI_CloseDevice(self.t, self.d)
+
+
+def open_bus(kind, iface="socketcan", channel="can0", dll=None, dev_type=4, dev_index=0, can_index=0):
     if kind == "virtual":
         return VirtualBoard()
     if kind == "python-can":
         return PythonCanBus(iface, channel)
-    if kind == "zqwl":
-        raise SystemExit("zqwl back end: waiting for the ZQWL-UCAN-101E SDK (DLL + header from the seller). "
-                         "Put it under pc/plc_sim/zqwl_sdk/ and implement ZqwlBus here (ctypes).")
+    if kind in ("controlcan", "zqwl"):
+        return ControlCanBus(dll, dev_type, dev_index, can_index)
     raise SystemExit(f"unknown back end {kind}")

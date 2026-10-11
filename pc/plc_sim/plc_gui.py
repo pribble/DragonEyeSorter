@@ -238,11 +238,15 @@ class App:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--backend", default="virtual", choices=["virtual", "python-can", "zqwl"])
+    ap.add_argument("--backend", default="virtual", choices=["virtual", "python-can", "controlcan", "zqwl"])
     ap.add_argument("--iface", default="socketcan")
     ap.add_argument("--channel", default="can0")
+    ap.add_argument("--dll", help="controlcan / zqwl: vendor ControlCAN.dll (default: next to this file)")
+    ap.add_argument("--dev-type", type=int, default=4, help="controlcan: VCI device type (ZLG USBCAN-2A = 4)")
+    ap.add_argument("--dev-index", type=int, default=0)
+    ap.add_argument("--can-index", type=int, default=0, help="controlcan: channel on the adapter (0 = CAN1)")
     a = ap.parse_args()
-    bus = open_bus(a.backend, a.iface, a.channel)
+    bus = open_bus(a.backend, a.iface, a.channel, a.dll, a.dev_type, a.dev_index, a.can_index)
     root = tk.Tk()
     link = Link(bus)
     App(root, link, load_names())
