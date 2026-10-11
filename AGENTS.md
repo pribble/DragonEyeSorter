@@ -8,7 +8,7 @@
 
 ## 先读哪里
 
-- 设计与决策：[docs/README.md](docs/README.md)（01~09）。**已锁定的决策**汇总在 [docs/01-系统概述](docs/01-系统概述.md)。
+- 设计与决策：[docs/README.md](docs/README.md)（01~12）。**已锁定的决策**汇总在 [docs/01-系统概述](docs/01-系统概述.md)。
 - 工具链、构建、部署、操作禁忌：[docs/09-开发环境与构建](docs/09-开发环境与构建.md)。
 - 事实裁决顺序：**板卡手册 / 原理图 / 实测数据 > docs/log/ > 设计文档 > README**。
 - **不要凭记忆复述参数**（型号、电压、bank 号、寄存器偏移、拨码最容易错）——查文档。
@@ -19,9 +19,11 @@
 | 目录 | 内容 | 语言 / 工具 |
 |---|---|---|
 | `docs/` | 设计文档 + `log/` 实测记录 | 中文 Markdown |
-| `pl/` | RTL、约束、TD 工程源文件；`pl/test/` 独立验证工程 | Verilog-2001 / SV，安路 TD 6.2.1 |
-| `ps/` | Linux 应用（调度、推理、UI、存储、寄存器头文件） | C/C++、Qt 5.15 |
-| `models/` | 训练 / 量化脚本、`label_list.json` 唯一源 | Python + ultralytics + ORT |
+| `pl/` | 自研 RTL、testbench；`soc_base/` 厂家底板工程、`soc_patch/` 我们的改动；`pl/test/` 独立验证工程 | Verilog-2001 / SV，安路 TD 6.2.1 |
+| `ps/` | Linux 应用（调度、推理、界面、存储、CAN、寄存器头文件） | C/C++（界面为 OpenCV 自绘 + FreeType，不用 Qt） |
+| `train/` | 分类模型：合成数据、训练、导出 + UINT8 量化、评估 | Python + ultralytics + ORT（WSL / GPU） |
+| `models/` | `label_list.json`（类别表唯一源） | 数据文件 |
+| `pc/` | PC 端：plc_sim（CAN「产线 PLC」模拟器）、report（测试报告出数） | Python |
 | `scripts/` | 构建与部署：BOOT.bin 打包、SD 镜像 | PowerShell / Bash |
 
 ## 硬性约定（违反会导致联调事故）

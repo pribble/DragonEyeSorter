@@ -27,7 +27,7 @@
 
 ## 待改造方向（零件检测）
 
-- 类别换成 `models/label_list.json` 的 8 类（齿轮/齿条 × OK/短射/飞边/脏污），
+- 类别换成 `models/label_list.json` 的 8 类（齿轮/齿条 × 良品/缺料/飞边/黑点，与该文件 cn 列一致），
   NPU JSON 由 label_list 生成，不手抄（AGENTS.md 约定 1）
 - `face_detection`/`yolo_demo_hdmi_camera` 等命名后续随改造重命名
 - 增加分拣判定输出：检测框 → label_list 的 verdict/action/dest → 调度器

@@ -44,8 +44,8 @@ IMX415 ──MIPI──►   │ MIPI RX → ISP → des_vision（灰度 / 高�
 
 ```
 DragonEyeSorter/
-├── docs/          # 设计文档 01~11 + log/ 实测记录（入口：docs/README.md）
-├── pl/            # 自研 RTL（rtl/）、仿真（sim/）、对厂家 soc_prj 的补丁（soc_patch/）、独立验证工程（test/）
+├── docs/          # 设计文档 01~12 + log/ 实测记录（入口：docs/README.md）
+├── pl/            # 厂家底板工程（soc_base/）+ 自研 RTL（rtl/）、仿真（sim/）、补丁（soc_patch/）、独立验证工程（test/）
 ├── ps/            # 板上程序：des_app（取帧 / 定位 / 测量 / 跟踪 / 调度 / NPU / 界面 / 存储 / CAN）、desreg、测试
 ├── train/         # 分类模型：合成数据、训练、导出 + UINT8 量化、评估（WSL / GPU）
 ├── models/        # label_list.json（类别表唯一源）

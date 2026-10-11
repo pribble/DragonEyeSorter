@@ -6,18 +6,19 @@
 
 ```
 ps/
-├── Makefile        # 自研程序的交叉编译（desreg / test_scheduler / des_app），见下
+├── Makefile        # 自研程序的交叉编译（desreg / test_* / canplc / des_app），见下
 ├── common/         # 自研：寄存器头 des_regs.h（与 docs/03 同源）、des_hw（/dev/mem 上的舵机总线 / 步进 / 帧计数 C 接口）、label_list 加载
-├── app/            # 自研主程序 des_app：取帧（camera_rig）、视觉定位（locate）、配置（config + des_app.json）
+├── app/            # 自研主程序 des_app：取帧（camera_rig）、定位（locate）、几何测量（measure / track_measure）、
+│                   #   NPU 分类（npu_cls / npu_async / roi_crop）、HDMI 界面（hmi / ui_input / text_ft，OpenCV 自绘 + FreeType，
+│                   #   不用 Qt，见 docs/06「为什么不用 Qt」）、CAN 运行状态机（runner）、机械臂执行（arm_exec）、
+│                   #   存储（part_log：CSV + NG 图，板上无 sqlite）、标定（calib）、配置（config + des_app.json）
 ├── scheduler/      # 自研纯逻辑库（无硬件 / OpenCV 依赖）：跟踪表 tracker、停带 / 抓取 / 翻板调度 picker、机械臂 IK arm
-├── tests/          # test_scheduler（调度库单元）、test_calib（标定，合成图）、test_measure（齿轮 / 齿条测量，合成图）、test_belt_hil（传送带控制硬件在环，板上 PL v5）、test_can（CAN 协议与收发，回环自测）
+├── tests/          # test_scheduler（调度库单元）、test_calib（标定，合成图）、test_measure（齿轮 / 齿条测量，合成图）、test_belt_hil（传送带控制硬件在环，板上 PL v5）、test_can（CAN 协议与收发，回环自测）、test_npu（NPU 推理核对与耗时）
 ├── vision/         # 检测流水线：安路 MIT demo 源码（face_detection）改造起点，后期改成零件检测
 │                   #   相机/HDMI 接口、前处理、NPU 推理封装、YOLOv8 后处理、demo 主程序
 ├── kernel_modules/ # mipicam 驱动（MIT）；GPL 驱动不入库，见目录 README
-├── tools/          # desreg 寄存器调试工具（基于 common/des_hw）
-├── bus/            # TODO CAN（SocketCAN）、RS485 Modbus
-├── ui-qt/          # TODO HDMI 本地界面（Qt 5.15.8，板上运行库）
-└── storage/        # TODO SQLite（amalgamation 编入）+ NG 图片
+├── tools/          # desreg 寄存器调试工具、canplc（扮「PLC」的命令行，回环 / 联调用）、soak.sh（长时间运行，部署到板上）
+└── bus/            # CAN（SocketCAN）：can_link 收发 + can_proto.h 协议（与 docs/06 同源）+ can_up.sh 起接口；RS485 Modbus（P1，未做）
 ```
 
 ## des_app（PS 主程序骨架）
@@ -29,7 +30,7 @@ ps/
 | `des_app track [-n 秒] [--belt mm/s]` | 取帧 + 定位 + 跟踪表 + 调度（不动机械臂），打印建轨 / 判定 / 停带计划 |
 | `des_app ik <x> <y> [z] [角度]` | 台面坐标 → 关节角 / 舵机码（空跑） |
 | `des_app live [-n 秒] [--belt mm/s] [--dump x.png]` | **合成主循环**：核 0 取帧 + HDMI 60fps + 叠加（跟踪框按当前帧带位置重投影、原始 blob、判定线、状态栏），核 1 定位 + 跟踪表 + 调度。实测 20s 1200 帧 59.96fps、工作线程处理 99.9% 的帧 |
-| `des_app run [-n 秒] [--can can0] [--go] [--belt mm/s]` | **总装**：live 的 60fps 显示 + 定位 / 跟踪 / 调度，再加停带控制（BeltDriver）、机械臂线程（ArmExec，不加 `--go` 按航点时间空跑）、CAN「PLC」联动（状态机 空闲 / 运行 / 暂停 / 急停，命令应答，10Hz 状态、1Hz 计数、每件结果）。没开 CAN 时直接进入运行 |
+| `des_app run [-n 秒] [--can can0] [--go] [--belt mm/s]` | **总装**：live 的 60fps 显示 + 定位 / 跟踪 / 调度，再加停带控制（BeltDriver）、机械臂线程（ArmExec，不加 `--go` 按航点时间空跑）、CAN「PLC」联动（状态机 空闲 / 运行 / 暂停 / 急停 / 故障，命令应答，10Hz 状态、1Hz 计数、每件结果）。没开 CAN 时直接进入运行 |
 | `canplc <if> start\|stop\|pause\|resume\|reset\|speed <mm/s>\|recipe <n>\|monitor [秒]` | 扮「PLC」的命令行工具（`tools/canplc.c`，板上回环测试用，也是 PC 端程序的参考实现） |
 | `des_app arm scan / read / teach / torque-on / torque-off / home / goto x y / pick x y [角度] [料盒] [--go]` | 机械臂上电调试：扫舵机、读位置与角度、手掰示教、回零、走点、整套取放。运动命令默认只打印舵机码，加 `--go` 才动（步骤见 docs/04「上电调试步骤」） |
 | `des_app calib-cam --board 9x6 --square <mm> [--travel right] [--image f.png] [--dump x.png]` | 棋盘格平放在皮带上 → 像素→台面毫米单应矩阵，写 `calib.json`（`load_config` 自动合并）。坐标系与操作见 docs/02「相机标定」；合成图测试 `build/test_calib` |
@@ -66,7 +67,7 @@ ps/
 
 ```bash
 # Windows Git Bash（FD 自带 make 与交叉 gcc）；Linux 上传 CROSS= / SDK= 覆盖
-D:/ANLU/FD/toolchain/build-tools/bin/make.exe -C ps            # → ps/build/{desreg,test_scheduler,des_app}
+D:/ANLU/FD/toolchain/build-tools/bin/make.exe -C ps            # → ps/build/{desreg,test_*,canplc,des_app}
 scp -i ~/.ssh/id_ed25519_anlu ps/build/des_app ps/app/des_app.sh ps/app/des_app.json models/label_list.json root@192.168.137.100:/root/des/
 # 板上运行：/root/des/des_app.sh probe -n 10   （mipicam.ko 开机不自动加载，脚本缺模块时先 insmod）
 ```
