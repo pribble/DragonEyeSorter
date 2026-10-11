@@ -6,6 +6,8 @@
 
 **为什么用 ReLU**（2026-10-11 合成数据对比，480 张验证集、板上 NPU 实测）：SiLU 版 NPU 94.0%，ReLU 版 **96.25%**，与 PC 上 uint8 模型（96.46%）几乎一致，logits 最大偏差 1.6（SiLU 5.0），推理同为 7.8ms —— NPU 对 SiLU 是近似计算。
 
+**量化实验（合成数据，ReLU 模型）**：校准方法 MinMax / Entropy / Percentile 结果相同（uint8 96.46%）→ 损失来自权重 per-tensor 量化；per-channel 在 PC 上 97.7%，但**板上 NPU 推理时中止**（只支持 per-tensor，与厂家模型一致）。以后要补这 2 个点：跨层均衡（ReLU 下严格等价）或量化感知训练，等实物数据再看是否值得。
+
 **ArmNN 坑**：量化后必须做形状推断（`export_npu.py` 已做），缺张量形状时板上解析器直接段错误、不打日志。**准确率以板上 NPU 实测为准**：`NPU_EVAL_DIR=<val 目录> test_npu <model.json> <refs> 100`。
 
 **训练和推理用同一个裁切函数**（`roi_crop`），归一化也一致（RGB、÷255、均值 0），这是精度不掉的前提。

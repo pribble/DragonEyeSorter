@@ -70,6 +70,9 @@ def main():
     ap.add_argument("--out", default=os.path.join(HERE, "..", "models", "part_cls"))
     ap.add_argument("--imgsz", type=int, default=224)
     ap.add_argument("--ncalib", type=int, default=200)
+    ap.add_argument("--per-channel", action="store_true", help="per-channel weight scales: does NOT run on the board's NPU (aborts at inference, 2026-10-11)")
+    ap.add_argument("--calib-method", default="MinMax", choices=["MinMax", "Entropy", "Percentile"],
+                    help="activation range calibration (MinMax / Entropy / Percentile gave the same accuracy on the synthetic set)")
     ap.add_argument("--labels", default=os.path.join(HERE, "..", "models", "label_list.json"))
     a = ap.parse_args()
 
@@ -87,8 +90,9 @@ def main():
     files = files[: a.ncalib]
     u8 = a.out + "_uint8.onnx"
     quantize_static(pre, u8, Reader(files, in_name, a.imgsz), quant_format=QuantFormat.QDQ,
-                    activation_type=QuantType.QUInt8, weight_type=QuantType.QUInt8, per_channel=False,
-                    calibrate_method=CalibrationMethod.MinMax)
+                    activation_type=QuantType.QUInt8, weight_type=QuantType.QUInt8, per_channel=a.per_channel,
+                    calibrate_method=getattr(CalibrationMethod, a.calib_method),
+                    extra_options={"CalibPercentile": 99.99} if a.calib_method == "Percentile" else None)
     os.remove(pre)
     # The board's ArmNN ONNX parser needs the shape of EVERY tensor (value_info): without it, it segfaults while
     # parsing, before any log line (2026-10-11). The quantizer adds Q/DQ tensors without shapes -> infer them again,
