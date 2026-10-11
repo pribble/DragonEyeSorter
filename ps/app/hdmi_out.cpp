@@ -55,6 +55,9 @@ void HdmiOut::flip()
     clock_gettime(CLOCK_MONOTONIC, &a);
     p.buf[p.k].sync_device();
     p.vdma[kStart1 / 4] = uint32_t(p.buf[p.k]->phys_addr);
+    // the scan-out VDMA (park mode, internal frame sync) loads a new start address only when VSIZE is written
+    // (seen on PL v8, 2026-10-11: START alone kept showing the fb0 console); same value, commits the address
+    p.vdma[kVSize / 4] = kH;
     clock_gettime(CLOCK_MONOTONIC, &b);
     flush_ms_ = (b.tv_sec - a.tv_sec) * 1e3 + (b.tv_nsec - a.tv_nsec) / 1e6;
     p.k ^= 1;
@@ -64,7 +67,10 @@ void HdmiOut::close()
 {
     Impl &p = *p_;
     if (p.vdma) {
-        if (p.open) p.vdma[kStart1 / 4] = p.start_orig;   // console back on fb0
+        if (p.open) {   // console back on fb0
+            p.vdma[kStart1 / 4] = p.start_orig;
+            p.vdma[kVSize / 4] = kH;
+        }
         munmap(const_cast<uint32_t *>(p.vdma), 0x1000);
         p.vdma = nullptr;
     }

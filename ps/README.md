@@ -38,7 +38,7 @@ ps/
 | `des_app collect --cls <类别> [--belt mm/s] [--every N] [--max N] [--full N]` | live + 采训练裁切图（一次一类，按零件分目录；`--full` 另存整帧 + 自动 YOLO 框），见 train/README |
 | `soak.sh [秒] [目录]`（`tools/soak.sh`，部署到 /root/des/） | 长时间运行：des_app run + canplc 当 PLC，每分钟记内存 / 负载 / CAN / PL 帧号，结束出 summary.txt（测试报告「连续运行」） |
 | `des_app measure [-n 帧] [--image f.png] [--out raw.png] [--dump report.png]` | 画面里每个齿轮 / 齿条都测一遍（定位 → ROI → 测量），打印外径 / 孔径 / 偏心 / 齿数 / 缺陷或长度 / 齿距；`-n` > 1 时零件不动、统计每个量的均值 / σ / 极差（重复性，测试报告用）；`--out` 存原始帧以后用 `--image` 离线复测；`--dump` 出标注图（拟合圆、齿条框、r(θ) 曲线）。实物到货后对照卡尺真值用 |
-| `des_app display [-n 秒]` | 相机 → HDMI 60fps：每帧 BGRA→BGR 进 CMA 显示缓冲 + 写显示 VDMA `START_1` 翻页（实测转换 6.2ms/帧，60fps）；退出恢复 fb0 |
+| `des_app display [-n 秒]` | 相机 → HDMI 60fps：每帧 BGRA→BGR 进 CMA 显示缓冲 + 写显示 VDMA `START_1` 再写 `V_SIZE` 提交（只写地址不生效，docs/06）（实测转换 6.2ms/帧，60fps）；退出恢复 fb0 |
 
 - 坐标约定见 `scheduler/geom.hpp`：图像 px → 台面 mm（单应矩阵，配置 `px_to_table`）；件在带上的坐标 `s = x − B`（B = 带走过的距离），停带 / 反转都不用特殊处理。
 - 停带 = 给步进位置模式写「停在 B = 抓取线 − s」，减速由 PL 梯形曲线完成（`stepper_ctrl`）。⚠ 目标不能给在身后（会卡在 moving），调度器已按刹车距离判断来不及就转复检。
