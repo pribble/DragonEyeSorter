@@ -25,6 +25,10 @@ case "${1:-des_axi}" in
   vision2)
     iverilog -g2012 -Ptb_des_vision.LANES=2 -o "$T/sim" tb_des_vision.v ../rtl/des_vision.v   # half-width variant
     ;;
+  awb)   # vendor ISP white balance vs our patch (awb_seq_div); vendor primitives as behavioural models
+    tr -d '\r' < ../soc_base/src/ui_isp/awb_1_1/awb.v | sed 's/^module awb /module awb_orig /' > "$T/awb_orig.v"
+    iverilog -g2005 -o "$T/sim" tb_awb.v "$T/awb_orig.v" ../soc_patch/src/ui_isp/awb_1_1/awb.v ../rtl/awb_seq_div.v       ../soc_base/src/ui_isp/awb_1_1/signal_delay.v models/awb_vendor_models.v
+    ;;
   *) echo "unknown test: $1"; exit 1 ;;
 esac
 vvp -n "$T/sim"
