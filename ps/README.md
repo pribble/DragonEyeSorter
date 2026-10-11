@@ -86,7 +86,7 @@ scp -i ~/.ssh/id_ed25519_anlu ps/build/des_app ps/app/des_app.sh ps/app/des_app.
 
 ## 约定
 
-- `common/des_regs.h` 与 `docs/03-PL设计.md`、PL 端 `pl/rtl/des_regs.v` / `servo_bus.v` / `stepper_ctrl.v` 同一次提交更新（2026-10-10 统一；`common/pl_regs.h` 已被取代，保留待删）。
+- `common/des_regs.h` 与 `docs/03-PL设计.md`、PL 端 `pl/rtl/des_regs.v` / `servo_bus.v` / `stepper_ctrl.v` 同一次提交更新（2026-10-10 统一）。
 - 访问 PL 用 `common/des_hw`（舵机事务、步进、帧计数都在里面）。`common/pl_map` 的映射指针不是 `volatile`，循环里轮询寄存器可能被编译器优化掉，新代码别用。
 - 类别表从 `models/label_list.json` 加载，禁止手抄。
 - 时间戳、计数、统计接口随功能一起写（测试报告用）。

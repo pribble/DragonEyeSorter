@@ -13,9 +13,7 @@ pl/
 │   ├── des_vision.v         # ISP 后图像路径（灰度/高斯/Sobel/二值 + ROI 统计）@+0x300，仿真 790 项过，v8 上板验证
 │   ├── des_pwm.v            # 带尾两级翻板 PWM + 光源 @+0x400（仿真 11 项过），v8 上板验证（读回 / 50Hz）
 │   ├── awb_seq_div.v        # 仿真过：ISP 白平衡逐位除法器（soc_patch 的 awb.v 改版用，预计省约 4k LUT）
-│   ├── io_sync.v            # ⬜ 急停锁存/对射/限位 去抖 + 统一时间戳（待接入 des 寄存器总线）
-│   ├── axi_lite_regs.v      # ⛔ 已被 des_regs.v 取代（骨架，保留待删）
-│   └── servo_bus_master.v   # ⛔ 已被 servo_bus.v 取代（骨架，保留待删）
+│   └── io_sync.v            # ⬜ 急停锁存/对射/限位 去抖 + 统一时间戳（待接入 des 寄存器总线）
 ├── soc_base/       # 厂家 NPU demo 底板工程 soc_prj（2026-10-09 入库，含闭源加密 IP，
 │                   #   许可与使用边界见其 README；TD 6.2.1 打开，2026-10-10 统一，不产生格式升级）
 ├── sim/            # testbench（des_axi / servo_bus / stepper / vision / pwm / awb，入口 run_sim.sh；时序关键模块须能导出时间戳/计数）
@@ -38,7 +36,7 @@ pl/
 
 ## 约定
 
-- 寄存器偏移与 `docs/03-PL设计.md`、`ps/common/des_regs.h` 同一次提交更新（`pl_regs.h` 已被取代）。
+- 寄存器偏移与 `docs/03-PL设计.md`、`ps/common/des_regs.h` 同一次提交更新。
 - 自研图像算子（P1/P2）复用官方 line_buffer / `matrix_3x3` 框架时，走 soc_patch 标注 derived。
 - 每个模块配 testbench；时序关键模块要能导出测试报告用的时间戳 / 计数。
 - **禁止参考米联客 demo 代码拷贝**（"only for learning" 无开源许可）——学思路自己写，见 docs/10。
