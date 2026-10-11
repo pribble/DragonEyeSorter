@@ -13,8 +13,20 @@ param(
     [string]$Bit,
     [string]$Fsbl,
     [string]$Out = "$PSScriptRoot\BOOT.bin",
-    [string]$FdRoot = $(if ($env:FD_ROOT) { $env:FD_ROOT } else { 'D:\ANLU\FD' }),
-    [string]$VendorDemo = $(if ($env:NPU_DEMO) { $env:NPU_DEMO } else { 'D:\ANLU\02_F3P_DR1M90GEG400\01_start\02_start_Linux\05_application_demo\05-5_NPU演示\demo' })
+    [string]$FdRoot = $(
+        if ($env:FD_ROOT) { $env:FD_ROOT }
+        elseif (Test-Path "$PSScriptRoot\..\.env") {
+            Write-Host "检测到 .env 文件，正在加载..." -ForegroundColor Yellow
+            . "$PSScriptRoot\..\scripts\env_loader.ps1"
+            $env:FD_ROOT
+        }
+        else { 'C:\Anlogic\FD_2026.1_SP1' }
+    ),
+    [string]$VendorDemo = $(
+        if ($env:NPU_DEMO) { $env:NPU_DEMO }
+        elseif (Test-Path "$PSScriptRoot\..\.env") { $env:NPU_DEMO }
+        else { 'D:\ANLU\02_F3P_DR1M90GEG400\01_start\02_start_Linux\05_application_demo\05-5_NPU演示\demo' }
+    )
 )
 $ErrorActionPreference = 'Stop'
 $parts   = Join-Path $PSScriptRoot 'parts'

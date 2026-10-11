@@ -3,6 +3,8 @@
 # Windows (Git Bash):  D:/ANLU/FD/toolchain/build-tools/bin/make.exe -C ps [target]
 # Linux:               make -C ps CROSS=<path>/aarch64-linux-gnu- SDK=<demo>/libs
 #
+# 推荐: 先配置 .env 文件，然后直接 make
+#
 # CROSS  toolchain prefix. Use the FD one (Linaro 7.4, glibc 2.25 = board); NOT a distro aarch64 gcc (newer glibc).
 # SDK    vendor NPU demo libs dir (demo.zip -> face_detection/libs): armnn_lib/ + ffmpeg_opencv4.7.0_aarch64/.
 #        Same files as /opt/armnn_lib and /opt/ffmpeg_opencv4.7.0_aarch64 on the board. Kept out of the repo (113 MB).
@@ -10,11 +12,17 @@
 # Targets: desreg (C, no deps), test_scheduler (C++, no deps), test_calib / test_measure / des_app (C++, need SDK), all, clean.
 # Deploy:  scp -i ~/.ssh/id_ed25519_anlu build/<prog> root@192.168.137.100:/root/bin/
 
-CROSS ?= D:/ANLU/FD/toolchain/gcc/aarch64_linux/bin/aarch64-linux-gnu-
-SDK   ?= D:/ANLU/work/face_detection_src/app/face_detection/libs
-# FreeType for Chinese text on the HDMI interface: headers (any FreeType 2 dev package) + the board's libfreetype.so.6
+# 从 .env 文件读取配置（如果存在）
+-include ../.env.make
+
+# 默认值（如果 .env 未设置）
+FD_ROOT    ?= C:/Anlogic/FD_2026.1_SP1
+SDK_LIBS   ?= D:/ANLU/work/face_detection_src/app/face_detection/libs
 FREETYPE_INC ?= D:/ANLU/work/freetype2_include
 BOARD_LIBS   ?= D:/ANLU/work/board_libs
+
+CROSS ?= $(FD_ROOT)/toolchain/gcc/aarch64_linux/bin/aarch64-linux-gnu-
+SDK   ?= $(SDK_LIBS)
 BUILD ?= build
 
 CC  := $(CROSS)gcc

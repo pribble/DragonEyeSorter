@@ -57,10 +57,34 @@ DragonEyeSorter/
 
 ## 快速上手
 
-1. 读 [docs/09-开发环境与构建](docs/09-开发环境与构建.md)：工具版本（TD 6.2.1 / FD 2026.1 / FD 自带交叉编译器）、启动链、SD 卡布局。
-2. 板子用持久化 SD 卡启动（[scripts/sd_image](scripts/sd_image/)），根文件系统的改动会保留。
-3. 改 PL：TD 编出比特流 → [scripts/bootbin](scripts/bootbin/) 打包 `BOOT.bin` → 替换 `/mnt/mmcblk0p1/BOOT.bin` → 重启。
-4. 写 PS 应用：FD 自带的 `aarch64-linux-gnu-gcc` 交叉编译，`/dev/mem` mmap 读写 PL 寄存器，`scp` 到板上运行。
+### 0. 环境配置（首次使用必做）
+
+```powershell
+# Windows PowerShell
+.\setup_env.ps1
+
+# 或手动配置
+cp .env.example .env
+# 编辑 .env 填入你本机的工具路径
+```
+
+详见 [docs/13-环境配置指南.md](docs/13-环境配置指南.md)
+
+### 1. 开发环境
+
+读 [docs/09-开发环境与构建](docs/09-开发环境与构建.md)：工具版本（TD 6.2.1 / FD 2026.1 / FD 自带交叉编译器）、启动链、SD 卡布局。
+
+### 2. 启动板子
+
+板子用持久化 SD 卡启动（[scripts/sd_image](scripts/sd_image/)），根文件系统的改动会保留。
+
+### 3. 改 PL
+
+TD 编出比特流 → [scripts/bootbin](scripts/bootbin/) 打包 `BOOT.bin` → 替换 `/mnt/mmcblk0p1/BOOT.bin` → 重启。
+
+### 4. 写 PS 应用
+
+FD 自带的 `aarch64-linux-gnu-gcc` 交叉编译，`/dev/mem` mmap 读写 PL 寄存器，`scp` 到板上运行。
 
 ## 当前进度
 

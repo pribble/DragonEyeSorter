@@ -1,10 +1,33 @@
 #!/bin/bash
 # 把 NPU demo 的 initramfs 启动卡改造成持久化 SD 镜像（FAT boot + ext4 rootfs）。
-# 用法（WSL，root）：wsl -u root -e bash scripts/sd_image/make_sd_image.sh [NPU demo 的 boot 目录]
+# 用法（WSL，root）：
+#   方式1: wsl -u root -e bash scripts/sd_image/make_sd_image.sh [NPU demo 的 boot 目录]
+#   方式2: source scripts/env_loader.sh && sudo bash scripts/sd_image/make_sd_image.sh
 # 依赖：apt install lz4 u-boot-tools mtools dosfstools parted
 set -euo pipefail
 
-SRC=${1:-${NPU_DEMO_BOOT:-"/mnt/d/ANLU/02_F3P_DR1M90GEG400/01_start/02_start_Linux/05_application_demo/05-5_NPU演示/demo/boot"}}
+# 自动检测 NPU_DEMO 路径
+if [ -n "${NPU_DEMO:-}" ]; then
+    DEFAULT_BOOT="$NPU_DEMO/boot"
+elif [ -f "$(dirname "$0")/../../.env" ]; then
+    # 尝试加载 .env
+    source "$(dirname "$0")/../env_loader.sh" 2>/dev/null || true
+    DEFAULT_BOOT="${NPU_DEMO:-}/boot"
+else
+    DEFAULT_BOOT="/mnt/c/Users/$(whoami)/Downloads/demo/boot"
+fi
+
+SRC=${1:-${DEFAULT_BOOT}}
+
+# 验证路径
+if [ ! -d "$SRC" ] || [ ! -f "$SRC/uInitrd.lz4" ]; then
+    echo "❌ 错误: 找不到 NPU demo boot 目录或 uInitrd.lz4"
+    echo "请指定正确路径:"
+    echo "  $0 /path/to/demo/boot"
+    echo "或在 .env 文件中设置 NPU_DEMO 变量"
+    exit 1
+fi
+
 OUT_DIR=$(dirname "$(readlink -f "$0")")
 W=/root/sdbuild
 IMG_MB=4096

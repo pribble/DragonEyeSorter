@@ -56,3 +56,8 @@ System Volume Information/
 
 # 本机参考底板（仓库外，见 docs/10）
 /reference_src/
+
+# 本机环境配置（包含硬编码路径，不要提交）
+.env
+.env.local
+.env.make
