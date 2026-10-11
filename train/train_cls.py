@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Train the part classifier: YOLOv8n-cls @ 224 on part crops (ps/app/roi_crop: 56 mm -> 224 px).
+"""Train the part classifier: YOLOv8n-cls (ReLU) @ 224 on part crops (ps/app/roi_crop: 56 mm -> 224 px).
 
 Dataset = ImageFolder: <data>/train/<id>_<label>/*.png|jpg and <data>/val/... (folder names sort in class-id order,
 so the model's output index = models/label_list.json id). Made by synth_crops.py (smoke test) or
@@ -12,14 +12,21 @@ normalized to the part axis, which has a 180 deg ambiguity anyway.
     python train_cls.py --data data/synth --epochs 15 --name synth
 """
 import argparse
+import os
 
 from ultralytics import YOLO
+
+HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True)
-    ap.add_argument("--model", default="yolov8n-cls.pt", help="pretrained weights (ImageNet) or a .yaml to train from scratch")
+    # ReLU, not SiLU (2026-10-11): the NPU approximates SiLU; with ReLU the NPU matches the PC uint8 model
+    # (synthetic val: NPU 96.25% vs 94.0% with SiLU, max logit deviation 1.6 vs 5.0, same 7.8 ms)
+    ap.add_argument("--model", default=os.path.join(HERE, "models", "yolov8n-cls-relu.yaml"),
+                    help="model .yaml (default: YOLOv8n-cls with ReLU) or a .pt checkpoint")
+    ap.add_argument("--pretrained", default="yolov8n-cls.pt", help="with a .yaml model: initialize from these weights")
     ap.add_argument("--epochs", type=int, default=30)
     ap.add_argument("--imgsz", type=int, default=224)
     ap.add_argument("--batch", type=int, default=64)
@@ -30,6 +37,8 @@ def main():
     a = ap.parse_args()
 
     model = YOLO(a.model)
+    if a.pretrained and a.model.endswith(".yaml"):
+        model.load(a.pretrained)   # transfer matching weights (e.g. ReLU variant from the SiLU checkpoint)
     model.train(
         data=a.data, epochs=a.epochs, imgsz=a.imgsz, batch=a.batch, device=a.device, workers=a.workers,
         project=a.project, name=a.name, exist_ok=True, patience=10, plots=True, seed=0, deterministic=True,

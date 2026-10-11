@@ -71,4 +71,10 @@ private:
 
 const char *csv_header();
 
+// Wall clock for the records: CLOCK_REALTIME + an offset learned from the PLC's TIME frame (CAN 0x104), because the
+// board has no RTC. Thread-safe; 0 offset until a TIME frame arrives.
+void set_wall_offset_ms(int64_t offset_ms);
+int64_t wall_now_ms();
+bool wall_synced();
+
 }  // namespace des

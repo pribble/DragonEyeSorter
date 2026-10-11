@@ -7,6 +7,7 @@
 #include <cstdio>
 
 #include "can_link.h"
+#include "part_log.hpp"
 
 namespace des {
 
@@ -122,6 +123,15 @@ void Runner::handle_can(double now)
             send(canp_ack(f.id, f.data[1], CANP_ACK_OK));
             break;
         case CANP_ID_PLC_HB: last_plc_hb_ = now; break;
+        case CANP_ID_TIME: {   // the PLC's wall clock (no RTC here): records use our clock + this offset
+            timespec ts;
+            clock_gettime(CLOCK_REALTIME, &ts);
+            const int64_t mine = int64_t(ts.tv_sec) * 1000 + ts.tv_nsec / 1000000;
+            const bool first = !wall_synced();
+            set_wall_offset_ms(canp_time_ms(&f) - mine);
+            if (first) last_event_ = "clock synced from PLC";
+            break;
+        }
         default: break;
         }
     }

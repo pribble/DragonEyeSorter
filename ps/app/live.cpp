@@ -235,9 +235,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
             if (t.state == TrackState::New || t.state == TrackState::Tracking || t.disp == Disposition::None) continue;
             if (!logged.insert(t.id).second) continue;
             PartRecord rec;
-            timespec ts;
-            clock_gettime(CLOCK_REALTIME, &ts);
-            rec.wall_ms = int64_t(ts.tv_sec) * 1000 + ts.tv_nsec / 1000000;
+            rec.wall_ms = wall_now_ms();   // + offset from the PLC's TIME frame (no RTC on the board)
             rec.t_s = plog.now_s();
             rec.track_id = t.id;
             rec.frame_first = t.first_frame;

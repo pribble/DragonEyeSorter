@@ -8,7 +8,9 @@
  *   0x101 SPEED    [speed_x10 u16, seq]          0x181 STATUS  [state, flags, speed_x10 u16, alarm, hb, uptime_s u16]  10 Hz
  *   0x102 RECIPE   [recipe, seq]                 0x182 COUNTS  [total u16, ok u16, ng u16, recheck u16]  1 Hz + on change
  *   0x103 PLC_HB   [counter]  (>= 2 Hz)          0x183 PART    [id u16, class, disp, dest, conf_pct, size_x100 u16]
- *                                                0x184 ALARM   [code, severity, detail u16]
+ *   0x104 TIME     [unix_s u32, ms u16]  (v1.1)  0x184 ALARM   [code, severity, detail u16]
+ * TIME (no ACK): the PLC's wall clock. The board has no RTC; the app records wall time = its clock + the offset
+ * from the last TIME frame (the system clock is not changed).
  * A command is acknowledged by ACK with id_lo = low byte of the command id and the same seq.
  * PLC heartbeat missing for 1 s -> flag cleared in STATUS (the app may pause as an interlock).
  */
@@ -21,7 +23,7 @@
 #define CANP_BITRATE 500000
 
 enum {
-    CANP_ID_CMD = 0x100, CANP_ID_SPEED = 0x101, CANP_ID_RECIPE = 0x102, CANP_ID_PLC_HB = 0x103,
+    CANP_ID_CMD = 0x100, CANP_ID_SPEED = 0x101, CANP_ID_RECIPE = 0x102, CANP_ID_PLC_HB = 0x103, CANP_ID_TIME = 0x104,
     CANP_ID_ACK = 0x180, CANP_ID_STATUS = 0x181, CANP_ID_COUNTS = 0x182, CANP_ID_PART = 0x183, CANP_ID_ALARM = 0x184,
 };
 
@@ -66,6 +68,19 @@ static inline canp_frame_t canp_plc_hb(uint8_t counter)
 {
     canp_frame_t f = {CANP_ID_PLC_HB, 1, {counter}};
     return f;
+}
+static inline canp_frame_t canp_time(uint32_t unix_s, uint16_t ms)
+{
+    canp_frame_t f = {CANP_ID_TIME, 6, {0}};
+    canp_put16(f.data, (uint16_t)unix_s);
+    canp_put16(f.data + 2, (uint16_t)(unix_s >> 16));
+    canp_put16(f.data + 4, ms);
+    return f;
+}
+static inline int64_t canp_time_ms(const canp_frame_t *f)   /* unix time in ms carried by a TIME frame */
+{
+    uint32_t s = (uint32_t)canp_get16(f->data) | ((uint32_t)canp_get16(f->data + 2) << 16);
+    return (int64_t)s * 1000 + canp_get16(f->data + 4);
 }
 
 /* ---- DES -> PLC ---- */

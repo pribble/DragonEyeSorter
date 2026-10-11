@@ -4,6 +4,7 @@
 #include <sys/stat.h>
 #include <time.h>
 
+#include <atomic>
 #include <cerrno>
 #include <cstring>
 #include <vector>
@@ -31,6 +32,24 @@ std::string csv_text(std::string s)   // no separators / line breaks inside a fi
 }
 
 }  // namespace
+
+static std::atomic<int64_t> g_wall_offset_ms{0};
+static std::atomic<bool> g_wall_synced{false};
+
+void set_wall_offset_ms(int64_t offset_ms)
+{
+    g_wall_offset_ms = offset_ms;
+    g_wall_synced = true;
+}
+
+int64_t wall_now_ms()
+{
+    timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return int64_t(ts.tv_sec) * 1000 + ts.tv_nsec / 1000000 + g_wall_offset_ms.load();
+}
+
+bool wall_synced() { return g_wall_synced; }
 
 const char *csv_header()
 {
