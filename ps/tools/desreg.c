@@ -3,6 +3,9 @@
  *   desreg r <off> | w <off> <val> raw register access (offset inside PL_BASE window)
  *   desreg led on|off|auto
  *   desreg lat [n]                 PS->PL read interval, measured with the PL free-running counter
+ *   desreg cmdlat [n]              command response: PS issues a 6-servo SYNC WRITE -> first start bit on the bus
+ *                                  (ids 100..105: nobody answers, nothing moves; test report)
+ *   desreg steplat [n]             command response: PS issues a 10-step move -> first step pulse (polls STEPS)
  *   desreg ping <id>               servo PING
  *   desreg sread <id> <addr> <n>   servo READ DATA (e.g. 0x38 2 = position, 0x2E 2 = current, 0x3F 1 = temp)
  *   desreg swrite <id> <addr> <b..> servo WRITE DATA (bytes)
@@ -16,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "../common/des_hw.h"
 
@@ -74,6 +78,62 @@ static int latency(int n)
     return 0;
 }
 
+/* command response latency: from the PS deciding to send (FREE_CNT read) to the first start bit of a 6-servo SYNC
+ * WRITE on the bus (PL TX_T0), including the writes of the frame into the PL buffer. Servo ids 100..105 so that no
+ * servo on the bus moves. */
+static int cmdlat(int n)
+{
+    const uint8_t ids[6] = { 100, 101, 102, 103, 104, 105 };
+    uint16_t pos[6], ms[6];
+    for (int i = 0; i < 6; i++) { pos[i] = 2048; ms[i] = 500; }
+    uint32_t min = 0xffffffffu, max = 0;
+    double sum = 0, wire = 0;
+    for (int i = 0; i < n; i++) {
+        uint32_t t0 = des_now(&hw);
+        int rc = des_servo_sync_pos(&hw, ids, pos, ms, 6);
+        if (rc) { printf("SYNC WRITE failed: %s\n", des_strerror(rc)); return 5; }
+        uint32_t d = rd(DES_SB_TX_T0) - t0;
+        if (d < min) min = d;
+        if (d > max) max = d;
+        sum += d;
+        wire += rd(DES_SB_TX_T1) - rd(DES_SB_TX_T0);
+    }
+    printf("command -> first start bit on the bus, %d x 6-servo SYNC WRITE: min %.2f us, avg %.2f us, max %.2f us; "
+           "frame on the wire %.1f us\n", n, des_ticks_us(min), des_ticks_us((uint32_t)(sum / n)),
+           des_ticks_us(max), des_ticks_us((uint32_t)(wire / n)));
+    return 0;
+}
+
+/* stepper command response: from the move command to the first step (STEPS changes), polled back to back
+ * (~0.4 us resolution). Moves of +-10 steps (~0.1 mm of belt). */
+static int steplat(int n)
+{
+    des_step_enable(&hw, 1);
+    usleep(20000);
+    uint32_t min = 0xffffffffu, max = 0, lost = 0;
+    double sum = 0;
+    for (int i = 0; i < n; i++) {
+        int32_t p = des_step_pos(&hw);
+        uint32_t s0 = rd(DES_ST_STEPS), t0 = des_now(&hw), t = t0;
+        des_step_move(&hw, p + ((i & 1) ? -10 : 10), 2000, 20000);
+        while (rd(DES_ST_STEPS) == s0) {
+            t = des_now(&hw);
+            if (t - t0 > DES_FREE_CNT_HZ / 10) break;   /* 100 ms: no step at all */
+        }
+        if (t - t0 > DES_FREE_CNT_HZ / 10) { lost++; continue; }
+        uint32_t d = t - t0;
+        if (d < min) min = d;
+        if (d > max) max = d;
+        sum += d;
+        for (int g = 0; g < 200 && (des_step_status(&hw) & DES_ST_STATUS_MOVING); g++) usleep(1000);
+    }
+    if (lost == (uint32_t)n) { printf("no step pulse within 100 ms (halted? see desreg step status)\n"); return 5; }
+    printf("move command -> first step pulse, %d runs: min %.2f us, avg %.2f us, max %.2f us%s\n", n,
+           des_ticks_us(min), des_ticks_us((uint32_t)(sum / (n - lost))), des_ticks_us(max),
+           lost ? " (some runs gave no step)" : "");
+    return 0;
+}
+
 /* run one servo transaction and print timing / reply like the original tool */
 static int sb_print(const uint8_t *body, int n, int expect_reply, des_sb_result_t *out)
 {
@@ -118,6 +178,10 @@ int main(int argc, char **argv)
         printf("LED_CTRL <- %u\n", v);
     } else if (!strcmp(cmd, "lat")) {
         rc = latency(argc > 2 ? atoi(argv[2]) : 100000);
+    } else if (!strcmp(cmd, "cmdlat")) {
+        rc = cmdlat(argc > 2 ? atoi(argv[2]) : 200);
+    } else if (!strcmp(cmd, "steplat")) {
+        rc = steplat(argc > 2 ? atoi(argv[2]) : 100);
     } else if (!strcmp(cmd, "ping") && argc == 3) {
         uint8_t b[3] = { (uint8_t)strtoul(argv[2], NULL, 0), 2, 0x01 };
         rc = sb_print(b, 3, 1, NULL);
