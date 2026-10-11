@@ -16,6 +16,9 @@ case "${1:-des_axi}" in
   stepper)
     iverilog -g2005 -o "$T/sim" tb_stepper_ctrl.v ../rtl/stepper_ctrl.v
     ;;
+  pwm)
+    iverilog -g2005 -o "$T/sim" tb_des_pwm.v ../rtl/des_pwm.v
+    ;;
   vision)
     iverilog -g2012 -o "$T/sim" tb_des_vision.v ../rtl/des_vision.v   # the testbench uses join_none
     ;;
