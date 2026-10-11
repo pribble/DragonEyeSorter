@@ -100,6 +100,7 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             const json &c = j["picker"];
             auto &p = cfg.picker;
             get(c, "pick_x", p.pick_x); get(c, "pick_tol", p.pick_tol);
+            get(c, "pick_after_fov_mm", cfg.pick_after_fov);
             get(c, "reach_y0", p.reach_y0); get(c, "reach_y1", p.reach_y1); get(c, "brake_margin", p.brake_margin);
             get(c, "finger_w", p.finger_w); get(c, "finger_t", p.finger_t); get(c, "grip_clear", p.grip_clear);
             get(c, "max_open", p.max_open); get(c, "round_ratio", p.round_ratio); get(c, "neighbor_gap", p.neighbor_gap);
@@ -221,6 +222,7 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             return cp + ": " + e.what();
         }
     }
+    if (cfg.pick_after_fov > 0) cfg.picker.pick_x = cfg.tracker.fov_x1 + cfg.pick_after_fov;   // after calib.json
     cfg.picker.tail_x = cfg.tracker.tail_x;
     cfg.picker.recheck_outlet = 0;
 
