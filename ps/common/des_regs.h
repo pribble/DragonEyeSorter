@@ -50,6 +50,24 @@
 #define DES_ST_BRAKE         0x224u    /* R  : steps needed to ramp down from the current speed (v5) */
 #define DES_ST_RAMP_HZ       10000u    /* ramp ticks per second */
 
+/* des_vision, PL_BASE + 0x300 (v6): PL image path between the ISP and the frame writer (pl/rtl/des_vision.v) */
+#define DES_VIS_CTRL         0x300u    /* RW [2:0] mode 0 camera 1 gray 2 Gaussian 3 binary 4 Sobel 5 edges, [8] full frame */
+#define DES_VIS_THR          0x304u    /* RW [7:0] binary threshold, [26:16] edge threshold (|Gx|+|Gy|) */
+#define DES_VIS_ROI_X        0x308u    /* RW [10:0] x0, [26:16] x1 */
+#define DES_VIS_ROI_Y        0x30Cu    /* RW [10:0] y0, [26:16] y1 */
+#define DES_VIS_APPLY        0x310u    /* W  settings take effect at the next frame start */
+#define DES_VIS_ID           0x314u    /* R  0x56495331 */
+#define DES_VIS_SEQ          0x320u    /* R  frames with published statistics */
+#define DES_VIS_AREA         0x324u
+#define DES_VIS_BBOX_X       0x328u    /* R  [10:0] min x, [26:16] max x */
+#define DES_VIS_BBOX_Y       0x32Cu
+#define DES_VIS_SUMX         0x330u
+#define DES_VIS_SUMY         0x334u
+#define DES_VIS_EDGES        0x338u
+#define DES_VIS_CYCLES       0x33Cu    /* R  pixel clocks per frame */
+#define DES_VIS_ACTIVE       0x340u    /* R  settings in use: [2:0] mode [8] full [23:16] threshold */
+#define DES_VIS_ID_VALUE     0x56495331u
+
 #define DES_ID_VALUE     0x44455301u
 #define DES_FREE_CNT_HZ  75000000u
 

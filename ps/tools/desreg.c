@@ -8,6 +8,8 @@
  *   desreg swrite <id> <addr> <b..> servo WRITE DATA (bytes)
  *   desreg sync <pos> <ms> <id...> servo SYNC WRITE target position / time to several ids
  *   desreg step status | vel <steps/s> [acc] | move <target> [vmax] [acc] | stop | halt | off | zero
+ *   desreg vis                     PL vision statistics (v6)
+ *   desreg vis <mode> [thr] [edge_thr] [full|x0 y0 x1 y1]   mode 0 camera 1 gray 2 gauss 3 binary 4 sobel 5 edges
  * Do not use the write commands while des_app is running (single-master servo bus / stepper).
  */
 #include <stdio.h>
@@ -95,7 +97,7 @@ int main(int argc, char **argv)
 
     const char *cmd = argc > 1 ? argv[1] : "";
     int rc = 0;
-    int read_only = argc == 1 || !strcmp(cmd, "r") || !strcmp(cmd, "lat");
+    int read_only = argc == 1 || !strcmp(cmd, "r") || !strcmp(cmd, "lat") || (!strcmp(cmd, "vis") && argc == 2);
     if (!read_only && orc == DES_E_ID) {
         /* on a bitstream without des_regs this window aliases the camera DMA registers */
         fprintf(stderr, "refusing to write: DES_ID mismatch (0x%08x), bitstream lacks des_regs\n", rd(DES_REG_ID));
@@ -149,6 +151,20 @@ int main(int argc, char **argv)
         printf("sync %d servos -> pos %u in %u ms: %s, on wire %.1f us\n", nid, pos, ms, des_strerror(rc),
                des_ticks_us(rd(DES_SB_TX_T1) - rd(DES_SB_TX_T0)));
         rc = rc ? 5 : 0;
+    } else if (!strcmp(cmd, "vis")) {
+        if (argc >= 3) {
+            int mode = atoi(argv[2]), thr = argc > 3 ? atoi(argv[3]) : 128, ethr = argc > 4 ? atoi(argv[4]) : 200;
+            int full = argc <= 5 || !strcmp(argv[5], "full");
+            if (!full && argc >= 9) des_vis_roi(&hw, atoi(argv[5]), atoi(argv[6]), atoi(argv[7]), atoi(argv[8]));
+            rc = des_vis_config(&hw, mode, full, thr, ethr) == DES_OK ? 0 : 2;
+            if (rc) fprintf(stderr, "bitstream before v6: no des_vision\n");
+        } else {
+            des_vis_t v;
+            if (des_vis_read(&hw, &v) != DES_OK) { fprintf(stderr, "bitstream before v6: no des_vision\n"); rc = 2; }
+            else printf("seq %u mode %d full %d thr %d | area %u bbox x %d..%d y %d..%d centroid (%.1f, %.1f) "
+                        "edges %u | %u pixel clocks/frame\n", v.seq, v.mode, v.full, v.thr, v.area, v.x0, v.x1,
+                        v.y0, v.y1, v.cx, v.cy, v.edges, v.cycles);
+        }
     } else if (!strcmp(cmd, "step") && argc >= 3) {
         const char *s = argv[2];
         if (!strcmp(s, "vel") && argc >= 4) {

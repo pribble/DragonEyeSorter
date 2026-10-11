@@ -16,7 +16,7 @@
 namespace des {
 namespace {
 
-enum { A_TAB = 1, A_DEC, A_INC, A_TOGGLE, A_IMAGES, A_CMD, A_SELECT };
+enum { A_TAB = 1, A_DEC, A_INC, A_TOGGLE, A_IMAGES, A_CMD, A_SELECT, A_PLMODE, A_PLTHR };
 
 const cv::Scalar BG(34, 31, 29), PANEL(52, 48, 45), LINE(80, 76, 72), WHITE(235, 235, 235), DIM(150, 150, 150),
     GREEN(90, 200, 90), RED(80, 80, 235), ORANGE(40, 165, 255), CYAN(220, 200, 70), YELLOW(70, 215, 235),
@@ -24,6 +24,7 @@ const cv::Scalar BG(34, 31, 29), PANEL(52, 48, 45), LINE(80, 76, 72), WHITE(235,
 
 const char *kPages[] = {"总览", "曲线", "参数", "记录"};
 const char *kImages[] = {"不存", "NG + 复检", "全部"};
+const char *kPlModes[] = {"原图", "PL 灰度", "PL 高斯滤波", "PL 二值", "PL Sobel", "PL 边缘"};
 
 struct ParamDef {
     const char *label, *unit;
@@ -115,6 +116,8 @@ void Hmi::load_params()
         p_.rack_len_tol = j.value("rack_len_tol", p_.rack_len_tol);
         p_.min_conf = j.value("min_conf", p_.min_conf);
         p_.images = std::clamp(j.value("images", p_.images), 0, 2);
+        p_.pl_mode = std::clamp(j.value("pl_mode", p_.pl_mode), 0, 5);
+        p_.pl_thr = std::clamp(j.value("pl_thr", p_.pl_thr), 0, 255);
     } catch (const std::exception &) {
     }
 }
@@ -123,7 +126,8 @@ void Hmi::save_params() const
 {
     nlohmann::json j = {{"belt_speed", p_.belt_speed}, {"size_rule", p_.size_rule}, {"gear_od", p_.gear_od},
                         {"gear_od_tol", p_.gear_od_tol}, {"rack_len", p_.rack_len}, {"rack_len_tol", p_.rack_len_tol},
-                        {"min_conf", p_.min_conf}, {"images", p_.images}};
+                        {"min_conf", p_.min_conf}, {"images", p_.images}, {"pl_mode", p_.pl_mode},
+                        {"pl_thr", p_.pl_thr}};
     std::ofstream f(params_path_);
     if (f) f << j.dump(1) << "\n";
 }
@@ -185,6 +189,8 @@ std::vector<HmiAction> Hmi::handle(const std::vector<UiEvent> &ev)
             case A_CMD: out.push_back({HmiAction::Command, h.arg}); break;
             case A_TOGGLE: p_.size_rule = !p_.size_rule; changed = true; break;
             case A_IMAGES: p_.images = (p_.images + 1) % 3; changed = true; break;
+            case A_PLMODE: p_.pl_mode = (p_.pl_mode + 1) % 6; changed = true; break;
+            case A_PLTHR: p_.pl_thr = std::clamp(p_.pl_thr + h.arg * 5, 0, 255); changed = true; break;
             case A_DEC:
             case A_INC: {
                 const ParamDef &d = kParams[h.arg];
@@ -419,10 +425,17 @@ void Hmi::page_params(cv::Mat &img)
     cv::rectangle(img, {x0, 182, 470, 34}, state_color(st_.run_state), cv::FILLED);
     text(img, std::string("状态 ") + state_name(st_.run_state) + fmt("    带速 %.1f mm/s", st_.belt_mm_s), x0 + 10, 187,
          20, WHITE);
-    text(img, run ? "参数修改立即生效，并保存到 ui_params.json" : "运行控制只在 des_app run 模式可用；参数照常保存",
-         x0, 232, 16, DIM);
-    text(img, fmt("已记录 %.0f 件", double(st_.logged)) + fmt("，存图 %.0f 张", double(st_.log_images)), x0, 258, 16,
-         DIM);
+    // PL image path (des_vision): what the camera stream shows, binary threshold
+    text(img, "PL 显示", x0, 232, 20, WHITE);
+    button(img, {x0 + 90, 226, 200, 34}, st_.pl_vision ? kPlModes[p_.pl_mode] : "比特流无此功能", p_.pl_mode != 0,
+           st_.pl_vision ? A_PLMODE : 0, 0, 20);
+    text(img, "二值阈值", x0 + 310, 232, 18, WHITE);
+    button(img, {x0 + 400, 226, 40, 34}, "-", false, st_.pl_vision ? A_PLTHR : 0, -1, 24);
+    text(img, std::to_string(p_.pl_thr), x0 + 452, 230, 22, YELLOW);
+    button(img, {x0 + 500, 226, 40, 34}, "+", false, st_.pl_vision ? A_PLTHR : 0, 1, 24);
+    text(img, std::string(run ? "改动即时生效并存 ui_params.json" : "启停按钮只在 run 模式可用；参数照常保存") +
+                  fmt("   已记录 %.0f 件", double(st_.logged)),
+         x0, 270, 15, DIM);
 }
 
 void Hmi::page_records(cv::Mat &img)
@@ -482,6 +495,8 @@ void Hmi::page_records(cv::Mat &img)
     } else {
         line("未测量", DIM);
     }
+    if (r.pl_area > 0)
+        line(fmt("PL 粗测 等效Ø %.1f", r.pl_d_mm) + fmt("  框 %.1f", r.pl_w_mm) + fmt("×%.1f mm", r.pl_h_mm), CYAN);
 }
 
 }  // namespace des

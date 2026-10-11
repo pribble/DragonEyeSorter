@@ -60,6 +60,23 @@ typedef struct {
 #define DES_VERSION_CAPTURE 5u
 int des_capture_read(const des_hw_t *h, des_capture_t *c);   /* DES_E_ARG on bitstreams before v5 */
 
+/* ---- PL vision path (des_vision, VERSION >= 6) ---- */
+enum { DES_VIS_CAMERA = 0, DES_VIS_GRAY, DES_VIS_GAUSS, DES_VIS_BINARY, DES_VIS_SOBEL, DES_VIS_EDGE };
+typedef struct {
+    uint32_t seq;          /* frames with published statistics */
+    uint32_t area, edges;  /* bright / edge pixels in the ROI of that frame */
+    int x0, x1, y0, y1;    /* bounding box of the bright pixels (x0 > x1: none) */
+    double cx, cy;         /* centroid (px), 0 without bright pixels */
+    uint32_t cycles;       /* pixel clocks per frame */
+    int mode, full, thr;   /* settings in use */
+} des_vis_t;
+
+#define DES_VERSION_VISION 6u
+/* settings take effect at the next frame start; DES_E_ARG on bitstreams before v6 */
+int des_vis_config(des_hw_t *h, int mode, int full, int thr, int edge_thr);
+int des_vis_roi(des_hw_t *h, int x0, int y0, int x1, int y1);   /* pixels, inclusive; also applies */
+int des_vis_read(const des_hw_t *h, des_vis_t *v);
+
 /* ---- servo bus (Desheng protocol v4.01; PL adds FF FF header and checksum) ---- */
 typedef struct {
     int rc;                /* DES_OK / DES_E_* */

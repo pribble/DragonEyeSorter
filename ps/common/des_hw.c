@@ -83,6 +83,50 @@ int des_capture_read(const des_hw_t *h, des_capture_t *c)
     return DES_OK;
 }
 
+/* ---------------- PL vision path ---------------- */
+
+int des_vis_config(des_hw_t *h, int mode, int full, int thr, int edge_thr)
+{
+    if (h->version < DES_VERSION_VISION) return DES_E_ARG;
+    des_wr(h, DES_VIS_CTRL, (uint32_t)(mode & 7) | (full ? 0x100u : 0u));
+    des_wr(h, DES_VIS_THR, (uint32_t)(thr & 0xFF) | ((uint32_t)(edge_thr & 0x7FF) << 16));
+    des_wr(h, DES_VIS_APPLY, 1);
+    return DES_OK;
+}
+
+int des_vis_roi(des_hw_t *h, int x0, int y0, int x1, int y1)
+{
+    if (h->version < DES_VERSION_VISION) return DES_E_ARG;
+    des_wr(h, DES_VIS_ROI_X, (uint32_t)(x0 & 0x7FF) | ((uint32_t)(x1 & 0x7FF) << 16));
+    des_wr(h, DES_VIS_ROI_Y, (uint32_t)(y0 & 0x7FF) | ((uint32_t)(y1 & 0x7FF) << 16));
+    des_wr(h, DES_VIS_APPLY, 1);
+    return DES_OK;
+}
+
+int des_vis_read(const des_hw_t *h, des_vis_t *v)
+{
+    if (h->version < DES_VERSION_VISION) return DES_E_ARG;
+    uint32_t s, bx, by, sx, sy, act;
+    do {   /* a new frame may publish while we read: retry until the sequence number is stable */
+        s = des_rd(h, DES_VIS_SEQ);
+        v->area = des_rd(h, DES_VIS_AREA);
+        bx = des_rd(h, DES_VIS_BBOX_X);
+        by = des_rd(h, DES_VIS_BBOX_Y);
+        sx = des_rd(h, DES_VIS_SUMX);
+        sy = des_rd(h, DES_VIS_SUMY);
+        v->edges = des_rd(h, DES_VIS_EDGES);
+        v->cycles = des_rd(h, DES_VIS_CYCLES);
+        act = des_rd(h, DES_VIS_ACTIVE);
+    } while (s != des_rd(h, DES_VIS_SEQ));
+    v->seq = s;
+    v->x0 = (int)(bx & 0x7FF); v->x1 = (int)((bx >> 16) & 0x7FF);
+    v->y0 = (int)(by & 0x7FF); v->y1 = (int)((by >> 16) & 0x7FF);
+    v->cx = v->area ? (double)sx / v->area : 0.0;
+    v->cy = v->area ? (double)sy / v->area : 0.0;
+    v->mode = (int)(act & 7); v->full = (int)((act >> 8) & 1); v->thr = (int)((act >> 16) & 0xFF);
+    return DES_OK;
+}
+
 /* ---------------- servo bus ---------------- */
 
 static uint8_t rx_byte(const des_hw_t *h, int i)

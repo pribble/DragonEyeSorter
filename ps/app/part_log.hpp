@@ -35,6 +35,9 @@ struct PartRecord {
     std::string disp, dest, why; // pick / flap / recheck, destination name, reason
     PartMeasure meas;
     float s = 0, y = 0, axis = 0, len = 0, wid = 0;   // belt coordinate / lateral position / blob geometry
+    // PL coarse measurement (des_vision ROI statistics, v6): bright area, area-equivalent diameter, bounding box
+    uint32_t pl_area = 0;
+    float pl_d_mm = 0, pl_w_mm = 0, pl_h_mm = 0;
 };
 
 class PartLog {

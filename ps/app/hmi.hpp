@@ -30,6 +30,8 @@ struct HmiParams {            // operator-editable, persisted in ui_params.json
     float gear_od = 32, gear_od_tol = 0.15f, rack_len = 50, rack_len_tol = 0.5f;
     float min_conf = 0.5f;
     int images = 1;           // 0 none, 1 NG + recheck, 2 all
+    int pl_mode = 0;          // des_vision display: 0 camera 1 gray 2 Gaussian 3 binary 4 Sobel 5 edges
+    int pl_thr = 128;         // des_vision binary threshold
 };
 
 struct HmiStatus {            // from the worker, every cycle
@@ -38,6 +40,7 @@ struct HmiStatus {            // from the worker, every cycle
     double belt_mm_s = 0;
     float worker_ms = 0, npu_ms = 0;
     bool npu = false, clock_synced = false;
+    bool pl_vision = false;   // bitstream has des_vision (v6)
     int inputs = 0, tracks = 0;
     uint64_t logged = 0, log_images = 0;
 };

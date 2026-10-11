@@ -55,7 +55,8 @@ const char *csv_header()
 {
     return "wall_ms,t_s,track,frame_first,frame_last,cls,label,conf,disp,dest,why,"
            "meas_valid,kind,size_mm,bore_mm,ecc_mm,pitch_mm,teeth,short,missing,flash,teeth_judged,smear_mm,"
-           "axis_dist_mm,meas_frame,meas_count,s_mm,y_mm,axis_deg,len_mm,wid_mm,image";
+           "axis_dist_mm,meas_frame,meas_count,s_mm,y_mm,axis_deg,len_mm,wid_mm,pl_area_px,pl_d_mm,pl_w_mm,pl_h_mm,"
+           "image";
 }
 
 double PartLog::now_s() const
@@ -149,13 +150,13 @@ void PartLog::write(const Item &it)
     int n = fprintf(csv_,
                     "%lld,%.3f,%d,%u,%u,%d,%s,%.3f,%s,%s,%s,"
                     "%d,%c,%.3f,%.3f,%.3f,%.4f,%d,%d,%d,%d,%d,%.2f,"
-                    "%.1f,%u,%d,%.2f,%.2f,%.1f,%.1f,%.1f,%s\n",
+                    "%.1f,%u,%d,%.2f,%.2f,%.1f,%.1f,%.1f,%u,%.2f,%.2f,%.2f,%s\n",
                     (long long)r.wall_ms, r.t_s, r.track_id, r.frame_first, r.frame_last, r.cls,
                     csv_text(r.label).c_str(), r.conf, csv_text(r.disp).c_str(), csv_text(r.dest).c_str(),
                     csv_text(r.why).c_str(), int(m.valid), m.kind ? m.kind : '-', m.size, m.bore, m.ecc, m.pitch,
                     m.teeth, m.short_teeth, m.missing_teeth, m.flash_gaps, int(m.teeth_judged), m.smear,
                     m.axis_dist < 1e8f ? m.axis_dist : -1.f, m.frame, m.count, r.s, r.y, r.axis * 57.29578f, r.len,
-                    r.wid, img.c_str());
+                    r.wid, r.pl_area, r.pl_d_mm, r.pl_w_mm, r.pl_h_mm, img.c_str());
     if (n < 0 || fflush(csv_) != 0) errors++;
     else written++;
 }

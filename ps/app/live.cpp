@@ -179,7 +179,20 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
         tr.config().min_conf = p.min_conf;
         plog.set_images(p.images == 0 ? "none" : p.images == 2 ? "all" : "ng");
         if (runner) runner->set_speed(p.belt_speed, "HMI");
+        des_vis_config(&hw, p.pl_mode, 0, p.pl_thr, 200);   // PL display mode + threshold (no-op before v6)
     };
+    // PL coarse measurement (des_vision ROI statistics): the ROI follows the part nearest the optical axis; results
+    // count for that part once its ROI has been in force for a whole frame (settings apply at the next frame start,
+    // statistics are published at the one after)
+    struct PlMeas {
+        uint32_t area = 0;
+        float d = 0, w = 0, h = 0;
+    };
+    std::map<int, PlMeas> pl_meas;
+    int roi_track = -1;
+    uint32_t roi_seq = 0;
+    const bool pl_vision = hw.version >= DES_VERSION_VISION;
+    const Homography hinv = cfg.px_to_table.inverse();
     apply_params(hmi.params());
     cv::Mat hmi_panel;
     double last_hmi = 0, prev_work_ms = 0;
@@ -271,6 +284,14 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
             rec.meas = t.meas;
             rec.s = t.s; rec.y = t.y; rec.axis = t.axis; rec.len = t.len; rec.wid = t.wid;
             auto it = crops.find(t.id);
+            auto pm = pl_meas.find(t.id);
+            if (pm != pl_meas.end()) {
+                rec.pl_area = pm->second.area;
+                rec.pl_d_mm = pm->second.d;
+                rec.pl_w_mm = pm->second.w;
+                rec.pl_h_mm = pm->second.h;
+                pl_meas.erase(pm);
+            }
             hmi.add_part(rec, it != crops.end() ? it->second : cv::Mat(), now_s());
             plog.add(std::move(rec), it != crops.end() ? it->second : cv::Mat());
             if (it != crops.end()) crops.erase(it);
@@ -278,6 +299,44 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
         if (processed % 120 == 0) {   // forget crops of tracks that vanished undecided, and old ids
             for (auto it = crops.begin(); it != crops.end();) it = tr.find(it->first) ? std::next(it) : crops.erase(it);
             while (logged.size() > 5000) logged.erase(logged.begin());
+        }
+
+        // PL coarse measurement: read the statistics of the ROI set earlier, then aim the ROI at the part nearest
+        // the optical axis (fully in view)
+        if (pl_vision) {
+            des_vis_t vs;
+            des_vis_read(&hw, &vs);
+            if (roi_track >= 0 && vs.seq >= roi_seq + 2 && vs.area > 0 && vs.x0 <= vs.x1) {
+                const Vec2 c = cfg.px_to_table.map({float(vs.cx), float(vs.cy)});
+                const Vec2 cx1 = cfg.px_to_table.map({float(vs.cx) + 1, float(vs.cy)});
+                const float mm_px = norm(cx1 - c);
+                PlMeas m;
+                m.area = vs.area;
+                m.d = 2 * std::sqrt(vs.area / kPi) * mm_px;   // area-equivalent diameter
+                m.w = norm(cfg.px_to_table.map({float(vs.x1), float(vs.y0)}) - cfg.px_to_table.map({float(vs.x0), float(vs.y0)}));
+                m.h = norm(cfg.px_to_table.map({float(vs.x0), float(vs.y1)}) - cfg.px_to_table.map({float(vs.x0), float(vs.y0)}));
+                if (tr.find(roi_track)) pl_meas[roi_track] = m;
+            }
+            const Track *best = nullptr;
+            float best_d = 1e9f;
+            const Vec2 axis = cfg.px_to_table.map({0.5f * f.width, 0.5f * f.height});
+            for (const Track &t : tr.tracks()) {
+                if ((t.state != TrackState::Tracking && t.state != TrackState::New) || t.merged || t.n_geom == 0) continue;
+                const float d = norm(Vec2{t.x_at(obs.belt_mm), t.y} - axis);
+                if (d < best_d) { best_d = d; best = &t; }
+            }
+            if (best && best->id != roi_track) {
+                float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
+                for (const Vec2 &v : best->footprint(obs.belt_mm, 4.f).corners()) {
+                    const Vec2 p = hinv.map(v);
+                    x0 = std::min(x0, p.x); x1 = std::max(x1, p.x); y0 = std::min(y0, p.y); y1 = std::max(y1, p.y);
+                }
+                des_vis_roi(&hw, std::max(0, int(x0)), std::max(0, int(y0)), std::min(f.width - 1, int(x1)),
+                            std::min(f.height - 1, int(y1)));
+                roi_track = best->id;
+                roi_seq = vs.seq;
+            }
+            if (pl_meas.size() > 200) pl_meas.erase(pl_meas.begin());
         }
 
         // operator interface: status in, clicks / keys -> parameter changes or run commands, redraw ~8 Hz
@@ -289,6 +348,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
             hs.worker_ms = float(prev_work_ms);
             hs.npu_ms = npu.last_npu_ms;
             hs.npu = npu.running();
+            hs.pl_vision = pl_vision;
             hs.clock_synced = wall_synced();
             hs.inputs = input ? input->devices() : 0;
             hs.tracks = int(tr.tracks().size());
