@@ -316,6 +316,8 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
         }
         if (processed % 120 == 0) {   // forget crops of tracks that vanished undecided, and old ids
             for (auto it = crops.begin(); it != crops.end();) it = tr.find(it->first) ? std::next(it) : crops.erase(it);
+            for (auto it = npu_stat.begin(); it != npu_stat.end();)
+                it = tr.find(it->first) ? std::next(it) : npu_stat.erase(it);
             while (logged.size() > 5000) logged.erase(logged.begin());
         }
 
