@@ -29,7 +29,7 @@ SCHED_SRC := scheduler/tracker.cpp scheduler/picker.cpp scheduler/arm.cpp
 # camera capture reuses the vendor-derived driver wrapper in vision/ (MIT); no NPU code is linked yet
 VISION_SRC := vision/mipi_camera.cpp vision/logger_forward.cpp vision/flow_common_types.cpp
 APP_SRC := app/main.cpp app/camera_rig.cpp app/locate.cpp app/config.cpp app/hdmi_out.cpp app/live.cpp app/calib.cpp app/belt_ctl.cpp app/arm_exec.cpp app/runner.cpp \
-           app/measure.cpp app/track_measure.cpp
+           app/measure.cpp app/track_measure.cpp app/measure_tool.cpp
 OPENCV_LIBS := -lopencv_calib3d -lopencv_features2d -lopencv_flann -lopencv_imgproc -lopencv_imgcodecs -lopencv_core
 
 .PHONY: all clean
@@ -48,7 +48,7 @@ $(BUILD)/test_measure: tests/test_measure.cpp app/measure.cpp app/track_measure.
     $(wildcard app/*measure*.hpp scheduler/*.hpp) | $(BUILD)
 	$(CXX) $(CXXFLAGS) -Iapp -Ischeduler -I$(OPENCV)/include/opencv4 -o $@ tests/test_measure.cpp app/measure.cpp \
 	    app/track_measure.cpp $(SCHED_SRC) \
-	    -L$(OPENCV)/lib -Wl,-rpath-link,$(OPENCV)/lib $(RPATH) -lopencv_imgproc -lopencv_core -lpthread
+	    -L$(OPENCV)/lib -Wl,-rpath-link,$(OPENCV)/lib $(RPATH) -lopencv_imgcodecs -lopencv_imgproc -lopencv_core -lpthread
 
 $(BUILD)/canplc: tools/canplc.c bus/can_link.c bus/can_link.h bus/can_proto.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ibus -o $@ tools/canplc.c bus/can_link.c

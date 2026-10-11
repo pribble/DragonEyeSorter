@@ -35,6 +35,7 @@ struct GearMeasure {
     bool teeth_judged = true;   // false: parallax smear too large, the three counts above are not valid
     float smear_mm = 0;         // parallax smear at this position (walls visible)
     Vec2 center;                                      // tip-circle center, table mm
+    Vec2 bore_center;                                 // bore circle center, table mm
     float fit_rms = 0;                                // tip-circle fit residual
     std::vector<float> r_theta;                       // 720 bins (0.5 deg), outer radius, mm (UI curve)
 };
@@ -48,6 +49,7 @@ struct RackMeasure {
     bool teeth_judged = true;
     float smear_mm = 0;
     float axis = 0;                                   // direction of the length, rad (table frame)
+    Vec2 center;                                      // center of the bounding rectangle, table mm
 };
 
 // gray: full-resolution 8-bit image; roi: image px around one part (with a margin); h: px -> table mm

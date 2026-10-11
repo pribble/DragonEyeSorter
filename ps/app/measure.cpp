@@ -382,6 +382,7 @@ GearMeasure measure_gear(const cv::Mat &gray, cv::Rect roi, const Homography &h,
         if (fit_circle(hp, cb, rb)) {
             g.bore_d = 2 * rb;
             g.ecc = norm(cb - ct);
+            g.bore_center = cb;
         }
     }
     if (!g.teeth_judged) g.short_teeth = g.missing_teeth = g.flash_gaps = 0;
@@ -431,6 +432,7 @@ RackMeasure measure_rack(const cv::Mat &gray, cv::Rect roi, const Homography &h,
         if (l.first && r.first) m.length = r.second - l.second;
     }
     m.axis = wrap_axis(std::atan2(eu.y, eu.x));
+    m.center = c;
 
     // edge profiles along u (0.1 mm bins), interior only (ends excluded): the toothed side varies, the back is flat.
     // Points go to the side their normal faces, so a bin with no tooth-side point never takes a back-side value.

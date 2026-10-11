@@ -11,6 +11,8 @@
 //   des_app arm home|goto <x> <y> [z] [axis]|pick <x> <y> [axis_deg] [bin]   motion: dry run unless --go
 //   des_app calib-cam [--board 9x6] [--square mm] [--travel right|left|down|up] [--image f.png] [--out calib.json]
 //                                                                   checkerboard on the belt -> px_to_table (calib.json)
+//   des_app measure [-n frames] [--image f.png] [--out raw.png] [--dump report.png]
+//                                                                   measure every gear / rack in view; -n > 1: repeatability
 // common: -c <config.json> (default /root/des/des_app.json), --no-rt
 //
 // Bring-up order: probe (60 fps without skips) -> locate (thresholds, homography) -> track (belt + tracker)
@@ -24,6 +26,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <memory>
 #include <string>
 
 #include <opencv2/imgproc.hpp>
@@ -39,6 +42,7 @@
 #include "hdmi_out.hpp"
 #include "live.hpp"
 #include "locate.hpp"
+#include "measure_tool.hpp"
 
 using namespace des;
 
@@ -70,12 +74,14 @@ struct Args {
 static void usage()
 {
     fprintf(stderr,
-            "usage: des_app probe|locate|track|display|live|run|calib-cam|arm|ik [options]\n"
+            "usage: des_app probe|locate|track|display|live|run|calib-cam|measure|arm|ik [options]\n"
             "  -c cfg.json  -n N  --vmax N  --exp us  --gain dB*10  --dump file.png  --belt mm/s  --no-rt\n"
             "  calib-cam: --board <cols>x<rows> (inner corners)  --square <mm>  --travel right|left|down|up\n"
             "             --image <file> (instead of the camera)  --out <calib.json>  --exhaustive\n"
             "  arm: scan | read | teach | torque-on | torque-off | home | goto x y [z] [axis] | pick x y [axis] [bin]\n"
-            "       motion commands only print the servo frames unless --go\n");
+            "       motion commands only print the servo frames unless --go\n"
+            "  measure: -n <frames> (still parts: repeatability)  --image <file> (instead of the camera)\n"
+            "           --out <raw.png> (keep the frame for --image later)  --dump <report.png>\n");
 }
 
 static bool parse(int argc, char **argv, Args &a)
@@ -537,6 +543,64 @@ static int run_calib(des_hw_t *hw, const AppConfig &cfg, const Args &a)
     return err.empty() ? 0 : 1;
 }
 
+// ---------------------------------------------------------------- measure
+// One frame (or -n frames of still parts) -> locate -> measure every gear / rack. For accuracy work with real
+// parts: compare with the caliper values, report the repeatability, keep the raw frame to re-run offline.
+static int run_measure(des_hw_t *hw, const AppConfig &cfg, const Args &a)
+{
+    cv::Mat bgra, gray;
+    int frames = a.n > 0 ? int(a.n) : 1;
+    std::unique_ptr<CameraRig> cam;
+    if (!a.image.empty()) {
+        cv::Mat img = cv::imread(a.image, cv::IMREAD_COLOR);
+        if (img.empty()) { fprintf(stderr, "cannot read %s\n", a.image.c_str()); return 1; }
+        cv::cvtColor(img, bgra, cv::COLOR_BGR2BGRA);
+        cv::cvtColor(img, gray, cv::COLOR_BGR2GRAY);
+        frames = 1;
+    } else {
+        cam.reset(new CameraRig(hw));
+        if (open_camera(*cam, cfg, a)) return 1;
+        CapturedFrame f;
+        for (int i = 0; i < 30; i++)   // exposure settles
+            if (!cam->next(f, false).empty()) return 1;
+    }
+    Locator loc(cfg.locate);
+    RepeatStats st;
+    std::vector<PartResult> last;
+    double sum_ms = 0;
+    for (int i = 0; i < frames && !g_stop; i++) {
+        float mm_per_row = 0;
+        if (cam) {
+            CapturedFrame f;
+            std::string err = cam->next(f, true);
+            if (!err.empty()) { fprintf(stderr, "%s\n", err.c_str()); return 1; }
+            // copy out of the DMA ring (it is rewritten a few frames later)
+            bgra = cv::Mat(f.height, f.width, CV_8UC4, const_cast<uint8_t *>(f.bgra), size_t(f.stride)).clone();
+            cv::cvtColor(bgra, gray, cv::COLOR_BGRA2GRAY);
+            mm_per_row = float((f.step_pos_end - f.step_pos) * cfg.belt.mm_per_step * cfg.belt.dir / f.height);
+        }
+        double t0 = now_s();
+        auto dets = loc.run(bgra.data, bgra.cols, bgra.rows, int(bgra.step), cfg.px_to_table);
+        last = measure_parts(gray, dets, cfg, mm_per_row);
+        sum_ms += (now_s() - t0) * 1e3;
+        if (i == 0 || i == frames - 1) {
+            printf("frame %d: %zu blobs, %zu measured\n", i, dets.size(), last.size());
+            for (const PartResult &r : last) printf("   %s\n", describe(r).c_str());
+        }
+        st.add(last);
+    }
+    printf("== measure: %d frame(s), locate + measure %.1f ms per frame\n", frames, sum_ms / std::max(1, frames));
+    if (frames > 1) st.print();
+    if (!a.out.empty()) printf("raw frame %s: %s\n", a.out.c_str(), cv::imwrite(a.out, gray) ? "ok" : "FAILED");
+    if (!a.dump.empty() && !bgra.empty()) {
+        cv::Mat bgr;
+        cv::cvtColor(bgra, bgr, cv::COLOR_BGRA2BGR);
+        draw_parts(bgr, last, cfg.px_to_table);
+        printf("report %s: %s\n", a.dump.c_str(), cv::imwrite(a.dump, bgr) ? "ok" : "FAILED");
+    }
+    return 0;
+}
+
 static int run_ik(const AppConfig &cfg, const Args &a)
 {
     if (a.pos.size() < 2) { usage(); return 1; }
@@ -570,6 +634,7 @@ int main(int argc, char **argv)
                                             cfg.calib_file.c_str());
     if (a.mode == "ik") return run_ik(cfg, a);
     if (a.mode == "calib-cam" && !a.image.empty()) return run_calib(nullptr, cfg, a);
+    if (a.mode == "measure" && !a.image.empty()) return run_measure(nullptr, cfg, a);
 
     des_hw_t hw;
     int rc = des_hw_open(&hw);
@@ -589,6 +654,7 @@ int main(int argc, char **argv)
     else if (a.mode == "live" || a.mode == "run") rc = run_live_mode(hw, cfg, a);
     else if (a.mode == "calib-cam") rc = run_calib(&hw, cfg, a);
     else if (a.mode == "arm") rc = run_arm(hw, cfg, a);
+    else if (a.mode == "measure") rc = run_measure(&hw, cfg, a);
     else { usage(); rc = 1; }
     des_hw_close(&hw);
     return rc;
