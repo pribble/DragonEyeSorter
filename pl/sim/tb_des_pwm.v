@@ -25,7 +25,7 @@ module tb_des_pwm;
         begin @(posedge clk); wr <= 1; waddr <= a; wdata <= d; @(posedge clk); wr <= 0; end
     endtask
     task rreg(input [7:0] a, output [31:0] d);
-        begin @(posedge clk); raddr <= a; @(posedge clk); @(posedge clk); d = rdata; end
+        begin @(posedge clk); raddr <= a; @(posedge clk); d = rdata; end   // AXI bridge timing: data at the next edge
     endtask
 
     // pulse monitor per channel: widths and rising-edge intervals in us

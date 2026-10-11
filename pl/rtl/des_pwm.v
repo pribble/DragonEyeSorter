@@ -65,14 +65,19 @@ module des_pwm #(
             div <= div + 1'b1;
         end
         for (i = 0; i < NCH; i = i + 1) pwm[i] <= en[i] && (us < width_a[i]);
+    end
+
+    // read data must be combinational: the AXI bridge (fvdma_ctrl) presents the address and takes the data at the
+    // next clock edge (a registered mux returned the previous address's data on the board, v7)
+    always @* begin
         case (raddr[7:2])
-            6'h00: rdata <= {23'd0, lamp_r, {(8 - NCH){1'b0}}, en};
-            6'h01: rdata <= {16'd0, period_us};
-            6'h02: rdata <= {20'd0, width_w[0]};
-            6'h03: rdata <= (NCH > 1) ? {20'd0, width_w[1]} : 32'd0;
-            6'h04: rdata <= periods;
-            6'h05: rdata <= 32'h50574D31;
-            default: rdata <= 32'hDEADBEEF;
+            6'h00: rdata = {23'd0, lamp_r, {(8 - NCH){1'b0}}, en};
+            6'h01: rdata = {16'd0, period_us};
+            6'h02: rdata = {20'd0, width_w[0]};
+            6'h03: rdata = (NCH > 1) ? {20'd0, width_w[1]} : 32'd0;
+            6'h04: rdata = periods;
+            6'h05: rdata = 32'h50574D31;
+            default: rdata = 32'hDEADBEEF;
         endcase
     end
 endmodule
