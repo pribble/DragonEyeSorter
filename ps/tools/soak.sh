@@ -1,0 +1,62 @@
+#!/bin/sh
+# soak.sh — long-run stability test on the board (test report: 工程可靠性「连续运行 2h 无故障」).
+#   /root/des/soak.sh [seconds=7200] [outdir=/root/des/data/soak-<uptime>]
+# Runs des_app run with CAN (loopback unless SOAK_CAN=normal, then a real PLC / USB-CAN must answer) and canplc as the
+# PLC (START, 5 Hz heartbeats, monitor), and samples once a minute: des_app RSS / threads, CPU load, free memory, disk,
+# CAN error counters, PL frame counter. Everything goes to <outdir>; summary at the end (and in summary.txt).
+# Stop early: kill the soak.sh process (des_app gets SIGINT and prints its totals).
+SECS=${1:-7200}
+OUT=${2:-/root/des/data/soak-$(cut -d. -f1 /proc/uptime)}
+IF=${SOAK_IF:-can0}
+MODE=${SOAK_CAN:-loopback}
+DIR=$(cd "$(dirname "$0")" && pwd)
+mkdir -p "$OUT" || exit 1
+cd "$DIR" || exit 1
+
+"$DIR/can_up.sh" "$IF" "$MODE" > "$OUT/can_up.txt" 2>&1 || { cat "$OUT/can_up.txt"; exit 1; }
+ip -s -d link show "$IF" > "$OUT/can_before.txt"
+
+./des_app.sh run --can "$IF" -n "$SECS" > "$OUT/run.log" 2>&1 &
+APP=$!
+sleep 5
+PID=$(pidof des_app)
+/root/bin/canplc "$IF" start > "$OUT/plc_start.txt" 2>&1
+/root/bin/canplc "$IF" monitor "$SECS" > "$OUT/plc.log" 2>&1 &
+PLC=$!
+trap 'kill -INT $PID 2>/dev/null; kill $PLC 2>/dev/null' INT TERM
+
+echo "t_s,rss_kb,threads,load1,mem_free_kb,mem_avail_kb,disk_free_kb,can_rx,can_tx,can_err,pl_frames" > "$OUT/mon.csv"
+T0=$(cut -d. -f1 /proc/uptime)
+while kill -0 "$APP" 2>/dev/null; do
+    NOW=$(cut -d. -f1 /proc/uptime)
+    RSS=$(awk '/VmRSS/ {print $2}' /proc/$PID/status 2>/dev/null)
+    THR=$(awk '/Threads/ {print $2}' /proc/$PID/status 2>/dev/null)
+    LOAD=$(cut -d' ' -f1 /proc/loadavg)
+    MF=$(awk '/MemFree/ {print $2}' /proc/meminfo)
+    MA=$(awk '/MemAvailable/ {print $2}' /proc/meminfo)
+    DF=$(df -k /root | awk 'NR==2 {print $4}')
+    CAN=$(ip -s link show "$IF" | awk '/RX:/ {getline; rx=$2} /TX:/ {getline; tx=$2} END {print rx","tx}')
+    CERR=$(ip -s -d link show "$IF" | awk '/re-started/ {getline; s=$1+$2+$3+$4+$5+$6} END {print s+0}')
+    FR=$(/root/bin/desreg r 0x014 2>/dev/null)   # PL frame counter (hex), read-only access is safe next to des_app
+    echo "$((NOW - T0)),$RSS,$THR,$LOAD,$MF,$MA,$DF,$CAN,$CERR,$FR" >> "$OUT/mon.csv"
+    i=0
+    while [ $i -lt 60 ] && kill -0 "$APP" 2>/dev/null; do sleep 1; i=$((i + 1)); done
+done
+wait "$APP"
+RC=$?
+kill "$PLC" 2>/dev/null
+ip -s -d link show "$IF" > "$OUT/can_after.txt"
+
+{
+    echo "soak $SECS s, des_app exit $RC, CAN $IF $MODE"
+    grep "^== live" "$OUT/run.log"
+    awk -F, 'NR==2 {r0=$2} NR>1 {n++; r=$2; if ($2>rmax) rmax=$2; if ($4>lmax) lmax=$4; if (amin==""||$6<amin) amin=$6}
+        END {printf "samples %d, RSS first %d kB last %d kB max %d kB, load1 max %s, MemAvailable min %d kB\n", n, r0, r, rmax, lmax, amin}' "$OUT/mon.csv"
+    grep -ciE "error|abort|segfault|cannot|failed [1-9]" "$OUT/run.log" | sed "s/^/run.log error lines: /"
+    grep "^\[run\]" "$OUT/run.log" | tail -5
+    awk '/^STATUS/ {n++; for (i = 1; i <= NF; i++) if ($i == "hb") h = $(i + 1);
+                    if (n > 1) { d = (h - p + 256) % 256; if (d == 0) dup++; else lost += d - 1 } p = h;
+                    if ($0 ~ /plc-link/) link++ }
+         END {printf "PLC side: STATUS frames %d, lost %d, duplicated %d, with plc-link %d\n", n, lost, dup, link}' "$OUT/plc.log"
+    grep "^COUNTS.*recheck [0-9]*$" "$OUT/plc.log" | tail -1
+} | tee "$OUT/summary.txt"

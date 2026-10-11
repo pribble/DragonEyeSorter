@@ -18,13 +18,21 @@
 
 namespace des {
 
+struct NpuResult {
+    int id = 0;
+    std::vector<float> probs;
+    float pre_ms = 0, npu_ms = 0;   // input preparation, inference
+    double lat_ms = 0;              // camera frame complete -> probabilities available (test report: AI latency)
+};
+
 class AsyncClassifier {
 public:
     ~AsyncClassifier() { stop(); }
     std::string start(const std::string &json_path, int core = 1);   // loads the model, then starts the thread
     bool running() const { return th_.joinable(); }
-    bool submit(int id, const cv::Mat &crop);                         // false = queue full, dropped
-    std::vector<std::pair<int, std::vector<float>>> poll();           // finished (track id, probabilities)
+    // frame_us: CLOCK_MONOTONIC when the camera frame of the crop was complete (CapturedFrame::t_us)
+    bool submit(int id, const cv::Mat &crop, uint64_t frame_us = 0);  // false = queue full, dropped
+    std::vector<NpuResult> poll();                                    // finished since the last poll
     void stop();
     const NpuClassifier &model() const { return npu_; }
 
@@ -37,8 +45,13 @@ private:
     std::thread th_;
     std::mutex m_;
     std::condition_variable cv_;
-    std::deque<std::pair<int, cv::Mat>> in_;
-    std::vector<std::pair<int, std::vector<float>>> out_;
+    struct Job {
+        int id;
+        cv::Mat crop;
+        uint64_t frame_us;
+    };
+    std::deque<Job> in_;
+    std::vector<NpuResult> out_;
     bool quit_ = false;
     int max_queue_ = 4;
 };

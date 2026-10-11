@@ -3,6 +3,7 @@
 
 #include <pthread.h>
 #include <sched.h>
+#include <time.h>
 
 namespace des {
 
@@ -16,7 +17,14 @@ std::string AsyncClassifier::start(const std::string &json_path, int core)
     return "";
 }
 
-bool AsyncClassifier::submit(int id, const cv::Mat &crop)
+static uint64_t mono_us()
+{
+    timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return uint64_t(ts.tv_sec) * 1000000u + uint64_t(ts.tv_nsec) / 1000u;
+}
+
+bool AsyncClassifier::submit(int id, const cv::Mat &crop, uint64_t frame_us)
 {
     if (!th_.joinable() || crop.empty()) return false;
     std::lock_guard<std::mutex> lk(m_);
@@ -24,15 +32,15 @@ bool AsyncClassifier::submit(int id, const cv::Mat &crop)
         dropped++;
         return false;
     }
-    in_.push_back({id, crop});
+    in_.push_back({id, crop, frame_us ? frame_us : mono_us()});
     cv_.notify_one();
     return true;
 }
 
-std::vector<std::pair<int, std::vector<float>>> AsyncClassifier::poll()
+std::vector<NpuResult> AsyncClassifier::poll()
 {
     std::lock_guard<std::mutex> lk(m_);
-    std::vector<std::pair<int, std::vector<float>>> r;
+    std::vector<NpuResult> r;
     r.swap(out_);
     return r;
 }
@@ -59,7 +67,7 @@ void AsyncClassifier::loop(int core)
     sched_param sp{};
     pthread_setschedparam(pthread_self(), SCHED_OTHER, &sp);
     for (;;) {
-        std::pair<int, cv::Mat> job;
+        Job job;
         {
             std::unique_lock<std::mutex> lk(m_);
             cv_.wait(lk, [&] { return quit_ || !in_.empty(); });
@@ -68,7 +76,7 @@ void AsyncClassifier::loop(int core)
             in_.pop_front();
         }
         double pre = 0, run = 0;
-        std::vector<float> p = npu_.classify(job.second, &pre, &run);
+        std::vector<float> p = npu_.classify(job.crop, &pre, &run);
         last_pre_ms = float(pre);
         last_npu_ms = float(run);
         if (p.empty()) {
@@ -77,7 +85,13 @@ void AsyncClassifier::loop(int core)
         }
         runs++;
         std::lock_guard<std::mutex> lk(m_);
-        out_.push_back({job.first, std::move(p)});
+        NpuResult res;
+        res.id = job.id;
+        res.probs = std::move(p);
+        res.pre_ms = float(pre);
+        res.npu_ms = float(run);
+        res.lat_ms = (mono_us() - job.frame_us) * 1e-3;
+        out_.push_back(std::move(res));
     }
 }
 

@@ -38,6 +38,9 @@ struct PartRecord {
     // PL coarse measurement (des_vision ROI statistics, v6): bright area, area-equivalent diameter, bounding box
     uint32_t pl_area = 0;
     float pl_d_mm = 0, pl_w_mm = 0, pl_h_mm = 0;
+    // NPU: votes, mean inference time, mean latency camera frame complete -> probabilities (0 = no NPU result)
+    int votes = 0;
+    float npu_ms = 0, lat_ms = 0;
 };
 
 class PartLog {

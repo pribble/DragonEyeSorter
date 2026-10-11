@@ -189,6 +189,11 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
         float d = 0, w = 0, h = 0;
     };
     std::map<int, PlMeas> pl_meas;
+    struct NpuStat {
+        int n = 0;
+        double npu_ms = 0, lat_ms = 0;
+    };
+    std::map<int, NpuStat> npu_stat;   // per track, for the record (test report: AI time / latency)
     int roi_track = -1;
     uint32_t roi_seq = 0;
     const bool pl_vision = hw.version >= DES_VERSION_VISION;
@@ -242,11 +247,17 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
             for (MeasureResult &r : mres)
                 if (!r.crop.empty()) {
                     crops[r.id] = r.crop;
-                    npu.submit(r.id, r.crop);   // classified on the NPU thread, voted in a later cycle
+                    npu.submit(r.id, r.crop, f.t_us);   // classified on the NPU thread, voted in a later cycle
                 }
         }
 
-        for (const auto &v : npu.poll()) tr.vote(v.first, v.second);   // NPU soft votes (before decisions)
+        for (const NpuResult &v : npu.poll())   // NPU soft votes (before decisions)
+            if (tr.vote(v.id, v.probs)) {
+                NpuStat &ns = npu_stat[v.id];
+                ns.n++;
+                ns.npu_ms += v.npu_ms;
+                ns.lat_ms += v.lat_ms;
+            }
 
         Picker::Output out;
         if (runner) {
@@ -291,6 +302,13 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
                 rec.pl_w_mm = pm->second.w;
                 rec.pl_h_mm = pm->second.h;
                 pl_meas.erase(pm);
+            }
+            auto ns = npu_stat.find(t.id);
+            if (ns != npu_stat.end()) {
+                rec.votes = ns->second.n;
+                rec.npu_ms = float(ns->second.npu_ms / ns->second.n);
+                rec.lat_ms = float(ns->second.lat_ms / ns->second.n);
+                npu_stat.erase(ns);
             }
             hmi.add_part(rec, it != crops.end() ? it->second : cv::Mat(), now_s());
             plog.add(std::move(rec), it != crops.end() ? it->second : cv::Mat());
