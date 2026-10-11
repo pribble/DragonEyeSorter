@@ -22,19 +22,9 @@
 #include <opencv2/core.hpp>
 
 #include "geom.hpp"
+#include "measure_config.hpp"
 
 namespace des {
-
-struct MeasureConfig {
-    float camera_h_mm = 0;       // camera height above the belt; 0 = no parallax correction  ⚠ measure (H)
-    Vec2 axis_table{150, 0};     // where the optical axis meets the belt, table mm (≈ image center)
-    float gear_h_mm = 10;        // part heights (top face above the belt)  ⚠ caliper, per recipe
-    float rack_h_mm = 12;
-    bool walls_visible = true;   // side walls bright in the image (silhouette = sweep) vs only the top face  ⚠ lighting
-    float max_smear_mm = 0.8;    // above this parallax smear, tooth / gap defects are not judged
-    float short_tooth_mm = 0.4;  // tooth tip this far below the tip circle = short (缺料)
-    float flash_mm = 0.5;        // valley floor this far above the root circle = filled (飞边)
-};
 
 struct GearMeasure {
     bool ok = false;

@@ -40,7 +40,7 @@ ps/
 - 取帧：厂家帧 DMA 是「提交一块写一帧」，完成后立即重新提交下一块（4 块环形缓冲）。**实测 SCHED_FIFO 与普通调度都 0 丢帧**，重新提交 0.2µs —— 厂家 demo 的 28fps 是它的串行流水造成的，不是硬件限制。
   PL v4 起相机 59.83fps，`des_app.json` 的 `camera.vmax = 2276` 补到 **60.02fps**（20s 1201 帧 0 丢帧）。PL v5 起（10-10 已上板）每帧带 PL 锁存的拍摄时刻带位置（`CAP_*`，实测与「速度 × 读出时间」一致），旧比特流自动退回「完成后读」。
 - 定位：1/4 降采样灰度（480×270）+ Otsu（下限钳位）+ 开运算 + 外轮廓 + minAreaRect，板上 6.8ms/帧。1/2 降采样要 21ms（DMA 缓冲读像素慢），超帧预算。
-- 几何测量（P1）：`app/measure`，齿轮外径 / 根径 / 孔径 / 偏心 / 规格齿数 / 缺料·缺齿·飞边，齿条长度 / 齿距 / 同上，含视差校正，4~5ms / 件；方法与合成图精度见 docs/02「几何测量」，测试 `build/test_measure`（39 项）。⬜ 尚未接入 `des_app`。
+- 几何测量（P1）：`app/measure`，齿轮外径 / 根径 / 孔径 / 偏心 / 规格齿数 / 缺料·缺齿·飞边，齿条长度 / 齿距 / 同上，含视差校正，4~5ms / 件；方法与合成图精度见 docs/02「几何测量」，测试 `build/test_measure`（52 项）。✅ 已接入 live / run（`app/track_measure`：每件取离光轴最近那帧，结果进跟踪表与 CAN；尺寸 / 规格判定 `measure.rule` 默认关）。
 - 配置：`app/des_app.json`（所有标定值，标 TODO 的待实物标定）；类别规则从 `models/label_list.json` 读。板上部署到 `/root/des/`（`des_app`、`des_app.json`、`label_list.json`）。
 
 ## vision/ 的定位与改造边界

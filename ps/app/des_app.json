@@ -20,6 +20,15 @@
               "finger_w": 12, "finger_t": 6, "grip_clear": 4, "max_open": 60, "round_ratio": 1.3,
               "neighbor_gap": 2, "flap_lead": 0, "flap_conflict": 30 },
 
+  "measure_comment": "几何测量（docs/02「几何测量」）：每件在离光轴最近的那帧测一次（per_frame = 每帧最多测几件，4~5ms/件）。TODO camera_h_mm = 0 表示不做视差校正，装好相机后填实测相机高度；gear_h_mm / rack_h_mm 填卡尺量的厚度；walls_visible 看实拍侧壁亮不亮。rule = 尺寸超差 / 规格混料 → ng_outlet（只改判 NPU 判 OK 的件），标定实测后再开 enabled",
+  "measure": { "enabled": true, "per_frame": 1, "gear_ratio": 0.6, "margin_mm": 3, "improve": 0.75,
+               "camera_h_mm": 0, "gear_h_mm": 10, "rack_h_mm": 12, "walls_visible": true, "max_smear_mm": 0.8,
+               "short_tooth_mm": 0.4, "flash_mm": 0.5,
+               "rule": { "enabled": false, "gear_teeth": 30, "gear_od": 32, "gear_od_tol": 0.15,
+                         "gear_bore": 6, "gear_bore_tol": 0.3, "gear_max_ecc": 0.3,
+                         "rack_len": 50, "rack_len_tol": 0.5, "ng_outlet": "scrap",
+                         "defect_recheck": true, "require": false } },
+
   "arm_comment": "TODO 全部实测：连杆长度对应关系、base_xy/base_yaw（臂安装位置）、belt_z、各关节 zero_count 与方向、夹爪开合码、home 与料盒姿态",
   "arm": {
     "base_h": 107.5, "l_upper": 82.85, "l_fore": 82.85, "l_wrist": 79.05, "l_tool": 50,

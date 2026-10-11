@@ -28,7 +28,8 @@ RPATH  := -Wl,-rpath,/opt/armnn_lib/lib:/opt/ffmpeg_opencv4.7.0_aarch64/lib
 SCHED_SRC := scheduler/tracker.cpp scheduler/picker.cpp scheduler/arm.cpp
 # camera capture reuses the vendor-derived driver wrapper in vision/ (MIT); no NPU code is linked yet
 VISION_SRC := vision/mipi_camera.cpp vision/logger_forward.cpp vision/flow_common_types.cpp
-APP_SRC := app/main.cpp app/camera_rig.cpp app/locate.cpp app/config.cpp app/hdmi_out.cpp app/live.cpp app/calib.cpp app/belt_ctl.cpp app/arm_exec.cpp app/runner.cpp
+APP_SRC := app/main.cpp app/camera_rig.cpp app/locate.cpp app/config.cpp app/hdmi_out.cpp app/live.cpp app/calib.cpp app/belt_ctl.cpp app/arm_exec.cpp app/runner.cpp \
+           app/measure.cpp app/track_measure.cpp
 OPENCV_LIBS := -lopencv_calib3d -lopencv_features2d -lopencv_flann -lopencv_imgproc -lopencv_imgcodecs -lopencv_core
 
 .PHONY: all clean
@@ -43,8 +44,10 @@ $(BUILD)/desreg: tools/desreg.c common/des_hw.c common/des_hw.h common/des_regs.
 $(BUILD)/test_scheduler: tests/test_scheduler.cpp $(SCHED_SRC) $(wildcard scheduler/*.hpp) | $(BUILD)
 	$(CXX) $(CXXFLAGS) -Ischeduler -o $@ tests/test_scheduler.cpp $(SCHED_SRC)
 
-$(BUILD)/test_measure: tests/test_measure.cpp app/measure.cpp app/measure.hpp scheduler/geom.hpp | $(BUILD)
+$(BUILD)/test_measure: tests/test_measure.cpp app/measure.cpp app/track_measure.cpp $(SCHED_SRC) \
+    $(wildcard app/*measure*.hpp scheduler/*.hpp) | $(BUILD)
 	$(CXX) $(CXXFLAGS) -Iapp -Ischeduler -I$(OPENCV)/include/opencv4 -o $@ tests/test_measure.cpp app/measure.cpp \
+	    app/track_measure.cpp $(SCHED_SRC) \
 	    -L$(OPENCV)/lib -Wl,-rpath-link,$(OPENCV)/lib $(RPATH) -lopencv_imgproc -lopencv_core -lpthread
 
 $(BUILD)/canplc: tools/canplc.c bus/can_link.c bus/can_link.h bus/can_proto.h | $(BUILD)

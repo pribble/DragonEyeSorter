@@ -145,6 +145,34 @@ std::string load_config(const std::string &path, AppConfig &cfg)
         get(j, "bins", cfg.bins);
         get(j, "outlets", cfg.outlets);
         get(j, "label_list", cfg.label_list);
+        if (j.contains("measure")) {   // after "outlets": the size rule names its outlet
+            const json &c = j["measure"];
+            auto &t = cfg.measure;
+            auto &m = t.m;
+            get(c, "enabled", t.enabled); get(c, "per_frame", t.per_frame); get(c, "gear_ratio", t.gear_ratio);
+            get(c, "margin_mm", t.margin_mm); get(c, "improve", t.improve);
+            if (c.contains("axis_table")) {
+                get_vec2(c, "axis_table", m.axis_table);
+                t.axis_from_image = false;
+            }
+            get(c, "camera_h_mm", m.camera_h_mm); get(c, "gear_h_mm", m.gear_h_mm); get(c, "rack_h_mm", m.rack_h_mm);
+            get(c, "walls_visible", m.walls_visible); get(c, "max_smear_mm", m.max_smear_mm);
+            get(c, "short_tooth_mm", m.short_tooth_mm); get(c, "flash_mm", m.flash_mm);
+            if (c.contains("rule")) {
+                const json &r = c["rule"];
+                auto &s = cfg.tracker.size;
+                get(r, "enabled", s.enabled); get(r, "gear_teeth", s.gear_teeth);
+                get(r, "gear_od", s.gear_od); get(r, "gear_od_tol", s.gear_od_tol);
+                get(r, "gear_bore", s.gear_bore); get(r, "gear_bore_tol", s.gear_bore_tol);
+                get(r, "gear_max_ecc", s.gear_max_ecc); get(r, "rack_len", s.rack_len); get(r, "rack_len_tol", s.rack_len_tol);
+                get(r, "defect_recheck", s.defect_recheck); get(r, "require", s.require);
+                std::string outlet = "scrap";
+                get(r, "ng_outlet", outlet);
+                s.ng_outlet = -1;
+                for (size_t k = 0; k < cfg.outlets.size(); k++) if (cfg.outlets[k] == outlet) s.ng_outlet = int(k);
+                if (s.ng_outlet < 0) return path + ": measure.rule.ng_outlet \"" + outlet + "\" is not in outlets";
+            }
+        }
     } catch (const std::exception &e) {
         return path + ": " + e.what();
     }

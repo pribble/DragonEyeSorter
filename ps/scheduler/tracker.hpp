@@ -42,6 +42,37 @@ struct ClassRule {
     int dest = 0;           // Pick: bin index; Flap: outlet index
 };
 
+// Geometric measurement of one part (app/measure, docs/02 "几何测量"), the best frame so far = the one nearest the
+// optical axis (smallest parallax smear). Plain numbers, so this library stays free of OpenCV.
+struct PartMeasure {
+    bool valid = false;
+    char kind = 0;              // 'g' gear, 'r' rack
+    bool teeth_judged = false;  // false: parallax smear too large, the defect counts are not valid
+    float axis_dist = 1e9f;     // mm from the optical axis when measured (selects the best frame)
+    float smear = 0;            // mm, parallax smear of that frame
+    uint32_t frame = 0;
+    int count = 0;              // how many times this part was measured
+    float size = 0;             // gear: OD; rack: length (mm)
+    float bore = 0, ecc = 0;    // gear
+    float pitch = 0;            // rack: mean pitch
+    int teeth = 0;              // gear: spec count from the pitch; rack: tooth slots
+    int short_teeth = 0, missing_teeth = 0, flash_gaps = 0;
+};
+
+// Size / spec NG from the measurement (docs/02 类别表: 尺寸类 NG 不进 NPU 类别, 由测量判 → 报废). Applied only to parts
+// the class vote would pick (OK parts): it never upgrades an NPU NG.
+struct SizeRule {
+    bool enabled = false;           // ⚠ turn on once the camera height and calibration are real
+    int gear_teeth = 30;            // spec (28-tooth parts = 规格混料)
+    float gear_od = 32, gear_od_tol = 0.15f;   // recipe example in 齿轮齿条_测量功能与数据.md: 32.00±0.15, 50.0±0.5
+    float gear_bore = 6, gear_bore_tol = 0.3f;
+    float gear_max_ecc = 0.3f;
+    float rack_len = 50, rack_len_tol = 0.5f;
+    int ng_outlet = 1;              // flap outlet for size / spec NG (index into outlets, 1 = scrap)
+    bool defect_recheck = true;     // class says OK but the measurement found tooth defects -> recheck
+    bool require = false;           // no measurement by decide_x -> recheck
+};
+
 struct TrackerConfig {
     float fov_x0 = 0, fov_x1 = 300;   // table x range seen by the camera (mm)
     float edge_margin = 10;           // tracks this close to the FOV edge are not expected to be seen
@@ -55,6 +86,7 @@ struct TrackerConfig {
     bool pick_unclassified = false;   // bring-up without NPU: pick blobs that have no class
     int unclassified_bin = 0;
     std::vector<ClassRule> rules;     // index = class id
+    SizeRule size;
 };
 
 struct Track {
@@ -75,6 +107,7 @@ struct Track {
     int cls = -1;
     float cls_conf = 0;     // mean confidence of the voted class
     uint32_t first_frame = 0, last_frame = 0;
+    PartMeasure meas;       // filled by the app (app/track_measure) while the part crosses the camera
 
     float x_at(double belt_mm) const { return float(s + belt_mm); }
     ORect footprint(double belt_mm, float grow = 0) const
@@ -105,6 +138,7 @@ public:
 private:
     void fuse(Track &t, const Detection &d, double belt_mm, uint32_t frame);
     void decide(Track &t);
+    void apply_size(Track &t) const;
     // the whole footprint (extent along x from len / wid / axis) lies inside the FOV minus the edge margin
     bool fully_in_view(const Track &t, double belt_mm) const
     {

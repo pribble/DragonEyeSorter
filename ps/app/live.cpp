@@ -27,6 +27,7 @@
 #include "hdmi_out.hpp"
 #include "locate.hpp"
 #include "picker.hpp"
+#include "track_measure.hpp"
 #include "tracker.hpp"
 
 namespace des {
@@ -53,7 +54,19 @@ struct TrackView {
     Disposition disp = Disposition::None;
     float s = 0, y = 0, len = 0, wid = 0, axis = 0;
     std::string why;
+    std::string meas;   // measurement summary for the label (empty = not measured)
 };
+
+std::string meas_text(const PartMeasure &m)
+{
+    if (!m.valid) return "";
+    char b[48];
+    if (m.kind == 'g')
+        snprintf(b, sizeof b, "OD%.2f z%d%s", m.size, m.teeth, m.teeth_judged ? "" : "?");
+    else
+        snprintf(b, sizeof b, "L%.2f p%.3f%s", m.size, m.pitch, m.teeth_judged ? "" : "?");
+    return b;
+}
 
 struct Snapshot {
     uint64_t seq = 0;                           // capture sequence number the result belongs to
@@ -62,6 +75,8 @@ struct Snapshot {
     std::vector<TrackView> tracks;
     LocateTiming tm;
     double work_ms = 0;
+    double meas_ms = 0;                         // geometric measurement in that cycle (0 = none)
+    uint64_t measured = 0, meas_failed = 0;
     BeltPlan plan;
     Tracker::Stats st;
     uint64_t processed = 0, stale = 0;
@@ -90,8 +105,9 @@ cv::Mat render_panel(const Snapshot &s, const Shared &sh, uint32_t pl_frame, uin
     snprintf(l1, sizeof l1, "DragonEyeSorter %s  %.1f fps  PL frame %u  skipped %llu  worker lag %llu",
              s.run_line.empty() ? "live" : "run", sh.disp_fps.load(), pl_frame,
              (unsigned long long)sh.disp_skipped.load(), (unsigned long long)lag);
-    snprintf(l2, sizeof l2, "locate %.1f ms (worker %.1f ms)  blobs %zu  tracks %zu  belt %.1f mm",
-             (s.tm.gray_us + s.tm.thresh_us + s.tm.contour_us) / 1e3, s.work_ms, s.blobs.size(), s.tracks.size(), belt_mm);
+    snprintf(l2, sizeof l2, "locate %.1f ms  measure %.1f ms (%llu/%llu)  worker %.1f ms  blobs %zu  tracks %zu  belt %.1f mm",
+             (s.tm.gray_us + s.tm.thresh_us + s.tm.contour_us) / 1e3, s.meas_ms, (unsigned long long)s.measured,
+             (unsigned long long)(s.measured + s.meas_failed), s.work_ms, s.blobs.size(), s.tracks.size(), belt_mm);
     snprintf(l3, sizeof l3, "pick %llu  flap %llu  recheck %llu  noise %llu  belt plan %s",
              (unsigned long long)s.st.decided_pick, (unsigned long long)s.st.decided_flap,
              (unsigned long long)s.st.decided_recheck, (unsigned long long)s.st.noise, plans[s.plan.kind]);
@@ -111,6 +127,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner)
 
     Locator loc(cfg.locate);
     Tracker tr(cfg.tracker);
+    TrackMeasurer meas(cfg.measure, cfg.px_to_table);
     Picker pk(cfg.picker);
     const double mmps = cfg.belt.mm_per_step * cfg.belt.dir;
     const uint64_t max_age = uint64_t(cfg.camera.buffers > 2 ? cfg.camera.buffers - 1 : 1);
@@ -144,6 +161,10 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner)
         std::vector<std::array<float, 8>> blobs = loc.rects_full();
         for (Detection &d : obs.dets) d.p.x -= float((b1 - b0) * (d.img_v - 0.5f));   // rolling-shutter row timing
         tr.update(obs);
+        // geometric measurement of (at most per_frame) parts nearest the optical axis; it reads the camera buffer
+        // again, so its results are dropped if the DMA reused the buffer meanwhile
+        auto mres = meas.measure(tr, f.bgra, f.width, f.height, f.stride, obs.belt_mm, b1 - b0, f.pl_frame);
+        if (!mres.empty() && sh.cap_seq.load() - seq < max_age) TrackMeasurer::apply(tr, mres);
 
         Picker::Output out;
         if (runner) {
@@ -164,6 +185,9 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner)
         s.frame = f.pl_frame;
         s.blobs = std::move(blobs);
         s.tm = tm;
+        s.meas_ms = mres.empty() ? 0 : meas.last_ms;
+        s.measured = meas.measured;
+        s.meas_failed = meas.failed;
         s.plan = out.belt;
         s.st = tr.stats;
         s.processed = processed;
@@ -171,7 +195,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner)
         if (runner) s.run_line = runner->status_line();
         for (const Track &t : tr.tracks())
             if (t.state != TrackState::Done)
-                s.tracks.push_back({t.id, t.state, t.disp, t.s, t.y, t.len, t.wid, t.axis, t.why});
+                s.tracks.push_back({t.id, t.state, t.disp, t.s, t.y, t.len, t.wid, t.axis, t.why, meas_text(t.meas)});
         tr.retire(des_step_pos(&hw) * mmps);
         s.work_ms = (now_s() - t0) * 1e3;
         if (now_s() - last_panel >= 0.1) {   // after the snapshot is complete (tracks, timing)
@@ -227,8 +251,9 @@ void draw(cv::Mat &img, const Snapshot &s, const Homography &hinv, double belt_m
         }
         cv::Scalar col = color_of(t);
         cv::polylines(img, poly, true, col, 3, cv::LINE_8);
-        snprintf(text, sizeof text, "#%d %s", t.id,
-                 t.st == TrackState::Decided || t.st == TrackState::Picking ? to_str(t.disp) : to_str(t.st));
+        snprintf(text, sizeof text, "#%d %s %s", t.id,
+                 t.st == TrackState::Decided || t.st == TrackState::Picking ? to_str(t.disp) : to_str(t.st),
+                 t.meas.c_str());
         // thickness 1: Hershey text at thickness 2 is drawn as many filled thick segments (~1 ms per label)
         cv::putText(img, text, cv::Point(left, std::max(top - 10, 20)), cv::FONT_HERSHEY_SIMPLEX, 0.8, col, 1);
     }
@@ -324,11 +349,14 @@ int run_live(des_hw_t &hw, const AppConfig &cfg, CameraRig &cam, const LiveOptio
         if (t - t_sec >= 1.0) {
             fps = sec_frames / (t - t_sec);
             printf("%5.1f fps shown | display %.1f ms (convert %.1f, overlay %.1f) | worker: %llu frames, locate %.1f ms, "
-                   "%zu tracks, stale %llu\n",
+                   "%zu tracks, stale %llu, measured %llu (failed %llu)\n",
                    fps, sum_draw / frames * 1e3, sum_conv / frames * 1e3, sum_ovl / frames * 1e3,
                    (unsigned long long)snap.processed,
                    (snap.tm.gray_us + snap.tm.thresh_us + snap.tm.contour_us) / 1e3, snap.tracks.size(),
-                   (unsigned long long)snap.stale);
+                   (unsigned long long)snap.stale, (unsigned long long)snap.measured,
+                   (unsigned long long)snap.meas_failed);
+            for (const TrackView &t : snap.tracks)
+                if (!t.meas.empty()) printf("    track #%d %s: %s\n", t.id, to_str(t.st), t.meas.c_str());
             fflush(stdout);
             t_sec = t;
             sec_frames = 0;

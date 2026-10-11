@@ -2,6 +2,8 @@
 #include "tracker.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdio>
 
 namespace des {
 
@@ -57,6 +59,39 @@ void Tracker::fuse(Track &t, const Detection &d, double belt_mm, uint32_t frame)
     t.axis = wrap_axis(0.5f * float(std::atan2(t.s2, t.c2)));
 }
 
+// Size / spec check of a part the class vote would pick (SizeRule). Order: spec (tooth count), then sizes, then
+// measured tooth defects the class missed.
+void Tracker::apply_size(Track &t) const
+{
+    const SizeRule &r = cfg_.size;
+    const PartMeasure &m = t.meas;
+    if (!m.valid) {
+        if (r.require) { t.disp = Disposition::Recheck; t.dest = 0; t.why = "not measured"; }
+        return;
+    }
+    char why[48] = "";
+    if (m.kind == 'g') {
+        if (m.teeth_judged && m.teeth != r.gear_teeth) snprintf(why, sizeof why, "spec: %d teeth", m.teeth);
+        else if (std::fabs(m.size - r.gear_od) > r.gear_od_tol) snprintf(why, sizeof why, "OD %.2f", m.size);
+        else if (m.bore > 0 && std::fabs(m.bore - r.gear_bore) > r.gear_bore_tol)
+            snprintf(why, sizeof why, "bore %.2f", m.bore);
+        else if (m.ecc > r.gear_max_ecc) snprintf(why, sizeof why, "ecc %.2f", m.ecc);
+    } else if (m.kind == 'r') {
+        if (std::fabs(m.size - r.rack_len) > r.rack_len_tol) snprintf(why, sizeof why, "length %.1f", m.size);
+    }
+    if (why[0]) {
+        t.disp = Disposition::Flap;
+        t.dest = r.ng_outlet;
+        t.why = why;
+    } else if (r.defect_recheck && m.teeth_judged && (m.short_teeth || m.missing_teeth || m.flash_gaps)) {
+        t.disp = Disposition::Recheck;
+        t.dest = 0;
+        snprintf(why, sizeof why, "measured: short %d missing %d flash %d", m.short_teeth, m.missing_teeth,
+                 m.flash_gaps);
+        t.why = why;
+    }
+}
+
 void Tracker::decide(Track &t)
 {
     t.state = TrackState::Decided;
@@ -81,6 +116,7 @@ void Tracker::decide(Track &t)
         t.dest = cfg_.rules[best].dest;
         t.why = cfg_.rules[best].label;
     }
+    if (cfg_.size.enabled && t.disp == Disposition::Pick) apply_size(t);
     if (t.disp == Disposition::Pick) stats.decided_pick++;
     else if (t.disp == Disposition::Flap) stats.decided_flap++;
     else stats.decided_recheck++;

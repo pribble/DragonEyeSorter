@@ -1,0 +1,119 @@
+// track_measure.cpp — see track_measure.hpp
+#include "track_measure.hpp"
+
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+
+#include <opencv2/imgproc.hpp>
+
+#include "measure.hpp"
+
+namespace des {
+namespace {
+
+// H * T(ox, oy): pixels of an image cropped at (ox, oy) -> table mm
+Homography shifted(const Homography &H, double ox, double oy)
+{
+    Homography r = H;
+    r.h[2] = H.h[0] * ox + H.h[1] * oy + H.h[2];
+    r.h[5] = H.h[3] * ox + H.h[4] * oy + H.h[5];
+    r.h[8] = H.h[6] * ox + H.h[7] * oy + H.h[8];
+    return r;
+}
+
+}  // namespace
+
+TrackMeasurer::TrackMeasurer(const TrackMeasureConfig &cfg, const Homography &px_to_table)
+    : cfg_(cfg), h_(px_to_table), hinv_(px_to_table.inverse())
+{
+}
+
+std::vector<std::pair<int, PartMeasure>> TrackMeasurer::measure(const Tracker &tr, const uint8_t *bgra, int width,
+                                                                int height, int stride, double belt_mm,
+                                                                double belt_span_mm, uint32_t frame)
+{
+    std::vector<std::pair<int, PartMeasure>> out;
+    if (!cfg_.enabled || cfg_.per_frame <= 0) return out;
+    const auto t0 = std::chrono::steady_clock::now();
+    if (cfg_.axis_from_image) cfg_.m.axis_table = h_.map({0.5f * width, 0.5f * height});
+    const Vec2 O = cfg_.m.axis_table;
+
+    struct Cand {
+        const Track *t;
+        float d, gain;
+        cv::Rect roi;
+    };
+    std::vector<Cand> cands;
+    for (const Track &t : tr.tracks()) {
+        if ((t.state != TrackState::New && t.state != TrackState::Tracking) || t.merged || t.n_geom == 0) continue;
+        const float d = norm(Vec2{t.x_at(belt_mm), t.y} - O);
+        if (t.meas.count > 0 && !(d < cfg_.improve * t.meas.axis_dist - 1.f)) continue;
+        float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
+        for (const Vec2 &v : t.footprint(belt_mm, cfg_.margin_mm).corners()) {
+            Vec2 p = hinv_.map(v);
+            x0 = std::min(x0, p.x); x1 = std::max(x1, p.x);
+            y0 = std::min(y0, p.y); y1 = std::max(y1, p.y);
+        }
+        const int ix0 = int(std::floor(x0)), iy0 = int(std::floor(y0)), ix1 = int(std::ceil(x1)),
+                  iy1 = int(std::ceil(y1));
+        if (ix0 < 2 || iy0 < 2 || ix1 > width - 3 || iy1 > height - 3) continue;   // not fully in the image
+        cands.push_back({&t, d, t.meas.count > 0 ? t.meas.axis_dist - d : 1e9f,
+                         cv::Rect(ix0, iy0, ix1 - ix0 + 1, iy1 - iy0 + 1)});
+    }
+    std::sort(cands.begin(), cands.end(), [](const Cand &a, const Cand &b) { return a.gain > b.gain; });
+
+    cv::Mat src(height, width, CV_8UC4, const_cast<uint8_t *>(bgra), size_t(stride));
+    for (size_t k = 0; k < cands.size() && int(k) < cfg_.per_frame; k++) {
+        const Cand &c = cands[k];
+        cv::Mat g;
+        cv::cvtColor(src(c.roi), g, cv::COLOR_BGRA2GRAY);   // one pass over the (uncached) camera buffer
+        const Homography hs = shifted(h_, c.roi.x, c.roi.y);
+        MeasureConfig mc = cfg_.m;
+        mc.belt_mm_per_row = float(belt_span_mm / height);
+        mc.row0 = 0.5f * height - float(c.roi.y);   // mid-frame row = the tracker's belt position
+        const cv::Rect all(0, 0, g.cols, g.rows);
+
+        PartMeasure pm = c.t->meas;   // a failed attempt keeps the previous result
+        pm.count++;
+        pm.axis_dist = c.d;           // also after a failure: retry only once the part is clearly nearer
+        bool ok = false;
+        if (c.t->len > 0 && c.t->wid / c.t->len > cfg_.gear_ratio) {
+            GearMeasure r = measure_gear(g, all, hs, mc);
+            if ((ok = r.ok)) {
+                pm.kind = 'g';
+                pm.size = r.od; pm.bore = r.bore_d; pm.ecc = r.ecc; pm.pitch = 0;
+                pm.teeth = r.teeth; pm.short_teeth = r.short_teeth; pm.missing_teeth = r.missing_teeth;
+                pm.flash_gaps = r.flash_gaps; pm.teeth_judged = r.teeth_judged; pm.smear = r.smear_mm;
+            }
+        } else {
+            RackMeasure r = measure_rack(g, all, hs, mc);
+            if ((ok = r.ok)) {
+                pm.kind = 'r';
+                pm.size = r.length; pm.bore = 0; pm.ecc = 0; pm.pitch = r.pitch;
+                pm.teeth = r.teeth; pm.short_teeth = r.short_teeth; pm.missing_teeth = r.missing_teeth;
+                pm.flash_gaps = r.flash_gaps; pm.teeth_judged = r.teeth_judged; pm.smear = r.smear_mm;
+            }
+        }
+        if (ok) {
+            pm.valid = true;
+            pm.frame = frame;
+            measured++;
+        } else {
+            failed++;
+        }
+        out.push_back({c.t->id, pm});
+    }
+    last_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    return out;
+}
+
+void TrackMeasurer::apply(Tracker &tr, const std::vector<std::pair<int, PartMeasure>> &res)
+{
+    for (const auto &r : res) {
+        Track *t = tr.find(r.first);
+        if (t && (t->state == TrackState::New || t->state == TrackState::Tracking)) t->meas = r.second;
+    }
+}
+
+}  // namespace des

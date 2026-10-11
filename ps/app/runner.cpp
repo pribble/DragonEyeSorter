@@ -193,7 +193,7 @@ void Runner::cycle(Tracker &tr, Picker &pk)
                                                                                           : CANP_DISP_RECHECK;
         p.dest = uint8_t(t.dest);
         p.conf_pct = uint8_t(std::min(100.f, t.cls_conf * 100));
-        p.size_mm = t.len;   // until the measurement module exists: blob length
+        p.size_mm = t.meas.valid ? t.meas.size : 0;   // gear OD / rack length; 0 = not measured (can_proto.h)
         send(canp_part(&p));
     }
     while (reported_.size() > 2000) reported_.erase(reported_.begin());

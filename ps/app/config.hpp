@@ -6,6 +6,7 @@
 
 #include "arm.hpp"
 #include "geom.hpp"
+#include "measure_config.hpp"
 #include "picker.hpp"
 #include "tracker.hpp"
 
@@ -42,6 +43,7 @@ struct AppConfig {
     TrackerConfig tracker;
     PickerConfig picker;
     ArmConfig arm;
+    TrackMeasureConfig measure;  // geometric measurement + size rule (tracker.size), docs/02 "几何测量"
     std::string label_list = "models/label_list.json";
     std::string calib_file = "calib.json";     // written by des_app calib-cam, merged over this file if present
     std::string calib_loaded;                  // path actually merged (empty = none)

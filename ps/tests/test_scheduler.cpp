@@ -126,6 +126,60 @@ static void test_tracker()
     CHECK(seen == 3, "live tracks %d", seen);
 }
 
+// SizeRule: the measurement (filled while the part crosses the view, like app/track_measure) overrides "pick" only
+static void test_size_rule()
+{
+    std::mt19937 rng(7);
+    TrackerConfig cfg = tracker_cfg();
+    cfg.size.enabled = true;
+    Tracker tr(cfg);
+    auto gear = [](int teeth, float od, float ecc, int shorts, bool judged) {
+        PartMeasure m;
+        m.valid = true; m.kind = 'g'; m.teeth_judged = judged; m.teeth = teeth; m.size = od; m.bore = 6.02f;
+        m.ecc = ecc; m.short_teeth = shorts;
+        return m;
+    };
+    auto rack = [](float len) {
+        PartMeasure m;
+        m.valid = true; m.kind = 'r'; m.teeth_judged = true; m.size = len; m.teeth = 15; m.pitch = 3.14f;
+        return m;
+    };
+    struct Case { int cls; PartMeasure m; Disposition disp; int dest; const char *what; };
+    std::vector<Case> cases = {
+        {0, gear(30, 32.01f, 0.05f, 0, true), Disposition::Pick, 0, "good gear"},
+        {0, gear(28, 30.0f, 0.05f, 0, true), Disposition::Flap, 1, "28-tooth gear (spec mix-up)"},
+        {0, gear(30, 32.5f, 0.05f, 0, true), Disposition::Flap, 1, "OD out of tolerance"},
+        {0, gear(30, 32.0f, 0.5f, 0, true), Disposition::Flap, 1, "eccentric bore"},
+        {0, gear(30, 32.0f, 0.05f, 1, true), Disposition::Recheck, 0, "NPU OK, measured short tooth"},
+        {0, gear(30, 32.0f, 0.05f, 1, false), Disposition::Pick, 0, "short tooth not judged (far off-axis)"},
+        {4, rack(48.0f), Disposition::Flap, 1, "48 mm rack"},
+        {4, rack(50.1f), Disposition::Pick, 1, "50 mm rack"},
+        {2, gear(30, 32.0f, 0.05f, 0, true), Disposition::Flap, 2, "NPU flash stays NPU flash"},
+        {0, PartMeasure{}, Disposition::Pick, 0, "not measured, require off"},
+    };
+    std::vector<SimPart> parts;
+    for (size_t i = 0; i < cases.size(); i++) parts.push_back({-40.f - 70.f * i, 0, 30, 30, 0.f, cases[i].cls});
+    uint32_t f = 0;
+    for (double B = 0; B < 40 + 70 * cases.size() + 300; B += 1.0, f++) {
+        tr.update(observe(parts, B, f, rng));
+        for (Track &t : tr.tracks()) {
+            float x = t.x_at(B);
+            if (t.meas.valid || x < 100 || x > 200) continue;
+            for (size_t i = 0; i < parts.size(); i++)
+                if (std::fabs(parts[i].s - t.s) < 5) t.meas = cases[i].m;
+        }
+    }
+    for (size_t i = 0; i < cases.size(); i++) {
+        const Track *tk = nullptr;
+        for (const Track &t : tr.tracks())
+            if (std::fabs(parts[i].s - t.s) < 5) tk = &t;
+        CHECK(tk && tk->state == TrackState::Decided, "%s: no decided track", cases[i].what);
+        if (!tk) continue;
+        CHECK(tk->disp == cases[i].disp && tk->dest == cases[i].dest, "%s -> %s/%d (%s), want %s/%d", cases[i].what,
+              to_str(tk->disp), tk->dest, tk->why.c_str(), to_str(cases[i].disp), cases[i].dest);
+    }
+}
+
 static void test_picker()
 {
     std::mt19937 rng(2);
@@ -265,6 +319,7 @@ int main()
 {
     test_geom();
     test_tracker();
+    test_size_rule();
     test_picker();
     test_arm();
     printf("%d passed, %d failed\n", g_pass, g_fail);

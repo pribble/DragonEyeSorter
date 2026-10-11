@@ -68,6 +68,7 @@ std::vector<Edge> edges(const cv::Mat &g, const std::vector<cv::Point> &c, cv::P
         Vec2 q = h.map({e.x + nrm.x, e.y + nrm.y}) - ed.p;
         float ql = norm(q);
         ed.n = ql > 0 ? q * (1.f / ql) : Vec2{0, 0};
+        ed.p.x -= cfg.belt_mm_per_row * (e.y - cfg.row0);   // rolling shutter: back to the row0 instant
         // top-face edges (the magnified top projection is the visible boundary where the normal faces away from
         // the optical axis) are scaled back about the axis; bottom edges (facing the axis) are true size.
         // Walls dark: every visible edge is a top-face edge.

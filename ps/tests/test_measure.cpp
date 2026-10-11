@@ -9,6 +9,8 @@
 #include <opencv2/imgproc.hpp>
 
 #include "measure.hpp"
+#include "track_measure.hpp"
+#include "tracker.hpp"
 
 using namespace des;
 
@@ -25,6 +27,8 @@ static const float S = 0.15f;                 // mm per px
 static const float GROW = 0.15f / 8;
 // diameter / length checks: |measured - (drawn + GROW)| < TOL. 0.02 mm = 0.13 px on these synthetic images.
 static const float TOL = 0.02f;
+// supersampling: coarse pixel i averages fine pixels 8i..8i+7 (centroid 8i + 3.5) -> the image is shifted by -7/16 px
+static const float SHIFT = -0.15f * 7 / 16;
 static const Vec2 AXIS{960 * S, 540 * S};     // optical axis foot point = image center
 
 using Poly = std::vector<Vec2>;
@@ -98,6 +102,15 @@ static Poly rack(Vec2 c, float len, int n, float ang, std::vector<float> tip, st
         Vec2 d{q.x - len / 2, q.y - 7.5f};
         out.push_back({c.x + ca * d.x - sa * d.y, c.y + sa * d.x + ca * d.y});
     }
+    return out;
+}
+
+// rolling shutter: image row r is exposed (r - row0) row times late, the belt has moved mm_per_row per row along +x
+// (in this test image rows run along table y: row = y / S)
+static Poly sheared(const Poly &p, float mm_per_row, float row0)
+{
+    Poly out;
+    for (Vec2 q : p) out.push_back({q.x + mm_per_row * (q.y / S - row0), q.y});
     return out;
 }
 
@@ -319,6 +332,78 @@ int main()
         CHECK(r.missing_teeth == 1 && r.flash_gaps == 3 && r.short_teeth == 0, "missing %d flash %d short %d",
               r.missing_teeth, r.flash_gaps, r.short_teeth);
         CHECK(std::fabs(r.pitch - kPi) < 0.01f, "pitch %.4f", r.pitch);
+    }
+    {   // I: rolling shutter, exaggerated (0.005 mm per row: 1 mm shear across the gear)
+        Vec2 c{110, 70};
+        const float mpr = 0.005f, row0 = 540;
+        Scene s = render(sheared(gear(c, 30, 16, 13.75f, 0.1f, {}, {}), mpr, row0),
+                         sheared(circle(c, 3), mpr, row0), 1.f);
+        GearMeasure raw = measure_gear(s.img, s.roi, h, cfg);
+        MeasureConfig rc = cfg;
+        rc.belt_mm_per_row = mpr;
+        rc.row0 = row0;
+        GearMeasure g = measure_gear(s.img, s.roi, h, rc);
+        printf("[rolling shutter] uncorrected OD %.3f rms %.3f | corrected OD %.3f rms %.3f bore %.3f ecc %.3f\n",
+               raw.od, raw.fit_rms, g.od, g.fit_rms, g.bore_d, g.ecc);
+        CHECK(raw.fit_rms > 0.05f, "shear should show without correction (rms %.3f)", raw.fit_rms);
+        CHECK(g.ok && std::fabs(g.od - 32 - GROW) < TOL && g.fit_rms < 0.02f, "corrected OD %.3f rms %.3f", g.od,
+              g.fit_rms);
+        CHECK(std::fabs(g.center.x - c.x - SHIFT) < 0.02f && std::fabs(g.center.y - c.y - SHIFT) < 0.02f,
+              "center back at the row0 instant (%.3f, %.3f)", g.center.x - c.x - SHIFT, g.center.y - c.y - SHIFT);
+        CHECK(g.ecc < 0.02f && g.teeth == 30 && g.short_teeth + g.missing_teeth + g.flash_gaps == 0,
+              "ecc %.3f teeth %d defects %d/%d/%d", g.ecc, g.teeth, g.short_teeth, g.missing_teeth, g.flash_gaps);
+    }
+    {   // J: TrackMeasurer end to end: full frame (BGRA), tracker tracks -> ROI from the track footprint -> gear /
+        //    rack by shape -> cropped homography -> results applied to the tracks; best-frame selection
+        Vec2 cg = AXIS + Vec2{-30, 10}, cr = AXIS + Vec2{45, -25};
+        Scene a = render(gear(cg, 30, 16, 13.75f, 0.2f, {}, {}), circle(cg, 3), 1.f);
+        Scene b = render(rack(cr, 50, 15, 25 * kPi / 180, {}), {}, 1.f);
+        cv::Mat gray = cv::max(a.img, b.img), bgra;
+        cv::cvtColor(gray, bgra, cv::COLOR_GRAY2BGRA);
+        TrackerConfig tc;
+        tc.fov_x0 = 0; tc.fov_x1 = 1920 * S; tc.decide_x = 1000; tc.tail_x = 2000;
+        Tracker tr(tc);
+        for (uint32_t f = 1; f <= 3; f++) {
+            FrameObs o;
+            o.frame = f;
+            Detection dg; dg.p = cg; dg.len = 32; dg.wid = 32; dg.axis = 0;
+            Detection dr; dr.p = cr; dr.len = 50; dr.wid = 15; dr.axis = wrap_axis(25 * kPi / 180);
+            o.dets = {dg, dr};
+            tr.update(o);
+        }
+        TrackMeasureConfig mc;   // axis from the image center = AXIS here
+        TrackMeasurer tm(mc, h);
+        int calls = 0, results = 0;
+        for (; calls < 4; calls++) {
+            auto res = tm.measure(tr, bgra.data, bgra.cols, bgra.rows, int(bgra.step), 0.0, 0.0, 10 + calls);
+            results += int(res.size());
+            CHECK(res.size() <= 1, "per_frame 1, got %zu", res.size());
+            TrackMeasurer::apply(tr, res);
+        }
+        const PartMeasure *mg = nullptr, *mr = nullptr;
+        for (const Track &t : tr.tracks()) {
+            if (norm(Vec2{t.s, t.y} - cg) < 2) mg = &t.meas;
+            if (norm(Vec2{t.s, t.y} - cr) < 2) mr = &t.meas;
+        }
+        printf("[track measurer] %d results in %d calls, %.2f ms last | gear %c OD %.3f z%d | rack %c L %.3f p %.4f\n",
+               results, calls, tm.last_ms, mg ? mg->kind : '-', mg ? mg->size : 0, mg ? mg->teeth : 0,
+               mr ? mr->kind : '-', mr ? mr->size : 0, mr ? mr->pitch : 0);
+        CHECK(results == 2, "each part measured once (still parts: no nearer frame), got %d", results);
+        CHECK(mg && mg->valid && mg->kind == 'g' && std::fabs(mg->size - 32 - GROW) < TOL && mg->teeth == 30,
+              "gear via tracker");
+        CHECK(mr && mr->valid && mr->kind == 'r' && std::fabs(mr->size - 50 - GROW) < TOL && mr->teeth == 15,
+              "rack via tracker");
+        CHECK(mg && std::fabs(mg->axis_dist - norm(cg - AXIS)) < 0.5f, "gear axis distance %.2f",
+              mg ? mg->axis_dist : -1.f);
+        // the gear moves 20 mm toward the axis -> clearly nearer (31.6 -> ~13) -> measured again
+        for (Track &t : tr.tracks())
+            if (norm(Vec2{t.s, t.y} - cg) < 2) t.s += 20;
+        Scene a2 = render(gear(cg + Vec2{20, 0}, 30, 16, 13.75f, 0.2f, {}, {}), circle(cg + Vec2{20, 0}, 3), 1.f);
+        gray = cv::max(a2.img, b.img);
+        cv::cvtColor(gray, bgra, cv::COLOR_GRAY2BGRA);
+        auto res = tm.measure(tr, bgra.data, bgra.cols, bgra.rows, int(bgra.step), 0.0, 0.0, 20);
+        CHECK(res.size() == 1 && res[0].second.count == 2 && res[0].second.axis_dist < 15,
+              "re-measured nearer the axis (%zu results)", res.size());
     }
     printf("%d passed, %d failed\n", g_pass, g_fail);
     return g_fail;
