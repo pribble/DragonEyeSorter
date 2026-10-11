@@ -21,6 +21,11 @@
 | `src/system_top.v`（v3） | 帧起始改为只看 ISP `tuser` 上升沿（`isp_top` 的 `O_tuser` 是输入直通，不与 `tvalid` 对齐）；`STEP_COMMON_CATHODE=1`：PUL 高有效、ENA 高 = 脱机 | 帧计数修正；步进共阴直驱（免 74HCT245） |
 | `al_ip/PLL/PLL.v`（v4） | CLKC3（`O_imx334_clk_24m` = IMX415 INCK）`DIV 44→39`、`CPHASE 43→38`、`DUTY_INT 22→20`：23.86MHz → 26.92MHz；`des_regs` VERSION=4 | 传感器寄存器是 27MHz INCK 那套，原 INCK 不对导致只有 53fps（见 docs/log/2026-10-10-相机60fps与PS骨架） |
 | `src/write_fdma/uidbuf_write.v`、`src/system_top.v`（v5） | 帧写模块新增输出 `O_W_start_tgl`（真正开始写一帧时翻转）；顶层把它与完成中断 `f2p_irq` 上升沿的翻转送进 `des_regs` 的拍摄锁存（`CAP_*`），`stepper_ctrl` 新增 `pos_o` 供锁存；VERSION=5 | 跟踪表要「这一帧拍摄时刻的带位置」（docs/03 拍摄锁存） |
+| `src/system_top.v`、`soc_prj.al`、`soc_prj_Runs/syn_1/soc_prj.prj`（v6） | ISP 输出与帧写模块之间插入 `des_vision`（`ud_wvs / ud_wde / ud_wdata` 改走 `vis_*`），寄存器段 0x3xx；VERSION=6。两次布线失败（slice 90%），未上板 | PL 硬件灰度 / 滤波 / 边缘 / 粗测（领域 3） |
+| `src/ui_isp/awb_1_1/awb.v`（v7，新文件 `pl/rtl/awb_seq_div.v` 拷到 `src/des/`） | ISP 自动白平衡的两个 50 级流水线除法器 IP 换成背靠背逐位除法器（每 49 时钟一个增益），增益不再每帧复位；对照仿真 `run_sim.sh awb` | 省约 4k LUT + 5k FF：slice 90.2% → 81.7%，布线 5h 不通 → 23 分钟通过 |
+| `src/system_top.v`、`src/constraint/io.adc`（v7） | 接入 `des_pwm`（0x4xx）：`FLAP1_PWM` = PIN18 Y6、`FLAP2_PWM` = PIN20 Y8、`LAMP_EN` = PIN17 Y7；`stepper_ctrl` 启动预置相位（首脉冲 1.94ms → 10.6µs）；VERSION=7 | 带尾两级翻板 + 光源；指令响应 |
+| `src/constraint/timing.sdc`（v8） | **`clk_mipi` 改挂到实际的字节时钟** `u_mipi_dphy_rx_over_lvds_wrapper/u_rx_clk_gen/U_io_clk_div_1.clkdivout`，8.0ns。厂家原约束挂在不存在的硬核 MIPI 引脚上（TD：`No pins matched … defined a virtual clock`），整个像素时钟域（ISP、des_vision、帧写入）从未做时序分析；v7 上 tuser 边沿检测因此漏帧 | 像素域时序收敛 |
+| `src/system_top.v`（v8） | `des_vision` / `des_pwm` 读数据改组合逻辑（桥接逻辑同一时钟取数，打拍的读回上一个地址）；VERSION=8 | 寄存器读回正确 |
 
 ## 寄存器总线
 

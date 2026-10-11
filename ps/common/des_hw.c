@@ -107,6 +107,7 @@ int des_vis_read(const des_hw_t *h, des_vis_t *v)
 {
     if (h->version < DES_VERSION_VISION) return DES_E_ARG;
     uint32_t s, bx, by, sx, sy, act;
+    int guard = 0;
     do {   /* a new frame may publish while we read: retry until the sequence number is stable */
         s = des_rd(h, DES_VIS_SEQ);
         v->area = des_rd(h, DES_VIS_AREA);
@@ -117,7 +118,8 @@ int des_vis_read(const des_hw_t *h, des_vis_t *v)
         v->edges = des_rd(h, DES_VIS_EDGES);
         v->cycles = des_rd(h, DES_VIS_CYCLES);
         act = des_rd(h, DES_VIS_ACTIVE);
-    } while (s != des_rd(h, DES_VIS_SEQ));
+    } while (s != des_rd(h, DES_VIS_SEQ) && ++guard < 100);
+    if (guard >= 100) return DES_E_BUSY;   /* SEQ never stable: frame starts every few us = broken pixel clock domain */
     v->seq = s;
     v->x0 = (int)(bx & 0x7FF); v->x1 = (int)((bx >> 16) & 0x7FF);
     v->y0 = (int)(by & 0x7FF); v->y1 = (int)((by >> 16) & 0x7FF);

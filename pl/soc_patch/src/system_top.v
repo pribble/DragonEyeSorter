@@ -21,6 +21,9 @@ module system_top(
     output         STEP_ENA,     // CEP PIN5  T9, TB6600 ENA+ (common cathode: low = energised)
     input          ESTOP_IN,     // CEP PIN15 V11, low = emergency stop (pull-up)
     inout          SERVO_BUS,    // CEP PIN19 Y9, via BSS138, open-drain
+    output         FLAP1_PWM,    // CEP PIN18 Y6 (#16 FORK_PWM), belt-end flap stage 1 (MG996R)
+    output         FLAP2_PWM,    // CEP PIN20 Y8 (#18), flap stage 2
+    output         LAMP_EN,      // CEP PIN17 Y7 (#15), light MOSFET module
     
 	input  wire		    I_clk_hs_p  ,
 	input  wire	[3:0]	I_data_hs_p , 
@@ -224,10 +227,14 @@ wire pwm_out_unused;
     wire         	S_ISP_O_tlast ;
     wire  			S_ISP_O_tuser ;
     wire         	S_ISP_O_tvalid;
+    // DragonEyeSorter v6: des_vision between the ISP and the frame writer (PL gray / Gaussian / binary / Sobel
+    // display modes + ROI statistics). MODE 0 passes the camera data through, 6 clocks later.
+    wire [127:0] vis_tdata;
+    wire         vis_tvalid, vis_tuser, vis_tlast;
 	
 	assign ud_wclk   = S_hs_rx_clk;
-	assign ud_wvs    = S_ISP_O_tuser ; 
-	assign ud_wde    = S_ISP_O_tvalid ; 
+	assign ud_wvs    = vis_tuser ;   // v6: through des_vision (was S_ISP_O_tuser)
+	assign ud_wde    = vis_tvalid ;  // v6 (was S_ISP_O_tvalid)
 
     // DragonEyeSorter: one toggle per camera frame, counted in des_regs.
     // isp_top passes its *input* tuser straight to O_tuser, so it is not aligned with O_tvalid: use the edge alone.
@@ -243,7 +250,7 @@ wire pwm_out_unused;
         des_sof_d <= S_ISP_O_tuser;
         if (S_ISP_O_tuser && !des_sof_d) des_sof_toggle <= ~des_sof_toggle;
     end
-	assign ud_wdata  = S_ISP_O_tdata; //{{8'd0, O_axi_data[8-1:0],O_axi_data[16-1:8],O_axi_data[23:16]}, {8'd0, O_axi_data[32-1:24],O_axi_data[40-1:32],O_axi_data[47:40]}, {8'd0, O_axi_data[56-1:48],O_axi_data[64-1:56],O_axi_data[71:64]}, {8'd0, O_axi_data[80-1:72],O_axi_data[88-1:80],O_axi_data[95:88]}} ;  //{{8'd0, O_axi_data[23:0]}, {8'd0, O_axi_data[47:24]}, {8'd0, O_axi_data[71:48]}, {8'd0, O_axi_data[95:72]}} ; //S_vi_256b_data ; //{S_vi_256b_data[96*1-1:96*0],S_vi_256b_data[96*2-1:96*1],S_vi_256b_data[96*3-1:96*2]，S_vi_256b_data[96*4-1:96*3]}; //synthesis keep
+	assign ud_wdata  = vis_tdata; // v6 via des_vision; was S_ISP_O_tdata //{{8'd0, O_axi_data[8-1:0],O_axi_data[16-1:8],O_axi_data[23:16]}, {8'd0, O_axi_data[32-1:24],O_axi_data[40-1:32],O_axi_data[47:40]}, {8'd0, O_axi_data[56-1:48],O_axi_data[64-1:56],O_axi_data[71:64]}, {8'd0, O_axi_data[80-1:72],O_axi_data[88-1:80],O_axi_data[95:88]}} ;  //{{8'd0, O_axi_data[23:0]}, {8'd0, O_axi_data[47:24]}, {8'd0, O_axi_data[71:48]}, {8'd0, O_axi_data[95:72]}} ; //S_vi_256b_data ; //{S_vi_256b_data[96*1-1:96*0],S_vi_256b_data[96*2-1:96*1],S_vi_256b_data[96*3-1:96*2]，S_vi_256b_data[96*4-1:96*3]}; //synthesis keep
 	
     wire    [3:0]   S_lane_error    ;
 
@@ -468,17 +475,19 @@ wire pwm_out_unused;
  
 
     // ---------------- DragonEyeSorter PL blocks on the 0x8030_1000 register bus ----------------
-    wire [31:0] des_ts, regs_rdata, sb_rdata, st_rdata;
+    wire [31:0] des_ts, regs_rdata, sb_rdata, st_rdata, vis_rdata, pwm_rdata;
     wire        sb_drive_low, st_pul_n, st_dir_n, st_ena;
     assign des_rdata = (des_raddr[11:8] == 4'h1) ? sb_rdata :
-                       (des_raddr[11:8] == 4'h2) ? st_rdata : regs_rdata;
+                       (des_raddr[11:8] == 4'h2) ? st_rdata :
+                       (des_raddr[11:8] == 4'h3) ? vis_rdata :
+                       (des_raddr[11:8] == 4'h4) ? pwm_rdata : regs_rdata;
 
     reg [2:0] des_estop_sync = 3'b111;
     always @(posedge des_clk) des_estop_sync <= {des_estop_sync[1:0], ESTOP_IN};
     wire des_estop = ~des_estop_sync[2];
 
     wire [31:0] st_pos;
-    des_regs #(.VERSION(32'd5)) des_regs_inst (
+    des_regs #(.VERSION(32'd8)) des_regs_inst (
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h0), .waddr(des_waddr), .wdata(des_wdata),
         .raddr(des_raddr), .rdata(regs_rdata), .sof_toggle(des_sof_toggle), .ts(des_ts),
         .cap_start_toggle(cap_start_tgl), .cap_done_toggle(cap_done_tgl), .pos(st_pos),
@@ -496,6 +505,18 @@ wire pwm_out_unused;
         .raddr(des_raddr[7:0]), .rdata(st_rdata), .estop(des_estop),
         .pul_n(st_pul_n), .dir_n(st_dir_n), .ena_o(st_ena), .pos_o(st_pos)
     );
+    des_vision vision_inst (
+        .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h3), .waddr(des_waddr[7:0]), .wdata(des_wdata),
+        .raddr(des_raddr[7:0]), .rdata(vis_rdata),
+        .pclk(S_hs_rx_clk), .s_tdata(S_ISP_O_tdata), .s_tvalid(S_ISP_O_tvalid), .s_tuser(S_ISP_O_tuser),
+        .s_tlast(S_ISP_O_tlast), .m_tdata(vis_tdata), .m_tvalid(vis_tvalid), .m_tuser(vis_tuser), .m_tlast(vis_tlast)
+    );
+
+    des_pwm pwm_inst (
+        .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h4), .waddr(des_waddr[7:0]), .wdata(des_wdata),
+        .raddr(des_raddr[7:0]), .rdata(pwm_rdata), .pwm({FLAP2_PWM, FLAP1_PWM}), .lamp(LAMP_EN)
+    );
+
     // TB6600 common-cathode wiring (PUL-/DIR-/ENA- to GND, PUL+/DIR+/ENA+ from these pins): pulse active high,
     // ENA high releases the motor. Set to 0 for the common-anode + 74HCT245 wiring.
     localparam STEP_COMMON_CATHODE = 1;
