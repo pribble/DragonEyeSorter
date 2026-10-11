@@ -30,12 +30,16 @@ def main():
     ap.add_argument("--epochs", type=int, default=30)
     ap.add_argument("--imgsz", type=int, default=224)
     ap.add_argument("--batch", type=int, default=64)
-    ap.add_argument("--device", default="cpu")
+    ap.add_argument("--device", default="auto", help="auto = GPU 0 if CUDA works (RTX 4060 laptop), else cpu")
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--project", default="runs")
     ap.add_argument("--name", default="cls")
     a = ap.parse_args()
 
+    if a.device == "auto":
+        import torch
+        a.device = "0" if torch.cuda.is_available() else "cpu"
+        print(f"device: {a.device}")
     model = YOLO(a.model)
     if a.pretrained and a.model.endswith(".yaml"):
         model.load(a.pretrained)   # transfer matching weights (e.g. ReLU variant from the SiLU checkpoint)

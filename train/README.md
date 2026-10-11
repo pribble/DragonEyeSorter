@@ -28,7 +28,9 @@
 上板          scp 模型 + JSON → /root/des/；test_npu 核对 NPU 与 PC 一致、测推理耗时；des_app live / run 自动加载
 ```
 
-## 命令（WSL，训练环境 `~/des-train`：torch CPU 2.14、ultralytics 8.4、onnx 1.23、onnxruntime 1.23）
+## 命令（WSL，训练环境 `~/des-train`：torch 2.14.1+cu130（用户笔记本 RTX 4060 Laptop 8GB，WSL 里 CUDA 可用）、ultralytics 8.4、onnx 1.23、onnxruntime 1.23）
+
+`train_cls.py --device auto`（默认）有 CUDA 就用 GPU 0。合成 2400 张 × 12 轮：CPU 6.4 分钟，**GPU 40 秒**（含启动 1 分 14 秒），fp32 top1 98.75%（CPU 98.33%，GPU 不完全确定性）。
 
 ```bash
 export YOLO_CONFIG_DIR=$HOME/.ultralytics-cfg
