@@ -159,7 +159,30 @@ module tb_stepper_ctrl;
         reg_rd(8'h18, r); check_ge("ran past the passed target", $signed(r), t_start);
         check("hw pos == monitor after overshoot", $signed(r), mon_pos);
 
-        // 8) release
+        // 8) TARGET rewritten to exactly current position during movement (v9 bugfix regression)
+        reg_wr(8'h08, 32'd500000);
+        reg_wr(8'h00, 32'h13);
+        #(3_000_000);
+        reg_rd(8'h18, r);
+        r = $signed(r);                              // save current position
+        reg_wr(8'h08, r);                            // write TARGET = POS while moving
+        t_end = $realtime;
+        // must stop within finite time (2 ms), not freeze with MOVING=1 forever
+        #(2_000_000);
+        reg_rd(8'h04, r); check("stopped after TARGET==POS rewrite", r[0], 0);
+        check("AT_TARGET after TARGET==POS", r[2], 1);
+        reg_rd(8'h18, r); check("hw pos == monitor after TARGET==POS", $signed(r), mon_pos);
+        $display("     TARGET==POS stop took %0.2f us", ($realtime - t_end) / 1000.0);
+        // verify next START works (not permanently locked)
+        t_start = $signed(r);                        // save position for next target
+        reg_wr(8'h08, t_start + 5000);
+        reg_wr(8'h00, 32'h13);
+        #(1_000_000);
+        reg_rd(8'h04, r); check("can start again after TARGET==POS", r[0], 1);
+        wait_idle;
+        reg_rd(8'h18, r); check("reached next target after unlock", $signed(r), t_start + 5000);
+
+        // 9) release
         reg_wr(8'h00, 32'h10);
         @(posedge clk); #1;
         check("ENA pin low when released", ena_o, 0);

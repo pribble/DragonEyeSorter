@@ -5,7 +5,7 @@
 
 namespace des {
 
-static constexpr int32_t kFar = 10000000;       // steps ahead for "run" (~300 m at 0.03 mm/step)
+static constexpr int32_t kFar = 10000000;       // steps ahead for "run" (~98 m at 0.0098 mm/step)
 static constexpr int32_t kReextend = kFar / 2;  // re-extend the far target when this close
 
 BeltDriver::BeltDriver(des_hw_t *hw, const BeltConfig &cfg) : hw_(hw), cfg_(cfg)
@@ -73,10 +73,15 @@ void BeltDriver::apply(const BeltPlan &plan)
         const bool behind = int64_t(t - pos) * sign_ < 0;
         if (moving) {
             if (last_kind_ != BeltPlan::StopAt || t != last_target_) {
-                if (behind) stats.late++;      // PL ramps down and stops past it
-                des_step_set_target(hw_, t);
-                last_target_ = t;
-                stats.stops++;
+                // Writing TARGET == POS mid-move latches MOVING forever on PL v8 and older;
+                // skip the write — next frame pos is past the stop point and the late path
+                // below stops it (the earliest physical stop from here either way).
+                if (t != pos) {
+                    if (behind) stats.late++;      // PL ramps down and stops past it
+                    des_step_set_target(hw_, t);
+                    last_target_ = t;
+                    stats.stops++;
+                }
             }
         } else if (t != pos) {
             if (behind) {

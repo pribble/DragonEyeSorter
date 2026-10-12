@@ -1,6 +1,10 @@
-// pl_map.h — /dev/mem 访问 PL 寄存器的最小封装（自研）
+// pl_map.h — DEPRECATED: Use des_hw.h instead
 // 用法：pl_map(PL_BASE, 0x1000) → pl_rd/pl_wr；退出前 pl_unmap。
 // 板上以 root 运行；/dev/mem 已实测可用（docs/log/2026-10-08）。
+//
+// DEPRECATED: This module has known bugs and lacks volatile semantics.
+// For PL register access, use des_hw.h (servo transactions, stepper control, etc.)
+// See ps/README.md "约定" section for migration guide.
 #ifndef PL_MAP_H
 #define PL_MAP_H
 

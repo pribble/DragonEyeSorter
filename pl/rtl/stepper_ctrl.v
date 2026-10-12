@@ -6,6 +6,7 @@
 // remaining distance is <= the steps spent accelerating (symmetric ramp), then stops exactly at TARGET.
 // TARGET may be rewritten while moving (belt "stop at" for picking). If it ends up behind the direction of
 // travel (written too late), the move ramps down and stops past it instead of freezing (STATUS AT_TARGET = 0).
+// Rewriting TARGET to exactly the current position while moving stops right there (STATUS AT_TARGET = 1).
 //
 // Register block (byte offsets inside the 0x200 window):
 //   0x00 CTRL     W: b0 ENABLE, b1 START (pulse), b2 STOP (ramp down, pulse), b3 HALT (immediate, pulse),
@@ -119,11 +120,16 @@ module stepper_ctrl #(
             // ramp tick
             if (acc_cnt == ACC_DIV - 1) begin
                 acc_cnt <= 0;
-                if (want_down) begin
+                // TARGET rewritten to exactly current position mid-move: no steps are left, stop immediately
+                // without waiting for decel complete (v9 bugfix: step_now gate at L71 freezes accel_steps,
+                // so we never reach the normal remaining==1 last-step exit at L147).
+                if (mode && remaining == 0) begin moving <= 0; cur_inc <= 0; end
+                else if (want_down) begin
                     if (cur_inc > vmin_inc + acc_inc) cur_inc <= cur_inc - acc_inc;
                     else begin
                         cur_inc <= vmin_inc;
-                        if (stopping || overshoot) begin moving <= 0; stopping <= 0; end   // ramped down: stop
+                        // ramped down: stop
+                        if (stopping || overshoot) begin moving <= 0; stopping <= 0; end
                     end
                 end else if (cur_inc < vmax_inc) begin
                     cur_inc <= (vmax_inc - cur_inc > acc_inc) ? cur_inc + acc_inc : vmax_inc;
