@@ -28,9 +28,56 @@
 上板          scp 模型 + JSON → /root/des/；test_npu 核对 NPU 与 PC 一致、测推理耗时；des_app live / run 自动加载
 ```
 
-## 命令（WSL，训练环境 `~/des-train`：torch 2.14.1+cu130（用户笔记本 RTX 4060 Laptop 8GB，WSL 里 CUDA 可用）、ultralytics 8.4、onnx 1.23、onnxruntime 1.23）
+## 环境配置
 
-`train_cls.py --device auto`（默认）有 CUDA 就用 GPU 0。合成 2400 张 × 12 轮：CPU 6.4 分钟，**GPU 40 秒**（含启动 1 分 14 秒），fp32 top1 98.75%（CPU 98.33%，GPU 不完全确定性）。
+训练环境 `~/des-train` 在 WSL 中创建（GPU 需 CUDA 支持）。
+
+### 创建虚拟环境
+
+```bash
+python3 -m venv ~/des-train
+source ~/des-train/bin/activate
+```
+
+### 安装依赖
+
+根据硬件选择：
+
+**CPU 版本（调试 / 无 GPU）**：
+
+```bash
+pip install -r requirements.txt
+```
+
+训练速度参考（合成数据 2400 张 × 12 轮）：约 6.4 分钟
+
+**GPU 版本（推荐，CUDA 12.1）**：
+
+```bash
+pip install -r requirements-gpu.txt
+```
+
+训练速度参考（RTX 4060 Laptop，合成数据 2400 张 × 12 轮）：约 40 秒（含启动 1 分 14 秒）
+
+**注意事项**：
+- GPU 版本要求 NVIDIA GPU + CUDA 12.1（或兼容版本）
+- WSL2 环境下 CUDA 可用（需 NVIDIA 驱动 ≥525.60.13）
+- 两个版本的推理精度一致（fp32 模型）；量化后精度以板上 NPU 实测为准
+- 训练完成度：CPU 98.33% top1，GPU 98.75%（GPU 不完全确定性）
+
+### CUDA 环境检查
+
+训练前验证 GPU 可用（WSL 里 `nvidia-smi` 能看到卡）：
+
+```bash
+python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
+```
+
+如无 CUDA，`train_cls.py --device cpu` 强制用 CPU。
+
+## 命令
+
+`train_cls.py --device auto`（默认）有 CUDA 就用 GPU 0。
 
 ```bash
 export YOLO_CONFIG_DIR=$HOME/.ultralytics-cfg
