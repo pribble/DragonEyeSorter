@@ -13,22 +13,18 @@ param(
     [string]$Bit,
     [string]$Fsbl,
     [string]$Out = "$PSScriptRoot\BOOT.bin",
-    [string]$FdRoot = $(
-        if ($env:FD_ROOT) { $env:FD_ROOT }
-        elseif (Test-Path "$PSScriptRoot\..\.env") {
-            Write-Host "检测到 .env 文件，正在加载..." -ForegroundColor Yellow
-            . "$PSScriptRoot\..\scripts\env_loader.ps1"
-            $env:FD_ROOT
-        }
-        else { 'C:\Anlogic\FD_2026.1_SP1' }
-    ),
-    [string]$VendorDemo = $(
-        if ($env:NPU_DEMO) { $env:NPU_DEMO }
-        elseif (Test-Path "$PSScriptRoot\..\.env") { $env:NPU_DEMO }
-        else { 'D:\ANLU\02_F3P_DR1M90GEG400\01_start\02_start_Linux\05_application_demo\05-5_NPU演示\demo' }
-    )
+    [string]$FdRoot,
+    [string]$VendorDemo
 )
 $ErrorActionPreference = 'Stop'
+# 加载项目根目录的 .env（FD_ROOT / NPU_DEMO 等）；命令行显式传参优先，最后才是硬编码兜底
+# 本脚本在 scripts\bootbin\ 下：repo 根的 .env 是 $PSScriptRoot\..\..\.env，
+# env_loader.ps1 本身会用它自己的位置找到 .env
+if (-not $DES_ENV_LOADED -and (Test-Path "$PSScriptRoot\..\..\.env")) {
+    . "$PSScriptRoot\..\env_loader.ps1"
+}
+if (-not $FdRoot)     { $FdRoot     = if ($env:FD_ROOT)  { $env:FD_ROOT }  else { 'C:\Anlogic\FD_2026.1_SP1' } }
+if (-not $VendorDemo) { $VendorDemo = if ($env:NPU_DEMO) { $env:NPU_DEMO } else { 'D:\ANLU\02_F3P_DR1M90GEG400\01_start\02_start_Linux\05_application_demo\05-5_NPU演示\demo' } }
 $parts   = Join-Path $PSScriptRoot 'parts'
 $bootgen = Join-Path $FdRoot 'tools\bootgen\albg1.exe'
 $tc      = Join-Path $FdRoot 'toolchain\gcc\aarch64_linux\bin\aarch64-linux-gnu'

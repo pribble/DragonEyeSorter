@@ -60,12 +60,10 @@ DragonEyeSorter/
 ### 0. 环境配置（首次使用必做）
 
 ```powershell
-# Windows PowerShell
-.\setup_env.ps1
-
-# 或手动配置
+# Windows PowerShell：复制示例并填入本机路径
 cp .env.example .env
-# 编辑 .env 填入你本机的工具路径
+# 编辑 .env 填入你本机的工具路径，然后自检：
+scripts\test_env.ps1
 ```
 
 详见 [docs/13-环境配置指南.md](docs/13-环境配置指南.md)

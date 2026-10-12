@@ -15,9 +15,9 @@ if [ ! -f "$ENV_FILE" ]; then
     return 1 2>/dev/null || exit 1
 fi
 
-# 加载 .env 文件（忽略注释和空行）
+# 加载 .env 文件（忽略注释和空行；剥掉可能的 UTF-8 BOM 与 CRLF）
 set -a
-source <(grep -v '^#' "$ENV_FILE" | grep -v '^[[:space:]]*$' | sed 's/\r$//')
+source <(grep -v '^#' "$ENV_FILE" | grep -v '^[[:space:]]*$' | sed -e 's/^\xEF\xBB\xBF//' -e 's/\r$//')
 set +a
 
 echo "✅ 环境配置已加载: $ENV_FILE"

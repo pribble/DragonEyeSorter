@@ -1,4 +1,4 @@
-# 环境配置测试脚本 - 验证所有必要路径和工具是否正确配置
+﻿# 环境配置测试脚本 - 验证所有必要路径和工具是否正确配置
 
 param(
     [switch]$Verbose
@@ -145,7 +145,7 @@ if ($criticalFailed -eq 0) {
     Write-Host "建议操作:" -ForegroundColor Yellow
     Write-Host "  1. 检查 .env 文件中的路径是否正确"
     Write-Host "  2. 确保所有工具已正确安装"
-    Write-Host "  3. 运行 .\setup_env.ps1 重新配置"
+    Write-Host "  3. 重新复制 .env.example 为 .env 并填入路径后重跑本脚本"
     Write-Host ""
     exit 1
 }

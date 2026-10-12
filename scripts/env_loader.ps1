@@ -1,4 +1,4 @@
-# 环境变量加载器 (PowerShell 版本) - 从项目根目录的 .env 文件加载配置
+﻿# 环境变量加载器 (PowerShell 版本) - 从项目根目录的 .env 文件加载配置
 # 用法: . .\scripts\env_loader.ps1
 
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
@@ -14,8 +14,12 @@ if (-not (Test-Path $EnvFile)) {
 
 Write-Host "✅ 正在加载环境配置: $EnvFile" -ForegroundColor Green
 
-# 读取并解析 .env 文件
-Get-Content $EnvFile | ForEach-Object {
+# 标记已加载，供调用方（如 make_bootbin.ps1 的参数默认值）避免重复加载
+$global:DES_ENV_LOADED = $true
+
+# 读取并解析 .env 文件（显式 UTF8：无 BOM 时 Windows PowerShell 默认按本地代码页读，
+# 中文注释的尾字节可能吞掉换行、把下一行 KEY 并进注释）
+Get-Content $EnvFile -Encoding UTF8 | ForEach-Object {
     $line = $_.Trim()
     # 跳过注释和空行
     if ($line -match '^#' -or $line -eq '') {
