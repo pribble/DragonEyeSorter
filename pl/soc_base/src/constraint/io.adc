@@ -51,7 +51,7 @@ set_pin_assignment	{ led[2] }	{ LOCATION = J15;  IOSTANDARD = LVCMOS33; DRIVESTR
 
 
 
-# DragonEyeSorter: CEP J12 (BANK11, 3.3V) -- see DragonEyeSorter/docs/05
+# DragonEyeSorter: CEP J12 (BANK11, 3.3V) -- see DragonEyeSorter/docs/硬件与接线.md
 set_pin_assignment	{ STEP_PUL }	{ LOCATION = Y12; IOSTANDARD = LVCMOS33; DRIVESTRENGTH = 8; PULLTYPE = NONE; }
 set_pin_assignment	{ STEP_DIR }	{ LOCATION = Y13; IOSTANDARD = LVCMOS33; DRIVESTRENGTH = 8; PULLTYPE = NONE; }
 set_pin_assignment	{ STEP_ENA }	{ LOCATION = T9;  IOSTANDARD = LVCMOS33; DRIVESTRENGTH = 8; PULLTYPE = NONE; }

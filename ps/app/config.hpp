@@ -63,7 +63,7 @@ struct AppConfig {
     TrackMeasureConfig measure;
     StorageConfig storage;
     NpuConfig npu;
-    FlapConfig flaps;            // belt-end flaps (des_pwm, v7)  // geometric measurement + size rule (tracker.size), docs/02 "几何测量"
+    FlapConfig flaps;            // belt-end flaps (des_pwm, v7)  // geometric measurement + size rule (tracker.size), docs/视觉与检测.md "几何测量"
     std::string label_list = "models/label_list.json";
     std::string calib_file = "calib.json";     // written by des_app calib-cam, merged over this file if present
     std::string calib_loaded;                  // path actually merged (empty = none)

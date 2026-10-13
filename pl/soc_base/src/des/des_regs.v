@@ -1,4 +1,4 @@
-// DragonEyeSorter PL register file, PS address 0x8030_1000 + offset (see docs/03).
+// DragonEyeSorter PL register file, PS address 0x8030_1000 + offset (see docs/PL设计.md).
 //   0x000 R  DES_ID       0x44455301
 //   0x004 R  DES_VERSION  1 = register channel, 2 = servo_bus + stepper, 3 = SOF fix, 4 = INCK 27 MHz, 5 = capture latch
 //   0x008 RW SCRATCH

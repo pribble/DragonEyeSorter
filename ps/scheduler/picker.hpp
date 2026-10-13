@@ -1,4 +1,4 @@
-// picker.hpp — pick scheduling, belt stop decisions and tail-flap assignment (docs/04).
+// picker.hpp — pick scheduling, belt stop decisions and tail-flap assignment (docs/运动控制与分拣.md).
 //
 // The belt only stops for OK parts the arm will pick. For the most downstream pickable part the belt is
 // told to stop at B = pick_x - s (stepper position mode decelerates on its own, see stepper_ctrl), so the

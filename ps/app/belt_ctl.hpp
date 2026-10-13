@@ -1,4 +1,4 @@
-// belt_ctl.hpp — applies the picker's BeltPlan to the belt stepper (docs/04 "传送带什么时候停").
+// belt_ctl.hpp — applies the picker's BeltPlan to the belt stepper (docs/运动控制与分拣.md "传送带什么时候停").
 //
 // The stepper always runs in PL position mode (stepper_ctrl):
 //   Run     target far ahead (re-extended before it is reached) -> the belt keeps cruising

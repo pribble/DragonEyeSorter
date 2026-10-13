@@ -1,5 +1,5 @@
 // measure_config.hpp — settings of the geometric measurement (measure.hpp, track_measure.hpp). Plain structs, no
-// OpenCV, so config.hpp can hold them (des_app.json "measure", docs/02 "几何测量").
+// OpenCV, so config.hpp can hold them (des_app.json "measure", docs/视觉与检测.md "几何测量").
 #pragma once
 
 #include "geom.hpp"

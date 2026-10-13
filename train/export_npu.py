@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """best.pt -> ONNX (opset 13) without the final Softmax -> UINT8 QDQ per-tensor (onnxruntime quantize_static),
-the same format as the vendor's fire_detect model that runs on the Alnpu backend (docs/02 模型与量化路线), plus the
+the same format as the vendor's fire_detect model that runs on the Alnpu backend (docs/视觉与检测.md 模型与量化路线), plus the
 model JSON that des_app reads (class names in id order, input normalization, crop spec).
 
 Softmax is cut off (des_app applies it in C++): one operator less for the ArmNN ONNX parser / NPU to support.

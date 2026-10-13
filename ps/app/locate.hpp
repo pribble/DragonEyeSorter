@@ -1,4 +1,4 @@
-// locate.hpp — part localization on the PS (docs/02 "视觉定位与角度"): white POM parts on a black matte belt.
+// locate.hpp — part localization on the PS (docs/视觉与检测.md "视觉定位与角度"): white POM parts on a black matte belt.
 // Downsampled gray -> threshold (Otsu, clamped) -> opening -> external contours -> minAreaRect,
 // then mapped to table mm through the camera homography. Gives (x, y, axis, len, wid) per blob; the NPU
 // class is attached later by matching boxes (cls stays -1 here).

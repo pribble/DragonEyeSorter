@@ -1,4 +1,4 @@
-// tracker.hpp — conveyor tracking table (docs/04 "跟踪表").
+// tracker.hpp — conveyor tracking table (docs/运动控制与分拣.md "跟踪表").
 //
 // Every part on the belt gets one Track. Positions are kept in belt coordinates (s = x - B, see geom.hpp),
 // so a stopped / reversed / accelerating belt needs no special handling: x_now = s + B_now.
@@ -42,7 +42,7 @@ struct ClassRule {
     int dest = 0;           // Pick: bin index; Flap: outlet index
 };
 
-// Geometric measurement of one part (app/measure, docs/02 "几何测量"), the best frame so far = the one nearest the
+// Geometric measurement of one part (app/measure, docs/视觉与检测.md "几何测量"), the best frame so far = the one nearest the
 // optical axis (smallest parallax smear). Plain numbers, so this library stays free of OpenCV.
 struct PartMeasure {
     bool valid = false;
@@ -59,7 +59,7 @@ struct PartMeasure {
     int short_teeth = 0, missing_teeth = 0, flash_gaps = 0;
 };
 
-// Size / spec NG from the measurement (docs/02 类别表: 尺寸类 NG 不进 NPU 类别, 由测量判 → 报废). Applied only to parts
+// Size / spec NG from the measurement (docs/视觉与检测.md 类别表: 尺寸类 NG 不进 NPU 类别, 由测量判 → 报废). Applied only to parts
 // the class vote would pick (OK parts): it never upgrades an NPU NG.
 struct SizeRule {
     bool enabled = false;           // ⚠ turn on once the camera height and calibration are real

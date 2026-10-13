@@ -1,4 +1,4 @@
-// track_measure.hpp — geometric measurement (measure.hpp) of tracked parts from the live worker (docs/02 "几何测量").
+// track_measure.hpp — geometric measurement (measure.hpp) of tracked parts from the live worker (docs/视觉与检测.md "几何测量").
 //
 // Each frame at most per_frame parts are measured. A part is (re)measured only when it is clearly nearer the optical
 // axis than at its stored measurement, so every track ends up with about its best frame (smallest parallax smear,

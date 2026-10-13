@@ -1,4 +1,4 @@
-/* DragonEyeSorter PL register map. Keep in sync with docs/03-PL设计.md (same commit). */
+/* DragonEyeSorter PL register map. Keep in sync with docs/PL设计.md (same commit). */
 #ifndef DES_REGS_H
 #define DES_REGS_H
 

@@ -1,30 +1,23 @@
 # ps/vision/ — 检测流水线（改造起点：安路官方 face_detection demo）
 
-我们的齿轮/齿条零件检测流水线在这里开发。现有代码来自安路官方 NPU demo
-`demo.zip → sdk/face_detection.tar.gz → src/npu_flow/`（2025-12 版），
-直接在上面改成零件检测。
+代码来自安路官方 NPU demo `demo.zip → sdk/face_detection.tar.gz → src/npu_flow/`（2025-12 版），在此改成齿轮/齿条零件检测。
 
-原上游为 `npu_flow/utils/`、`npu_flow/utils/media/`、`npu_flow/yolo_demo_hdmi_camera/`
-三层，入库时已展平为本目录一层，`#include` 均为纯文件名，无需改动。
+上游 `npu_flow/utils/`、`npu_flow/utils/media/`、`npu_flow/yolo_demo_hdmi_camera/` 三层已展平为本目录一层，`#include` 均为纯文件名，无需改动。
 
 ## 现有内容速查
 
-- 取帧：`icamera::enumerate_device("/dev/mipicam", "1920x1080")` → `SubmitAndStart(phys, virt)` / `WaitFinish()`（mipi_camera / stream_input）
-- 显示：`ihdmi::enumerate_device("/dev/fb0" | "/dev/dri/card0", ...)` → `show(phys, virt, ch)`（hdmi_framebuffer 路径，hdmi_drm 未编入）
-- 推理：`BufferedNPUExecutor(model, {Alnpu,CpuAcc,CpuRef})`，8 缓冲流水，输入量化参数从 ONNX 读
-- 后处理：`getFastDecodeOutputYolov8WorkLoad(tensors, h, w, cls, prob, nms)`，类别/阈值在 JSON
+- 取帧 `icamera::enumerate_device("/dev/mipicam", "1920x1080")` → `SubmitAndStart(phys, virt)` / `WaitFinish()`（mipi_camera / stream_input）· 显示 `ihdmi::enumerate_device("/dev/fb0" | "/dev/dri/card0", ...)` → `show(phys, virt, ch)`（hdmi_framebuffer 路径，hdmi_drm 未编入）
+- 推理 `BufferedNPUExecutor(model, {Alnpu,CpuAcc,CpuRef})`（8 缓冲流水，输入量化参数从 ONNX 读）· 后处理 `getFastDecodeOutputYolov8WorkLoad(tensors, h, w, cls, prob, nms)`（类别/阈值在 JSON）
 - 计时：solution.cpp 每任务 time_infos → 测试埋点框架
 - demo 主程序：`main.cpp` + `solution.cpp`（相机→resize→NPU→YOLO→HDMI 五级流水）
 
-## 入库时与上游的差异
+## 与上游的差异
 
-- 删除 `drm/`（libdrm 二进制 + 内核头，板上已有；需要时从原 demo 取）
-- 删除 `udp_send.hpp`（UDP 推流演示用不到）
+- 不含 `drm/`（libdrm 二进制 + 内核头，板上已有；需要时从原 demo 取）、`udp_send.hpp`（UDP 推流演示用不到）
 
 ## 待改造方向（零件检测）
 
-- 类别换成 `models/label_list.json` 的 8 类（齿轮/齿条 × 良品/缺料/飞边/黑点，与该文件 cn 列一致），
-  NPU JSON 由 label_list 生成，不手抄（AGENTS.md 约定 1）
-- `face_detection`/`yolo_demo_hdmi_camera` 等命名后续随改造重命名
+- 类别换成 `models/label_list.json` 的 8 类（齿轮/齿条 × 良品/缺料/飞边/黑点，与该文件 cn 列一致），NPU JSON 由 label_list 生成，不手抄（AGENTS.md 约定 1）
+- `face_detection`/`yolo_demo_hdmi_camera` 等命名随改造重命名
 - 增加分拣判定输出：检测框 → label_list 的 verdict/action/dest → 调度器
 - 前处理 resize（实测 37ms）是已知瓶颈，优化也在本目录做

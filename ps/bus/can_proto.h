@@ -1,4 +1,4 @@
-/* can_proto.h — DragonEyeSorter <-> "PLC" CAN protocol v1 (docs/06 "工业总线").
+/* can_proto.h — DragonEyeSorter <-> "PLC" CAN protocol v1 (docs/软件与UI.md "工业总线").
  *
  * Classic CAN 2.0A (11-bit ids), 500 kbit/s: the board transceiver (SN65HVD232) is classic CAN only.
  * Multi-byte fields are little-endian. The PC with a USB-CAN adapter plays the line PLC.

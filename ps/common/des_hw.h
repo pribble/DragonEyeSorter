@@ -1,5 +1,5 @@
 /* des_hw: DragonEyeSorter PL access layer over /dev/mem (des_regs / servo_bus / stepper_ctrl).
- * Register map: des_regs.h (same commit as docs/03-PL设计.md).
+ * Register map: des_regs.h (same commit as docs/PL设计.md).
  *
  * Ownership: the servo bus and the stepper are single-master resources. In the running system only
  * the application touches them; do not run `desreg` write commands while des_app is running.

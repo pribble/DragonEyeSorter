@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """make_figures.py — diagrams for the technical document and the PPT (SVG + PNG, Chinese labels).
 
-    python docs/report/figures/make_figures.py          # writes fig_*.svg / fig_*.png next to this file
+    python docs/figures/make_figures.py          # writes fig_*.svg / fig_*.png next to this file
 
 Edit the numbers / labels here and re-run; the figures are not hand-drawn so they stay consistent with the docs.
 Needs matplotlib and a CJK font (Microsoft YaHei on Windows, Noto Sans CJK / WenQuanYi on Linux).

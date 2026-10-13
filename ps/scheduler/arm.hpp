@@ -1,4 +1,4 @@
-// arm.hpp — 6-servo arm kinematics and pick / place waypoint planning (docs/04).
+// arm.hpp — 6-servo arm kinematics and pick / place waypoint planning (docs/运动控制与分拣.md).
 //
 // Joints (servo bus ids 1..6): #1 base yaw, #2 shoulder pitch, #3 elbow pitch, #4 wrist pitch,
 // #5 wrist rotate, #6 gripper. Picking keeps the gripper pointing straight down, so the pitch chain is

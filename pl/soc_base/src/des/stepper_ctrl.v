@@ -1,5 +1,6 @@
-// Step/dir generator with trapezoidal ramps for a TB6600-class driver (common-anode inputs via 74HCT245).
-// PUL is active-low; ENA- low releases the motor, so ENA is driven high while enabled. Keep v <= 50k steps/s
+// Step/dir generator with trapezoidal ramps for a TB6600-class driver (common-cathode inputs, FPGA 3.3V direct drive).
+// pul_n is active-low (the STEP_PUL pin is active-high: system_top inverts it for the common-cathode wiring,
+// STEP_COMMON_CATHODE = 1); ENA- low releases the motor, so ENA is driven high while enabled. Keep v <= 50k steps/s
 // (5 us pulses need a 10 us period).
 // Speed is a phase increment per clock in Q0.32 steps (v[steps/s] = inc * CLK_HZ / 2^32); PS converts units.
 // Every ACC_DIV clocks the speed moves by ACC_INC toward its target. Position mode decelerates when the

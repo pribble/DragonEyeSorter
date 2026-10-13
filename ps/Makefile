@@ -18,7 +18,7 @@
 -include ../.env.make
 
 # 不给主机路径默认值：缺配置就报错并给出下一步，而不是默默去用某台机器上的目录
-ENV_HINT = 先在仓库根把 .env.example 复制为 .env 并填好路径（见 docs/13-环境配置指南.md），再运行 scripts/generate_env_make.sh；也可命令行覆盖，如 make CROSS=<工具链前缀> SDK_LIBS=<libs>
+ENV_HINT = 先在仓库根把 .env.example 复制为 .env 并填好路径（见 docs/环境与上手.md），再运行 scripts/generate_env_make.sh；也可命令行覆盖，如 make CROSS=<工具链前缀> SDK_LIBS=<libs>
 
 ifneq ($(MAKECMDGOALS),clean)
 ifeq ($(origin CROSS),undefined)

@@ -322,7 +322,7 @@ static int run_track(des_hw_t &hw, const AppConfig &cfg, const Args &a)
 }
 
 // ---------------------------------------------------------------- display
-// camera -> HDMI only (no overlays): measures the BGRA->BGR conversion + page flip cost (docs/06)
+// camera -> HDMI only (no overlays): measures the BGRA->BGR conversion + page flip cost (docs/软件与UI.md)
 static int run_display(des_hw_t &hw, const AppConfig &cfg, const Args &a)
 {
     CameraRig cam(&hw);
@@ -437,7 +437,7 @@ static int run_arm(des_hw_t &hw, const AppConfig &cfg, const Args &a)
                    i.status & 0x04 ? " OVER-TEMP" : "", i.status & 0x01 ? " VOLTAGE" : "");
         }
         printf("%d / 6 servos answered%s\n", alive,
-               alive ? "" : " (power, BSS138 wiring, CEP PIN19, ids 1..6? see docs/05)");
+               alive ? "" : " (power, BSS138 wiring, CEP PIN19, ids 1..6? see docs/硬件与接线.md)");
         return alive == 6 ? 0 : 2;
     }
     if (s == "read" || s == "teach") {
@@ -698,7 +698,7 @@ static int run_calib_belt(des_hw_t &hw, const AppConfig &cfg, const Args &a)
 // ---------------------------------------------------------------- calib-arm
 // Hand-eye: where the arm stands on the table (base_xy, base_yaw) and how high the belt is in the arm frame, from
 // >= 3 marker positions that the camera sees and the gripper tip touches. Interactive (Enter between the steps).
-// The joint zeros / directions must be right first (arm read = geometric angles, docs/04 bring-up step 3).
+// The joint zeros / directions must be right first (arm read = geometric angles, docs/运动控制与分拣.md bring-up step 3).
 static bool wait_enter(const char *prompt)
 {
     printf("%s ", prompt);

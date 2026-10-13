@@ -1,4 +1,4 @@
-// hdmi_out.hpp — 1080p HDMI output by page flipping the vendor scan-out VDMA (docs/06 "显示通路").
+// hdmi_out.hpp — 1080p HDMI output by page flipping the vendor scan-out VDMA (docs/软件与UI.md "显示通路").
 //
 // The scan-out VDMA at 0x8020_0000 reads 24 bpp BGR (H_SIZE / stride 5760) from START_1 (0x5C), normally the
 // fb0 memory. We keep two CMA BGR buffers: draw into back(), then flip() flushes it and points START_1 at it.

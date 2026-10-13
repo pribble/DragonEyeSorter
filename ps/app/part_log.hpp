@@ -3,7 +3,7 @@
 // One CSV line per decided part, plus the part crop (roi_crop.hpp, the NPU input) for NG / recheck parts (or every
 // part), under <dir>/<YYYY-MM-DD>/: parts_<session>.csv and img/<session>_<track>_<label>.jpg. A background thread
 // does all file I/O, so the worker never waits for the SD card; when the queue is full records are dropped and
-// counted (never blocks). Columns match the SQLite table planned for the UI history view (docs/06).
+// counted (never blocks). Columns match the SQLite table planned for the UI history view (docs/软件与UI.md).
 // ⚠ The board has no RTC: wall time is whatever the clock says (sync it with `date -s` before a test run); the
 // monotonic t_s column is always right.
 #pragma once
