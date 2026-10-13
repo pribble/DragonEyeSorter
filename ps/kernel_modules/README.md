@@ -1,0 +1,17 @@
+# ps/kernel_modules — mipicam 内核模块（仅需要改驱动时才重编）
+
+板上 rootfs 已带厂家预编译模块（`/opt/bin/*.ko`），日常开发直接加载现成的即可。
+
+本目录就是唯一预期会改的那个驱动：**`mipicam.ko`**（`/dev/mipicam`，DMA 取帧 + 中断等待；源码来自安路 face_detection SDK，MIT）——
+例如需要帧起始时间戳给 PL 帧锁存对账时才动它。
+
+cma_mem / hard_npu / soft_npu / jpu 驱动用板上预编译 .ko，源码在本机仓库外
+`../../../reference_src/face_detection_sdk/src/linux_driver/`。
+
+重编方法（需米联客 Linux 开发包的内核树，见 docs/09）：
+
+```bash
+cd ps/kernel_modules
+make build KERNELDIR=<内核树路径> CROSS_PREFIX=<aarch64工具链前缀>
+# 产物 mipicam.ko；板上： rmmod mipicam && insmod mipicam.ko
+```

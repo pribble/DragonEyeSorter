@@ -16,7 +16,7 @@ ps/
 ├── tests/          # test_scheduler（调度库单元）、test_calib（标定，合成图）、test_measure（齿轮 / 齿条测量，合成图）、test_belt_hil（传送带控制硬件在环，板上 PL v5）、test_can（CAN 协议与收发，回环自测）、test_npu（NPU 推理核对与耗时）
 ├── vision/         # 检测流水线：安路 face_detection demo 改造起点，后期改成零件检测
 │                   #   相机/HDMI 接口、前处理、NPU 推理封装、YOLOv8 后处理、demo 主程序
-├── kernel_modules/ # mipicam 驱动（厂家 demo 改造起点）；板上其余驱动用厂家预编译 .ko
+├── kernel_modules/ # mipicam 驱动源码 + 独立 Makefile（厂家 demo 改造起点，改驱动时才重编）；板上其余驱动用厂家预编译 .ko
 ├── tools/          # desreg 寄存器调试工具、canplc（扮「PLC」的命令行，回环 / 联调用）、soak.sh（长时间运行，部署到板上）
 └── bus/            # CAN（SocketCAN）：can_link 收发 + can_proto.h 协议（与 docs/06 同源）+ can_up.sh 起接口；RS485 Modbus（P1，未做）
 ```
