@@ -33,7 +33,7 @@ FPGA 3.3V 直接给光耦供电流，对 BANK11 零倒灌风险。仅当实测�
 
 ```bat
 cd pl\test\step_test
-D:\ANLU\TD\bin\td_commands_prompt.exe build.tcl < NUL
+<TD 安装目录>\bin\td_commands_prompt.exe build.tcl < NUL
 ```
 
 几十秒出 `step_test.bit`（2026-10-09 用 TD 6.2.1 实测通过）。

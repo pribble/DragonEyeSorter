@@ -9,7 +9,7 @@ PC 扮演产线 PLC，经 CAN（500 kbit/s，协议见 `docs/06` / `ps/bus/can_p
 ```bash
 python plc_gui.py --backend virtual        # 无硬件：进程内模拟板子（规则与 ps/app/runner.cpp 相同）
 python plc_gui.py --backend zqwl           # ZQWL-UCAN-101E：ZLG 兼容 ControlCAN.dll（VCI_*）后端，⚠ 到货后核对
-python plc_gui.py --backend controlcan --dll D:/path/ControlCAN.dll --dev-type 4 --can-index 0
+python plc_gui.py --backend controlcan --dll <ControlCAN.dll 路径> --dev-type 4 --can-index 0
 python plc_gui.py --backend python-can --iface socketcan --channel can0   # Linux / 其他 python-can 设备
 python can_proto.py                        # 协议自检（与 can_proto.h 字节布局一致）
 ```

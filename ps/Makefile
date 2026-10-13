@@ -1,7 +1,7 @@
 # ps/Makefile — cross build of our own PS programs for the board (glibc 2.25 / aarch64).
 #
-# Windows (Git Bash):  D:/ANLU/FD/toolchain/build-tools/bin/make.exe -C ps [target]
-# Linux:               make -C ps CROSS=<path>/aarch64-linux-gnu- SDK=<demo>/libs
+# Windows (Git Bash):  <FD_ROOT>/toolchain/build-tools/bin/make.exe -C ps [target]
+# Linux:               make -C ps CROSS=<FD_ROOT>/toolchain/gcc/aarch64_linux/bin/aarch64-linux-gnu-
 #
 # 推荐: 先配置 .env 文件，然后直接 make
 #
@@ -9,17 +9,24 @@
 # SDK    vendor NPU demo libs dir (demo.zip -> face_detection/libs): armnn_lib/ + ffmpeg_opencv4.7.0_aarch64/.
 #        Same files as /opt/armnn_lib and /opt/ffmpeg_opencv4.7.0_aarch64 on the board. Kept out of the repo (113 MB).
 #
+# 本文件不写主机路径：FD_ROOT / SDK_LIBS / FREETYPE_INC / BOARD_LIBS 一律来自 .env（本机、不入库）或命令行。
+#
 # Targets: desreg (C, no deps), test_scheduler (C++, no deps), test_calib / test_measure / des_app (C++, need SDK), all, clean.
 # Deploy:  scp -i ~/.ssh/id_ed25519_anlu build/<prog> root@192.168.137.100:/root/bin/
 
 # 从 .env 文件读取配置（如果存在）
 -include ../.env.make
 
-# 默认值（如果 .env 未设置）
-FD_ROOT    ?= C:/Anlogic/FD_2026.1_SP1
-SDK_LIBS   ?= D:/ANLU/work/face_detection_src/app/face_detection/libs
-FREETYPE_INC ?= D:/ANLU/work/freetype2_include
-BOARD_LIBS   ?= D:/ANLU/work/board_libs
+# 不给主机路径默认值：缺配置就报错并给出下一步，而不是默默去用某台机器上的目录
+ENV_HINT = 先在仓库根把 .env.example 复制为 .env 并填好路径（见 docs/13-环境配置指南.md），再运行 scripts/generate_env_make.sh；也可命令行覆盖，如 make CROSS=<工具链前缀> SDK_LIBS=<libs>
+
+ifneq ($(MAKECMDGOALS),clean)
+ifeq ($(origin CROSS),undefined)
+ifeq ($(strip $(FD_ROOT)),)
+$(error FD_ROOT 未设置。$(ENV_HINT))
+endif
+endif
+endif
 
 CROSS ?= $(FD_ROOT)/toolchain/gcc/aarch64_linux/bin/aarch64-linux-gnu-
 SDK   ?= $(SDK_LIBS)
@@ -45,7 +52,14 @@ APP_SRC := app/main.cpp app/camera_rig.cpp app/locate.cpp app/config.cpp app/hdm
            app/text_ft.cpp app/ui_input.cpp app/hmi.cpp
 OPENCV_LIBS := -lopencv_calib3d -lopencv_features2d -lopencv_flann -lopencv_imgproc -lopencv_imgcodecs -lopencv_core
 
-.PHONY: all clean
+.PHONY: all clean check-sdk check-board
+
+# SDK / FreeType / 板上库来自 .env；缺变量时先报错，别让编译器去报一堆找不到头文件
+check-sdk:
+	@test -d "$(SDK_LIBS)" || { echo "SDK_LIBS 未设置或目录不存在：$(SDK_LIBS)"; echo "$(ENV_HINT)"; exit 1; }
+check-board:
+	@test -d "$(FREETYPE_INC)" && test -d "$(BOARD_LIBS)" || { echo "FREETYPE_INC / BOARD_LIBS 未设置或目录不存在：$(FREETYPE_INC) / $(BOARD_LIBS)"; echo "$(ENV_HINT)"; exit 1; }
+
 all: $(BUILD)/desreg $(BUILD)/test_scheduler $(BUILD)/test_calib $(BUILD)/test_measure $(BUILD)/test_belt_hil $(BUILD)/test_can $(BUILD)/canplc $(BUILD)/des_app
 
 $(BUILD):
@@ -58,7 +72,7 @@ $(BUILD)/test_scheduler: tests/test_scheduler.cpp $(SCHED_SRC) $(wildcard schedu
 	$(CXX) $(CXXFLAGS) -Ischeduler -o $@ tests/test_scheduler.cpp $(SCHED_SRC)
 
 $(BUILD)/test_measure: tests/test_measure.cpp app/measure.cpp app/track_measure.cpp app/roi_crop.cpp app/part_log.cpp $(SCHED_SRC) \
-    $(wildcard app/*measure*.hpp app/roi_crop.hpp app/part_log.hpp scheduler/*.hpp) | $(BUILD)
+    $(wildcard app/*measure*.hpp app/roi_crop.hpp app/part_log.hpp scheduler/*.hpp) check-sdk | $(BUILD)
 	$(CXX) $(CXXFLAGS) -Iapp -Ischeduler -I$(OPENCV)/include/opencv4 -o $@ tests/test_measure.cpp app/measure.cpp \
 	    app/track_measure.cpp app/roi_crop.cpp app/part_log.cpp $(SCHED_SRC) \
 	    -L$(OPENCV)/lib -Wl,-rpath-link,$(OPENCV)/lib $(RPATH) -lopencv_imgcodecs -lopencv_imgproc -lopencv_core -lpthread
@@ -75,7 +89,7 @@ $(BUILD)/test_belt_hil: tests/test_belt_hil.cpp app/belt_ctl.cpp app/belt_ctl.hp
 	$(CXX) $(CXXFLAGS) -Iapp -Ischeduler -Icommon -o $@ tests/test_belt_hil.cpp app/belt_ctl.cpp $(SCHED_SRC) \
 	    $(BUILD)/des_hw.o
 
-$(BUILD)/des_app: $(APP_SRC) $(SCHED_SRC) $(VISION_SRC) common/des_hw.c $(wildcard app/*.hpp scheduler/*.hpp) | $(BUILD)
+$(BUILD)/des_app: $(APP_SRC) $(SCHED_SRC) $(VISION_SRC) common/des_hw.c $(wildcard app/*.hpp scheduler/*.hpp) check-sdk check-board | $(BUILD)
 	$(CC) $(CFLAGS) -c -o $(BUILD)/des_hw.o common/des_hw.c
 	$(CC) $(CFLAGS) -Ibus -c -o $(BUILD)/can_link.o bus/can_link.c
 	$(CXX) $(CXXFLAGS) -Iapp -Ischeduler -Icommon -Ivision -Ibus \
@@ -85,13 +99,13 @@ $(BUILD)/des_app: $(APP_SRC) $(SCHED_SRC) $(VISION_SRC) common/des_hw.c $(wildca
 	    $(OPENCV_LIBS) -larmnn -larmnnOnnxParser -lfreetype -lfmt -lpthread
 
 # NPU part classifier on the board vs the PC reference (train/eval_onnx.py --refs)
-$(BUILD)/test_npu: tests/test_npu.cpp app/npu_cls.cpp app/npu_cls.hpp $(VISION_SRC) | $(BUILD)
+$(BUILD)/test_npu: tests/test_npu.cpp app/npu_cls.cpp app/npu_cls.hpp $(VISION_SRC) check-sdk | $(BUILD)
 	$(CXX) $(CXXFLAGS) -Iapp -Ivision -I$(ARMNN)/include -I$(OPENCV)/include/opencv4 \
 	    -o $@ tests/test_npu.cpp app/npu_cls.cpp $(VISION_SRC) \
 	    -L$(ARMNN)/lib -L$(OPENCV)/lib -Wl,-rpath-link,$(ARMNN)/lib:$(OPENCV)/lib $(RPATH) \
 	    -lopencv_imgcodecs -lopencv_imgproc -lopencv_core -larmnn -larmnnOnnxParser -lfmt -lpthread
 
-$(BUILD)/test_calib: tests/test_calib.cpp app/calib.cpp app/calib.hpp scheduler/geom.hpp | $(BUILD)
+$(BUILD)/test_calib: tests/test_calib.cpp app/calib.cpp app/calib.hpp scheduler/geom.hpp check-sdk | $(BUILD)
 	$(CXX) $(CXXFLAGS) -Iapp -Ischeduler -Ivision -I$(OPENCV)/include/opencv4 \
 	    -o $@ tests/test_calib.cpp app/calib.cpp \
 	    -L$(OPENCV)/lib -Wl,-rpath-link,$(OPENCV)/lib $(RPATH) $(OPENCV_LIBS) -lpthread

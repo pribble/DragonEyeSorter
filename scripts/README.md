@@ -85,9 +85,10 @@ sh scripts/sdk_fix_sonames.sh <SDK_LIBS路径> <readelf路径>
 **示例**：
 
 ```bash
+# 两个参数都用 .env 里的变量（先 source scripts/env_loader.sh 或直接展开）
 sh scripts/sdk_fix_sonames.sh \
-  D:/ANLU/work/face_detection_src/app/face_detection/libs \
-  D:/Anlogic/FD_Release_2026.1_SP1/toolchain/gcc/aarch64_linux/bin/aarch64-linux-gnu-readelf.exe
+  "$SDK_LIBS" \
+  "$FD_ROOT/toolchain/gcc/aarch64_linux/bin/aarch64-linux-gnu-readelf.exe"
 ```
 
 **脚本工作原理**：

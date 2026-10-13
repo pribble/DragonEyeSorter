@@ -81,7 +81,7 @@ python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
 
 ```bash
 export YOLO_CONFIG_DIR=$HOME/.ultralytics-cfg
-cd /mnt/d/ANLU/DragonEyeSorter/train
+cd <仓库根>/train
 # 真实数据（采集会话拷到 WSL 本地盘再训，/mnt/d 很慢）
 ~/des-train/bin/python prepare_dataset.py --src ~/des-work/collect --out ~/des-work/real --val-sessions val_
 ~/des-train/bin/python train_cls.py --data ~/des-work/real --epochs 40 --name real --project ~/des-work/runs

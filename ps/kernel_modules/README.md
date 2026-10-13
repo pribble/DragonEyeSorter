@@ -5,8 +5,8 @@
 本目录就是唯一预期会改的那个驱动：**`mipicam.ko`**（`/dev/mipicam`，DMA 取帧 + 中断等待；源码来自安路 face_detection SDK，MIT）——
 例如需要帧起始时间戳给 PL 帧锁存对账时才动它。
 
-cma_mem / hard_npu / soft_npu / jpu 驱动用板上预编译 .ko，源码在本机仓库外
-`../../../reference_src/face_detection_sdk/src/linux_driver/`。
+cma_mem / hard_npu / soft_npu / jpu 驱动用板上预编译 .ko，源码在厂家 face_detection SDK 的
+`src/linux_driver/`（本机厂家资料，不入库，需要时从资料包取）。
 
 重编方法（需米联客 Linux 开发包的内核树，见 docs/09）：
 
