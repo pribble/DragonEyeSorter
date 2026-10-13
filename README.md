@@ -43,7 +43,7 @@ IMX415 ──MIPI──►   │ MIPI RX → ISP → des_vision（灰度 / 高�
 
 ```
 DragonEyeSorter/
-├── docs/          # 设计文档 00~14 + log/ 实测记录（入口：docs/README.md）
+├── docs/          # 设计文档 00~15 + log/ 实测记录（入口：docs/README.md；15 = 两个 AI 的协作与交接）
 ├── pl/            # PL 工程（soc_base/：厂家底板 + 自研模块与改动）、仿真（sim/）、独立验证工程（test/）
 ├── ps/            # 板上程序：des_app（取帧 / 定位 / 测量 / 跟踪 / 调度 / NPU / 界面 / 存储 / CAN）、desreg、测试
 ├── train/         # 分类模型：合成数据、训练、导出 + UINT8 量化、评估（WSL / GPU）
@@ -51,7 +51,8 @@ DragonEyeSorter/
 ├── pc/            # PC 端：plc_sim（CAN「产线 PLC」模拟器）、report（测试报告出数）
 ├── scripts/       # 构建与部署脚本：BOOT.bin 打包、持久化 SD 镜像
 ├── AGENTS.md      # 协作规范（AI 助手与新队员先读）
-└── README.md
+├── README.md
+└── .env.example   # 本机路径模板：复制为 .env 后填写，见 docs/13-环境配置指南
 ```
 
 ## 快速上手
