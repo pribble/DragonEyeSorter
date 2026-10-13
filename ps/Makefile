@@ -54,16 +54,19 @@ OPENCV_LIBS := -lopencv_calib3d -lopencv_features2d -lopencv_flann -lopencv_imgp
 
 .PHONY: all clean check-sdk check-board
 
-# SDK / FreeType / 板上库来自 .env；缺变量时先报错，别让编译器去报一堆找不到头文件
+# SDK / FreeType / 板上库来自 .env；缺变量或目录不存在时先报错，别让编译器去报一堆找不到头文件。
+# 用 make 自己的 wildcard + error（不经过 shell）：从 PowerShell 调 make 时配方由 cmd.exe 执行
+# （FD 的 sh.exe 不在 PATH 上），`test -d` 这类 POSIX 写法会直接报 "'test' is not recognized"。
 check-sdk:
-	@test -d "$(SDK_LIBS)" || { echo "SDK_LIBS 未设置或目录不存在：$(SDK_LIBS)"; echo "$(ENV_HINT)"; exit 1; }
+	@$(if $(wildcard $(SDK_LIBS)),echo SDK_LIBS ok,$(error SDK_LIBS 未设置或目录不存在：$(SDK_LIBS)。$(ENV_HINT)))
 check-board:
-	@test -d "$(FREETYPE_INC)" && test -d "$(BOARD_LIBS)" || { echo "FREETYPE_INC / BOARD_LIBS 未设置或目录不存在：$(FREETYPE_INC) / $(BOARD_LIBS)"; echo "$(ENV_HINT)"; exit 1; }
+	@$(if $(wildcard $(FREETYPE_INC)),echo FREETYPE_INC ok,$(error FREETYPE_INC 未设置或目录不存在：$(FREETYPE_INC)。$(ENV_HINT)))
+	@$(if $(wildcard $(BOARD_LIBS)),echo BOARD_LIBS ok,$(error BOARD_LIBS 未设置或目录不存在：$(BOARD_LIBS)。$(ENV_HINT)))
 
 all: $(BUILD)/desreg $(BUILD)/test_scheduler $(BUILD)/test_calib $(BUILD)/test_measure $(BUILD)/test_belt_hil $(BUILD)/test_can $(BUILD)/canplc $(BUILD)/des_app
 
 $(BUILD):
-	mkdir -p $(BUILD)
+	-@mkdir $(BUILD)
 
 $(BUILD)/desreg: tools/desreg.c common/des_hw.c common/des_hw.h common/des_regs.h | $(BUILD)
 	$(CC) $(CFLAGS) -o $@ tools/desreg.c common/des_hw.c
@@ -111,4 +114,4 @@ $(BUILD)/test_calib: tests/test_calib.cpp app/calib.cpp app/calib.hpp scheduler/
 	    -L$(OPENCV)/lib -Wl,-rpath-link,$(OPENCV)/lib $(RPATH) $(OPENCV_LIBS) -lpthread
 
 clean:
-	rm -rf $(BUILD)
+	-@rmdir /S /Q $(BUILD) || rm -rf $(BUILD)
