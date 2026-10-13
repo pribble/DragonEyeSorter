@@ -46,11 +46,11 @@ D:\ANLU\TD\bin\td_commands_prompt.exe build.tcl < NUL
 4. Synthesize → Place & Route → Generate Bitstream
 5. BitWriter 下载，模式 **PROGRAM_SRAM**
 
-### ⚠ 下载前必读
+### 下载须知
 
-- **BitWriter 的 File Selection 里只留这一个 bit**，其余 Delete 掉
-- **不要在 Linux 运行期间下载**。Linux 用的 MIPI/ISP/VDMA/HDMI/NPU soft IP 全在 PL 里，
-  会被覆盖（见 [docs/09-开发环境与构建.md](../../../docs/09-开发环境与构建.md)「操作禁忌」）。测完断电重启，BOOT.bin 会恢复正确 bitstream
+- BitWriter 的 File Selection 里只放这一个 bit
+- **下载在不跑 Linux 时进行**：Linux 用的 MIPI/ISP/VDMA/HDMI/NPU soft IP 全在 PL 里，
+  运行时下载会覆盖它们（见 [docs/09-开发环境与构建.md](../../../docs/09-开发环境与构建.md)「操作禁忌」）。测完断电重启，BOOT.bin 恢复正确 bitstream
 
 ## 上电顺序
 

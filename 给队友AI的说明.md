@@ -5,7 +5,7 @@
 ## 1. 谁在提交
 
 - 本仓库只有两个人提交：**队友 = `pribble <1169128753@qq.com>`**，**KristanYoong = `KristanYoong <KristanYoong35894@hotmail.com>`**（由他的 Claude 会话代提交）。
-- ⚠ 2026-10-11 21:10 之前，KristanYoong 的 AI **误用了 pribble 身份**：那之前约 70 个 pribble 提交里大部分是它做的，队友本人的有 `a7cccbe`、`a22a482`、`736033c`、`09852e2` 等。已推送的不改写历史；从 `8e083c1` 起它只用自己的身份。**你继续用 pribble，不要用 KristanYoong 的身份。**
+- ⚠ 2026-10-11 21:10 之前，KristanYoong 的 AI **误用了 pribble 身份**：那之前约 70 个 pribble 提交里大部分是它做的，队友本人的有 `a7cccbe`、`a22a482`、`736033c`、`09852e2` 等。已推送的不改写历史；从 `8e083c1` 起它只用自己的身份。**你提交一律用 pribble 身份。**
 - 分辨改动来源：看提交说明里的作者身份（21:10 之后）和内容；拿不准就问你的用户。
 
 ## 2. 最新状态（2026-10-11 21:10）
@@ -22,9 +22,9 @@
 ## 3. 新 PL 模块的规矩（v6~v8 花了约 8 小时换来的）
 
 1. **读数据必须是组合逻辑**（`always @*` 的 case）。`fvdma_ctrl` 桥在同一时钟给出地址和 RVALID、下一沿就取 RDATA；打一拍的读多路选择读回的是**上一个地址**的值（v7 上 0x3xx 全读成阈值寄存器）。testbench 也要按这个时序读：设地址后**下一拍**就取数（照 `pl/sim/tb_des_vision.v` 的 `rreg`）。
-2. **像素时钟域现在有时序约束**：`pl/soc_patch/src/constraint/timing.sdc` 把 `clk_mipi` 挂在 `u_rx_clk_gen/U_io_clk_div_1.clkdivout`、8.0ns。厂家原来那行挂在不存在的硬核 MIPI 引脚上，整个像素域（ISP、des_vision、帧写入）从未做过时序分析，v7 因此漏帧。**不要改回去**；跨像素域 ↔ 75MHz 的信号用翻转 + 两级同步（已在 exclusive clock group 里）。
+2. **像素时钟域现在有时序约束**：`pl/soc_base/src/constraint/timing.sdc` 把 `clk_mipi` 挂在 `u_rx_clk_gen/U_io_clk_div_1.clkdivout`、8.0ns。厂家原来那行挂在不存在的硬核 MIPI 引脚上，整个像素域（ISP、des_vision、帧写入）从未做过时序分析，v7 因此漏帧。该约束保持现状（v8 的核心修复）；跨像素域 ↔ 75MHz 的信号用翻转 + 两级同步（已在 exclusive clock group 里）。
 3. **控制资源**：新模块控制在几百 LUT 以内；大块图像算法放 PS。
-4. **每次换比特流**：VERSION +1；上一个能用的版本留作 `BOOT.bin.prev`；跑 `pl_check.sh`；同步 `pl/soc_patch/`（`soc_prj_Runs/syn_1/soc_prj.prj` 被 `*_Runs/` 忽略规则挡住，要 `git add -f`）。
+4. **每次换比特流**：上一个能用的版本留作 `BOOT.bin.prev`；跑 `pl_check.sh`；改动提交进 `pl/soc_base/`（`soc_prj_Runs/syn_1/soc_prj.prj` 被 `*_Runs/` 忽略规则挡住，要 `git add -f`）。
 
 ## 4. 文档同步的规矩
 
@@ -36,11 +36,11 @@
 ## 5. Git
 
 - 推送前 `git pull --rebase`。
-- `pl/soc_base/` 里 3 个文件（两个 `DR1_PHY_PLL_WRAPERR_*.v`、`proc_sys_reset_*.v`）因 CRLF 永远显示「已修改」，**不要提交**；它们会让 `rebase --autostash` 失败 → 先 `git update-index --assume-unchanged <这 3 个文件>`，rebase 完再 `--no-assume-unchanged`。
+- `pl/soc_base/` 里 3 个文件（两个 `DR1_PHY_PLL_WRAPERR_*.v`、`proc_sys_reset_*.v`）因 CRLF 永远显示「已修改」，不入库：先 `git update-index --assume-unchanged <这 3 个文件>`（否则 `rebase --autostash` 会失败），rebase 完再 `--no-assume-unchanged`。
 - Windows Git Bash 里 heredoc / `printf` 会吞反斜杠（`\b` `\t` 被转义）：含 Windows 路径或 `\n` 的脚本用编辑器写成文件再执行。
 
 ## 6. 板子
 
 - `ssh -i ~/.ssh/id_ed25519_anlu root@192.168.137.100`（PS 网口，PC 192.168.137.1）；测试程序在 `/root/bin`、`/root/des`，不动系统文件和 eMMC。
-- `des_app` 运行时**不要用 `desreg` 的写命令**（舵机总线 / 步进只能有一个主人）；`desreg r` 只读可以。
+- `des_app` 运行期间 `desreg` 只用 `r` 只读（舵机总线 / 步进只能有一个主人）。
 - 两边可能同时连板子：跑长测试（`soak.sh`）或换 BOOT.bin 前，在你的用户那里打个招呼。

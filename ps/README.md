@@ -1,6 +1,6 @@
 # ps/ — 处理系统软件（PS）
 
-双核 A35 上的 Linux 应用。职责见 [docs/06-软件与UI](../docs/06-软件与UI.md)，开发环境见 [docs/09-开发环境与构建](../docs/09-开发环境与构建.md)，第三方代码边界见 [docs/10-第三方代码引用规范](../docs/10-第三方代码引用规范.md)。
+双核 A35 上的 Linux 应用。职责见 [docs/06-软件与UI](../docs/06-软件与UI.md)，开发环境见 [docs/09-开发环境与构建](../docs/09-开发环境与构建.md)。
 
 ## 布局
 
@@ -14,9 +14,9 @@ ps/
 │                   #   存储（part_log：CSV + NG 图，板上无 sqlite）、标定（calib）、配置（config + des_app.json）
 ├── scheduler/      # 自研纯逻辑库（无硬件 / OpenCV 依赖）：跟踪表 tracker、停带 / 抓取 / 翻板调度 picker、机械臂 IK arm
 ├── tests/          # test_scheduler（调度库单元）、test_calib（标定，合成图）、test_measure（齿轮 / 齿条测量，合成图）、test_belt_hil（传送带控制硬件在环，板上 PL v5）、test_can（CAN 协议与收发，回环自测）、test_npu（NPU 推理核对与耗时）
-├── vision/         # 检测流水线：安路 MIT demo 源码（face_detection）改造起点，后期改成零件检测
+├── vision/         # 检测流水线：安路 face_detection demo 改造起点，后期改成零件检测
 │                   #   相机/HDMI 接口、前处理、NPU 推理封装、YOLOv8 后处理、demo 主程序
-├── kernel_modules/ # mipicam 驱动（MIT）；GPL 驱动不入库，见目录 README
+├── kernel_modules/ # mipicam 驱动（厂家 demo 改造起点）；板上其余驱动用厂家预编译 .ko
 ├── tools/          # desreg 寄存器调试工具、canplc（扮「PLC」的命令行，回环 / 联调用）、soak.sh（长时间运行，部署到板上）
 └── bus/            # CAN（SocketCAN）：can_link 收发 + can_proto.h 协议（与 docs/06 同源）+ can_up.sh 起接口；RS485 Modbus（P1，未做）
 ```
@@ -51,16 +51,15 @@ ps/
 
 ## vision/ 的定位与改造边界
 
-`vision/` 现有代码来自安路官方 face_detection demo（MIT），是**检测流水线的改造起点**，不是冻结的第三方依赖——我们直接在上面改成齿轮/齿条零件检测。原 demo 提供四个现成接口：
+`vision/` 现有代码来自安路官方 face_detection demo，是**检测流水线的改造起点**，直接在上面改成齿轮/齿条零件检测。原 demo 提供四个现成接口：
 - 取帧 `icamera`（/dev/mipicam DMA）· 显示 `ihdmi`（/dev/fb0）· 推理 `BufferedNPUExecutor`（ArmNN+Alnpu）· 后处理 `getFastDecodeOutputYolov8WorkLoad`（类别/阈值走 JSON）
 
-改造原则：保留安路版权头（MIT 义务），大改的文件头注明 "derived from Anlogic face_detection，修改：…"；改动足够大就整个重写，重写后即为我们自有代码。
 - 分类加载用 `common/label_list.c`，模型用哪 8 类以 `models/label_list.json` 为唯一源，生成 NPU JSON 的脚本随后续 models/ 工具链一起写。
 
 ## 编译与运行
 
-- 交叉编译器：FD 自带 `toolchain\gcc\aarch64_linux\bin\aarch64-linux-gnu-gcc`（glibc 2.25，与板上一致）。**不要用 WSL apt 装的 aarch64 gcc**（glibc 2.35，板上跑不了）。
-- Qt 交叉编译用与板上一致的 5.15.8 头文件/库（从 rootfs 或 Buildroot 输出取；勿用厂家 05-1 demo 里的 5.13.2 包）。
+- 交叉编译器：FD 自带 `toolchain\gcc\aarch64_linux\bin\aarch64-linux-gnu-gcc`（glibc 2.25，与板上一致）。
+- Qt 交叉编译用与板上一致的 5.15.8 头文件/库（从 rootfs 或 Buildroot 输出取）。
 - 板上以 root 运行；PL 寄存器经 `/dev/mem` mmap 访问（已验证可用）。
 - 部署：`scp` 到板上（根分区持久化）。
 
@@ -76,17 +75,17 @@ scp -i ~/.ssh/id_ed25519_anlu ps/build/des_app ps/app/des_app.sh ps/app/des_app.
 - `des_app` 需要厂家 NPU demo 的 `libs/`（OpenCV 4.7 + ArmNN，CMA 分配在 libarmnn 里），Makefile 变量 `SDK` 指向它；不入库（113MB）。
   在 Windows 上解压会丢 `.so` 软链接，先跑一次 `sh scripts/sdk_fix_sonames.sh <SDK> <readelf>` 按 SONAME 补齐。
 - 运行时库路径已写进 rpath（`/opt/armnn_lib/lib`、`/opt/ffmpeg_opencv4.7.0_aarch64/lib`），板上不用设 `LD_LIBRARY_PATH`。
-- `des_app` 与厂家 demo 不能同时运行（`/dev/mipicam` 只允许一个进程打开）。
+- `/dev/mipicam` 独占打开：`des_app` 与厂家 demo 二选一运行。
 
 ## 工具
 
 `tools/desreg`：读写 PL 寄存器（`desreg` 状态 / `r <off>` / `w <off> <val>` / `led on|off|auto` / `lat [n]` 测 PS→PL 读延迟 / 舵机 `ping|sread|swrite|sync` / 步进 `step ...`）。
 写之前会核对 `DES_ID`，比特流里没有 `des_regs` 时拒绝写 —— 否则该窗口别名到厂家相机 DMA 寄存器，写入会让相机 DMA 写乱内存。
-⚠ `des_app` 运行时不要用 `desreg` 的写命令（舵机总线 / 步进是单主资源）。
+⚠ `des_app` 运行期间 `desreg` 只用 `r` 只读（舵机总线 / 步进是单主资源，写操作统一由 `des_app` 执行）。
 
 ## 约定
 
-- `common/des_regs.h` 与 `docs/03-PL设计.md`、PL 端 `pl/rtl/des_regs.v` / `servo_bus.v` / `stepper_ctrl.v` 同一次提交更新（2026-10-10 统一）。
-- 访问 PL 用 `common/des_hw`（舵机事务、步进、帧计数都在里面）。`common/pl_map` 的映射指针不是 `volatile`，循环里轮询寄存器可能被编译器优化掉，新代码别用。
-- 类别表从 `models/label_list.json` 加载，禁止手抄。
+- `common/des_regs.h` 与 `docs/03-PL设计.md`、PL 端 `pl/soc_base/src/des/des_regs.v` / `servo_bus.v` / `stepper_ctrl.v` 同一次提交更新（2026-10-10 统一）。
+- 访问 PL 用 `common/des_hw`（舵机事务、步进、帧计数都在里面）；`common/pl_map` 已废弃（指针非 volatile，轮询会被编译器优化掉）。
+- 类别表从 `models/label_list.json` 统一加载。
 - 时间戳、计数、统计接口随功能一起写（测试报告用）。

@@ -37,8 +37,6 @@ wsl -u root -e bash scripts/sd_image/make_sd_image.sh
 
 也可以用 balenaEtcher / Rufus 烧 `sd_persistent.img`。回退到厂家 initramfs 的方法见 [sd_image/README_回退.txt](sd_image/README_回退.txt)。
 
-⚠ 不要用 `mountvol X: /p` 之类的方式卸载卷再写盘：会去掉盘符且写到一半时 Windows 重新扫描分区表导致”设备未就绪”。
-
 ## sdk_fix_sonames.sh — 修复 Windows 解压丢失的 .so 软链接
 
 ### 问题背景

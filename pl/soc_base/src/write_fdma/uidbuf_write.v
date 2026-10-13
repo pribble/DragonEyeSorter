@@ -48,7 +48,8 @@ output wire                                 O_fdma_wirq, //FDMA一次写完成�
 
 input  wire                                 camera_start,//synthesis keep
 output wire                                 camera_done,//synthesis keep
-input  wire                                 camera_clear_intr//synthesis keep
+input  wire                                 camera_clear_intr,//synthesis keep
+output reg                                  O_W_start_tgl = 0 // DragonEyeSorter: toggles when a frame write starts
 
 );    
 
@@ -183,6 +184,7 @@ reg camera_work_enable  = 0;
 			wdiv_cnt <=0;
 			if(W_FS) begin //帧同步，对于非视频数据一般常量为1
 				W_MS <= S_RST;
+				O_W_start_tgl <= ~O_W_start_tgl;
 				if(O_W_sync_cnt < WYBUF_SIZE) //输出帧同步计数器
 					O_W_sync_cnt <= O_W_sync_cnt + 1'b1; 
 				else 

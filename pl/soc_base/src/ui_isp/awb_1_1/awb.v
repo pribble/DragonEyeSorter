@@ -13,6 +13,12 @@ caused by the use of their own products.
 @Author      :   XiaoQingquan 
 @Time        :   2024/10 
 version:     :   
+@Modified    :   DragonEyeSorter 2026-10-11: the two 50-stage pipelined divider IPs (a new
+                 quotient every clock) replaced by awb_seq_div running back to back (a new quotient
+                 every 49 clocks). The colour sums are large and change slowly, so the gains differ
+                 from the vendor's by at most a step or two; ~4k LUT / 5k FF less (v6 did not route).
+                 The gains are no longer reset to 1.0 at every frame start (the pipeline used to
+                 recompute them within 50 clocks; the vendor's first beats of a frame ran at 1.0).
 @Description :   在原基础上删去了一些赘余的代码，并且优化了时序，加入BRAM IP核，
                  让从除法器出来的每一个数据都可以对上相应的像素数据进行增益，使
                  得它的适用行更加广泛了。
@@ -212,20 +218,20 @@ assign  rgb888_b_d0 = I_tdata_d0[0+:8];
     //为了保证合理的延迟，这里使用了除法器
 
 
-      divider div_gen_G_R_r1 (
+      awb_seq_div div_gen_G_R_r1 (     // divides back to back: start is ignored while busy
           .clk(I_clk),  // input wire aclk
           .rst(!I_rst_n),
-          .start(I_tvalid_r1),
+          .start(1'b1),
           .denominator(sum_r),  // input wire [31 : 0] s_axis_divisor_tdata
           .numerator({sum_g,16'd0}),  // input wire [47 : 0] s_axis_dividend_tdata
           .quotient(dout_R),  // output wire [79 : 0] m_axis_dout_tdata
           .done(done)
       );
 
-      divider divide_G_B_r1 (
+      awb_seq_div divide_G_B_r1 (
           .clk(I_clk),  // input wire aclk
           .rst(!I_rst_n),
-          .start(I_tvalid_r1),
+          .start(1'b1),
           .denominator(sum_b),  // input wire [31 : 0] s_axis_divisor_tdata
           .numerator({sum_g,16'd0}),  // input wire [47 : 0] s_axis_dividend_tdata
           .quotient(dout_B),  // output wire [79 : 0] m_axis_dout_tdata
@@ -261,7 +267,7 @@ reg  [19:0]   in_b_r1;
 
 // 计算增益，防止增益过大溢出，限制在0xFFFFF
 always @(posedge I_clk or negedge I_rst_n)begin 
-    if(!I_rst_n || I_tuser)begin
+    if(!I_rst_n)begin   // was (!I_rst_n || I_tuser): kept between frames, updated every 49 clocks
         in_r_r1 <= 20'h10000;
         in_b_r1 <= 20'h10000;
     end

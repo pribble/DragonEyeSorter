@@ -11,7 +11,7 @@ module design_0_fvdma_ctrl_0
 (
   input                         s_axi_aclk,
   input                         s_axi_aresetn,
-  input   [3:0]                 s_axi_awaddr,
+  input   [15:0]                s_axi_awaddr,
   input   [2:0]                 s_axi_awprot,
   input                         s_axi_awvalid,
   output                        s_axi_awready,
@@ -22,7 +22,7 @@ module design_0_fvdma_ctrl_0
   output  [1:0]                 s_axi_bresp,
   output                        s_axi_bvalid,
   input                         s_axi_bready,
-  input   [3:0]                 s_axi_araddr,
+  input   [15:0]                s_axi_araddr,
   input   [2:0]                 s_axi_arprot,
   input                         s_axi_arvalid,
   output                        s_axi_arready,
@@ -32,18 +32,30 @@ module design_0_fvdma_ctrl_0
   input                         s_axi_rready,
   output  [31:0]                camera_base_addr,
   output                        camera_start,
-  output                        camera_clear
+  output                        camera_clear,
+  output                        des_clk,
+  output                        des_wr,
+  output  [11:0]                des_waddr,
+  output  [31:0]                des_wdata,
+  output  [11:0]                des_raddr,
+  input   [31:0]                des_rdata
 );
 
   fvdma_ctrl_300e9b49f7b5
   #(
       .C_S_AXI_DATA_WIDTH(32),
-      .C_S_AXI_ADDR_WIDTH(4)
+      .C_S_AXI_ADDR_WIDTH(16)
   )fvdma_ctrl_300e9b49f7b5_Inst
   (
       .camera_base_addr(camera_base_addr),
       .camera_start(camera_start),
       .camera_clear(camera_clear),
+      .des_clk(des_clk),
+      .des_wr(des_wr),
+      .des_waddr(des_waddr),
+      .des_wdata(des_wdata),
+      .des_raddr(des_raddr),
+      .des_rdata(des_rdata),
       .s_axi_aclk(s_axi_aclk),
       .s_axi_aresetn(s_axi_aresetn),
       .s_axi_awaddr(s_axi_awaddr),

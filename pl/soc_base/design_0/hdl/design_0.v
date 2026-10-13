@@ -44,6 +44,12 @@ module design_0 (
     output    wire       [31:0] camera_base_addr ,
     output    wire              camera_start ,
     output    wire              camera_clear ,
+    output    wire              des_clk ,
+    output    wire              des_wr ,
+    output    wire       [11:0] des_waddr ,
+    output    wire       [31:0] des_wdata ,
+    output    wire       [11:0] des_raddr ,
+    input     wire       [31:0] des_rdata ,
     output    wire              vtg_lock ,
     output    wire              axis_to_video_lock ,
     output    wire              hp1_w_us1_arready ,
@@ -457,7 +463,7 @@ module design_0 (
     wire              w_net__AXI_Matrix_0__ds1_wvalid ; 
 
     wire [32:0]       w_port__AXI_Matrix_0__ds2_araddr ;
-    wire [3:0]        w_port__fvdma_ctrl_0__s_axi_araddr ;
+    wire [15:0]       w_port__fvdma_ctrl_0__s_axi_araddr ;
     wire [32:0]       w_net__AXI_Matrix_0__ds2_araddr ; 
 
     wire [2:0]        w_port__AXI_Matrix_0__ds2_arprot ;
@@ -469,7 +475,7 @@ module design_0 (
     wire              w_net__AXI_Matrix_0__ds2_arvalid ; 
 
     wire [32:0]       w_port__AXI_Matrix_0__ds2_awaddr ;
-    wire [3:0]        w_port__fvdma_ctrl_0__s_axi_awaddr ;
+    wire [15:0]       w_port__fvdma_ctrl_0__s_axi_awaddr ;
     wire [32:0]       w_net__AXI_Matrix_0__ds2_awaddr ; 
 
     wire [2:0]        w_port__AXI_Matrix_0__ds2_awprot ;
@@ -3356,7 +3362,13 @@ module design_0 (
                                                       , .s_axi_rready(w_port__fvdma_ctrl_0__s_axi_rready)
                                                       , .camera_base_addr(w_port__fvdma_ctrl_0__camera_base_addr)
                                                       , .camera_start(w_port__fvdma_ctrl_0__camera_start)
-                                                      , .camera_clear(w_port__fvdma_ctrl_0__camera_clear) );
+                                                      , .camera_clear(w_port__fvdma_ctrl_0__camera_clear)
+                                                      , .des_clk(des_clk)
+                                                      , .des_wr(des_wr)
+                                                      , .des_waddr(des_waddr)
+                                                      , .des_wdata(des_wdata)
+                                                      , .des_raddr(des_raddr)
+                                                      , .des_rdata(des_rdata) );
 
     design_0_VDMA_0 design_0_VDMA_0_Inst ( 
                                             .axi_lite_awvalid(w_port__VDMA_0__axi_lite_awvalid)

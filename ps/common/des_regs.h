@@ -50,7 +50,7 @@
 #define DES_ST_BRAKE         0x224u    /* R  : steps needed to ramp down from the current speed (v5) */
 #define DES_ST_RAMP_HZ       10000u    /* ramp ticks per second */
 
-/* des_vision, PL_BASE + 0x300 (v6): PL image path between the ISP and the frame writer (pl/rtl/des_vision.v) */
+/* des_vision, PL_BASE + 0x300 (v6): PL image path between the ISP and the frame writer (pl/soc_base/src/des/des_vision.v) */
 #define DES_VIS_CTRL         0x300u    /* RW [2:0] mode 0 camera 1 gray 2 Gaussian 3 binary 4 Sobel 5 edges, [8] full frame */
 #define DES_VIS_THR          0x304u    /* RW [7:0] binary threshold, [26:16] edge threshold (|Gx|+|Gy|) */
 #define DES_VIS_ROI_X        0x308u    /* RW [10:0] x0, [26:16] x1 */
@@ -68,7 +68,7 @@
 #define DES_VIS_ACTIVE       0x340u    /* R  settings in use: [2:0] mode [8] full [23:16] threshold */
 #define DES_VIS_ID_VALUE     0x56495331u
 
-/* des_pwm, PL_BASE + 0x400 (v7): belt-end flap servos (2 x 50 Hz) + light enable (pl/rtl/des_pwm.v) */
+/* des_pwm, PL_BASE + 0x400 (v7): belt-end flap servos (2 x 50 Hz) + light enable (pl/soc_base/src/des/des_pwm.v) */
 #define DES_PWM_CTRL         0x400u    /* RW [1:0] channel enable, [8] LAMP */
 #define DES_PWM_PERIOD       0x404u    /* RW period in us (default 20000) */
 #define DES_PWM_CH0          0x408u    /* RW pulse width in us, applied at the next period start */

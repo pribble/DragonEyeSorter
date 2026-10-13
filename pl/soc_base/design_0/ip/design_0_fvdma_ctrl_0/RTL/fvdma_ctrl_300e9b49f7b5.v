@@ -17,6 +17,12 @@
 		output      [31:0]            camera_base_addr,
 		output                        camera_start,
 		output                        camera_clear,
+		output                        des_clk,
+		output                        des_wr,
+		output      [11:0]            des_waddr,
+		output      [31:0]            des_wdata,
+		output      [11:0]            des_raddr,
+		input       [31:0]            des_rdata,
 		// User ports ends
 		// Do not modify the ports beyond this line
 
@@ -73,7 +79,13 @@
 
 		.camera_base_addr(camera_base_addr),
 		.camera_start(camera_start),
-		.camera_clear(camera_clear)
+		.camera_clear(camera_clear),
+		.des_clk(des_clk),
+		.des_wr(des_wr),
+		.des_waddr(des_waddr),
+		.des_wdata(des_wdata),
+		.des_raddr(des_raddr),
+		.des_rdata(des_rdata)
 	);
 
 	// Add user logic here
@@ -99,6 +111,12 @@
 		output      reg[31:0]            camera_base_addr,
 		output      reg                  camera_start,
 		output      reg                  camera_clear,
+		output                        des_clk,
+		output                        des_wr,
+		output      [11:0]            des_waddr,
+		output      [31:0]            des_wdata,
+		output      [11:0]            des_raddr,
+		input       [31:0]            des_rdata,
 		// User ports ends
 		// Do not modify the ports beyond this line
 
@@ -206,6 +224,18 @@
 	 reg [1:0] state_read;
 	 //State machine local parameters
 	 localparam Idle = 2'b00,Raddr = 2'b10,Rdata = 2'b11 ,Waddr = 2'b10,Wdata = 2'b11;
+
+	// DragonEyeSorter: offsets 0x1000-0x1FFF of this AXI-Lite window go to the PL top-level register bus
+	wire [C_S_AXI_ADDR_WIDTH-1:0] des_w_addr_cur = (S_AXI_AWVALID) ? S_AXI_AWADDR : axi_awaddr;
+	wire des_sel_w = (des_w_addr_cur[15:12] == 4'h1);
+	wire des_sel_r = (axi_araddr[15:12] == 4'h1);
+	wire des_w_fire = ((state_write == Waddr) && S_AXI_AWVALID && axi_awready && S_AXI_WVALID) ||
+	                  ((state_write == Wdata) && S_AXI_WVALID);
+	assign des_clk   = S_AXI_ACLK;
+	assign des_wr    = des_w_fire && des_sel_w;
+	assign des_waddr = des_w_addr_cur[11:0];
+	assign des_wdata = S_AXI_WDATA;
+	assign des_raddr = axi_araddr[11:0];
 	// Implement Write state machine
 	// Outstanding write transactions are not supported by the slave i.e., master should assert bready to receive response on or before it starts sending the new transaction
 	always @(posedge S_AXI_ACLK)                                 
@@ -295,7 +325,7 @@
 		  camera_base_addr <= 32'h0 ;
 	    end 
 	  else begin
-	    if (S_AXI_WVALID)
+	    if (S_AXI_WVALID && !des_sel_w)
 	      begin
 		  	
 	        case ( (S_AXI_AWVALID) ? S_AXI_AWADDR[ADDR_LSB+OPT_MEM_ADDR_BITS:ADDR_LSB] : axi_awaddr[ADDR_LSB+OPT_MEM_ADDR_BITS:ADDR_LSB] )
@@ -406,7 +436,9 @@
 	          end                                       
 	        end                                         
 	// Implement memory mapped register select and read logic generation
-	  assign S_AXI_RDATA = (axi_araddr[ADDR_LSB+OPT_MEM_ADDR_BITS:ADDR_LSB] == 2'h0) ? slv_reg0 : (axi_araddr[ADDR_LSB+OPT_MEM_ADDR_BITS:ADDR_LSB] == 2'h1) ? slv_reg1 : (axi_araddr[ADDR_LSB+OPT_MEM_ADDR_BITS:ADDR_LSB] == 2'h2) ? slv_reg2 : (axi_araddr[ADDR_LSB+OPT_MEM_ADDR_BITS:ADDR_LSB] == 2'h3) ? slv_reg3 : 0; 
+	  wire [C_S_AXI_DATA_WIDTH-1:0] vendor_rdata = (axi_araddr[ADDR_LSB+OPT_MEM_ADDR_BITS:ADDR_LSB] == 2'h0) ? slv_reg0 : (axi_araddr[ADDR_LSB+OPT_MEM_ADDR_BITS:ADDR_LSB] == 2'h1) ? slv_reg1 : (axi_araddr[ADDR_LSB+OPT_MEM_ADDR_BITS:ADDR_LSB] == 2'h2) ? slv_reg2 : (axi_araddr[ADDR_LSB+OPT_MEM_ADDR_BITS:ADDR_LSB] == 2'h3) ? slv_reg3 : 0; 
+
+	assign S_AXI_RDATA = des_sel_r ? des_rdata : vendor_rdata;
 	// Add user logic here
 
 	// User logic ends

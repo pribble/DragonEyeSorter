@@ -8,7 +8,6 @@ POM 齿轮与齿条在传送带上随机摆放流过相机：视觉给出每件�
 
 ![SoC](https://img.shields.io/badge/SoC-Anlogic%20Dragon%20F3P%20DR1M90G-009688)
 ![赛道](https://img.shields.io/badge/2026嵌入式竞赛-安路赛道·选题四-2196F3)
-![License](https://img.shields.io/badge/license-MIT-green)
 
 ## 总体架构
 
@@ -44,8 +43,8 @@ IMX415 ──MIPI──►   │ MIPI RX → ISP → des_vision（灰度 / 高�
 
 ```
 DragonEyeSorter/
-├── docs/          # 设计文档 01~12 + log/ 实测记录（入口：docs/README.md）
-├── pl/            # 厂家底板工程（soc_base/）+ 自研 RTL（rtl/）、仿真（sim/）、补丁（soc_patch/）、独立验证工程（test/）
+├── docs/          # 设计文档 00~14 + log/ 实测记录（入口：docs/README.md）
+├── pl/            # PL 工程（soc_base/：厂家底板 + 自研模块与改动）、仿真（sim/）、独立验证工程（test/）
 ├── ps/            # 板上程序：des_app（取帧 / 定位 / 测量 / 跟踪 / 调度 / NPU / 界面 / 存储 / CAN）、desreg、测试
 ├── train/         # 分类模型：合成数据、训练、导出 + UINT8 量化、评估（WSL / GPU）
 ├── models/        # label_list.json（类别表唯一源）
@@ -98,7 +97,3 @@ FD 自带的 `aarch64-linux-gnu-gcc` 交叉编译，`/dev/mem` mmap 读写 PL �
 ## 文档
 
 见 [docs/README.md](docs/README.md) 的文档地图与演进规则；实测数据按日期归档在 [docs/log/](docs/log/)。
-
-## License
-
-[MIT](LICENSE)

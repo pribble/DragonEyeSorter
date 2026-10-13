@@ -1,12 +1,8 @@
-# ps/vision/ — 检测流水线（改造起点：安路官方 face_detection demo，MIT）
+# ps/vision/ — 检测流水线（改造起点：安路官方 face_detection demo）
 
 我们的齿轮/齿条零件检测流水线在这里开发。现有代码来自安路官方 NPU demo
-`demo.zip → sdk/face_detection.tar.gz → src/npu_flow/`（2025-12 版），作为
-改造起点直接修改，不是冻结的第三方依赖——目标是把它改成零件检测。
-
-许可：安路 Inc. 版权，`SPDX-License-Identifier: MIT`（原文件头保留）。MIT 义务：
-保留版权头；大改的文件头注明 "derived from Anlogic face_detection，修改：…"；
-改动足够大可以整个重写，重写后即为我们自有代码（仍可 MIT）。
+`demo.zip → sdk/face_detection.tar.gz → src/npu_flow/`（2025-12 版），
+直接在上面改成零件检测。
 
 原上游为 `npu_flow/utils/`、`npu_flow/utils/media/`、`npu_flow/yolo_demo_hdmi_camera/`
 三层，入库时已展平为本目录一层，`#include` 均为纯文件名，无需改动。

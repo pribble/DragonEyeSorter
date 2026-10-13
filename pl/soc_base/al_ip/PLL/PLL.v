@@ -15,7 +15,7 @@
 //		C0        	| 150.000000   MHZ	    |  0.0000 DEG 
 //		C1        	| 50.000000   MHZ	    |  0.0000 DEG 
 //		C2        	| 70.000000   MHZ		|  0.0000 DEG 
-//		C3        	| 23.863636   MHZ		|  0.0000 DEG 
+//		C3        	| 26.923077   MHZ (DES: was 23.863636, div 44->39 for IMX415 27MHz INCK table)		|  0.0000 DEG 
 ///////////////////////////////////////////////////////////////////////////////
 `timescale 1 ns / 100 fs 
 
@@ -53,15 +53,15 @@ DR1_LOGIC_BUFG bufg_feedback (
       .CLKC0_CPHASE(6),
       .CLKC1_CPHASE(20),
       .CLKC2_CPHASE(14),
-      .CLKC3_CPHASE(43),
+      .CLKC3_CPHASE(38),
       .CLKC0_DIV(7),
       .CLKC1_DIV(21),
       .CLKC2_DIV(15),
-      .CLKC3_DIV(44),
+      .CLKC3_DIV(39),
       .CLKC0_DUTY_INT(4),
       .CLKC1_DUTY_INT(11),
       .CLKC2_DUTY_INT(8),
-      .CLKC3_DUTY_INT(22),
+      .CLKC3_DUTY_INT(20),
       .CLKC0_ENABLE("ENABLE"),
       .CLKC1_ENABLE("ENABLE"),
       .CLKC2_ENABLE("ENABLE"),
