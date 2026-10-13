@@ -3,11 +3,11 @@
 *.img.gz
 BOOT.bin
 # *.bit / *.hpf / *.elf 总体忽略；厂家底板与 boot 零件按 2026-10-09 决定白名单入库：
-#   pl/soc_base/soc_prj.hpf（打开工程必需）
+#   pl/soc_base/soc_prj.hpf（打开工程必需；命令行编译实测不需要，GUI 打开工程要用）
 #   pl/soc_base/design_0/**（含 .v/.xml，无 .bit/.elf）
 #   scripts/bootbin/parts/fsbl.elf、u-boot.elf（FSBL/U-Boot 不随 PL 重编而变）
+# 2026-10-13 删除 soc_prj_TD622.bit 后，soc_base 里的 .bit 不再有任何例外
 *.bit
-!pl/soc_base/**/*.bit
 *.hpf
 !pl/soc_base/*.hpf
 *.elf
@@ -36,7 +36,16 @@ ps/tools/desreg
 *.area
 *.ts
 *.qor
+*.violation
 .*.f
+
+# TD 的 IP 参数缓存 / 阶段暂存目录：2026-10-13 已从 soc_base 删除 100 个，
+# 实测命令行编译（read_design/opt_rtl/opt_gate）不会重新生成。若某次开 GUI
+# 编辑块设计后它们又出现（会是未跟踪文件，不脏 diff），再取消下面的注释。
+# **/.m_params_*.txt
+# **/.params_*.txt
+# **/.ports_*.txt
+# pl/soc_base/design_0/ip/.*/
 
 # FD / Eclipse 工作区
 .metadata/
