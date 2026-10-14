@@ -15,7 +15,7 @@ ps/
 ├── scheduler/      # 自研纯逻辑库（无硬件 / OpenCV 依赖）：跟踪表 tracker、停带 / 抓取 / 翻板调度 picker、机械臂 IK arm
 ├── tests/          # test_scheduler（调度库单元）、test_calib（标定，合成图）、test_measure（齿轮 / 齿条测量，合成图）、test_belt_hil（传送带控制硬件在环，板上 PL v5）、test_can（CAN 协议与收发，回环自测）、test_npu（NPU 推理核对与耗时）
 ├── vision/         # 检测流水线：安路 face_detection demo 改造起点，后期改成零件检测
-│                   #   相机/HDMI 接口、前处理、NPU 推理封装、YOLOv8 后处理、demo 主程序
+│                   #   相机接口、前处理、NPU 推理封装、YOLOv8 后处理（只编 4 个 .cpp，demo 主程序层已删）
 ├── kernel_modules/ # mipicam 驱动源码 + 独立 Makefile（厂家 demo 改造起点，改驱动时才重编）；板上其余驱动用厂家预编译 .ko
 ├── tools/          # desreg 寄存器调试工具、canplc（扮「PLC」的命令行，回环 / 联调用）、soak.sh（长时间运行，部署到板上）
 └── bus/            # CAN（SocketCAN）：can_link 收发 + can_proto.h 协议（与 docs/软件与UI.md 同源）+ can_up.sh 起接口；RS485 Modbus（P1，未做）
@@ -50,7 +50,7 @@ ps/
 
 ## vision/ 的定位与改造边界
 
-`vision/` 来自安路官方 face_detection demo，是**检测流水线的改造起点**，直接改成齿轮/齿条零件检测；原 demo 四个现成接口：取帧 `icamera`（/dev/mipicam DMA）· 显示 `ihdmi`（/dev/fb0）· 推理 `BufferedNPUExecutor`（ArmNN+Alnpu）· 后处理 `getFastDecodeOutputYolov8WorkLoad`（类别/阈值走 JSON），改造方向见 [vision/README](vision/README.md)。分类加载用 `common/label_list.c`，模型用哪 8 类以 `models/label_list.json` 为唯一源，生成 NPU JSON 的脚本随后续 models/ 工具链一起写。
+`vision/` 来自安路官方 face_detection demo，是**检测流水线的改造起点**，直接改成齿轮/齿条零件检测。Makefile 只编 4 个 .cpp：取帧 `mipi_camera`（`/dev/mipicam` DMA，`icamera::enumerate_device` 的定义并在这里，不再依赖未编的 `icamera_enum.cpp`）、推理 `executor`（`NPUExecutor`，ArmNN+Alnpu）、`flow_common_types`、`logger_forward`；厂家 demo 的其余现成件（前处理 `preprocess`、8 缓冲流水 `BufferedNPUExecutor`、后处理 `getFastDecodeOutputYolov8WorkLoad` 走 JSON）留在目录里但没编入，显示也不走厂家的 `ihdmi`（HDMI 输出是 `app/hdmi_out.cpp`）。删掉了哪些、怎么取回见 [vision/README](vision/README.md)。分类加载用 `common/label_list.c`，模型用哪 8 类以 `models/label_list.json` 为唯一源，生成 NPU JSON 的脚本随后续 models/ 工具链一起写。
 
 ## 编译、构建与部署
 

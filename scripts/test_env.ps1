@@ -88,7 +88,7 @@ Write-Host "`n🛠️ PS 开发依赖" -ForegroundColor Yellow
 
 $tests += Test-Item "SDK armnn_lib" "$env:SDK_LIBS\armnn_lib" "Directory" "Important"
 $tests += Test-Item "SDK OpenCV" "$env:SDK_LIBS\ffmpeg_opencv4.7.0_aarch64" "Directory" "Important"
-$tests += Test-Item "FreeType 头文件" $env:FREETYPE_INC "Directory" "Optional"
+$tests += Test-Item "FreeType 头文件（编 des_app 必需）" $env:FREETYPE_INC "Directory" "Important"
 $tests += Test-Item "板上库文件" $env:BOARD_LIBS "Directory" "Optional"
 
 # ===== 显示结果 =====

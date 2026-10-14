@@ -428,3 +428,19 @@ void camera_t::SubmitAndStart(uint64_t dma_rx_buf, void *rx_buf) {
     *(uint32_t *)(m_map_data_start + CAMERA_BASE_ADDR) = dma_rx_buf;
     *(uint32_t *)(m_map_data_start + CAMERA_START) = 0x1;
 }
+
+// icamera::enumerate_device —— 上游定义在 icamera_enum.cpp，Makefile 不编那个文件，
+// 照厂家 demo 调用会链接失败；这里补上定义，让 icamera.hpp 的声明有对应实现。
+// 只支持 /dev/mipicam：上游还按 /dev/video 前缀建 usb_camera_t，USB 分支已随
+// usb_camera.* 删除（需要时从厂家 demo 取回，并加进 ps/Makefile 的 VISION_SRC）。
+std::shared_ptr<icamera> icamera::enumerate_device(const char *dev, const char *resolution) {
+    (void)resolution; // camera_t 固定 1920x1080，忽略分辨率参数（与上游一致）
+    if (strncmp(dev, "/dev/mipicam", 12) != 0) {
+        fprintf(stderr, "only /dev/mipicam is supported, but got %s\n", dev);
+        return nullptr;
+    }
+    auto cam = std::make_shared<camera_t>();
+    cam->open(dev);
+    if (!cam->is_open()) return nullptr;
+    return cam;
+}

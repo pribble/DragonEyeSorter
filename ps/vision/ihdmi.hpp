@@ -64,12 +64,8 @@ public:
      */
     virtual void show(uint64_t base_addr, void *virt_addr, int pixelformat) = 0;
 
-    /**
-     * @brief 枚举设备
-     *
-     * @param dev 设备路径
-     * @param resolution 分辨率，例如"1920x1080"
-     * @return std::shared_ptr<ihdmi> nullptr表示没有可用设备
-     */
-    static std::shared_ptr<ihdmi> enumerate_device(const char *dev, const char *resolution = "1920x1080");
+    // enumerate_device：上游定义在 ihdmi_enum.cpp（还带 hdmi_drm 分支），本项目不编入这条
+    // 显示路径（HDMI 输出走 app/hdmi_out.cpp 直写显示 VDMA），故不留声明，避免「声明有、
+    // 定义无」的链接陷阱。要启用本路径：从厂家 demo 取回 ihdmi_enum.cpp / hdmi_framebuffer.cpp，
+    // 一并加进 ps/Makefile 的 VISION_SRC。
 };

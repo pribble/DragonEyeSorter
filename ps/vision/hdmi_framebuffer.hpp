@@ -101,6 +101,5 @@ public:
 
 private:
     struct impl_t;
-    static struct impl_t *hdmi_drm_impl_ins;
     std::shared_ptr<impl_t> impl;
 };
