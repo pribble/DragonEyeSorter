@@ -42,7 +42,7 @@ struct ClassRule {
     int dest = 0;           // Pick: bin index; Flap: outlet index
 };
 
-// Geometric measurement of one part (app/measure, docs/视觉与检测.md "几何测量"), the best frame so far = the one nearest the
+// Geometric measurement of one part (measure/measure, docs/视觉与检测.md "几何测量"), the best frame so far = the one nearest the
 // optical axis (smallest parallax smear). Plain numbers, so this library stays free of OpenCV.
 struct PartMeasure {
     bool valid = false;
@@ -108,7 +108,7 @@ struct Track {
     int cls = -1;
     float cls_conf = 0;     // mean confidence of the voted class
     uint32_t first_frame = 0, last_frame = 0;
-    PartMeasure meas;       // filled by the app (app/track_measure) while the part crosses the camera
+    PartMeasure meas;       // filled by the app (measure/track_measure) while the part crosses the camera
 
     float x_at(double belt_mm) const { return float(s + belt_mm); }
     ORect footprint(double belt_mm, float grow = 0) const

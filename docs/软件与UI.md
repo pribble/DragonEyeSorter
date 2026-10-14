@@ -6,7 +6,7 @@
 
 PS（双核 A35 + Linux）做：NPU 推理调度、视觉定位 (x, y, θ)、跟踪表与抓取调度、机械臂 IK、CAN、UI、存储、网络。**不搬整帧像素**；时序关键的脉冲、总线帧、IO 采样在 PL。
 
-- PL 寄存器经 `/dev/mem` mmap 访问（已验证可用），寄存器偏移头文件放 `ps/common/`，与 [PL设计](PL设计.md) 同源。
+- PL 寄存器经 `/dev/mem` mmap 访问（已验证可用），寄存器偏移头文件放 `ps/src/hw/`，与 [PL设计](PL设计.md) 同源。
 - 板上已有：Qt 5.15.8、ArmNN + Alnpu、OpenCV 4.7、FFmpeg；没有 SQLite（把 amalgamation 编进应用）。
 - 交叉编译用 FD 自带的 aarch64 工具链（glibc 2.25，与板上一致）。
 
@@ -64,7 +64,7 @@ V_SIZE 1080、H_SIZE = 行跨度 5760（**24bpp BGR**）、`START_1`（0x5C）= 
 
 ### CAN 协议 v1（板上自测通过，PC 端按此写）
 
-经典 CAN 2.0A（11 位 ID），500kbit/s（板载收发器 SN65HVD232 只支持经典 CAN），多字节**小端**。定义在 [ps/bus/can_proto.h](../ps/bus/can_proto.h)（编解码函数同在此文件）。
+经典 CAN 2.0A（11 位 ID），500kbit/s（板载收发器 SN65HVD232 只支持经典 CAN），多字节**小端**。定义在 [ps/src/hw/can_proto.h](../ps/src/hw/can_proto.h)（编解码函数同在此文件）。
 
 | 方向 | ID | 长度 | 内容 |
 |---|---|---|---|
@@ -81,7 +81,7 @@ V_SIZE 1080、H_SIZE = 行跨度 5760（**24bpp BGR**）、`START_1`（0x5C）= 
 
 **联动实测（`des_app run --can can0` + `canplc` 扮 PLC，回环）**：上电空闲 → 未启动时「恢复」被拒 → 启动（应答 10ms，皮带走、STATUS 带速 50）→ 设 80mm/s（运行中立即生效，PL 平滑过渡）→ 设 500 判「数值不对」→ 联锁暂停（皮带减速停）→ 恢复 → 停止，状态、标志位（皮带在走 / PLC 在线）全部正确。
 
-**起接口**：`ps/bus/can_up.sh can0 normal`（接 PC 的 USB-CAN）或 `can_up.sh can0 loopback`（自测；控制器只有 FD 模式能回环，经典帧照样收发）。
+**起接口**：`ps/board/can_up.sh can0 normal`（接 PC 的 USB-CAN）或 `can_up.sh can0 loopback`（自测；控制器只有 FD 模式能回环，经典帧照样收发）。
 
 **自测（`ps/tests/test_can.c`，回环，两个 socket 扮 PLC 与本机）**：编解码 6 项；命令→应答往返 1000/1000，**平均 356µs**（最大 429µs）；
 按 200 / 1000 / 2000 帧/s 连续发，**零丢失、零错序**；接口错误计数 0。⚠ 不限速连发（约 9000 帧/s，超过总线物理上限）时回环会**无声丢帧**
@@ -110,6 +110,6 @@ V_SIZE 1080、H_SIZE = 行跨度 5760（**24bpp BGR**）、`START_1`（0x5C）= 
 | 指令响应延迟 | PS 写寄存器时读 PL `TIMESTAMP`，输出变化时 PL 锁存同一计数器 → 回读算差 |
 | 采集延迟 | 帧到达时间戳（P1 用 PL 帧起始锁存） |
 | AI 推理耗时 | ✅ 每件记录 `npu_ms`（NPU 推理平均）、`lat_ms`（相机帧写完 → 概率可用，含排队）、`votes`；HMI 显示最近一次 |
-| 总线稳定性 | 舵机应答统计（丢帧、校验错）、CAN 帧 / 错误计数；✅ 长时间运行脚本 `ps/tools/soak.sh`（des_app run + canplc 当 PLC，每分钟记内存 / 负载 / CAN 计数 / PL 帧号，结束出汇总：帧率、RSS 增长、STATUS 丢帧） |
+| 总线稳定性 | 舵机应答统计（丢帧、校验错）、CAN 帧 / 错误计数；✅ 长时间运行脚本 `ps/board/soak.sh`（des_app run + canplc 当 PLC，每分钟记内存 / 负载 / CAN 计数 / PL 帧号，结束出汇总：帧率、RSS 增长、STATUS 丢帧） |
 | 分类准确率 | 独立测试集混淆矩阵 |
 | 跟踪误差 | 对射实测前沿 vs 预测前沿 |

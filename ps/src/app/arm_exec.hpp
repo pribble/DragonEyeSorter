@@ -1,5 +1,5 @@
-// arm_exec.hpp — drives the 6 bus servos through the PL servo_bus master (common/des_hw) from waypoint lists
-// planned by scheduler/arm (plan_pick), plus the bring-up helpers (scan, read back, torque, teach).
+// arm_exec.hpp — drives the 6 bus servos through the PL servo_bus master (hw/des_hw) from waypoint lists
+// planned by sched/arm (plan_pick), plus the bring-up helpers (scan, read back, torque, teach).
 #pragma once
 
 #include <array>

@@ -1,4 +1,4 @@
-/* desreg: DragonEyeSorter PL register tool (/dev/mem), built on common/des_hw.
+/* desreg: DragonEyeSorter PL register tool (/dev/mem), built on hw/des_hw.
  *   desreg                         status
  *   desreg r <off> | w <off> <val> raw register access (offset inside PL_BASE window)
  *   desreg led on|off|auto
@@ -21,7 +21,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "../common/des_hw.h"
+#include "des_hw.h"
 
 static des_hw_t hw;
 

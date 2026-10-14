@@ -1,6 +1,6 @@
 // calib.hpp — camera -> table calibration from one image of a checkerboard lying flat on the belt.
 //
-// Table frame (see scheduler/geom.hpp): x along belt travel, y 90 deg counter-clockwise from x seen from above
+// Table frame (see sched/geom.hpp): x along belt travel, y 90 deg counter-clockwise from x seen from above
 // (right-handed, z up). Lay the board flat on the belt with one edge against the side guard: the board axis
 // closest to the travel direction becomes x. Origin: x = 0 at the upstream image edge on the center row,
 // y = 0 on the image center line, so pick line / belt end can be measured with a ruler from the FOV edge.

@@ -1,4 +1,4 @@
-"""DragonEyeSorter <-> "PLC" CAN protocol v1.1 — Python side of ps/bus/can_proto.h (keep the two in step).
+"""DragonEyeSorter <-> "PLC" CAN protocol v1.1 — Python side of ps/src/hw/can_proto.h (keep the two in step).
 
 Classic CAN 2.0A, 500 kbit/s, little-endian multi-byte fields.
   PLC -> DES: 0x100 CMD [cmd, seq] / 0x101 SPEED [speed_x10 u16, seq] / 0x102 RECIPE [recipe, seq]

@@ -1,6 +1,6 @@
 # train/ — 零件分类模型（NPU，赛题硬性项④）
 
-**路线**：PS 用 OpenCV 定位（已在 60fps 主循环里）→ 每件按自身方向转正裁 **56×56mm → 224×224**（`ps/app/roi_crop`，约 0.25mm/像素）→ NPU 跑 **YOLOv8n-cls@224（激活换成 ReLU）** 分 8 类（`models/label_list.json`）→ 过视野时分类 3~6 次、概率软投票（`Tracker::vote`）→ 去向。
+**路线**：PS 用 OpenCV 定位（已在 60fps 主循环里）→ 每件按自身方向转正裁 **56×56mm → 224×224**（`ps/src/measure/roi_crop`，约 0.25mm/像素）→ NPU 跑 **YOLOv8n-cls@224（激活换成 ReLU）** 分 8 类（`models/label_list.json`）→ 过视野时分类 3~6 次、概率软投票（`Tracker::vote`）→ 去向。
 
 为什么不用整帧检测：4.2mm 镜头、相机高约 300mm 时整帧约 0.21mm/像素，缩到 416 输入后约 0.95mm/像素，1mm 的黑点 / 缺料只剩 1 个像素；裁切后同样的缺陷有约 4 个像素。分类模型计算量约为整帧 YOLOv8n@416 的 1/7。
 

@@ -1,13 +1,13 @@
 # pc/plc_sim — 产线 PLC 模拟器（PC + USB-CAN，赛题硬性项⑤的外设一侧）
 
-PC 扮演产线 PLC，经 CAN（500 kbit/s，协议见 `docs/软件与UI.md` / `ps/bus/can_proto.h`）控制 DragonEyeSorter（只依赖 Python 3 标准库 tkinter；`python-can` 后端需 `pip install python-can`）：
+PC 扮演产线 PLC，经 CAN（500 kbit/s，协议见 `docs/软件与UI.md` / `ps/src/hw/can_proto.h`）控制 DragonEyeSorter（只依赖 Python 3 标准库 tkinter；`python-can` 后端需 `pip install python-can`）：
 
 - 下发：启动 / 停止 / 暂停（联锁）/ 恢复 / 复位报警、带速、配方、心跳（2 Hz）、对时（连上时 + 每 60s；板子没有 RTC）
 - 显示：板子状态（10 Hz）、计数与良率、逐件结果（类别 / 去向 / 置信度 / 尺寸）、报警、日志
 - 统计（测试报告「总线稳定性」）：收发帧数、命令 ACK 往返（平均 / 最大）、STATUS 间隔 >150ms 次数、未应答命令
 
 ```bash
-python plc_gui.py --backend virtual        # 无硬件：进程内模拟板子（规则与 ps/app/runner.cpp 相同）
+python plc_gui.py --backend virtual        # 无硬件：进程内模拟板子（规则与 ps/src/app/runner.cpp 相同）
 python plc_gui.py --backend zqwl           # ZQWL-UCAN-101E：ZLG 兼容 ControlCAN.dll（VCI_*）后端，⚠ 到货后核对
 python plc_gui.py --backend controlcan --dll <ControlCAN.dll 路径> --dev-type 4 --can-index 0
 python plc_gui.py --backend python-can --iface socketcan --channel can0   # Linux / 其他 python-can 设备

@@ -21,7 +21,7 @@
 // common: -c <config.json> (default /root/des/des_app.json), --no-rt
 //
 // Bring-up order: probe (60 fps without skips) -> locate (thresholds, homography) -> track (belt + tracker)
-// -> arm (after the servos are wired). The NPU pipeline from vision/ attaches classes to detections later.
+// -> arm (after the servos are wired). The NPU pipeline from src/vision/ attaches classes to detections later.
 #include <sched.h>
 #include <signal.h>
 #include <sys/mman.h>

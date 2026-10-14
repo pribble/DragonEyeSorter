@@ -127,7 +127,7 @@ static void test_tracker()
     CHECK(seen == 3, "live tracks %d", seen);
 }
 
-// SizeRule: the measurement (filled while the part crosses the view, like app/track_measure) overrides "pick" only
+// SizeRule: the measurement (filled while the part crosses the view, like measure/track_measure) overrides "pick" only
 static void test_size_rule()
 {
     std::mt19937 rng(7);

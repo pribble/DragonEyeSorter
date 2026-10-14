@@ -21,7 +21,7 @@ import can_proto as P
 
 
 class VirtualBoard:
-    """Fake DES: answers like ps/app/runner.cpp (same accept / reject rules)."""
+    """Fake DES: answers like ps/src/app/runner.cpp (same accept / reject rules)."""
 
     def __init__(self, n_classes=8):
         self.rx = queue.Queue()   # frames to the PLC

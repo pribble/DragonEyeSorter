@@ -30,7 +30,7 @@
 ## 硬性约定（违反会导致联调事故）
 
 1. **类别表五处同源**：训练 / NPU JSON / 分拣映射 / UI / 数据库只在 `models/label_list.json` 维护一份，其余生成或加载。
-2. **寄存器映射同源**：PL 的 AXI-Lite 偏移改动时，必须同步更新 `docs/PL设计.md` 与 `ps/common/` 头文件，同一次提交完成。分段固定：`0x0xx` des_regs / `0x1xx` servo_bus / `0x2xx` stepper_ctrl / `0x3xx` des_vision / `0x4xx` des_pwm；**新模块从 `0x5xx` 起**，用前先在 `docs/PL设计.md` 登记。
+2. **寄存器映射同源**：PL 的 AXI-Lite 偏移改动时，必须同步更新 `docs/PL设计.md` 与 `ps/src/hw/` 头文件，同一次提交完成。分段固定：`0x0xx` des_regs / `0x1xx` servo_bus / `0x2xx` stepper_ctrl / `0x3xx` des_vision / `0x4xx` des_pwm；**新模块从 `0x5xx` 起**，用前先在 `docs/PL设计.md` 登记。
 3. **IO 电平**：CEP 是 BANK11，固定 3.3V；舵机总线空闲 3.7V，**经 BSS138 双向电平转换接入**。改接线先查 `docs/硬件与接线.md`。
 4. **PL 贡献要真实**：评分规则"全部功能仅 PS 实现扣分"——时序关键的脉冲、总线帧、IO 采样放在 PL。
 5. **实测与口径诚实**：指令分辨率 vs 实测精度、"采集 / 显示实时性" vs "推理按物料触发"分开报告；未实测的标 ⚠。

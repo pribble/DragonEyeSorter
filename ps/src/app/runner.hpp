@@ -1,5 +1,5 @@
 // runner.hpp — production control for `des_app run`: line state machine, belt (BeltDriver), arm (ArmExec on its own
-// thread), CAN link to the "PLC" (bus/can_proto.h). Driven from the live worker thread once per processed frame.
+// thread), CAN link to the "PLC" (hw/can_proto.h). Driven from the live worker thread once per processed frame.
 //
 // States: IDLE (belt stopped, nothing dispatched) / RUN / PAUSED (PLC interlock or operator; current pick finishes) /
 // ESTOP (PL e-stop latched the stepper; needs RESET_ALARM then START). Without CAN the line starts in RUN.

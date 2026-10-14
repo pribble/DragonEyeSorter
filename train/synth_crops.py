@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Synthetic part crops for the 8 classes (models/label_list.json), for the TOOLCHAIN SMOKE TEST only.
 
-Same geometry as ps/app/roi_crop: 56 mm square -> 224 px (0.25 mm/px), part centered, long axis along x.
+Same geometry as ps/src/measure/roi_crop: 56 mm square -> 224 px (0.25 mm/px), part centered, long axis along x.
 White POM gear (m1, 30 teeth, OD 32, bore 6) / rack (50 mm, 15 teeth, 15 mm high) on a dark belt, with the three
 defect kinds drawn the way they are made by hand (物料与缺陷样本.md): short = tooth tips cut off, flash = material
 filling a tooth gap, dirty = dark spots on the face. Lighting / blur / noise jitter.

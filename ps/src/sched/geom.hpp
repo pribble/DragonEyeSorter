@@ -3,7 +3,7 @@
 // Frames used across ps/:
 //   image px      (u, v)  camera pixels, 1920x1080, origin top-left
 //   table mm      (x, y)  fixed to the machine: x along belt travel (downstream +), y across the belt, 90 deg
-//                         counter-clockwise from x seen from above (right-handed, z up; see app/calib.hpp)
+//                         counter-clockwise from x seen from above (right-handed, z up; see measure/calib.hpp)
 //   belt mm       s       x of a point riding on the belt minus the belt travel B: s = x - B (constant while it rides)
 #pragma once
 

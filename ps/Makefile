@@ -11,8 +11,14 @@
 #
 # 本文件不写主机路径：FD_ROOT / SDK_LIBS / FREETYPE_INC / BOARD_LIBS 一律来自 .env（本机、不入库）或命令行。
 #
-# Targets: desreg (C, no deps), test_scheduler (C++, no deps), test_calib / test_measure / des_app (C++, need SDK), all, clean.
+# 目录：src/ 产品源码（只放编进 des_app 的，再按角色分 app / hw / sched / measure / ui / vision）、
+#       board/ 上板脚本、tools/ 人敲的命令行、tests/ 测试、kernel/ 驱动、vendor/ 非我们写的。
+#       **头文件平铺**（全仓库无跨目录 include），靠下面的 INC 解析 —— 各目录 basename 必须唯一。
+#
+# Targets: desreg (C, no deps), test_scheduler (C++, no deps), test_calib / test_measure / test_npu / des_app (C++, need SDK),
+#          test_belt_hil (board, PL v5+), test_can / canplc (SocketCAN), all, clean.
 # Deploy:  scp -i ~/.ssh/id_ed25519_anlu build/<prog> root@192.168.137.100:/root/bin/
+#          des_app 连配置一起放 /root/des/（见 README「部署」）。
 
 # 从 .env 文件读取配置（如果存在）
 -include ../.env.make
@@ -43,13 +49,21 @@ OPENCV := $(SDK)/ffmpeg_opencv4.7.0_aarch64
 # board paths baked in as rpath, so no LD_LIBRARY_PATH is needed at run time
 RPATH  := -Wl,-rpath,/opt/armnn_lib/lib:/opt/ffmpeg_opencv4.7.0_aarch64/lib
 
-SCHED_SRC := scheduler/tracker.cpp scheduler/picker.cpp scheduler/arm.cpp scheduler/flap.cpp
-# camera capture reuses the vendor-derived driver wrapper in vision/ (MIT); no NPU code is linked yet
-VISION_SRC := vision/mipi_camera.cpp vision/logger_forward.cpp vision/flow_common_types.cpp vision/executor.cpp
-APP_SRC := app/main.cpp app/camera_rig.cpp app/locate.cpp app/config.cpp app/hdmi_out.cpp app/live.cpp app/calib.cpp app/belt_ctl.cpp app/arm_exec.cpp app/runner.cpp \
-           app/measure.cpp app/track_measure.cpp app/measure_tool.cpp app/roi_crop.cpp app/part_log.cpp \
-           app/img_writer.cpp app/collector.cpp app/npu_cls.cpp app/npu_async.cpp \
-           app/text_ft.cpp app/ui_input.cpp app/hmi.cpp
+# 头文件搜索路径（平铺 include）。kernel/ 只为了 src/vision/mipi_camera.cpp 拿到唯一一份 ioctl 头，
+# vendor/third_party 是 nlohmann json.hpp（app / measure / ui / vision 都用）。
+INC := -Isrc/app -Isrc/hw -Isrc/sched -Isrc/measure -Isrc/ui -Isrc/vision -Ikernel -Ivendor/third_party
+
+SCHED_SRC := src/sched/tracker.cpp src/sched/picker.cpp src/sched/arm.cpp src/sched/flap.cpp
+# 相机取帧复用厂家 demo 改造件（MIT）；src/vision 只放编进二进制的 4 个 .cpp，未编的参考件在 vendor/demo/
+VISION_SRC := src/vision/mipi_camera.cpp src/vision/logger_forward.cpp src/vision/flow_common_types.cpp src/vision/executor.cpp
+APP_SRC := src/app/main.cpp src/app/camera_rig.cpp src/app/locate.cpp src/app/config.cpp \
+           src/app/live.cpp src/app/runner.cpp src/app/belt_ctl.cpp src/app/arm_exec.cpp \
+           src/app/part_log.cpp src/app/img_writer.cpp src/app/collector.cpp \
+           src/app/npu_cls.cpp src/app/npu_async.cpp \
+           src/measure/calib.cpp src/measure/measure.cpp src/measure/track_measure.cpp \
+           src/measure/measure_tool.cpp src/measure/roi_crop.cpp \
+           src/ui/hdmi_out.cpp src/ui/text_ft.cpp src/ui/ui_input.cpp src/ui/hmi.cpp
+HDRS := $(wildcard src/app/*.hpp src/hw/*.h src/sched/*.hpp src/measure/*.hpp src/ui/*.hpp src/vision/*.hpp)
 OPENCV_LIBS := -lopencv_calib3d -lopencv_features2d -lopencv_flann -lopencv_imgproc -lopencv_imgcodecs -lopencv_core
 
 .PHONY: all clean check-sdk check-board
@@ -68,49 +82,50 @@ all: $(BUILD)/desreg $(BUILD)/test_scheduler $(BUILD)/test_calib $(BUILD)/test_m
 $(BUILD):
 	-@mkdir $(BUILD)
 
-$(BUILD)/desreg: tools/desreg.c common/des_hw.c common/des_hw.h common/des_regs.h | $(BUILD)
-	$(CC) $(CFLAGS) -o $@ tools/desreg.c common/des_hw.c
+$(BUILD)/desreg: tools/desreg.c src/hw/des_hw.c src/hw/des_hw.h src/hw/des_regs.h | $(BUILD)
+	$(CC) $(CFLAGS) $(INC) -o $@ tools/desreg.c src/hw/des_hw.c
 
-$(BUILD)/test_scheduler: tests/test_scheduler.cpp $(SCHED_SRC) $(wildcard scheduler/*.hpp) | $(BUILD)
-	$(CXX) $(CXXFLAGS) -Ischeduler -o $@ tests/test_scheduler.cpp $(SCHED_SRC)
+$(BUILD)/test_scheduler: tests/test_scheduler.cpp $(SCHED_SRC) $(wildcard src/sched/*.hpp) | $(BUILD)
+	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_scheduler.cpp $(SCHED_SRC)
 
-$(BUILD)/test_measure: tests/test_measure.cpp app/measure.cpp app/track_measure.cpp app/roi_crop.cpp app/part_log.cpp $(SCHED_SRC) \
-    $(wildcard app/*measure*.hpp app/roi_crop.hpp app/part_log.hpp scheduler/*.hpp) check-sdk | $(BUILD)
-	$(CXX) $(CXXFLAGS) -Iapp -Ischeduler -I$(OPENCV)/include/opencv4 -o $@ tests/test_measure.cpp app/measure.cpp \
-	    app/track_measure.cpp app/roi_crop.cpp app/part_log.cpp $(SCHED_SRC) \
+$(BUILD)/test_measure: tests/test_measure.cpp src/measure/measure.cpp src/measure/track_measure.cpp \
+    src/measure/roi_crop.cpp src/app/part_log.cpp $(SCHED_SRC) \
+    $(wildcard src/measure/*measure*.hpp src/measure/roi_crop.hpp src/app/part_log.hpp src/sched/*.hpp) check-sdk | $(BUILD)
+	$(CXX) $(CXXFLAGS) $(INC) -I$(OPENCV)/include/opencv4 -o $@ tests/test_measure.cpp src/measure/measure.cpp \
+	    src/measure/track_measure.cpp src/measure/roi_crop.cpp src/app/part_log.cpp $(SCHED_SRC) \
 	    -L$(OPENCV)/lib -Wl,-rpath-link,$(OPENCV)/lib $(RPATH) -lopencv_imgcodecs -lopencv_imgproc -lopencv_core -lpthread
 
-$(BUILD)/canplc: tools/canplc.c bus/can_link.c bus/can_link.h bus/can_proto.h | $(BUILD)
-	$(CC) $(CFLAGS) -Ibus -o $@ tools/canplc.c bus/can_link.c
+$(BUILD)/canplc: tools/canplc.c src/hw/can_link.c src/hw/can_link.h src/hw/can_proto.h | $(BUILD)
+	$(CC) $(CFLAGS) $(INC) -o $@ tools/canplc.c src/hw/can_link.c
 
-$(BUILD)/test_can: tests/test_can.c bus/can_link.c bus/can_link.h bus/can_proto.h | $(BUILD)
-	$(CC) $(CFLAGS) -Ibus -o $@ tests/test_can.c bus/can_link.c
+$(BUILD)/test_can: tests/test_can.c src/hw/can_link.c src/hw/can_link.h src/hw/can_proto.h | $(BUILD)
+	$(CC) $(CFLAGS) $(INC) -o $@ tests/test_can.c src/hw/can_link.c
 
 # hardware-in-the-loop: needs the board (PL v5+), no motor
-$(BUILD)/test_belt_hil: tests/test_belt_hil.cpp app/belt_ctl.cpp app/belt_ctl.hpp $(SCHED_SRC) common/des_hw.c | $(BUILD)
-	$(CC) $(CFLAGS) -c -o $(BUILD)/des_hw.o common/des_hw.c
-	$(CXX) $(CXXFLAGS) -Iapp -Ischeduler -Icommon -o $@ tests/test_belt_hil.cpp app/belt_ctl.cpp $(SCHED_SRC) \
+$(BUILD)/test_belt_hil: tests/test_belt_hil.cpp src/app/belt_ctl.cpp src/app/belt_ctl.hpp $(SCHED_SRC) src/hw/des_hw.c | $(BUILD)
+	$(CC) $(CFLAGS) $(INC) -c -o $(BUILD)/des_hw.o src/hw/des_hw.c
+	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_belt_hil.cpp src/app/belt_ctl.cpp $(SCHED_SRC) \
 	    $(BUILD)/des_hw.o
 
-$(BUILD)/des_app: $(APP_SRC) $(SCHED_SRC) $(VISION_SRC) common/des_hw.c $(wildcard app/*.hpp scheduler/*.hpp) check-sdk check-board | $(BUILD)
-	$(CC) $(CFLAGS) -c -o $(BUILD)/des_hw.o common/des_hw.c
-	$(CC) $(CFLAGS) -Ibus -c -o $(BUILD)/can_link.o bus/can_link.c
-	$(CXX) $(CXXFLAGS) -Iapp -Ischeduler -Icommon -Ivision -Ibus \
+$(BUILD)/des_app: $(APP_SRC) $(SCHED_SRC) $(VISION_SRC) src/hw/des_hw.c $(HDRS) check-sdk check-board | $(BUILD)
+	$(CC) $(CFLAGS) $(INC) -c -o $(BUILD)/des_hw.o src/hw/des_hw.c
+	$(CC) $(CFLAGS) $(INC) -c -o $(BUILD)/can_link.o src/hw/can_link.c
+	$(CXX) $(CXXFLAGS) $(INC) \
 	    -I$(ARMNN)/include -I$(OPENCV)/include/opencv4 -I$(FREETYPE_INC) \
 	    -o $@ $(APP_SRC) $(SCHED_SRC) $(VISION_SRC) $(BUILD)/des_hw.o $(BUILD)/can_link.o \
 	    -L$(ARMNN)/lib -L$(OPENCV)/lib -L$(BOARD_LIBS) -Wl,-rpath-link,$(ARMNN)/lib:$(OPENCV)/lib:$(BOARD_LIBS) $(RPATH) \
 	    $(OPENCV_LIBS) -larmnn -larmnnOnnxParser -lfreetype -lfmt -lpthread
 
 # NPU part classifier on the board vs the PC reference (train/eval_onnx.py --refs)
-$(BUILD)/test_npu: tests/test_npu.cpp app/npu_cls.cpp app/npu_cls.hpp $(VISION_SRC) check-sdk | $(BUILD)
-	$(CXX) $(CXXFLAGS) -Iapp -Ivision -I$(ARMNN)/include -I$(OPENCV)/include/opencv4 \
-	    -o $@ tests/test_npu.cpp app/npu_cls.cpp $(VISION_SRC) \
+$(BUILD)/test_npu: tests/test_npu.cpp src/app/npu_cls.cpp src/app/npu_cls.hpp $(VISION_SRC) check-sdk | $(BUILD)
+	$(CXX) $(CXXFLAGS) $(INC) -I$(ARMNN)/include -I$(OPENCV)/include/opencv4 \
+	    -o $@ tests/test_npu.cpp src/app/npu_cls.cpp $(VISION_SRC) \
 	    -L$(ARMNN)/lib -L$(OPENCV)/lib -Wl,-rpath-link,$(ARMNN)/lib:$(OPENCV)/lib $(RPATH) \
 	    -lopencv_imgcodecs -lopencv_imgproc -lopencv_core -larmnn -larmnnOnnxParser -lfmt -lpthread
 
-$(BUILD)/test_calib: tests/test_calib.cpp app/calib.cpp app/calib.hpp scheduler/geom.hpp check-sdk | $(BUILD)
-	$(CXX) $(CXXFLAGS) -Iapp -Ischeduler -Ivision -I$(OPENCV)/include/opencv4 \
-	    -o $@ tests/test_calib.cpp app/calib.cpp \
+$(BUILD)/test_calib: tests/test_calib.cpp src/measure/calib.cpp src/measure/calib.hpp src/sched/geom.hpp check-sdk | $(BUILD)
+	$(CXX) $(CXXFLAGS) $(INC) -I$(OPENCV)/include/opencv4 \
+	    -o $@ tests/test_calib.cpp src/measure/calib.cpp \
 	    -L$(OPENCV)/lib -Wl,-rpath-link,$(OPENCV)/lib $(RPATH) $(OPENCV_LIBS) -lpthread
 
 clean:

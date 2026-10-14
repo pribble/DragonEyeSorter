@@ -1,6 +1,6 @@
 # pc/report — 测试报告出数
 
-赛题硬性项⑥要「同步精度 / 采集延迟 / AI 耗时 / 总线稳定性」四类实测数据：`des_app live / run` 每判定一件就往 `/root/des/data/log/<日期>/parts_<会话>.csv` 写一行（39 列，定义见 `ps/app/part_log.cpp` 的 `csv_header()`），本目录脚本把 CSV 变成报告里的表。
+赛题硬性项⑥要「同步精度 / 采集延迟 / AI 耗时 / 总线稳定性」四类实测数据：`des_app live / run` 每判定一件就往 `/root/des/data/log/<日期>/parts_<会话>.csv` 写一行（39 列，定义见 `ps/src/app/part_log.cpp` 的 `csv_header()`），本目录脚本把 CSV 变成报告里的表。
 
 ```bash
 scp -r -i ~/.ssh/id_ed25519_anlu root@192.168.137.100:/root/des/data/log ./records
@@ -21,4 +21,4 @@ scp -r -i ~/.ssh/id_ed25519_anlu root@192.168.137.100:/root/des/data/log ./recor
 
 ## 长时间运行（板上）
 
-`ps/tools/soak.sh [秒=7200] [输出目录]`（部署到 `/root/des/soak.sh`）：起 CAN（默认回环；`SOAK_CAN=normal` 要有真 PLC / USB-CAN 应答）、`des_app run` + `canplc` 当 PLC（START、5Hz 心跳、监听）；每分钟记 des_app 内存 / 线程、负载、可用内存、磁盘、CAN 收发与错误计数、PL 帧号到 `mon.csv`，结束出 `summary.txt`（帧率、RSS 首末 / 最大、STATUS 帧丢失、最后的计数）。实物到货后同一脚本即「连续运行 2h 无故障」测试；不加 `--go` 时机械臂空跑。
+`ps/board/soak.sh [秒=7200] [输出目录]`（部署到 `/root/des/soak.sh`）：起 CAN（默认回环；`SOAK_CAN=normal` 要有真 PLC / USB-CAN 应答）、`des_app run` + `canplc` 当 PLC（START、5Hz 心跳、监听）；每分钟记 des_app 内存 / 线程、负载、可用内存、磁盘、CAN 收发与错误计数、PL 帧号到 `mon.csv`，结束出 `summary.txt`（帧率、RSS 首末 / 最大、STATUS 帧丢失、最后的计数）。实物到货后同一脚本即「连续运行 2h 无故障」测试；不加 `--go` 时机械臂空跑。

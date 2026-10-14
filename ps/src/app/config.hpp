@@ -1,4 +1,4 @@
-// config.hpp — des_app configuration (app/des_app.json). Every calibration value lives here, not in code.
+// config.hpp — des_app configuration (src/des_app.json). Every calibration value lives here, not in code.
 #pragma once
 
 #include <string>

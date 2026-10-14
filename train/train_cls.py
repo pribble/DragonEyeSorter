@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Train the part classifier: YOLOv8n-cls (ReLU) @ 224 on part crops (ps/app/roi_crop: 56 mm -> 224 px).
+"""Train the part classifier: YOLOv8n-cls (ReLU) @ 224 on part crops (ps/src/measure/roi_crop: 56 mm -> 224 px).
 
 Dataset = ImageFolder: <data>/train/<id>_<label>/*.png|jpg and <data>/val/... (folder names sort in class-id order,
 so the model's output index = models/label_list.json id). Made by synth_crops.py (smoke test) or

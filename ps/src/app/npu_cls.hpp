@@ -2,7 +2,7 @@
 //
 // Model = train/export_npu.py output: <name>_uint8.onnx (QDQ / UINT8 / per-tensor, the vendor fire_detect format)
 // + <name>.json (class names in id order, input normalization). Loaded through the vendor ArmNN executor
-// (ps/vision/executor.cpp, MIT) on backends Alnpu, CpuAcc, CpuRef. The ArmNN ONNX parser folds the input
+// (src/vision/executor.cpp, MIT) on backends Alnpu, CpuAcc, CpuRef. The ArmNN ONNX parser folds the input
 // QuantizeLinear into the input tensor, so the input is written as uint8 with the input tensor's scale / zero point
 // (same as the vendor demo); float inputs are handled too. Softmax runs here (it is cut off the exported graph).
 #pragma once
