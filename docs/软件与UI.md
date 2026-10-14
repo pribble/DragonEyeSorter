@@ -25,7 +25,7 @@ PS（双核 A35 + Linux）做：NPU 推理调度、视觉定位 (x, y, θ)、跟
   - **参数**：带速、齿轮外径名义 / 公差、齿条长度名义 / 公差、尺寸判废开关、置信度门限、存图模式（−/+ 按钮）、PL 显示模式 / 二值阈值，**立即生效**（工作线程改跟踪表规则 / 存储 / Runner 带速）并存 `ui_params.json`（启动时载入，覆盖 des_app.json）；**运行控制**：启动 / 停止 / 暂停 / 恢复 / 复位报警（run 模式，与 PLC 的 CAN 命令同一套规则 `Runner::command`）。
   - **记录**：最近 9 件（时间、件号、类别、置信度、去向、原因、尺寸），点一行看该件裁切图 + 全部测量值。
 - **输入**：evdev（`app/ui_input`），USB 鼠标 / 键盘 / 触摸屏热插拔（每 2s 扫描 `/dev/input`）。内核有 usbhid + hid-generic（⚠ 待插上实测）。**脚本输入**：往 `/tmp/des_ui` 写 `click X Y` / `move X Y` / `wheel N` / `key CODE` / `snap`（存下一帧到 `/tmp/des_snap_N.png`）—— 远程测试、演示脚本用（板上没有 uinput）。
-- **中文**：板上自带文泉驿正黑 `/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttc` + `libfreetype.so.6`（`app/text_ft`，字形缓存）。交叉编译要 FreeType 头文件 + 板上 libfreetype / libpng16 / libz（Makefile 变量 `FREETYPE_INC` / `BOARD_LIBS`，路径在本机 `.env`，见 [环境与上手](环境与上手.md)）。
+- **中文**：板上自带文泉驿正黑 `/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttc` + `libfreetype.so.6`（`app/text_ft`，字形缓存）。交叉编译要 FreeType 头文件 + 板上 libfreetype / libpng16 / libz（Makefile 变量 `FREETYPE_INC` / `BOARD_LIBS`，路径在本机 `.env`，见 [环境与上手](环境与上手.md)）。ArmNN 与 OpenCV 同理走 `ARMNN_LIB` / `OPENCV_LIB`。
 - 全部在核 1 的工作线程渲染（约 8Hz），核 0 只贴图 + 画光标。
 
 原方案（保留作对照）：视频层用 PL 的 VDMA framebuffer，Qt 只画叠加层和控件。

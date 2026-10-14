@@ -1,0 +1,39 @@
+# parts/ 零件台账 —— BOOT.bin 打包用的固定零件
+#
+# 这两个零件都**不随 PL / 应用重编而变**：换比特流只换 -Bit 参数，不动本目录。
+# 只有改了 PS 配置（FSBL）或 U-Boot 零件损坏时才需要重取。
+#
+# 核验命令（Windows PowerShell，逐行对比）：
+#   Get-ChildItem scripts/bootbin/parts/* | Get-FileHash -Algorithm MD5 |
+#       Format-Table Hash,Path -AutoSize
+#
+# MD5                              字节数      文件           来源
+# --------------------------------------------------------------------------------------------
+A64A56C0C37003AF025C45ABF0DA2732  1767704  fsbl.elf       厂家 NPU demo soc_sdk/soc_fsbl/build/soc_fsbl.elf
+E844648EC910C87EA8A036AD4D3D3E45   992360  u-boot.elf     由厂家 BOOT.bin 偏移 0x40e4c0、长度 0xe2248 截出后包成 ELF
+
+# 说明
+# ----
+# 两个零件都已入库，打 BOOT.bin **零外部路径**（-Bit 给比特流即可）。
+# make_bootbin.ps1 每次打包都校验 u-boot.elf 的 MD5：它进 BOOT.bin 第 3 分区，
+# 静默损坏要到刷完板子开机失败才会发现。
+#
+# fsbl.elf
+#   与厂家原件逐字节相同（2026-10-15 复核）。只在改了 PS 配置时才需要用 FD 重编替换：
+#   FD 重编产物在 <FD 工程>/soc_fsbl/build/soc_fsbl.elf，替换后请更新本文件里的 MD5。
+#
+# u-boot.elf
+#   与厂家 BOOT.bin 第 2 分区逐字节一致（重建后脚本会再校验一次 MD5）。损坏时删掉它，
+#   用 -VendorDemo <厂家 NPU demo 目录> 重建；重建要读 demo 的 boot/BOOT.bin，
+#   其 MD5 必须是 D6B2D387CB405444D1E7EF10E2855285（偏移 0x40e4c0 按这一份算死）。
+#
+# 已下线（2026-10-15）
+#   ① 厂家基线比特流 vendor.bit（4,052,202 B，MD5 9C611D2724C8464BD3C0B887D5A3EB1A）与
+#      「原样重打包验证」（产出 MD5 41489E57…）：BOOT.bin 的第 2 分区一律接我们自己的
+#      PL 逻辑，-Bit 成为必填项。
+#   ② 厂家完整镜像 vendor-BOOT.bin（5,179,264 B，MD5 D6B2D387…）：它只是 u-boot.elf 的
+#      提取来源，而 u-boot.elf 本身已入库，故不再重复保存这 4.94 MB；改为用 MD5 校验
+#      u-boot.elf 自身来防损坏。
+#   ③ 一次性的 scripts/sd_image/make_sd_image.sh（持久化卡早已做好并上板通过）。
+#   厂家 demo 里那份干净比特流原件在 soc_prj/soc_prj_Runs/best_result/soc_prj.bit
+#   （⚠ 不是 phy_1/soc_prj.bit，那一路会被本地重编覆盖）。

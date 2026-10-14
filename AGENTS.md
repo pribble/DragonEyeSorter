@@ -25,7 +25,7 @@
 | `train/` | 分类模型：合成数据、训练、导出 + UINT8 量化、评估 | Python + ultralytics + ORT（WSL / GPU） |
 | `models/` | `label_list.json`（类别表唯一源） | 数据文件 |
 | `pc/` | PC 端：plc_sim（CAN「产线 PLC」模拟器）、report（测试报告出数） | Python |
-| `scripts/` | 构建与部署：BOOT.bin 打包、SD 镜像 | PowerShell / Bash |
+| `scripts/` | 构建与部署：BOOT.bin 打包、写 SD 卡 | PowerShell / Bash |
 
 ## 硬性约定（违反会导致联调事故）
 
@@ -35,9 +35,9 @@
 4. **PL 贡献要真实**：评分规则"全部功能仅 PS 实现扣分"——时序关键的脉冲、总线帧、IO 采样放在 PL。
 5. **实测与口径诚实**：指令分辨率 vs 实测精度、"采集 / 显示实时性" vs "推理按物料触发"分开报告；未实测的标 ⚠。
 6. **定量数据进 log**：实测数字写 `docs/log/YYYY-MM-DD-主题.md`，设计文档只保留结论与引用。
-7. **不入库**：数据集、模型权重、压缩包、SD 镜像、内核/rootfs/ArmNN 二进制。采购清单、价格、链接也不放进本仓库。**白名单例外**（2026-10-09 决定）：① `pl/soc_base/`（厂家 soc_prj 底板工程，含加密 IP）；② `scripts/bootbin/parts/` 的 `fsbl.elf`、`u-boot.elf`（BOOT.bin 中不随 PL/应用重编而变的固定零件，有 MD5 记录）；`*.bit`/`*.hpf`/`*.elf` 仍总体忽略，BOOT.bin 不入库、打包产出。
+7. **不入库**：数据集、模型权重、压缩包、SD 镜像、内核/rootfs/ArmNN 二进制。采购清单、价格、链接也不放进本仓库。**白名单例外**（2026-10-09 决定）：① `pl/soc_base/`（厂家 soc_prj 底板工程，含加密 IP）；② `scripts/bootbin/parts/` 的 `fsbl.elf`、`u-boot.elf`（BOOT.bin 中不随 PL/应用重编而变的固定零件，有 MD5 记录）与 `MD5SUMS.txt`（零件台账）。`*.bit`/`*.hpf`/`*.elf` 仍总体忽略，BOOT.bin 不入库、打包产出。**BOOT.bin 的第 2 分区一律接我们自己的比特流**（`-Bit` 必填）：厂家基线比特流、厂家完整 BOOT.bin、以及「原样重打包验证」路径已于 2026-10-15 全部下线，`parts/` 只留两个 `.elf`。
 8. **测试埋点随代码一起写**：时间戳、计数器、统计接口不能等最后补。
-9. **文档不写主机路径**：设计文档、README、脚本注释里只允许出现 ① 仓库内相对路径 ② 板端路径（`/root/des`、`/mnt/mmcblk0p1`、`/opt/armnn_lib`） ③ 环境变量名与 `<占位符>`。要引用外部路径就写 `.env` 的变量（`$FD_ROOT` / `$TD_ROOT` / `$NPU_DEMO` / `$SDK_LIBS` / `$FREETYPE_INC` / `$BOARD_LIBS`）。带盘符的主机绝对路径只允许出现在 `docs/log/` 的历史记录与本机 `.env` 里（原因见 [docs/log/README](docs/log/README.md)）。
+9. **文档不写主机路径**：设计文档、README、脚本注释里只允许出现 ① 仓库内相对路径 ② 板端路径（`/root/des`、`/mnt/mmcblk0p1`、`/opt/armnn_lib`） ③ 环境变量名与 `<占位符>`。要引用外部路径就写 `.env` 的变量（`$FD_ROOT` / `$TD_ROOT` / `$ARMNN_LIB` / `$OPENCV_LIB` / `$FREETYPE_INC` / `$BOARD_LIBS`）。带盘符的主机绝对路径只允许出现在 `docs/log/` 的历史记录与本机 `.env` 里（原因见 [docs/log/README](docs/log/README.md)）。
 10. **新 PL 模块**：跨时钟域用「翻转 + 两级同步」（像素域 ↔ 75MHz 已在 `set_clock_groups -exclusive` 里），不要直接跨域采样；单模块控制在几百 LUT 以内（整片 slice 已约 82%、ERAM 只剩 19 块），大块图像算法放 PS。
 
 ## 工作流

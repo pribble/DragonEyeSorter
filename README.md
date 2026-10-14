@@ -49,7 +49,7 @@ DragonEyeSorter/
 ├── train/         # 分类模型：合成数据、训练、导出 + UINT8 量化、评估（WSL / GPU）
 ├── models/        # label_list.json（类别表唯一源）
 ├── pc/            # PC 端：plc_sim（CAN「产线 PLC」模拟器）、report（测试报告出数）
-├── scripts/       # BOOT.bin 打包、持久化 SD 镜像
+├── scripts/       # BOOT.bin 打包、写 SD 卡
 ├── AGENTS.md      # 协作规范（AI 助手与新队员先读）
 ├── README.md
 └── .env.example   # 本机路径模板：复制为 .env 后填写，见 docs/环境与上手

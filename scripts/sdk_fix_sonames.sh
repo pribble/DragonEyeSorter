@@ -7,18 +7,19 @@
 #   plain name  (libX.so)   : what -lX looks for
 # For every lib file it creates copies named by its SONAME and by the plain name, if missing.
 #
-# usage: sh scripts/sdk_fix_sonames.sh <SDK libs dir | any lib dir> [readelf]
-#   SDK root (contains armnn_lib/ and ffmpeg_opencv4.7.0_aarch64/): both subdirs are scanned
-#     e.g. sh scripts/sdk_fix_sonames.sh D:/ANLU/work/face_detection_src/app/face_detection/libs \
-#              D:/ANLU/FD/toolchain/gcc/aarch64_linux/bin/aarch64-linux-gnu-readelf.exe
-#   any other directory (e.g. $BOARD_LIBS, copied off the board): that directory is scanned
-#     e.g. sh scripts/sdk_fix_sonames.sh "$BOARD_LIBS" \
+# usage: sh scripts/sdk_fix_sonames.sh <lib dir> [readelf]
+#   一个库一个目录（.env 的 ARMNN_LIB / OPENCV_LIB 就各是一个这样的根）：
+#     sh scripts/sdk_fix_sonames.sh "$ARMNN_LIB"  "$FD_ROOT/toolchain/gcc/aarch64_linux/bin/aarch64-linux-gnu-readelf.exe"
+#     sh scripts/sdk_fix_sonames.sh "$OPENCV_LIB" "$FD_ROOT/toolchain/gcc/aarch64_linux/bin/aarch64-linux-gnu-readelf.exe"
+#   板上库的本地拷贝（$BOARD_LIBS）：同样直接给目录
+#     sh scripts/sdk_fix_sonames.sh "$BOARD_LIBS" \
 #              "$FD_ROOT/toolchain/gcc/aarch64_linux/bin/aarch64-linux-gnu-readelf.exe"
+#   兼容旧写法：给一个同时含 armnn_lib/ 与 ffmpeg_opencv4.7.0_aarch64/ 的父目录时，两个子目录都扫
 set -e
 SDK=${1:?libs dir}
 READELF=${2:-aarch64-linux-gnu-readelf}
 
-# SDK 根 → 扫两个子目录；其它目录（如 $BOARD_LIBS）→ 扫它自己
+# 父目录（同时含两个库）→ 扫两个子目录；单个库目录（ARMNN_LIB / OPENCV_LIB / $BOARD_LIBS）→ 扫它自己
 if [ -d "$SDK/armnn_lib/lib" ] && [ -d "$SDK/ffmpeg_opencv4.7.0_aarch64/lib" ]; then
     DIRS="$SDK/armnn_lib/lib $SDK/ffmpeg_opencv4.7.0_aarch64/lib"
 else

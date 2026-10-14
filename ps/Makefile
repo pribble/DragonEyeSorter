@@ -6,10 +6,12 @@
 # 推荐: 先配置 .env 文件，然后直接 make
 #
 # CROSS  toolchain prefix. Use the FD one (Linaro 7.4, glibc 2.25 = board); NOT a distro aarch64 gcc (newer glibc).
-# SDK    vendor NPU demo libs dir (demo.zip -> face_detection/libs): armnn_lib/ + ffmpeg_opencv4.7.0_aarch64/.
-#        Same files as /opt/armnn_lib and /opt/ffmpeg_opencv4.7.0_aarch64 on the board. Kept out of the repo (113 MB).
+# ARMNN_LIB / OPENCV_LIB  两个第三方库目录，各自一个变量、各自一个根：
+#        ARMNN_LIB  = ArmNN 运行时 + Alnpu 后端（含 libfmt.a）
+#        OPENCV_LIB = OpenCV 4.7 + FFmpeg（aarch64 预编译）
+#        与板上 /opt/armnn_lib、/opt/ffmpeg_opencv4.7.0_aarch64 同名同级；两者都不入库（合计 63 MB）。
 #
-# 本文件不写主机路径：FD_ROOT / SDK_LIBS / FREETYPE_INC / BOARD_LIBS 一律来自 .env（本机、不入库）或命令行。
+# 本文件不写主机路径：FD_ROOT / ARMNN_LIB / OPENCV_LIB / FREETYPE_INC / BOARD_LIBS 一律来自 .env（本机、不入库）或命令行。
 #
 # 目录：src/ 产品源码（只放编进 des_app 的，再按角色分 app / hw / sched / measure / ui / vision）、
 #       board/ 上板脚本、tools/ 人敲的命令行、tests/ 测试、kernel/ 驱动、vendor/ 非我们写的。
@@ -24,7 +26,7 @@
 -include ../.env.make
 
 # 不给主机路径默认值：缺配置就报错并给出下一步，而不是默默去用某台机器上的目录
-ENV_HINT = 先在仓库根把 .env.example 复制为 .env 并填好路径（见 docs/环境与上手.md），再运行 scripts/generate_env_make.sh；也可命令行覆盖，如 make CROSS=<工具链前缀> SDK_LIBS=<libs>
+ENV_HINT = 先在仓库根把 .env.example 复制为 .env 并填好路径（见 docs/环境与上手.md），再运行 scripts/generate_env_make.sh；也可命令行覆盖，如 make CROSS=<工具链前缀> ARMNN_LIB=<armnn_lib 目录> OPENCV_LIB=<ffmpeg_opencv4.7.0_aarch64 目录>
 
 ifneq ($(MAKECMDGOALS),clean)
 ifeq ($(origin CROSS),undefined)
@@ -35,7 +37,6 @@ endif
 endif
 
 CROSS ?= $(FD_ROOT)/toolchain/gcc/aarch64_linux/bin/aarch64-linux-gnu-
-SDK   ?= $(SDK_LIBS)
 BUILD ?= build
 
 CC  := $(CROSS)gcc
@@ -44,8 +45,8 @@ CXX := $(CROSS)g++
 CFLAGS   ?= -O2 -g -Wall -Wextra
 CXXFLAGS ?= -O2 -g -Wall -Wextra -std=c++17
 
-ARMNN  := $(SDK)/armnn_lib
-OPENCV := $(SDK)/ffmpeg_opencv4.7.0_aarch64
+ARMNN  := $(ARMNN_LIB)
+OPENCV := $(OPENCV_LIB)
 # board paths baked in as rpath, so no LD_LIBRARY_PATH is needed at run time
 RPATH  := -Wl,-rpath,/opt/armnn_lib/lib:/opt/ffmpeg_opencv4.7.0_aarch64/lib
 
@@ -72,7 +73,8 @@ OPENCV_LIBS := -lopencv_calib3d -lopencv_features2d -lopencv_flann -lopencv_imgp
 # 用 make 自己的 wildcard + error（不经过 shell）：从 PowerShell 调 make 时配方由 cmd.exe 执行
 # （FD 的 sh.exe 不在 PATH 上），`test -d` 这类 POSIX 写法会直接报 "'test' is not recognized"。
 check-sdk:
-	@$(if $(wildcard $(SDK_LIBS)),echo SDK_LIBS ok,$(error SDK_LIBS 未设置或目录不存在：$(SDK_LIBS)。$(ENV_HINT)))
+	@$(if $(wildcard $(ARMNN_LIB)),echo ARMNN_LIB ok,$(error ARMNN_LIB 未设置或目录不存在：$(ARMNN_LIB)。$(ENV_HINT)))
+	@$(if $(wildcard $(OPENCV_LIB)),echo OPENCV_LIB ok,$(error OPENCV_LIB 未设置或目录不存在：$(OPENCV_LIB)。$(ENV_HINT)))
 check-board:
 	@$(if $(wildcard $(FREETYPE_INC)),echo FREETYPE_INC ok,$(error FREETYPE_INC 未设置或目录不存在：$(FREETYPE_INC)。$(ENV_HINT)))
 	@$(if $(wildcard $(BOARD_LIBS)),echo BOARD_LIBS ok,$(error BOARD_LIBS 未设置或目录不存在：$(BOARD_LIBS)。$(ENV_HINT)))

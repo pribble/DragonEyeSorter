@@ -5,8 +5,10 @@ BOOT.bin
 # *.bit / *.hpf / *.elf 总体忽略；厂家底板与 boot 零件按 2026-10-09 决定白名单入库：
 #   pl/soc_base/soc_prj.hpf（打开工程必需；命令行编译实测不需要，GUI 打开工程要用）
 #   pl/soc_base/design_0/**（含 .v/.xml，无 .bit/.elf）
-#   scripts/bootbin/parts/fsbl.elf、u-boot.elf（FSBL/U-Boot 不随 PL 重编而变）
+#   scripts/bootbin/parts/fsbl.elf、u-boot.elf（不随 PL 重编而变，见 parts/MD5SUMS.txt）
 # 2026-10-13 删除 soc_prj_TD622.bit 后，soc_base 里的 .bit 不再有任何例外
+# 2026-10-15 删除 parts/vendor.bit、parts/vendor-BOOT.bin（前者被"接自己的 PL 逻辑"取代，
+#            后者只是 u-boot.elf 的提取来源，已改用 MD5 校验 u-boot.elf 本身）
 *.bit
 *.hpf
 !pl/soc_base/*.hpf
@@ -21,6 +23,7 @@ BOOT.bin
 scripts/bootbin/parts/*
 !scripts/bootbin/parts/fsbl.elf
 !scripts/bootbin/parts/u-boot.elf
+!scripts/bootbin/parts/MD5SUMS.txt
 scripts/sd_image/flash_log.txt
 
 ps/tools/desreg

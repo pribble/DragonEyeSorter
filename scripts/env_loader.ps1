@@ -44,12 +44,12 @@ Get-Content $EnvFile -Encoding UTF8 | ForEach-Object {
 
 Write-Host "`n📌 关键路径:" -ForegroundColor Cyan
 
-# 验证并显示关键路径
+# 验证并显示关键路径（NPU_DEMO 已不再是必需项：BOOT.bin 零件在仓库内 scripts/bootbin/parts/）
 $criticalPaths = @(
-    @{Name="FD_ROOT"; Path=$env:FD_ROOT},
-    @{Name="TD_ROOT"; Path=$env:TD_ROOT},
-    @{Name="NPU_DEMO"; Path=$env:NPU_DEMO},
-    @{Name="SDK_LIBS"; Path=$env:SDK_LIBS}
+    @{Name="FD_ROOT";    Path=$env:FD_ROOT},
+    @{Name="TD_ROOT";    Path=$env:TD_ROOT},
+    @{Name="ARMNN_LIB";  Path=$env:ARMNN_LIB},
+    @{Name="OPENCV_LIB"; Path=$env:OPENCV_LIB}
 )
 
 foreach ($item in $criticalPaths) {

@@ -27,7 +27,7 @@
 | `hdmi.cpp` `.hpp`、`hdmi_framebuffer.cpp` `.hpp`、`ihdmi.hpp`、`axi_hdmi.h`、`fast_io.cpp` `.h` | 厂家 fb0 显示路径。**不编入**：HDMI 输出走 `src/ui/hdmi_out.cpp`（直写显示 VDMA）；`ihdmi::enumerate_device` 的声明已随 `ihdmi_enum.cpp` 一起删，不留「声明有、定义无」 |
 | `example_yolo.json` | 后处理参数示例，接 `postprocess.cpp` 时的模板 |
 
-这些只依赖 SDK（`$SDK_LIBS` 的 armnn / OpenCV），要启用就把对应 `.cpp` 加进 `ps/Makefile` 的 `VISION_SRC`（个别文件 include `src/vision/` 的头，`-Isrc/vision` 已在 `INC` 里）。
+这些只依赖两个库目录（`$ARMNN_LIB` 与 `$OPENCV_LIB`），要启用就把对应 `.cpp` 加进 `ps/Makefile` 的 `VISION_SRC`（个别文件 include `src/vision/` 的头，`-Isrc/vision` 已在 `INC` 里）。
 
 ## 已删除（需要时从厂家 demo 取回）
 

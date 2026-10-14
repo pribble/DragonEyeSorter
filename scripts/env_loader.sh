@@ -43,8 +43,8 @@ check_path() {
 
 # 检查关键路径
 check_path "FD_ROOT"
-check_path "NPU_DEMO"
-check_path "SDK_LIBS"
+check_path "ARMNN_LIB"
+check_path "OPENCV_LIB"
 
 # 导出常用的派生变量
 export CROSS_COMPILE="${FD_ROOT}/toolchain/gcc/aarch64_linux/bin/aarch64-linux-gnu-"
@@ -52,5 +52,5 @@ export BOOTGEN="${FD_ROOT}/tools/bootgen/albg1.exe"
 
 echo "📌 关键路径:"
 echo "   FD_ROOT    = $FD_ROOT"
-echo "   NPU_DEMO   = $NPU_DEMO"
-echo "   SDK_LIBS   = $SDK_LIBS"
+echo "   ARMNN_LIB  = $ARMNN_LIB"
+echo "   OPENCV_LIB = $OPENCV_LIB"

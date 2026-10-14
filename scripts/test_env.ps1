@@ -6,8 +6,8 @@ param(
 
 Write-Host "`n🔍 DragonEyeSorter 环境配置测试`n" -ForegroundColor Cyan
 
-# 加载环境
-if (-not (Test-Path "$PSScriptRoot\..\env")) {
+# 加载环境（env_loader 自己会定位仓库根的 .env；已加载过就不重复）
+if (-not $DES_ENV_LOADED) {
     . "$PSScriptRoot\env_loader.ps1"
 }
 
@@ -78,16 +78,39 @@ if ($env:TD_ROOT -match '6\.2\.1') {
 # ===== 厂家资源测试 =====
 Write-Host "`n📚 厂家资源" -ForegroundColor Yellow
 
-$tests += Test-Item "NPU Demo 目录" $env:NPU_DEMO "Directory" "Critical"
-$tests += Test-Item "NPU Demo BOOT.bin" "$env:NPU_DEMO\boot\BOOT.bin" "File" "Critical"
-$tests += Test-Item "NPU Demo uInitrd" "$env:NPU_DEMO\boot\uInitrd.lz4" "File" "Important"
-$tests += Test-Item "NPU Demo SDK" "$env:SDK_LIBS" "Directory" "Important"
+# 打包 BOOT.bin 的零件：都在仓库内（scripts/bootbin/parts/），不依赖仓库外的厂家 demo 目录
+$parts = "$PSScriptRoot\bootbin\parts"
+$tests += Test-Item "BOOT.bin 零件目录" $parts "Directory" "Critical"
+$tests += Test-Item "FSBL 零件" "$parts\fsbl.elf" "File" "Critical"
+$tests += Test-Item "U-Boot 零件" "$parts\u-boot.elf" "File" "Critical"
+$tests += Test-Item "零件台账" "$parts\MD5SUMS.txt" "File" "Important"
+
+# u-boot.elf 的 MD5 是硬约束：它进 BOOT.bin 第 3 分区，静默损坏要到开机失败才发现
+if (Test-Path "$parts\u-boot.elf") {
+    $ubHash = (Get-FileHash "$parts\u-boot.elf" -Algorithm MD5).Hash
+    $ubOk   = $ubHash -eq 'E844648EC910C87EA8A036AD4D3D3E45'
+    $tests += @{
+        Name    = "U-Boot 零件的 MD5"
+        Path    = "$parts\u-boot.elf"
+        Type    = "Hash"
+        Level   = "Critical"
+        Status  = if ($ubOk) { "Pass" } else { "Fail" }
+        Message = if ($ubOk) { $ubHash } else { "$ubHash ≠ E844648E…（零件被改/损坏；删掉后用 -VendorDemo 重建）" }
+    }
+}
+
+# vendor.bit 与「原样重打包验证」已下线（2026-10-15）：BOOT.bin 的第 2 分区一律用我们自己的
+# 比特流，-Bit 是必填项；因此这里不再检查任何默认比特流，缺失时 make_bootbin.ps1 会直接报错。
 
 # ===== PS 开发依赖测试 =====
 Write-Host "`n🛠️ PS 开发依赖" -ForegroundColor Yellow
 
-$tests += Test-Item "SDK armnn_lib" "$env:SDK_LIBS\armnn_lib" "Directory" "Important"
-$tests += Test-Item "SDK OpenCV" "$env:SDK_LIBS\ffmpeg_opencv4.7.0_aarch64" "Directory" "Important"
+# 两个第三方库各自一个变量、各自一个根（名字与板端 /opt 下同名目录一致）
+$tests += Test-Item "ArmNN 库目录（ARMNN_LIB）" $env:ARMNN_LIB "Directory" "Important"
+$tests += Test-Item "OpenCV+FFmpeg 库目录（OPENCV_LIB）" $env:OPENCV_LIB "Directory" "Important"
+# 库文件本身也查：目录在而 .so 软链接没修（sdk_fix_sonames.sh 没跑）时，链接期才会报错
+$tests += Test-Item "ArmNN 的链接名 libarmnn.so" "$env:ARMNN_LIB\lib\libarmnn.so" "File" "Important"
+$tests += Test-Item "OpenCV 的链接名 libopencv_core.so" "$env:OPENCV_LIB\lib\libopencv_core.so" "File" "Important"
 $tests += Test-Item "FreeType 头文件（编 des_app 必需）" $env:FREETYPE_INC "Directory" "Important"
 $tests += Test-Item "板上库文件" $env:BOARD_LIBS "Directory" "Optional"
 
