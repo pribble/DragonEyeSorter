@@ -41,6 +41,7 @@ struct PartRecord {
     // NPU: votes, mean inference time, mean latency camera frame complete -> probabilities (0 = no NPU result)
     int votes = 0;
     float npu_ms = 0, lat_ms = 0;
+    int recipe = 0;              // active recipe id when the part was logged (recipes.json)
 };
 
 class PartLog {

@@ -40,6 +40,10 @@ public:
     // operator / PLC commands (same rules for both; worker thread). Return a CANP_ACK_* result.
     uint8_t command(uint8_t cmd, const char *who);
     uint8_t set_speed(double mm_s, const char *who);
+    // recipe changeover: id must be in cfg.recipes and the line not running (stop first). The worker picks the
+    // accepted id up with take_recipe() and applies it (tracker size rule + HMI).
+    uint8_t select_recipe(int id, const char *who);
+    int take_recipe();                      // id accepted since the last call, -1 = none
     uint8_t state() const { return state_; }
     double speed_mm_s() const { return speed_mm_s_; }
 
@@ -68,6 +72,7 @@ private:
     std::set<int> reported_;     // track ids already sent as PART
     std::string last_event_;
     double speed_mm_s_ = 0;      // last set belt speed (0 = config run_speed)
+    int pending_recipe_ = -1;    // accepted by select_recipe, not yet applied by the worker
     FlapSequencer flaps_;
     int flap_us_[2] = {-1, -1};  // last written pulse widths
     bool pwm_enabled_ = false;

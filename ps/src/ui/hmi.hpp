@@ -4,7 +4,7 @@
 // side of the belt only). Four pages, mouse / keyboard through evdev (ui_input.hpp), Chinese text (text_ft.hpp):
 //   总览  counts, yield, throughput, run state, parts per class, last parts
 //   曲线  gear OD and rack length trends with tolerance lines + mean / sigma / Cpk; worker / NPU time, belt speed
-//   参数  belt speed, size tolerances, size rule on / off, confidence threshold, image saving; run / stop buttons.
+//   参数  recipe (配方), belt speed, size tolerances, size rule on / off, confidence threshold, image saving; run / stop.
 //         Applied at once by the worker and saved to <config dir>/ui_params.json (loaded at start)
 //   记录  last parts with reason, sizes and the part crop
 // Everything runs on the worker thread (core 1): render() (~8 Hz) draws into a BGR image that the capture thread only
@@ -32,6 +32,7 @@ struct HmiParams {            // operator-editable, persisted in ui_params.json
     int images = 1;           // 0 none, 1 NG + recheck, 2 all
     int pl_mode = 0;          // des_vision display: 0 camera 1 gray 2 Gaussian 3 binary 4 Sobel 5 edges
     int pl_thr = 128;         // des_vision binary threshold
+    int recipe = 1;           // active recipe id (recipes.json); switching it also resets the four size values above
 };
 
 struct HmiStatus {            // from the worker, every cycle
@@ -46,8 +47,8 @@ struct HmiStatus {            // from the worker, every cycle
 };
 
 struct HmiAction {
-    enum Kind { Params, Command } kind = Params;
-    int cmd = 0;              // CANP_CMD_* for Command
+    enum Kind { Params, Command, Recipe } kind = Params;
+    int cmd = 0;              // CANP_CMD_* for Command, recipe id for Recipe (the worker applies the run rules first)
 };
 
 class Hmi {
@@ -55,6 +56,7 @@ public:
     static constexpr int W = 1920, H = 300, Y0 = 1080 - 300;
     Hmi(const AppConfig &cfg, const std::string &params_path);
     const HmiParams &params() const { return p_; }
+    bool set_recipe(int id);  // known id: switch, load its sizes into the params, save; false = unknown id
     void add_part(const PartRecord &r, const cv::Mat &crop, double now);
     void status(const HmiStatus &s, double now);
     std::vector<HmiAction> handle(const std::vector<UiEvent> &ev);   // clicks / keys -> actions for the worker

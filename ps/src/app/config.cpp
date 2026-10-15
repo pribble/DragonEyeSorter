@@ -229,6 +229,41 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             return cp + ": " + e.what();
         }
     }
+    // recipes (after measure.rule, which is the fallback recipe 1)
+    get(j, "recipe", cfg.recipe);
+    get(j, "recipes_file", cfg.recipes_file);
+    {
+        std::string rp = cfg.recipes_file;
+        if (!rp.empty() && rp[0] != '/') rp = dir_of(path) + "/" + rp;
+        std::ifstream rf(rp);
+        cfg.recipes.clear();
+        if (!rf) {
+            cfg.recipes.push_back(Recipe::from_rule(cfg.tracker.size, 1, "默认（des_app.json measure.rule）"));
+        } else {
+            try {
+                json rj;
+                rf >> rj;
+                for (const json &e : rj.at("recipes")) {
+                    Recipe r = Recipe::from_rule(cfg.tracker.size, 0, "");   // missing keys keep measure.rule values
+                    get(e, "id", r.id); get(e, "name", r.name);
+                    get(e, "gear_teeth", r.gear_teeth); get(e, "gear_od", r.gear_od); get(e, "gear_od_tol", r.gear_od_tol);
+                    get(e, "gear_bore", r.gear_bore); get(e, "gear_bore_tol", r.gear_bore_tol);
+                    get(e, "gear_max_ecc", r.gear_max_ecc); get(e, "rack_len", r.rack_len); get(e, "rack_len_tol", r.rack_len_tol);
+                    if (r.id < 1 || r.id > 255) return rp + ": recipe id must be 1..255";
+                    if (find_recipe(cfg.recipes, r.id)) return rp + ": duplicate recipe id " + std::to_string(r.id);
+                    if (r.name.empty()) r.name = "配方 " + std::to_string(r.id);
+                    cfg.recipes.push_back(r);
+                }
+            } catch (const std::exception &e) {
+                return rp + ": " + e.what();
+            }
+            if (cfg.recipes.empty()) return rp + ": no recipes";
+        }
+        const Recipe *r = find_recipe(cfg.recipes, cfg.recipe);
+        if (!r) return path + ": recipe " + std::to_string(cfg.recipe) + " is not in " + rp;
+        r->apply(cfg.tracker.size);
+    }
+
     if (cfg.pick_after_fov > 0) cfg.picker.pick_x = cfg.tracker.fov_x1 + cfg.pick_after_fov;   // after calib.json
     cfg.picker.tail_x = cfg.tracker.tail_x;
     cfg.picker.recheck_outlet = 0;

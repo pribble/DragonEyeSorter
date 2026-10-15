@@ -16,7 +16,7 @@
 namespace des {
 namespace {
 
-enum { A_TAB = 1, A_DEC, A_INC, A_TOGGLE, A_IMAGES, A_CMD, A_SELECT, A_PLMODE, A_PLTHR };
+enum { A_TAB = 1, A_DEC, A_INC, A_TOGGLE, A_IMAGES, A_CMD, A_SELECT, A_PLMODE, A_PLTHR, A_RECIPE };
 
 const cv::Scalar BG(34, 31, 29), PANEL(52, 48, 45), LINE(80, 76, 72), WHITE(235, 235, 235), DIM(150, 150, 150),
     GREEN(90, 200, 90), RED(80, 80, 235), ORANGE(40, 165, 255), CYAN(220, 200, 70), YELLOW(70, 215, 235),
@@ -79,6 +79,7 @@ Hmi::Hmi(const AppConfig &cfg, const std::string &params_path) : cfg_(cfg), para
     p_.rack_len_tol = cfg.tracker.size.rack_len_tol;
     p_.min_conf = cfg.tracker.min_conf;
     p_.images = cfg.storage.images == "none" ? 0 : cfg.storage.images == "all" ? 2 : 1;
+    p_.recipe = cfg.recipe;
     load_params();   // the operator's last settings win over des_app.json
     // Chinese class names from the label list (single source)
     std::string ll = cfg.label_list;
@@ -118,6 +119,8 @@ void Hmi::load_params()
         p_.images = std::clamp(j.value("images", p_.images), 0, 2);
         p_.pl_mode = std::clamp(j.value("pl_mode", p_.pl_mode), 0, 5);
         p_.pl_thr = std::clamp(j.value("pl_thr", p_.pl_thr), 0, 255);
+        const int rc = j.value("recipe", p_.recipe);
+        if (find_recipe(cfg_.recipes, rc)) p_.recipe = rc;   // a recipe removed from recipes.json: keep the default
     } catch (const std::exception &) {
     }
 }
@@ -127,9 +130,22 @@ void Hmi::save_params() const
     nlohmann::json j = {{"belt_speed", p_.belt_speed}, {"size_rule", p_.size_rule}, {"gear_od", p_.gear_od},
                         {"gear_od_tol", p_.gear_od_tol}, {"rack_len", p_.rack_len}, {"rack_len_tol", p_.rack_len_tol},
                         {"min_conf", p_.min_conf}, {"images", p_.images}, {"pl_mode", p_.pl_mode},
-                        {"pl_thr", p_.pl_thr}};
+                        {"pl_thr", p_.pl_thr}, {"recipe", p_.recipe}};
     std::ofstream f(params_path_);
     if (f) f << j.dump(1) << "\n";
+}
+
+bool Hmi::set_recipe(int id)
+{
+    const Recipe *r = find_recipe(cfg_.recipes, id);
+    if (!r) return false;
+    p_.recipe = id;
+    p_.gear_od = r->gear_od;
+    p_.gear_od_tol = r->gear_od_tol;
+    p_.rack_len = r->rack_len;
+    p_.rack_len_tol = r->rack_len_tol;
+    save_params();
+    return true;
 }
 
 void Hmi::add_part(const PartRecord &r, const cv::Mat &crop, double now)
@@ -191,6 +207,14 @@ std::vector<HmiAction> Hmi::handle(const std::vector<UiEvent> &ev)
             case A_IMAGES: p_.images = (p_.images + 1) % 3; changed = true; break;
             case A_PLMODE: p_.pl_mode = (p_.pl_mode + 1) % 6; changed = true; break;
             case A_PLTHR: p_.pl_thr = std::clamp(p_.pl_thr + h.arg * 5, 0, 255); changed = true; break;
+            case A_RECIPE: {
+                const auto &rs = cfg_.recipes;
+                const int n = int(rs.size());
+                int k = 0;
+                while (k < n && rs[k].id != p_.recipe) k++;
+                if (n > 1) out.push_back({HmiAction::Recipe, rs[((k < n ? k : 0) + h.arg + n) % n].id});
+                break;
+            }
             case A_DEC:
             case A_INC: {
                 const ParamDef &d = kParams[h.arg];
@@ -270,6 +294,8 @@ void Hmi::page_overview(cv::Mat &img, double)
         text(img, cells[i].k, x, y, 18, DIM);
         text(img, cells[i].v, x, y + 26, 40, cells[i].c);
     }
+    if (const Recipe *rc = find_recipe(cfg_.recipes, p_.recipe))
+        text(img, "配方 " + std::to_string(rc->id) + " · " + rc->name, 172, 276, 16, DIM);
     // parts per class
     const int bx = 600;
     text(img, "各类数量", bx, 6, 18, DIM);
@@ -384,10 +410,22 @@ void Hmi::page_curves(cv::Mat &img)
 
 void Hmi::page_params(cv::Mat &img)
 {
+    {   // recipe: changeover only while the line is not running (same rule as the PLC's CAN RECIPE)
+        const int y = 6;
+        const Recipe *rc = find_recipe(cfg_.recipes, p_.recipe);
+        const bool can = st_.run_state != CANP_ST_RUN && cfg_.recipes.size() > 1;
+        text(img, "配方", 175, y + 3, 20, WHITE);
+        button(img, {470, y, 46, 28}, "-", false, can ? A_RECIPE : 0, -1, 26);   // wider than the other rows:
+        const std::string name = rc ? std::to_string(rc->id) + " · " + rc->name : "?";   // names run ~250 px
+        const int w = txt_.width(name, 18);
+        text(img, name, 520 + (380 - w) / 2, y + 4, 18, YELLOW);
+        button(img, {904, y, 46, 28}, "+", false, can ? A_RECIPE : 0, 1, 26);
+        text(img, st_.run_state == CANP_ST_RUN ? "运行中不能换型" : "规格一并切换", 962, y + 6, 16, DIM);
+    }
     for (int i = 0; i < kNParams; i++) {
-        const int y = 10 + i * 35;
+        const int y = 37 + i * 31;
         const ParamDef &d = kParams[i];
-        text(img, d.label, 175, y + 4, 20, WHITE);
+        text(img, d.label, 175, y + 3, 20, WHITE);
         std::string val;
         switch (i) {
         case 0: val = fmt("%.0f", p_.belt_speed); break;
@@ -400,16 +438,16 @@ void Hmi::page_params(cv::Mat &img)
         case 7: val = kImages[p_.images]; break;
         }
         if (i == 5) {
-            button(img, {470, y, 286, 30}, val, p_.size_rule, A_TOGGLE, 0, 20);
+            button(img, {470, y, 286, 28}, val, p_.size_rule, A_TOGGLE, 0, 20);
         } else if (i == 7) {
-            button(img, {470, y, 286, 30}, val, false, A_IMAGES, 0, 20);
+            button(img, {470, y, 286, 28}, val, false, A_IMAGES, 0, 20);
         } else {
-            button(img, {470, y, 46, 30}, "-", false, A_DEC, i, 26);   // U+2212 is not in the font
+            button(img, {470, y, 46, 28}, "-", false, A_DEC, i, 26);   // U+2212 is not in the font
             const int w = txt_.width(val, 22);
-            text(img, val, 520 + (186 - w) / 2, y + 3, 22, YELLOW);
-            button(img, {710, y, 46, 30}, "+", false, A_INC, i, 26);
+            text(img, val, 520 + (186 - w) / 2, y + 2, 22, YELLOW);
+            button(img, {710, y, 46, 28}, "+", false, A_INC, i, 26);
         }
-        text(img, d.unit, 772, y + 7, 16, DIM);
+        text(img, d.unit, 772, y + 6, 16, DIM);
     }
     // run control (run mode: same rules as the PLC's CAN commands)
     const int x0 = 1180;

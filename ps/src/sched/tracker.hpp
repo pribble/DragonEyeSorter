@@ -73,6 +73,53 @@ struct SizeRule {
     bool require = false;           // no measurement by decide_x -> recheck
 };
 
+// Product recipe (配方): the part spec the size rule checks against. Changing the recipe = changeover of the line to
+// another spec, e.g. recipe "28-tooth gears": the 30-tooth parts then fail the tooth count (规格混料) and go to scrap.
+// Loaded from recipes.json (config.cpp); selected by the PLC (CAN RECIPE) or the operator (HMI), never while running.
+struct Recipe {
+    int id = 1;                     // 1..255 (CAN RECIPE carries one byte)
+    std::string name;
+    int gear_teeth = 30;
+    float gear_od = 32, gear_od_tol = 0.15f;
+    float gear_bore = 6, gear_bore_tol = 0.3f;
+    float gear_max_ecc = 0.3f;
+    float rack_len = 50, rack_len_tol = 0.5f;
+
+    void apply(SizeRule &r) const   // spec fields only: enabled / outlet / recheck policy stay as configured
+    {
+        r.gear_teeth = gear_teeth;
+        r.gear_od = gear_od;
+        r.gear_od_tol = gear_od_tol;
+        r.gear_bore = gear_bore;
+        r.gear_bore_tol = gear_bore_tol;
+        r.gear_max_ecc = gear_max_ecc;
+        r.rack_len = rack_len;
+        r.rack_len_tol = rack_len_tol;
+    }
+    static Recipe from_rule(const SizeRule &r, int id, const std::string &name)
+    {
+        Recipe c;
+        c.id = id;
+        c.name = name;
+        c.gear_teeth = r.gear_teeth;
+        c.gear_od = r.gear_od;
+        c.gear_od_tol = r.gear_od_tol;
+        c.gear_bore = r.gear_bore;
+        c.gear_bore_tol = r.gear_bore_tol;
+        c.gear_max_ecc = r.gear_max_ecc;
+        c.rack_len = r.rack_len;
+        c.rack_len_tol = r.rack_len_tol;
+        return c;
+    }
+};
+
+inline const Recipe *find_recipe(const std::vector<Recipe> &list, int id)
+{
+    for (const Recipe &r : list)
+        if (r.id == id) return &r;
+    return nullptr;
+}
+
 struct TrackerConfig {
     float fov_x0 = 0, fov_x1 = 300;   // table x range seen by the camera (mm)
     float edge_margin = 10;           // tracks this close to the FOV edge are not expected to be seen

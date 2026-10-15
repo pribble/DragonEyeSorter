@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""part_stats.py — test-report numbers from the board's part records (des_app part_log CSV, 39 columns).
+"""part_stats.py — test-report numbers from the board's part records (des_app part_log CSV, 40 columns).
 
 Copies the CSVs off the board first, e.g.
     scp -r -i ~/.ssh/id_ed25519_anlu root@192.168.137.100:/root/des/records ./records

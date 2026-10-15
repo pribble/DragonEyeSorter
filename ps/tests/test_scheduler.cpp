@@ -128,36 +128,28 @@ static void test_tracker()
 }
 
 // SizeRule: the measurement (filled while the part crosses the view, like measure/track_measure) overrides "pick" only
-static void test_size_rule()
+static PartMeasure meas_gear(int teeth, float od, float ecc, int shorts, bool judged, float bore = 6.02f)
+{
+    PartMeasure m;
+    m.valid = true; m.kind = 'g'; m.teeth_judged = judged; m.teeth = teeth; m.size = od; m.bore = bore;
+    m.ecc = ecc; m.short_teeth = shorts;
+    return m;
+}
+
+static PartMeasure meas_rack(float len)
+{
+    PartMeasure m;
+    m.valid = true; m.kind = 'r'; m.teeth_judged = true; m.size = len; m.teeth = 15; m.pitch = 3.14f;
+    return m;
+}
+
+struct SizeCase { int cls; PartMeasure m; Disposition disp; int dest; const char *what; };
+
+// runs the parts through the tracker (measurement injected mid-view) and checks every disposition
+static void check_size_cases(const TrackerConfig &cfg, const std::vector<SizeCase> &cases, const char *tag)
 {
     std::mt19937 rng(7);
-    TrackerConfig cfg = tracker_cfg();
-    cfg.size.enabled = true;
     Tracker tr(cfg);
-    auto gear = [](int teeth, float od, float ecc, int shorts, bool judged) {
-        PartMeasure m;
-        m.valid = true; m.kind = 'g'; m.teeth_judged = judged; m.teeth = teeth; m.size = od; m.bore = 6.02f;
-        m.ecc = ecc; m.short_teeth = shorts;
-        return m;
-    };
-    auto rack = [](float len) {
-        PartMeasure m;
-        m.valid = true; m.kind = 'r'; m.teeth_judged = true; m.size = len; m.teeth = 15; m.pitch = 3.14f;
-        return m;
-    };
-    struct Case { int cls; PartMeasure m; Disposition disp; int dest; const char *what; };
-    std::vector<Case> cases = {
-        {0, gear(30, 32.01f, 0.05f, 0, true), Disposition::Pick, 0, "good gear"},
-        {0, gear(28, 30.0f, 0.05f, 0, true), Disposition::Flap, 1, "28-tooth gear (spec mix-up)"},
-        {0, gear(30, 32.5f, 0.05f, 0, true), Disposition::Flap, 1, "OD out of tolerance"},
-        {0, gear(30, 32.0f, 0.5f, 0, true), Disposition::Flap, 1, "eccentric bore"},
-        {0, gear(30, 32.0f, 0.05f, 1, true), Disposition::Recheck, 0, "NPU OK, measured short tooth"},
-        {0, gear(30, 32.0f, 0.05f, 1, false), Disposition::Pick, 0, "short tooth not judged (far off-axis)"},
-        {4, rack(48.0f), Disposition::Flap, 1, "48 mm rack"},
-        {4, rack(50.1f), Disposition::Pick, 1, "50 mm rack"},
-        {2, gear(30, 32.0f, 0.05f, 0, true), Disposition::Flap, 2, "NPU flash stays NPU flash"},
-        {0, PartMeasure{}, Disposition::Pick, 0, "not measured, require off"},
-    };
     std::vector<SimPart> parts;
     for (size_t i = 0; i < cases.size(); i++) parts.push_back({-40.f - 70.f * i, 0, 30, 30, 0.f, cases[i].cls});
     uint32_t f = 0;
@@ -174,11 +166,57 @@ static void test_size_rule()
         const Track *tk = nullptr;
         for (const Track &t : tr.tracks())
             if (std::fabs(parts[i].s - t.s) < 5) tk = &t;
-        CHECK(tk && tk->state == TrackState::Decided, "%s: no decided track", cases[i].what);
+        CHECK(tk && tk->state == TrackState::Decided, "%s %s: no decided track", tag, cases[i].what);
         if (!tk) continue;
-        CHECK(tk->disp == cases[i].disp && tk->dest == cases[i].dest, "%s -> %s/%d (%s), want %s/%d", cases[i].what,
-              to_str(tk->disp), tk->dest, tk->why.c_str(), to_str(cases[i].disp), cases[i].dest);
+        CHECK(tk->disp == cases[i].disp && tk->dest == cases[i].dest, "%s %s -> %s/%d (%s), want %s/%d", tag,
+              cases[i].what, to_str(tk->disp), tk->dest, tk->why.c_str(), to_str(cases[i].disp), cases[i].dest);
     }
+}
+
+static void test_size_rule()
+{
+    TrackerConfig cfg = tracker_cfg();
+    cfg.size.enabled = true;
+    check_size_cases(cfg, {
+        {0, meas_gear(30, 32.01f, 0.05f, 0, true), Disposition::Pick, 0, "good gear"},
+        {0, meas_gear(28, 30.0f, 0.05f, 0, true), Disposition::Flap, 1, "28-tooth gear (spec mix-up)"},
+        {0, meas_gear(30, 32.5f, 0.05f, 0, true), Disposition::Flap, 1, "OD out of tolerance"},
+        {0, meas_gear(30, 32.0f, 0.5f, 0, true), Disposition::Flap, 1, "eccentric bore"},
+        {0, meas_gear(30, 32.0f, 0.05f, 1, true), Disposition::Recheck, 0, "NPU OK, measured short tooth"},
+        {0, meas_gear(30, 32.0f, 0.05f, 1, false), Disposition::Pick, 0, "short tooth not judged (far off-axis)"},
+        {4, meas_rack(48.0f), Disposition::Flap, 1, "48 mm rack"},
+        {4, meas_rack(50.1f), Disposition::Pick, 1, "50 mm rack"},
+        {2, meas_gear(30, 32.0f, 0.05f, 0, true), Disposition::Flap, 2, "NPU flash stays NPU flash"},
+        {0, PartMeasure{}, Disposition::Pick, 0, "not measured, require off"},
+    }, "size rule:");
+}
+
+// Recipes (recipes.json): changeover to the 28-tooth gear swaps which gears are good; the bore-8 recipe rejects bore 6
+static void test_recipes()
+{
+    std::vector<Recipe> list = {Recipe::from_rule(SizeRule{}, 1, "G30 bore 6"), Recipe::from_rule(SizeRule{}, 2, "G28"),
+                                Recipe::from_rule(SizeRule{}, 3, "G30 bore 8")};
+    list[1].gear_teeth = 28; list[1].gear_od = 30;
+    list[2].gear_bore = 8;
+    CHECK(find_recipe(list, 2) == &list[1] && !find_recipe(list, 7), "find_recipe");
+    TrackerConfig cfg = tracker_cfg();
+    cfg.size.enabled = true;
+    cfg.size.ng_outlet = 1;
+    find_recipe(list, 2)->apply(cfg.size);
+    CHECK(cfg.size.gear_teeth == 28 && cfg.size.gear_od == 30 && cfg.size.enabled && cfg.size.ng_outlet == 1,
+          "apply sets the spec only (teeth %d od %.1f)", cfg.size.gear_teeth, cfg.size.gear_od);
+    check_size_cases(cfg, {
+        {0, meas_gear(28, 30.02f, 0.05f, 0, true), Disposition::Pick, 0, "28-tooth gear is good now"},
+        {0, meas_gear(30, 32.0f, 0.05f, 0, true), Disposition::Flap, 1, "30-tooth gear is the mix-up now"},
+        {4, meas_rack(50.0f), Disposition::Pick, 1, "rack unchanged"},
+    }, "recipe 2:");
+    find_recipe(list, 3)->apply(cfg.size);
+    check_size_cases(cfg, {
+        {0, meas_gear(30, 32.0f, 0.05f, 0, true, 6.02f), Disposition::Flap, 1, "bore 6 under the bore-8 recipe"},
+        {0, meas_gear(30, 32.0f, 0.05f, 0, true, 8.05f), Disposition::Pick, 0, "bore 8 is good"},
+    }, "recipe 3:");
+    Recipe back = Recipe::from_rule(cfg.size, 9, "x");
+    CHECK(back.gear_bore == 8 && back.gear_teeth == 30 && back.id == 9, "from_rule round trip");
 }
 
 // NPU crop classifier: blob detections carry no class, a few soft votes per track decide (mean probability)
@@ -420,6 +458,7 @@ int main()
     test_geom();
     test_tracker();
     test_size_rule();
+    test_recipes();
     test_votes();
     test_flaps();
     test_picker();

@@ -455,7 +455,7 @@ int main()
             if (lines == 1) continue;
             int commas = 0;
             for (char *c = buf; *c; c++) commas += *c == ',';
-            fields_ok += commas == 38;   // 39 columns, the comma in "why" was replaced
+            fields_ok += commas == 39;   // 40 columns, the comma in "why" was replaced
             if (strstr(buf, ".jpg")) with_img++;
         }
         if (f) fclose(f);
@@ -463,7 +463,7 @@ int main()
                log.csv_path.c_str(), lines, with_img, (unsigned long long)log.written.load(),
                (unsigned long long)log.images.load(), (unsigned long long)log.dropped.load(),
                (unsigned long long)log.errors.load());
-        CHECK(lines == 4 && fields_ok == 3, "csv lines %d, rows with 39 columns %d", lines, fields_ok);
+        CHECK(lines == 4 && fields_ok == 3, "csv lines %d, rows with 40 columns %d", lines, fields_ok);
         CHECK(with_img == 2 && log.images == 2, "images only for flap / recheck (%d)", with_img);
     }
     printf("%d passed, %d failed\n", g_pass, g_fail);

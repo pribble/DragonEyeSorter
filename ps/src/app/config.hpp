@@ -63,16 +63,21 @@ struct AppConfig {
     TrackMeasureConfig measure;
     StorageConfig storage;
     NpuConfig npu;
-    FlapConfig flaps;            // belt-end flaps (des_pwm, v7)  // geometric measurement + size rule (tracker.size), docs/视觉与检测.md "几何测量"
+    FlapConfig flaps;            // belt-end flaps (des_pwm, v7)
     std::string label_list = "models/label_list.json";
     std::string calib_file = "calib.json";     // written by des_app calib-cam, merged over this file if present
     std::string calib_loaded;                  // path actually merged (empty = none)
     float pick_after_fov = 0;                  // > 0: picker.pick_x = calibrated fov_x1 + this (mm)
     bool belt_calibrated = false;
-    bool arm_calibrated = false;               // calib file had an "arm" section (des_app calib-arm)              // calib file had a "belt" section (des_app calib-belt)
+    bool arm_calibrated = false;               // calib file had an "arm" section (des_app calib-arm)
     std::string config_dir = ".";             // folder of the loaded des_app.json (ui_params.json lives there)
     std::vector<std::string> bins = {"gear_box", "rack_box"};          // pick destinations (arm drop poses)
     std::vector<std::string> outlets = {"recheck", "scrap", "rework"};  // flap outlets, index 0 = recheck
+    // product recipes (配方, recipes.json next to des_app.json): the active one sets the spec in tracker.size.
+    // Without the file there is one recipe (id 1) = measure.rule of des_app.json.
+    std::string recipes_file = "recipes.json";
+    std::vector<Recipe> recipes;
+    int recipe = 1;                            // active recipe id at start (the HMI's ui_params.json may override)
 };
 
 // Loads path (missing keys keep their defaults) and builds tracker.rules from the label list.

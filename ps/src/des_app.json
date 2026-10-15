@@ -59,5 +59,8 @@
 
   "bins": ["gear_box", "rack_box"],
   "outlets": ["recheck", "scrap", "rework"],
+  "recipe_comment": "启动配方号（recipes.json 里的 id；界面上次选的优先）。recipes.json 缺失时只有配方 1 = 上面 measure.rule 的规格",
+  "recipe": 1,
+  "recipes_file": "recipes.json",
   "label_list": "label_list.json"
 }

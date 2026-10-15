@@ -171,6 +171,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
     if (!hmi.fonts_ok()) fprintf(stderr, "hmi: Chinese font not found, ASCII fallback\n");
     auto apply_params = [&](const HmiParams &p) {
         SizeRule &r = tr.config().size;
+        if (const Recipe *rc = find_recipe(cfg.recipes, p.recipe)) rc->apply(r);   // then the operator's sizes
         r.enabled = p.size_rule;
         r.gear_od = p.gear_od;
         r.gear_od_tol = p.gear_od_tol;
@@ -281,6 +282,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
             rec.wall_ms = wall_now_ms();   // + offset from the PLC's TIME frame (no RTC on the board)
             rec.t_s = plog.now_s();
             rec.track_id = t.id;
+            rec.recipe = hmi.params().recipe;
             rec.frame_first = t.first_frame;
             rec.frame_last = t.last_frame;
             rec.cls = t.cls;
@@ -378,8 +380,15 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
             if (input)
                 for (const HmiAction &a : hmi.handle(input->take())) {
                     if (a.kind == HmiAction::Params) apply_params(hmi.params());
-                    else if (runner) runner->command(uint8_t(a.cmd), "HMI");
+                    else if (a.kind == HmiAction::Recipe) {
+                        if (runner) runner->select_recipe(a.cmd, "HMI");   // applied below, same path as the PLC's
+                        else if (hmi.set_recipe(a.cmd)) apply_params(hmi.params());
+                    } else if (runner) runner->command(uint8_t(a.cmd), "HMI");
                 }
+            if (runner) {   // recipe accepted from the PLC (CAN RECIPE) or the HMI under the run rules
+                const int rc = runner->take_recipe();
+                if (rc > 0 && hmi.set_recipe(rc)) apply_params(hmi.params());
+            }
             if (now_s() - last_hmi >= 0.12) {
                 hmi_panel = hmi.render(now_s());
                 last_hmi = now_s();

@@ -113,7 +113,7 @@ def fig_architecture():
     box(ax, 85, 41, 24, 10, 'NPU 线程：ROI 224²\nYOLOv8n-cls UINT8\n7.8ms / 件 · 软投票', 'npu', fs=7.8)
     box(ax, 111, 41, 24, 10, 'CAN 状态机\n空闲/运行/暂停/急停/故障\n10Hz 状态 · 每件结果', 'ps', fs=7.8)
     box(ax, 87, 27, 22, 10, '机械臂线程\n逆运动学 → 6 轴航点\n→ SYNC WRITE', 'ps', fs=7.8)
-    box(ax, 111, 27, 24, 10, '存储（后台线程）\n每件 39 列 CSV\n不良件裁切图', 'ps', fs=7.8)
+    box(ax, 111, 27, 24, 10, '存储（后台线程）\n每件 40 列 CSV\n不良件裁切图', 'ps', fs=7.8)
     box(ax, 85, 4, 50, 18, '标定与工具\ncalib-cam（单应）· calib-belt（mm/步）· calib-arm（手眼）\n'
         'measure · collect（训练集）· soak（长测）· pl_check（PL 回归）\nPC：PLC 模拟器 · part_stats 出报告', 'ps', fs=8)
 

@@ -1,6 +1,6 @@
 # pc/report — 测试报告出数
 
-赛题硬性项⑥要「同步精度 / 采集延迟 / AI 耗时 / 总线稳定性」四类实测数据：`des_app live / run` 每判定一件就往 `/root/des/data/log/<日期>/parts_<会话>.csv` 写一行（39 列，定义见 `ps/src/app/part_log.cpp` 的 `csv_header()`），本目录脚本把 CSV 变成报告里的表。
+赛题硬性项⑥要「同步精度 / 采集延迟 / AI 耗时 / 总线稳定性」四类实测数据：`des_app live / run` 每判定一件就往 `/root/des/data/log/<日期>/parts_<会话>.csv` 写一行（40 列，定义见 `ps/src/app/part_log.cpp` 的 `csv_header()`），本目录脚本把 CSV 变成报告里的表。
 
 ```bash
 scp -r -i ~/.ssh/id_ed25519_anlu root@192.168.137.100:/root/des/data/log ./records

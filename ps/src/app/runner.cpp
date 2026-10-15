@@ -135,6 +135,23 @@ uint8_t Runner::set_speed(double mm_s, const char *who)
     return CANP_ACK_OK;
 }
 
+uint8_t Runner::select_recipe(int id, const char *who)
+{
+    const Recipe *r = find_recipe(cfg_.recipes, id);
+    if (!r) return CANP_ACK_BAD_VALUE;
+    if (state_ == CANP_ST_RUN) return CANP_ACK_REJECTED;   // changeover only with the line stopped / paused
+    pending_recipe_ = id;
+    last_event_ = std::string(who) + " recipe " + std::to_string(id) + " " + r->name;
+    return CANP_ACK_OK;
+}
+
+int Runner::take_recipe()
+{
+    const int id = pending_recipe_;
+    pending_recipe_ = -1;
+    return id;
+}
+
 void Runner::handle_can(double now)
 {
     if (can_fd_ < 0) return;
@@ -151,8 +168,8 @@ void Runner::handle_can(double now)
             send_now(canp_ack(f.id, f.data[2], result));
             break;
         case CANP_ID_RECIPE:
-            last_event_ = "PLC recipe " + std::to_string(f.data[0]) + " (recipes not implemented yet)";
-            send_now(canp_ack(f.id, f.data[1], CANP_ACK_OK));
+            result = select_recipe(f.data[0], "PLC");
+            send_now(canp_ack(f.id, f.data[1], result));
             break;
         case CANP_ID_PLC_HB: last_plc_hb_ = now; break;
         case CANP_ID_TIME: {   // the PLC's wall clock (no RTC here): records use our clock + this offset

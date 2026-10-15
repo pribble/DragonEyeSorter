@@ -66,7 +66,7 @@ ps/
   PL v4 起相机 59.83fps，`src/des_app.json` 的 `camera.vmax = 2276` 补到 **60.02fps**（20s 1201 帧 0 丢帧）。PL v5 起每帧带 PL 锁存的拍摄时刻带位置（`CAP_*`，实测与「速度 × 读出时间」一致），旧比特流自动退回「完成后读」。
 - 定位：1/4 降采样灰度（480×270）+ Otsu（下限钳位）+ 开运算 + 外轮廓 + minAreaRect，板上 6.8ms/帧。1/2 降采样要 21ms（DMA 缓冲读像素慢），超帧预算。
 - 几何测量（P1）：`src/measure/measure`，齿轮外径 / 根径 / 孔径 / 偏心 / 规格齿数 / 缺料·缺齿·飞边，齿条长度 / 齿距 / 同上，含视差校正，4~5ms / 件；方法与合成图精度见 docs/视觉与检测.md「几何测量」，测试 `build/test_measure`（57 项）。✅ 已接入 live / run（`src/measure/track_measure`：每件取离光轴最近那帧，结果进跟踪表与 CAN；尺寸 / 规格判定 `measure.rule` 默认关）。
-- 配置：`src/des_app.json`（所有标定值，标 TODO 的待实物标定）；类别表从 `models/label_list.json` 读（由 `src/app/config.cpp` 解析）。板上部署到 `/root/des/`（`des_app`、`des_app.json`、`label_list.json`）。
+- 配置：`src/des_app.json`（所有标定值，标 TODO 的待实物标定）；产品配方 `src/recipes.json`（齿数 / 外径 / 孔径 / 偏心 / 齿条长度及公差，PLC 的 CAN RECIPE 或界面参数页切换，停机换型）；类别表从 `models/label_list.json` 读（由 `src/app/config.cpp` 解析）。板上部署到 `/root/des/`（`des_app`、`des_app.json`、`label_list.json`）。
 
 ## src/vision/ 的定位与改造边界
 
@@ -79,7 +79,7 @@ ps/
 ```bash
 # Windows Git Bash（FD 自带 make 与交叉 gcc）；Linux 上传 CROSS= / SDK= 覆盖
 <FD_ROOT>/toolchain/build-tools/bin/make.exe -C ps   # → ps/build/{desreg,test_*,canplc,des_app}
-scp -i ~/.ssh/id_ed25519_anlu ps/build/des_app ps/board/des_app.sh ps/src/des_app.json models/label_list.json root@192.168.137.100:/root/des/
+scp -i ~/.ssh/id_ed25519_anlu ps/build/des_app ps/board/des_app.sh ps/src/des_app.json ps/src/recipes.json models/label_list.json root@192.168.137.100:/root/des/
 # 板上运行：/root/des/des_app.sh probe -n 10   （mipicam.ko 开机不自动加载，脚本缺模块时先 insmod）
 ```
 

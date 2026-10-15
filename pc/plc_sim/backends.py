@@ -35,6 +35,7 @@ class VirtualBoard:
         self.n_classes = n_classes
         self.last_plc_hb = 0.0
         self.clock_offset_ms = None
+        self.recipes, self.recipe = (1, 2, 3), 1   # ids in ps/src/recipes.json
         self.quit = False
         self.th = threading.Thread(target=self._loop, daemon=True)
         self.th.start()
@@ -63,8 +64,12 @@ class VirtualBoard:
             v = (d[0] | d[1] << 8) / 10.0
             if 0 < v <= 200: self.speed = v
             self.rx.put(P.ack(arb_id, d[2], 0 if 0 < v <= 200 else 2))
-        elif arb_id == P.ID_RECIPE:
-            self.rx.put(P.ack(arb_id, d[1], 0))
+        elif arb_id == P.ID_RECIPE:   # same rules as Runner::select_recipe: known id, not while running
+            r = d[0]
+            res = 2 if r not in self.recipes else 1 if self.state == 1 else 0
+            if res == 0:
+                self.recipe = r
+            self.rx.put(P.ack(arb_id, d[1], res))
         elif arb_id == P.ID_PLC_HB:
             self.last_plc_hb = time.time()
         elif arb_id == P.ID_TIME:
