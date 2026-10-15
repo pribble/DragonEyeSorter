@@ -18,7 +18,7 @@ scp -r -i ~/.ssh/id_ed25519_anlu root@192.168.137.100:/root/des/data/log ./recor
 | `--md out.md --json out.json` | 表格 / 数字另存 |
 | `--plots figs` | 报告图（PNG，需 matplotlib）：`ai_time`（NPU 推理与帧完成→结果延迟分布，标 p50 / p95）、`size_gear` / `size_rack`（逐件尺寸趋势 + 规格线，超差件红叉，标题带均值 / σ / Cpk）、`confusion`（给了真值时的混淆矩阵）、`throughput`（单文件时的累计件数）。配方号列存在时概况表多一行「配方」 |
 
-规格默认齿轮外径 32±0.15、齿条长 50±0.5（`--gear-od/--gear-tol/--rack-len/--rack-tol` 改）；类别名、OK/NG 判定来自 `models/label_list.json`。
+尺寸规格按每条记录的 `recipe` 列取 `ps/src/recipes.json` 里该配方的值（换型前后的记录分组统计，图也分开出）；没有配方列时用 32±0.15 / 50±0.5；`--gear-od/--gear-tol/--rack-len/--rack-tol` 对所有记录强制覆盖；类别名、OK/NG 判定来自 `models/label_list.json`。
 
 ## 长时间运行（板上）
 

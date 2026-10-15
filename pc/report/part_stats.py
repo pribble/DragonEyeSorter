@@ -28,6 +28,8 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 LABELS = os.path.join(HERE, '..', '..', 'models', 'label_list.json')
+RECIPES = os.path.join(HERE, '..', '..', 'ps', 'src', 'recipes.json')
+DEFAULT_SPEC = {'g': (32.0, 0.15), 'r': (50.0, 0.5)}   # recipe 1, used when a record has no recipe column / id
 
 
 def load_labels(path):
@@ -36,6 +38,39 @@ def load_labels(path):
             return {l['label']: l for l in json.load(f)['labels']}
     except OSError:
         return {}
+
+
+def load_recipes(path):
+    try:
+        with open(path, encoding='utf-8') as f:
+            return {str(r['id']): r for r in json.load(f)['recipes']}
+    except (OSError, KeyError, ValueError):
+        return {}
+
+
+def size_groups(rows, a, recipes):
+    """(kind, name, nominal, tol, tag, rows) per part kind and recipe: each record is judged against the spec of the
+    recipe it was produced under (recipe column + recipes.json); --gear-od etc. override for every record."""
+    groups = []
+    rids = sorted({r.get('recipe', '') for r in rows})
+    for kind, name in (('g', '齿轮外径'), ('r', '齿条长度')):
+        for rid in rids:
+            k = [r for r in rows if r.get('kind') == kind and r.get('meas_valid') == '1' and r.get('recipe', '') == rid]
+            if not k:
+                continue
+            rc = recipes.get(rid, {})
+            nom, tol = DEFAULT_SPEC[kind]
+            if kind == 'g':
+                nom, tol = rc.get('gear_od', nom), rc.get('gear_od_tol', tol)
+                nom = a.gear_od if a.gear_od is not None else nom
+                tol = a.gear_tol if a.gear_tol is not None else tol
+            else:
+                nom, tol = rc.get('rack_len', nom), rc.get('rack_len_tol', tol)
+                nom = a.rack_len if a.rack_len is not None else nom
+                tol = a.rack_tol if a.rack_tol is not None else tol
+            tag = '配方 %s' % rid if rid and len(rids) > 1 else ''
+            groups.append((kind, name, nom, tol, tag, rid, k))
+    return groups
 
 
 def num(row, key, default=None):
@@ -110,10 +145,11 @@ def main():
     ap.add_argument('--fed', type=int, help='parts actually put on the belt (miss rate = 1 - records / fed)')
     ap.add_argument('--same-part', action='store_true', help='every record is the same physical sample (repeatability)')
     ap.add_argument('--true-size', type=float, help='caliper value of that sample (gear OD / rack length, mm)')
-    ap.add_argument('--gear-od', type=float, default=32.0)
-    ap.add_argument('--gear-tol', type=float, default=0.15)
-    ap.add_argument('--rack-len', type=float, default=50.0)
-    ap.add_argument('--rack-tol', type=float, default=0.5)
+    ap.add_argument('--gear-od', type=float, help='spec for all records (default: their recipe, else 32.0)')
+    ap.add_argument('--gear-tol', type=float, help='default: recipe, else 0.15')
+    ap.add_argument('--rack-len', type=float, help='default: recipe, else 50.0')
+    ap.add_argument('--rack-tol', type=float, help='default: recipe, else 0.5')
+    ap.add_argument('--recipes', default=RECIPES, help='recipes.json (spec per recipe id of the records)')
     ap.add_argument('--labels', default=LABELS, help='label_list.json')
     ap.add_argument('--md', help='write the Markdown tables here')
     ap.add_argument('--json', help='write the numbers here')
@@ -125,6 +161,7 @@ def main():
         pass
 
     labels = load_labels(a.labels)
+    recipes = load_recipes(a.recipes)
     rows = read_rows(a.csv, a.truth)
     if not rows:
         sys.exit('no records')
@@ -156,13 +193,13 @@ def main():
     if out['parts_per_min']:
         md.append('| 节拍 | %.1f 件/min |' % out['parts_per_min'])
     md.append('| 处置 | %s |' % '，'.join('%s %d' % kv for kv in sorted(disp.items())))
-    recipes = {}
+    per_recipe = {}
     for r in rows:
         if r.get('recipe'):   # column added with recipes (40-column CSV)
-            recipes[r['recipe']] = recipes.get(r['recipe'], 0) + 1
-    if recipes:
-        out['recipes'] = recipes
-        md.append('| 配方 | %s |' % '，'.join('%s 号 %d 件' % kv for kv in sorted(recipes.items())))
+            per_recipe[r['recipe']] = per_recipe.get(r['recipe'], 0) + 1
+    if per_recipe:
+        out['recipes'] = per_recipe
+        md.append('| 配方 | %s |' % '，'.join('%s 号 %d 件' % kv for kv in sorted(per_recipe.items())))
     md.append('| 去向 | %s |' % '，'.join('%s %d' % kv for kv in sorted(dest.items())))
     if a.fed:
         miss = 1 - len(rows) / a.fed
@@ -227,24 +264,22 @@ def main():
     # ---- geometric measurement
     md.append('## 几何测量\n')
     md.append('| 品种 | 量 | 统计 | Cpk |\n|---|---|---|---|')
-    for kind, name, nom, tol in (('g', '齿轮外径', a.gear_od, a.gear_tol), ('r', '齿条长度', a.rack_len, a.rack_tol)):
-        vals = [num(r, 'size_mm') for r in rows if r.get('kind') == kind and r.get('meas_valid') == '1']
-        if not vals:
-            continue
+    for kind, name, nom, tol, tag, rid, judged in size_groups(rows, a, recipes):
+        vals = [num(r, 'size_mm') for r in judged]
         d = dist(vals, 'mm', 3)
         c = cpk(vals, nom, tol)
-        out['size_' + kind] = d
-        out['cpk_' + kind] = c
-        md.append('| %s | 尺寸（规格 %.2f±%.2f） | %s | %s |' % (name, nom, tol, fmt_dist(d), '%.2f' % c if c else '—'))
+        key = kind + ('_r' + rid if tag else '')
+        out['size_' + key] = d
+        out['cpk_' + key] = c
+        label = name[:2] + ('（%s）' % tag if tag else '')
+        md.append('| %s | 尺寸（规格 %.2f±%.2f） | %s | %s |' % (label, nom, tol, fmt_dist(d), '%.2f' % c if c else '—'))
         if kind == 'g':
-            bores = [num(r, 'bore_mm') for r in rows if r.get('kind') == 'g' and num(r, 'bore_mm', 0) > 0]
+            bores = [num(r, 'bore_mm') for r in judged if num(r, 'bore_mm', 0) > 0]
             if bores:
-                md.append('| %s | 孔径 | %s | |' % ('齿轮', fmt_dist(dist(bores, 'mm', 3))))
-            ecc = [num(r, 'ecc_mm') for r in rows if r.get('kind') == 'g' and r.get('meas_valid') == '1']
-            md.append('| 齿轮 | 偏心 | %s | |' % fmt_dist(dist(ecc, 'mm', 3)))
-        judged = [r for r in rows if r.get('kind') == kind and r.get('meas_valid') == '1']
+                md.append('| %s | 孔径 | %s | |' % (label, fmt_dist(dist(bores, 'mm', 3))))
+            md.append('| %s | 偏心 | %s | |' % (label, fmt_dist(dist([num(r, 'ecc_mm') for r in judged], 'mm', 3))))
         tj = sum(r.get('teeth_judged') == '1' for r in judged)
-        md.append('| %s | 判齿（离光轴近、视差拖尾小） | %d / %d | |' % (name[:2], tj, len(judged)))
+        md.append('| %s | 判齿（离光轴近、视差拖尾小） | %d / %d | |' % (label, tj, len(judged)))
     md.append('')
     if a.same_part:
         vals = [num(r, 'size_mm') for r in rows if r.get('meas_valid') == '1']
@@ -284,7 +319,7 @@ def main():
         with open(a.json, 'w', encoding='utf-8') as f:
             json.dump(out, f, ensure_ascii=False, indent=1, default=str)
     if a.plots:
-        for p in plots(rows, a, labels, out):
+        for p in plots(rows, a, labels, out, recipes):
             print('chart:', p)
 
 
@@ -294,7 +329,7 @@ SURFACE, SERIES1, CRITICAL = '#fcfcfb', '#2a78d6', '#d03b3b'   # categorical slo
 SEQ_BLUE = ['#fcfcfb', '#cde2fb', '#9ec5f4', '#6da7ec', '#3987e5', '#256abf', '#184f95', '#0d366b']
 
 
-def plots(rows, a, labels, out):
+def plots(rows, a, labels, out, recipes):
     try:
         import matplotlib
         matplotlib.use('Agg')
@@ -351,10 +386,8 @@ def plots(rows, a, labels, out):
         save(fig, 'ai_time')
 
     # size trends: every measured part in record order, spec limits, out-of-spec marked (shape + color + legend)
-    for kind, name, nom, tol in (('g', '齿轮外径', a.gear_od, a.gear_tol), ('r', '齿条长度', a.rack_len, a.rack_tol)):
-        vals = [num(r, 'size_mm') for r in rows if r.get('kind') == kind and r.get('meas_valid') == '1']
-        if not vals:
-            continue
+    for kind, name, nom, tol, tag, rid, judged in size_groups(rows, a, recipes):
+        vals = [num(r, 'size_mm') for r in judged]
         fig, ax = plt.subplots(figsize=(10, 3.4))
         x = list(range(1, len(vals) + 1))
         ax.plot(x, vals, color=SERIES1, linewidth=2, zorder=2)
@@ -371,14 +404,14 @@ def plots(rows, a, labels, out):
             ax.annotate(txt, (1, v), xycoords=('axes fraction', 'data'), xytext=(4, -3), textcoords='offset points',
                         fontsize=9, color=INK2)
         c = cpk(vals, nom, tol)
-        ax.set_title('%s趋势（规格 %.2f±%.2f mm，n=%d，均值 %.3f，σ %.4f，Cpk %s）' % (
-            name, nom, tol, len(vals), statistics.fmean(vals), statistics.stdev(vals) if len(vals) > 1 else 0,
+        ax.set_title('%s趋势%s（规格 %.2f±%.2f mm，n=%d，均值 %.3f，σ %.4f，Cpk %s）' % (
+            name, '·' + tag if tag else '', nom, tol, len(vals), statistics.fmean(vals), statistics.stdev(vals) if len(vals) > 1 else 0,
             '%.2f' % c if c is not None else '—'), loc='left')
         ax.set_xlabel('件序（按记录顺序）')
         ax.set_ylabel('mm')
         ax.grid(axis='x', visible=False)
         ax.legend(loc='upper left', ncol=2)
-        save(fig, 'size_' + ('gear' if kind == 'g' else 'rack'))
+        save(fig, 'size_' + ('gear' if kind == 'g' else 'rack') + ('_r' + rid if tag else ''))
 
     # confusion matrix (known class per file): row-normalised colour, counts written in the cells
     conf = out.get('confusion')
