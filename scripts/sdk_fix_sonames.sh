@@ -22,9 +22,12 @@ READELF=${2:-aarch64-linux-gnu-readelf}
 # 父目录（同时含两个库）→ 扫两个子目录；单个库目录（ARMNN_LIB / OPENCV_LIB / $BOARD_LIBS）→ 扫它自己
 if [ -d "$SDK/armnn_lib/lib" ] && [ -d "$SDK/ffmpeg_opencv4.7.0_aarch64/lib" ]; then
     DIRS="$SDK/armnn_lib/lib $SDK/ffmpeg_opencv4.7.0_aarch64/lib"
+elif [ -d "$SDK/lib" ]; then
+    DIRS="$SDK/lib"   # ARMNN_LIB / OPENCV_LIB are library roots: the .so files are in lib/ (ps/Makefile: -L$(ARMNN_LIB)/lib)
 else
-    DIRS="$SDK"
+    DIRS="$SDK"       # a flat folder of .so files ($BOARD_LIBS)
 fi
+n_created=0
 
 for dir in $DIRS; do
     # lib*.so* 同时覆盖 libX.so.4.7.0（SDK）与 libX.so（板上库拷下来只剩链接名的情况）
@@ -36,8 +39,10 @@ for dir in $DIRS; do
         for name in $soname $plain; do
             if [ -n "$name" ] && [ ! -e "$dir/$name" ]; then
                 cp "$f" "$dir/$name"
-                echo "created $dir/$name"
+                echo "created $dir/$name"; n_created=$((n_created + 1))
             fi
         done
     done
 done
+
+printf 'sdk_fix_sonames: scanned %s, created %d file(s)\n' "$DIRS" "$n_created"
