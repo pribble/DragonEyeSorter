@@ -104,7 +104,7 @@ status)
     else
         echo "des_service: not running"
     fi
-    tail -5 "$LOG" 2>/dev/null
+    grep -E "^(19|20)[0-9][0-9]-" "$LOG" 2>/dev/null | tail -3   # service events only (des_app output is in the log too)
     ;;
 *) echo "usage: $0 start|stop|restart|status"; exit 1 ;;
 esac
