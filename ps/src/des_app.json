@@ -11,7 +11,7 @@
   "calib_file": "calib.json",
 
   "belt_comment": "mm_per_step 是估计值（主动辊约 Ø10：π·10/3200）；des_app calib-belt 实测后写进 calib.json 覆盖这里",
-  "belt": { "mm_per_step": 0.0098, "dir": 1, "run_speed": 50, "accel": 400 },
+  "belt": { "mm_per_step": 0.0098, "dir": -1, "run_speed": 50, "accel": 400 },
 
   "tracker": { "fov_x0": 0, "fov_x1": 300, "edge_margin": 10, "decide_x": 270, "tail_x": 600,
                "gate_s": 12, "gate_y": 12, "min_hits": 3, "max_miss_new": 2, "max_miss": 8,
