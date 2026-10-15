@@ -28,6 +28,7 @@
 
 #include "hdmi_out.hpp"
 #include "hmi.hpp"
+#include "scale23.hpp"
 #include "locate.hpp"
 #include "npu_async.hpp"
 #include "part_log.hpp"
@@ -107,28 +108,65 @@ struct Shared {
     bool quit = false;
 };
 
-// Hershey text is expensive (three lines at thickness 2 ~5 ms): rendered here on core 1, never on the capture core.
+// Screen layout (1920 x 1080): the camera picture scaled to 2/3 (1280 x 720, aspect kept, nothing hidden behind the
+// operator band; scale23 does it in ~7 ms, OpenCV resize cannot keep 60 fps here), the status panel to its right
+// (640 x 780), the operator band (Hmi, 1920 x 300) below.
+constexpr int kVidW = 1280, kVidH = 720;
+constexpr double kVidScale = 2.0 / 3;
+constexpr int kPanelX = kVidW, kPanelW = 1920 - kVidW, kPanelH = Hmi::Y0;
+
+// Hershey text is expensive: rendered here on core 1 (~10 Hz), never on the capture core, which only blits it.
 cv::Mat render_panel(const Snapshot &s, const Shared &sh, uint32_t pl_frame, uint64_t lag, double belt_mm)
 {
     static const char *plans[] = {"run", "stop-at", "hold"};
-    char l1[160], l2[160], l3[160];
-    snprintf(l1, sizeof l1, "DragonEyeSorter %s  %.1f fps  PL frame %u  skipped %llu  worker lag %llu",
-             s.run_line.empty() ? "live" : "run", sh.disp_fps.load(), pl_frame,
-             (unsigned long long)sh.disp_skipped.load(), (unsigned long long)lag);
-    char npu[64] = "npu off";
-    if (s.npu) snprintf(npu, sizeof npu, "npu %.1f ms (%llu)", s.npu_ms, (unsigned long long)s.npu_runs);
-    snprintf(l2, sizeof l2, "locate %.1f ms  measure %.1f ms (%llu/%llu)  %s  worker %.1f ms  tracks %zu  belt %.1f mm",
-             (s.tm.gray_us + s.tm.thresh_us + s.tm.contour_us) / 1e3, s.meas_ms, (unsigned long long)s.measured,
-             (unsigned long long)(s.measured + s.meas_failed), npu, s.work_ms, s.tracks.size(), belt_mm);
-    snprintf(l3, sizeof l3, "pick %llu  flap %llu  recheck %llu  noise %llu  belt plan %s  saved %llu (img %llu)",
-             (unsigned long long)s.st.decided_pick, (unsigned long long)s.st.decided_flap,
-             (unsigned long long)s.st.decided_recheck, (unsigned long long)s.st.noise, plans[s.plan.kind],
-             (unsigned long long)s.logged, (unsigned long long)s.log_images);
-    cv::Mat panel(118, 1150, CV_8UC3, cv::Scalar(0, 0, 0));
-    cv::putText(panel, l1, cv::Point(14, 34), cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 255, 0), 2);
-    cv::putText(panel, l2, cv::Point(14, 70), cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(255, 255, 255), 2);
-    cv::putText(panel, s.run_line.empty() ? l3 : s.run_line.c_str(), cv::Point(14, 104), cv::FONT_HERSHEY_SIMPLEX, 0.7,
-                s.run_line.empty() ? cv::Scalar(255, 255, 255) : cv::Scalar(0, 255, 255), 2);
+    cv::Mat panel(kPanelH, kPanelW, CV_8UC3, cv::Scalar(34, 31, 29));
+    cv::line(panel, {0, 0}, {0, kPanelH - 1}, cv::Scalar(80, 76, 72), 2);
+    int y = 40;
+    auto line = [&](const std::string &t, const cv::Scalar &c, double size = 0.62, int gap = 34) {
+        cv::putText(panel, t, cv::Point(18, y), cv::FONT_HERSHEY_SIMPLEX, size, c, 1, cv::LINE_AA);
+        y += gap;
+    };
+    const cv::Scalar white(235, 235, 235), dim(160, 160, 160), green(90, 220, 90), yellow(70, 215, 235);
+    char b[160];
+    line(std::string("DragonEyeSorter  ") + (s.run_line.empty() ? "live" : "run"), green, 0.85, 46);
+    snprintf(b, sizeof b, "display %.1f fps   skipped %llu", sh.disp_fps.load(),
+             (unsigned long long)sh.disp_skipped.load());
+    line(b, white);
+    snprintf(b, sizeof b, "PL frame %u   worker lag %llu", pl_frame, (unsigned long long)lag);
+    line(b, dim, 0.62, 48);
+    snprintf(b, sizeof b, "locate %.1f ms   worker %.1f ms", (s.tm.gray_us + s.tm.thresh_us + s.tm.contour_us) / 1e3,
+             s.work_ms);
+    line(b, white);
+    snprintf(b, sizeof b, "measure %.1f ms  (%llu / %llu)", s.meas_ms, (unsigned long long)s.measured,
+             (unsigned long long)(s.measured + s.meas_failed));
+    line(b, white);
+    if (s.npu) snprintf(b, sizeof b, "npu %.1f ms  (%llu runs)", s.npu_ms, (unsigned long long)s.npu_runs);
+    else snprintf(b, sizeof b, "npu off");
+    line(b, white);
+    snprintf(b, sizeof b, "tracks %zu   belt %.1f mm", s.tracks.size(), belt_mm);
+    line(b, white, 0.62, 48);
+    snprintf(b, sizeof b, "pick %llu   flap %llu   recheck %llu", (unsigned long long)s.st.decided_pick,
+             (unsigned long long)s.st.decided_flap, (unsigned long long)s.st.decided_recheck);
+    line(b, white);
+    snprintf(b, sizeof b, "noise %llu   belt plan %s", (unsigned long long)s.st.noise, plans[s.plan.kind]);
+    line(b, white);
+    snprintf(b, sizeof b, "saved %llu  (images %llu)", (unsigned long long)s.logged, (unsigned long long)s.log_images);
+    line(b, white, 0.62, 48);
+    // runner / collector status, word-wrapped to the panel width
+    std::string word, cur;
+    auto flush = [&] {
+        if (!cur.empty()) line(cur, yellow, 0.62, 30);
+        cur.clear();
+    };
+    for (size_t i = 0; i <= s.run_line.size(); i++) {
+        const char ch = i < s.run_line.size() ? s.run_line[i] : ' ';
+        if (ch != ' ') { word += ch; continue; }
+        if (word.empty()) continue;
+        if (cur.size() + word.size() + 1 > 46) flush();
+        cur += (cur.empty() ? "" : " ") + word;
+        word.clear();
+    }
+    flush();
     return panel;
 }
 
@@ -449,22 +487,27 @@ cv::Scalar color_of(const TrackView &t)
     }
 }
 
-void line_at_x(cv::Mat &img, const Homography &hinv, float x, const char *label, cv::Scalar col)
+// camera pixel -> screen pixel of the scaled picture
+cv::Point to_screen(float x, float y) { return cv::Point(int(x * kVidScale + 0.5), int(y * kVidScale + 0.5)); }
+
+void line_at_x(cv::Mat &vid, const Homography &hinv, float x, const char *label, cv::Scalar col)
 {
     Vec2 a = hinv.map({x, -400.f}), b = hinv.map({x, 400.f});
-    cv::line(img, cv::Point2f(a.x, a.y), cv::Point2f(b.x, b.y), col, 2, cv::LINE_8);
+    cv::line(vid, to_screen(a.x, a.y), to_screen(b.x, b.y), col, 2, cv::LINE_8);
     Vec2 m = hinv.map({x, 0.f});
-    if (m.x > 0 && m.x < img.cols - 120)
-        cv::putText(img, label, cv::Point2f(m.x + 6, Hmi::Y0 - 20), cv::FONT_HERSHEY_SIMPLEX, 0.7, col, 2);
+    const cv::Point pm = to_screen(m.x, m.y);
+    if (pm.x > 0 && pm.x < vid.cols - 90)
+        cv::putText(vid, label, cv::Point(pm.x + 6, vid.rows - 16), cv::FONT_HERSHEY_SIMPLEX, 0.6, col, 1);
 }
 
 void draw(cv::Mat &img, const Snapshot &s, const Homography &hinv, double belt_mm, const AppConfig &cfg)
 {
+    cv::Mat vid = img(cv::Rect(0, 0, kVidW, kVidH));
     // raw blobs of the frame the worker last processed (thin)
     for (const auto &r : s.blobs) {
-        cv::Point pts[4];
-        for (int i = 0; i < 4; i++) pts[i] = cv::Point(int(r[2 * i]), int(r[2 * i + 1]));
-        cv::polylines(img, std::vector<cv::Point>(pts, pts + 4), true, cv::Scalar(200, 200, 200), 1, cv::LINE_8);
+        std::vector<cv::Point> pts;
+        for (int i = 0; i < 4; i++) pts.push_back(to_screen(r[2 * i], r[2 * i + 1]));
+        cv::polylines(vid, pts, true, cv::Scalar(200, 200, 200), 1, cv::LINE_8);
     }
     // tracks, re-projected to this frame's belt position
     char text[96];
@@ -475,25 +518,26 @@ void draw(cv::Mat &img, const Snapshot &s, const Homography &hinv, double belt_m
         int top = 1 << 30, left = 1 << 30;
         for (const Vec2 &v : c) {
             Vec2 p = hinv.map(v);
-            poly.emplace_back(int(p.x), int(p.y));
-            top = std::min(top, int(p.y));
-            left = std::min(left, int(p.x));
+            poly.push_back(to_screen(p.x, p.y));
+            top = std::min(top, poly.back().y);
+            left = std::min(left, poly.back().x);
         }
         cv::Scalar col = color_of(t);
-        cv::polylines(img, poly, true, col, 3, cv::LINE_8);
+        cv::polylines(vid, poly, true, col, 2, cv::LINE_8);
         snprintf(text, sizeof text, "#%d %s %s", t.id,
                  t.st == TrackState::Decided || t.st == TrackState::Picking ? to_str(t.disp) : to_str(t.st),
                  t.meas.c_str());
         // thickness 1: Hershey text at thickness 2 is drawn as many filled thick segments (~1 ms per label)
-        cv::putText(img, text, cv::Point(left, std::max(top - 10, 20)), cv::FONT_HERSHEY_SIMPLEX, 0.8, col, 1);
+        cv::putText(vid, text, cv::Point(left, std::max(top - 8, 18)), cv::FONT_HERSHEY_SIMPLEX, 0.6, col, 1);
     }
-    line_at_x(img, hinv, cfg.tracker.decide_x, "decide", cv::Scalar(255, 255, 255));
-    line_at_x(img, hinv, cfg.picker.pick_x, "pick", cv::Scalar(0, 210, 0));
+    line_at_x(vid, hinv, cfg.tracker.decide_x, "decide", cv::Scalar(255, 255, 255));
+    line_at_x(vid, hinv, cfg.picker.pick_x, "pick", cv::Scalar(0, 210, 0));
 
-    // status panel: rendered by the worker, blitted with wide stores (the display buffer is uncached)
-    if (!s.panel.empty())
-        for (int r = 0; r < s.panel.rows; r++) memcpy(img.ptr(r), s.panel.ptr(r), size_t(s.panel.cols) * 3);
-    // operator interface band at the bottom (same scheme)
+    // status panel right of the picture and the operator band below it: rendered by the worker, blitted with wide
+    // stores (the display buffer is uncached)
+    if (!s.panel.empty() && s.panel.cols == kPanelW)
+        for (int r = 0; r < s.panel.rows && r < kPanelH; r++)
+            memcpy(img.ptr(r) + kPanelX * 3, s.panel.ptr(r), size_t(s.panel.cols) * 3);
     if (!s.hmi.empty() && s.hmi.cols == img.cols)
         for (int r = 0; r < s.hmi.rows; r++) memcpy(img.ptr(Hmi::Y0 + r), s.hmi.ptr(r), size_t(s.hmi.cols) * 3);
 }
@@ -577,9 +621,13 @@ int run_live(des_hw_t &hw, const AppConfig &cfg, CameraRig &cam, const LiveOptio
         double t0 = now_s();
         cv::Mat src(f.height, f.width, CV_8UC4, const_cast<uint8_t *>(f.bgra));
         cv::Mat dst = hdmi.back();
-        // the bottom band is covered by the operator interface: convert only the rows that stay visible
-        const int vis_rows = snap.hmi.empty() ? f.height : std::min(f.height, Hmi::Y0);
-        cv::cvtColor(src.rowRange(0, vis_rows), dst.rowRange(0, vis_rows), cv::COLOR_BGRA2BGR);
+        // camera picture scaled to 2/3 into its rectangle (aspect kept)
+        if (!scale23_bgra_to_bgr(f.bgra, f.width, f.height, f.width * 4, dst.data, int(dst.step))) {
+            cv::Mat small;   // other sensor sizes: slow fallback
+            cv::resize(src, small, cv::Size(kVidW, kVidH), 0, 0, cv::INTER_NEAREST);
+            cv::Mat vid = dst(cv::Rect(0, 0, kVidW, kVidH));
+            cv::cvtColor(small, vid, cv::COLOR_BGRA2BGR);
+        }
         double tc = now_s();
         sh.disp_fps.store(float(fps));
         sh.disp_skipped.store(skipped);

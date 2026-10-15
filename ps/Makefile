@@ -63,7 +63,7 @@ APP_SRC := src/app/main.cpp src/app/camera_rig.cpp src/app/locate.cpp src/app/co
            src/app/npu_cls.cpp src/app/npu_async.cpp \
            src/measure/calib.cpp src/measure/measure.cpp src/measure/track_measure.cpp \
            src/measure/measure_tool.cpp src/measure/roi_crop.cpp \
-           src/ui/hdmi_out.cpp src/ui/text_ft.cpp src/ui/ui_input.cpp src/ui/hmi.cpp
+           src/ui/hdmi_out.cpp src/ui/scale23.cpp src/ui/text_ft.cpp src/ui/ui_input.cpp src/ui/hmi.cpp
 HDRS := $(wildcard src/app/*.hpp src/hw/*.h src/sched/*.hpp src/measure/*.hpp src/ui/*.hpp src/vision/*.hpp)
 OPENCV_LIBS := -lopencv_calib3d -lopencv_features2d -lopencv_flann -lopencv_imgproc -lopencv_imgcodecs -lopencv_core
 
