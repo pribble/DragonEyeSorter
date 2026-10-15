@@ -41,7 +41,7 @@ cd scripts\bootbin
 .\scripts\sd_image\flash_to_disk.ps1 -DiskNumber <N>
 ```
 
-也可用 balenaEtcher / Rufus 烧镜像；回退厂家 initramfs 的说明见 [README_回退.txt](sd_image/README_回退.txt)。
+也可用 balenaEtcher / Rufus 烧镜像。
 
 要**新做**一张持久化卡时（现有卡坏了 / 要给第二块板子）：① 直接用厂家预装的卡；② 或照 [开发环境与构建](../docs/开发环境与构建.md)「SD 卡布局」用厂家 demo 的 `boot/` 目录手工复刻——分区布局（p1 FAT32 / p2 ext4）、`boot.scr` 的改动、rootfs 来自 `uInitrd.lz4` 解包，都记在那里。
 
