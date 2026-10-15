@@ -16,6 +16,7 @@ scp -r -i ~/.ssh/id_ed25519_anlu root@192.168.137.100:/root/des/data/log ./recor
 | `python part_stats.py --fed 200 run.csv` | 实际投放 200 件 → 漏检率 |
 | `python part_stats.py --same-part --true-size 31.98 loop.csv` | 同一件反复过线 → 重复性 σ、相对卡尺的平均 / 最大误差（赛题中级 < 0.3mm） |
 | `--md out.md --json out.json` | 表格 / 数字另存 |
+| `--plots figs` | 报告图（PNG，需 matplotlib）：`ai_time`（NPU 推理与帧完成→结果延迟分布，标 p50 / p95）、`size_gear` / `size_rack`（逐件尺寸趋势 + 规格线，超差件红叉，标题带均值 / σ / Cpk）、`confusion`（给了真值时的混淆矩阵）、`throughput`（单文件时的累计件数）。配方号列存在时概况表多一行「配方」 |
 
 规格默认齿轮外径 32±0.15、齿条长 50±0.5（`--gear-od/--gear-tol/--rack-len/--rack-tol` 改）；类别名、OK/NG 判定来自 `models/label_list.json`。
 
