@@ -227,7 +227,97 @@ def fig_timebase():
     save(fig, 'fig_timebase')
 
 
+# ------------------------------------------------------------------------------------------------ 4 PL modules
+def fig_pl_regs():
+    """PS -> PL register window and the in-house PL modules with their pins (pins: src/constraint/io.adc)."""
+    fig, ax = canvas(160, 100, 'PL 自研模块与寄存器窗口（不改官方块设计）')
+    box(ax, 2, 62, 20, 14, 'PS（Linux）\ndes_app / desreg\n/dev/mem 映射', 'ps', fs=8.5)
+    arrow(ax, (22, 69), (30, 69), 'AXI GP0', fs=7.5)
+    box(ax, 30, 60, 22, 18, '官方 fvdma_ctrl\n（相机 DMA 控制器）\n64KB 窗口 0x8030_0000\n地址线 4 → 16 位', 'pl', fs=8)
+    box(ax, 30, 84, 22, 8, '0x0000~0x0FFF\n厂家寄存器（mipicam 驱动）', 'ext', fs=7.5)
+    arrow(ax, (41, 78), (41, 84), color='#666')
+    box(ax, 30, 36, 22, 18, '0x1000~0x1FFF\n自研寄存器总线 75MHz\n单拍写 / 组合读\nPL_BASE 0x8030_1000', 'pl', fs=8,
+        weight='bold')
+    arrow(ax, (41, 60), (41, 54))
+    box(ax, 56, 36, 12, 18, 'addr[11:8]\n分段译码', 'pl', fs=8)
+    arrow(ax, (52, 45), (56, 45))
+    # modules (right column) and their pins / partners
+    mods = [
+        (84, '0x0xx  des_regs', 'ID / 版本 / 75MHz 自由计数 / 帧计数\n拍摄锁存：帧号 + FREE_CNT + 带位置', None),
+        (70, '0x1xx  servo_bus', '德晟协议主机：硬件补帧头与校验、SYNC WRITE\nFF F5 应答解析、超时、发送 / 应答时间戳',
+         'SERVO_BUS Y9（开漏）\n→ BSS138 → 6 舵机'),
+        (56, '0x2xx  stepper_ctrl', '梯形加减速、运动中改目标、刹车距离 BRAKE\n命令 → 首脉冲 10.6µs', 'STEP_PUL / DIR / ENA\nY12 / Y13 / T9 → TB6600'),
+        (42, '0x3xx  des_vision', '像素域 111MHz，串在 ISP 与帧写之间\n灰度 / 高斯 / 二值 / Sobel / 边缘 + ROI 统计',
+         'HDMI 60fps 直接显示\nPL 处理图'),
+        (28, '0x4xx  des_pwm', '2 路 50Hz 舵机 PWM（下周期生效）+ 光源开关', 'FLAP1 Y6 / FLAP2 Y8\nLAMP_EN Y7'),
+        (14, '0x5xx~', '预留（io_sync 等新模块从这里排）', None),
+    ]
+    for y, name, desc, pin in mods:
+        box(ax, 74, y, 50, 11, name + '\n' + desc, 'pl' if pin or y == 84 else 'ext', fs=7.4, align='left')
+        poly(ax, [(68, 45), (71, 45), (71, y + 5.5), (74, y + 5.5)], color='#2f6db3', lw=1.1)
+        if pin:
+            box(ax, 130, y + 1, 28, 9, pin, 'ext', fs=7.4)
+            arrow(ax, (124, y + 5.5), (130, y + 5.5), color='#2f6db3', lw=1.1)
+    # e-stop and frame-start inputs
+    box(ax, 130, 85, 28, 9, '帧写模块：开始写 / 写完\n（像素域翻转 + 两级同步）', 'ext', fs=7.4)
+    arrow(ax, (130, 89.5), (124, 89.5), color='#2f6db3', lw=1.1)
+    box(ax, 2, 22, 22, 10, 'ESTOP_IN V11\n（急停常开触点）', 'acc', fs=8)
+    poly(ax, [(24, 27), (72.8, 27), (72.8, 58), (74, 58)], color='#c0392b', lw=1.2)   # crosses the bus spine, not a box
+    ax.text(26, 28, '硬件立即停脉冲、锁存 HALTED', fontsize=7.5, color='#c0392b')
+    ax.text(2, 4, 'CEP 排针 J12 = BANK11，固定 3.3V LVCMOS；各模块仿真：run_sim.sh des_axi / servo_bus / stepper / vision / pwm / awb',
+            fontsize=7.5, color='#555')
+    save(fig, 'fig_pl_regs')
+
+
+# ------------------------------------------------------------------------------------------------ 5 pick sequence
+def fig_pick_sequence():
+    """A good part (pick) and, later, an NG part (flap) on one time line. Schematic: durations are des_app.json
+    defaults. Lane order keeps every arrow inside free space: decision -> flap is one lane down."""
+    fig, ax = canvas(160, 76, '良品与不良品的处理时序（示意；时长取 des_app.json 默认值）')
+    lanes = ['相机 60fps', '定位 / 跟踪', '测量', 'NPU 分类', '判定', '翻板', '皮带', '机械臂']
+    y0, dy, x0, x1 = 64, 7.4, 22, 156
+    for i, name in enumerate(lanes):
+        y = y0 - i * dy
+        ax.text(x0 - 2, y, name, ha='right', va='center', fontsize=9, color='#222')
+        ax.plot([x0, x1], [y, y], color='#e3e3e3', lw=1, zorder=0)
+    ly = {n: y0 - i * dy for i, n in enumerate(lanes)}
+
+    def seg(lane, a, b, text, kind, fs=7.4):
+        box(ax, a, ly[lane] - 2.6, b - a, 5.2, text, kind, fs=fs, round_=0.8, lw=1)
+
+    for k in range(int(x0) + 1, int(x1), 2):   # camera frames, continuous
+        ax.plot([k, k], [ly['相机 60fps'] - 1.6, ly['相机 60fps'] + 1.6], color='#2f6db3', lw=0.8)
+    # good part
+    seg('定位 / 跟踪', 24, 70, '每帧：1/4 降采样定位 5.9ms → 按带坐标关联到同一件', 'ps')
+    seg('测量', 44, 53, '离光轴最近\n那帧 4~5ms', 'ps', fs=7)
+    for a in (30, 40, 50, 60):
+        seg('NPU 分类', a, a + 5, '7.8ms', 'npu', fs=7)
+    ax.text(67, ly['NPU 分类'], '3~6 次软投票', fontsize=7.5, va='center', color='#d9822b')
+    seg('判定', 70, 84, '良品过判定线\n去向 = 抓取', 'ps', fs=7.2)
+    by = ly['皮带']
+    run, stop = by + 2, by - 2
+    ax.plot([x0, 92, 98, 118, 124, x1], [run, run, stop, stop, run, run], color='#2e8b57', lw=2)
+    ax.text(30, run + 0.6, '50 mm/s', fontsize=7.5, color='#2e8b57')
+    ax.text(125, run + 0.6, '恢复走带', fontsize=7.5, color='#2e8b57')
+    ax.text(99, stop + 0.6, '停在抓取线（只为良品停）', fontsize=7.2, color='#2e8b57')
+    poly(ax, [(77, ly['判定'] - 2.6), (77, run + 2.2), (91.5, run + 0.3)], color='#2e8b57', lw=1.3)
+    ax.text(78, ly['翻板'] + 0.4, '写停带目标：PL 梯形减速，正好停准', fontsize=7.2, color='#2e8b57')
+    seg('机械臂', 98, 106, '下探\n400ms', 'ext', fs=7)
+    seg('机械臂', 106, 112, '合爪\n300ms', 'ext', fs=7)
+    seg('机械臂', 112, 118, '抬起', 'ext', fs=7)
+    seg('机械臂', 124, 148, '去料盒、张爪 250ms（皮带照走）', 'ext', fs=7.2)
+    # a later NG part: decided, then the flaps move ahead of it while the belt keeps running
+    seg('判定', 126, 140, '不良件过判定线\n去向 = 翻板（报废）', 'acc', fs=7.2)
+    poly(ax, [(133, ly['判定'] - 2.6), (133, ly['翻板'] + 2.6)], color='#c0392b', lw=1.3)
+    seg('翻板', 128, 156, '到带尾前 40mm 打到出口位\n过去 60mm 复位，不停带', 'acc', fs=7.2)
+    ax.text(x0, 3, '拍摄瞬间 PL 锁存带位置（图 2-2），各步晚到多少都不影响位置；来不及停准（看 BRAKE）或夹爪与邻件冲突 → 复检，不倒车追件。',
+            fontsize=7.8, color='#555')
+    save(fig, 'fig_pick_sequence')
+
+
 if __name__ == '__main__':
     fig_architecture()
     fig_layout()
     fig_timebase()
+    fig_pl_regs()
+    fig_pick_sequence()
