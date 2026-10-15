@@ -50,10 +50,10 @@ cd scripts\bootbin
 Windows 解压 tar.gz / zip 会丢 `.so` 软链接（变独立文件或损坏）：链接器找不到 `libopencv_core.so`（只有 `libopencv_core.so.4.7.0`），运行时动态链接器报 `error while loading shared libraries`。库目录布局与背景见 [环境与上手](../docs/环境与上手.md)。
 
 ```bash
-# 1. 判据：`libopencv_core.so` / `libopencv_core.so.4.7` 是 `lrwxrwxrwx` 才正常，`-rwxr-xr-x` 或缺失即需修复
+# 1. 判据：`libopencv_core.so` 和它指向的 SONAME 名（实测是 `libopencv_core.so.407`）都得是 `lrwxrwxrwx`，`-rwxr-xr-x` 或缺失即需修复
 ls -l $OPENCV_LIB/lib/libopencv_core.so*
-# lrwxrwxrwx ... libopencv_core.so -> libopencv_core.so.4.7
-# lrwxrwxrwx ... libopencv_core.so.4.7 -> libopencv_core.so.4.7.0
+# lrwxrwxrwx ... libopencv_core.so -> libopencv_core.so.407
+# lrwxrwxrwx ... libopencv_core.so.407 -> libopencv_core.so.4.7.0
 # -rwxr-xr-x ... libopencv_core.so.4.7.0
 
 # 2. 修复：自动扫描并重建软链接（两个库各跑一次）
@@ -78,9 +78,9 @@ sh scripts/sdk_fix_sonames.sh \
 脚本做的事：
 
 1. 扫描库目录中所有 `lib*.so*` 文件（含无版本号的 `libX.so`）
-2. 用 `readelf -d` 读每个库的 `SONAME` 字段（如 `libopencv_core.so.4.7`）
-3. 创建软链接：`libopencv_core.so.4.7 -> libopencv_core.so.4.7.0`
-4. 创建无版本号链接：`libopencv_core.so -> libopencv_core.so.4.7`
+2. 用 `readelf -d` 读每个库的 `SONAME` 字段（OpenCV 实测是 `libopencv_core.so.407`；**别按 `.so.4.7` 去猜**，以 readelf 输出为准）
+3. 创建 SONAME 名软链接：`libopencv_core.so.407 -> libopencv_core.so.4.7.0`
+4. 创建无版本号链接：`libopencv_core.so -> libopencv_core.so.407`
 
 **何时运行**：必须 —— 在 Windows 上首次解压 NPU demo 压缩包后、编译 ps/des_app 报 `cannot find -lopencv_core` 等；不必 —— Linux/WSL 中解压的 tar.gz（软链接保留）、已运行过一次、用预打包的库目录（均已修复）。
 

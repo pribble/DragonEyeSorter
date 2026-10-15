@@ -37,8 +37,9 @@
 6. **定量数据进 log**：实测数字写 `docs/log/YYYY-MM-DD-主题.md`，设计文档只保留结论与引用。
 7. **不入库**：数据集、模型权重、压缩包、SD 镜像、内核/rootfs/ArmNN 二进制。采购清单、价格、链接也不放进本仓库。**白名单例外**（2026-10-09 决定）：① `pl/soc_base/`（厂家 soc_prj 底板工程，含加密 IP）；② `scripts/bootbin/parts/` 的 `fsbl.elf`、`u-boot.elf`（BOOT.bin 中不随 PL/应用重编而变的固定零件，有 MD5 记录）与 `MD5SUMS.txt`（零件台账）。`*.bit`/`*.hpf`/`*.elf` 仍总体忽略，BOOT.bin 不入库、打包产出。**BOOT.bin 的第 2 分区一律接我们自己的比特流**（`-Bit` 必填）：厂家基线比特流、厂家完整 BOOT.bin、以及「原样重打包验证」路径已于 2026-10-15 全部下线，`parts/` 只留两个 `.elf`。
 8. **测试埋点随代码一起写**：时间戳、计数器、统计接口不能等最后补。
-9. **文档不写主机路径**：设计文档、README、脚本注释里只允许出现 ① 仓库内相对路径 ② 板端路径（`/root/des`、`/mnt/mmcblk0p1`、`/opt/armnn_lib`） ③ 环境变量名与 `<占位符>`。要引用外部路径就写 `.env` 的变量（`$FD_ROOT` / `$TD_ROOT` / `$ARMNN_LIB` / `$OPENCV_LIB` / `$FREETYPE_INC` / `$BOARD_LIBS`）。带盘符的主机绝对路径只允许出现在 `docs/log/` 的历史记录与本机 `.env` 里（原因见 [docs/log/README](docs/log/README.md)）。
+9. **文档不写主机路径**：设计文档、README、脚本注释里只允许出现 ① 仓库内相对路径 ② 板端路径（`/root/des`、`/mnt/mmcblk0p1`、`/opt/armnn_lib`） ③ 环境变量名与 `<占位符>`。要引用外部路径就写 `.env` 的变量（`$FD_ROOT` / `$TD_ROOT` / `$ARMNN_LIB` / `$OPENCV_LIB` / `$FREETYPE_INC` / `$BOARD_LIBS` / `$BOARD_HOST` / `$BOARD_IP` / `$SSH_KEY`）。**板端命令一律写 `ssh $BOARD_HOST` / `scp <本地文件> $BOARD_HOST:<板端路径>`**，不写 IP、不写 `-i <私钥>`。带盘符的主机绝对路径只允许出现在 `docs/log/` 的历史记录与本机 `.env` 里（原因见 [docs/log/README](docs/log/README.md)）。
 10. **新 PL 模块**：跨时钟域用「翻转 + 两级同步」（像素域 ↔ 75MHz 已在 `set_clock_groups -exclusive` 里），不要直接跨域采样；单模块控制在几百 LUT 以内（整片 slice 已约 82%、ERAM 只剩 19 块），大块图像算法放 PS。
+11. **环境前提不算既有事实**：机器相关的依赖（工具链、SSH 密钥、ssh 别名、库目录）必须进 [docs/环境与上手](docs/环境与上手.md) §1「需要哪些环境」表，写明"要什么 / 从哪拿 / 怎么验证"；正文只引用，不写成默认存在（如"私钥是 `~/.ssh/…`"暗示它已经有了）。同理，文档里的**预期输出与实测数字必须来自实测**（板上输出、`readelf`、log），不许按命名习惯猜。
 
 ## 工作流
 
@@ -58,7 +59,7 @@
 
 - `pl/soc_base/` 里厂家生成的 `proc_sys_reset_*.v`（`design_0/ip/design_0_Processor_System_Reset_{0,1,2}/RTL/`、`design_0/ip/proc_sys_reset_75M/`）会因 CRLF 显示「已修改」：真碰上（`rebase --autostash` 会因此失败）就先 `git update-index --assume-unchanged <这些文件>`，rebase 完再 `--no-assume-unchanged`。
 - Windows Git Bash 的 heredoc / `printf` 会吞反斜杠（`\b`、`\t` 被转义）：含 Windows 路径或 `\n` 的脚本先写成文件再执行。
-- `ssh -i ~/.ssh/id_ed25519_anlu root@192.168.137.100`（PS 网口，PC 192.168.137.1）；测试程序在 `/root/bin`、`/root/des`，不动系统文件和 eMMC。
+- `ssh $BOARD_HOST`（PS 网口；别名 / IP / 私钥见 `.env` 的 `BOARD_HOST` / `BOARD_IP` / `SSH_KEY`，PC 侧为 `192.168.137.1`）；测试程序在 `/root/bin`、`/root/des`，不动系统文件和 eMMC。
 - `des_app` 运行期间 `desreg` 只用 `r` 只读（舵机总线 / 步进只能有一个主人）。
 - **板上装了开机自启**（`/etc/init.d/S90des` → `/root/des/des_service.sh`，上电即 `des_app run --can can0`）：手动跑 `des_app.sh` 或 `desreg` 写命令前先 `/root/des/des_service.sh stop`，用完 `start`（`des_app.sh` 发现已有 des_app 会拒绝启动；`pl_check.sh` / `soak.sh` 自动暂停、恢复）。
 - 跑长测试（`soak.sh`）或换 `BOOT.bin` 前先在用户侧确认（两边可能同时连板子）。

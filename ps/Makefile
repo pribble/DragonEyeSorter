@@ -19,7 +19,7 @@
 #
 # Targets: desreg (C, no deps), test_scheduler (C++, no deps), test_calib / test_measure / test_npu / des_app (C++, need SDK),
 #          test_belt_hil (board, PL v5+), test_can / canplc (SocketCAN), all, clean.
-# Deploy:  scp -i ~/.ssh/id_ed25519_anlu build/<prog> root@192.168.137.100:/root/bin/
+# Deploy:  scp build/<prog> $BOARD_HOST:/root/bin/
 #          des_app 连配置一起放 /root/des/（见 README「部署」）。
 
 # 从 .env 文件读取配置（如果存在）

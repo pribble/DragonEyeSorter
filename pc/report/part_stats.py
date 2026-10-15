@@ -2,7 +2,7 @@
 """part_stats.py — test-report numbers from the board's part records (des_app part_log CSV, 40 columns).
 
 Copies the CSVs off the board first, e.g.
-    scp -r -i ~/.ssh/id_ed25519_anlu root@192.168.137.100:/root/des/records ./records
+    scp -r $BOARD_HOST:/root/des/records ./records
 
 Usage
     python part_stats.py records/2026-10-20/parts_*.csv                      # whole run: throughput, dispositions, AI time

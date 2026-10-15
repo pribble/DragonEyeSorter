@@ -71,9 +71,9 @@ cd <仓库根>/train
 ~/des-train/bin/python export_npu.py --weights ~/des-work/runs/real/weights/best.pt --calib ~/des-work/real/train --out ../models/part_cls
 ~/des-train/bin/python eval_onnx.py --model ../models/part_cls --val ~/des-work/real/val --refs out/part_cls_refs
 # 板上
-scp ../models/part_cls_uint8.onnx ../models/part_cls.json root@192.168.137.100:/root/des/
-scp -r out/part_cls_refs root@192.168.137.100:/root/des/
-ssh root@192.168.137.100 /root/bin/test_npu /root/des/part_cls.json /root/des/part_cls_refs 200
+scp ../models/part_cls_uint8.onnx ../models/part_cls.json $BOARD_HOST:/root/des/
+scp -r out/part_cls_refs $BOARD_HOST:/root/des/
+ssh $BOARD_HOST /root/bin/test_npu /root/des/part_cls.json /root/des/part_cls_refs 200
 ```
 
 **冒烟测试**（零件没到时验链路）：`synth_crops.py` 生成 8 类合成裁切图（齿轮 / 齿条 + 缺料 / 飞边 / 黑点），走完上面全部步骤。合成数据**只验证工具链与 NPU 耗时**，不代表真实精度。

@@ -80,7 +80,7 @@ ps/
 ```bash
 # Windows Git Bash（FD 自带 make 与交叉 gcc）；Linux 上传 CROSS= / SDK= 覆盖
 <FD_ROOT>/toolchain/build-tools/bin/make.exe -C ps   # → ps/build/{desreg,test_*,canplc,des_app}
-scp -i ~/.ssh/id_ed25519_anlu ps/build/des_app ps/board/des_app.sh ps/src/des_app.json ps/src/recipes.json models/label_list.json root@192.168.137.100:/root/des/
+scp ps/build/des_app ps/board/des_app.sh ps/src/des_app.json ps/src/recipes.json models/label_list.json $BOARD_HOST:/root/des/
 # 板上运行：/root/des/des_app.sh probe -n 10   （mipicam.ko 开机不自动加载，脚本缺模块时先 insmod）
 ```
 
