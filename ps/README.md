@@ -57,7 +57,7 @@ ps/
 | `des_app calib-arm [-n 4] [--marker-h mm]` | 手眼标定（交互）：标记物放视野 → 相机定位 → 手掰夹爪尖碰标记 → 读关节角；≥3 点拟合底座在台面的位置 / 朝向（+ 带面高度），写 `calib.json` 的 `arm` 段（docs/运动控制与分拣.md「上电调试步骤」第 6 步） |
 | `des_app collect --cls <类别> [--belt mm/s] [--every N] [--max N] [--full N]` | live + 采训练裁切图（一次一类，按零件分目录；`--full` 另存整帧 + 自动 YOLO 框），见 train/README |
 | `des_app measure [-n 帧] [--image f.png] [--out raw.png] [--dump report.png]` | 每个齿轮 / 齿条都测一遍（定位 → ROI → 测量），打印外径 / 孔径 / 偏心 / 齿数 / 缺陷或长度 / 齿距；`-n` > 1 时零件不动、统计各量均值 / σ / 极差（重复性，测试报告用）；`--out` 存原始帧供 `--image` 离线复测；`--dump` 出标注图（拟合圆、齿条框、r(θ) 曲线）。实物到货后对卡尺真值 |
-| `des_app display [-n 秒]` | 相机 → HDMI 60fps：每帧 BGRA→BGR 进 CMA 显示缓冲 + 写显示 VDMA `START_1` 再写 `V_SIZE` 提交（只写地址不生效，docs/软件与UI.md）（实测 6.2ms/帧，60fps）；退出恢复 fb0 |
+| `des_app display [-n 秒]` | 相机 → HDMI 60fps：每帧 BGRA→BGR 进 CMA 显示缓冲 + 切显示 VDMA 帧存（`PARK_PTR`，帧边界生效；地址只在开机提交一次，docs/软件与UI.md）（实测 6.2ms/帧，60fps）；退出恢复 fb0 |
 | `soak.sh [秒] [目录]`（`board/soak.sh`，部署到 /root/des/） | 长时间运行：des_app run + canplc 当 PLC，每分钟记内存 / 负载 / CAN / PL 帧号，结束出 summary.txt（测试报告「连续运行」） |
 | `pl_check.sh`（`board/pl_check.sh`，部署到 /root/des/） | 换比特流后的上板回归（19 项，后台跑 `des_app probe`） |
 | `des_service.sh start\|stop\|restart\|status`（`board/des_service.sh`，部署到 /root/des/） | 开机自启 + 守护：`des_app run --can can0`，崩溃 2s 后重启（退避到 30s，5 分钟内退出 5 次就停），日志 `data/service.log`；设置在 `autostart.conf`（首次运行生成：ENABLED / MODE / CAN / CAN_MODE / ARGS）。带 CAN 时上电是「空闲」，PLC 或界面按启动才动；`--go` 写进 ARGS 机械臂才真动。**装开机自启要改 /etc**：`ln -s /root/des/des_service.sh /etc/init.d/S90des`（经用户同意再装） |
