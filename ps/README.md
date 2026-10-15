@@ -31,7 +31,7 @@ ps/
 │   ├── ui/         #   界面：hmi / ui_input / text_ft / hdmi_out（OpenCV 自绘 + FreeType，不用 Qt）
 │   ├── vision/     #   相机取帧 + 推理封装（厂家 face_detection demo 的 4 个改造件）
 │   └── des_app.json#   配置模板（板上与二进制同目录）
-├── board/          # 上板脚本：des_app.sh（insmod + 启动）/ can_up.sh / pl_check.sh / soak.sh
+├── board/          # 上板脚本：des_app.sh（insmod + 启动）/ can_up.sh / pl_check.sh / soak.sh / des_service.sh（自启守护）
 ├── tools/          # 人敲的命令行：desreg 寄存器调试、canplc（扮「PLC」，回环 / 联调）
 ├── tests/          # test_scheduler（调度库单元）、test_calib（标定，合成图）、test_measure（齿轮 / 齿条测量，合成图）、
 │                   #   test_belt_hil（传送带控制硬件在环，板上 PL v5）、test_can（CAN 协议与收发，回环自测）、
@@ -60,6 +60,7 @@ ps/
 | `des_app display [-n 秒]` | 相机 → HDMI 60fps：每帧 BGRA→BGR 进 CMA 显示缓冲 + 写显示 VDMA `START_1` 再写 `V_SIZE` 提交（只写地址不生效，docs/软件与UI.md）（实测 6.2ms/帧，60fps）；退出恢复 fb0 |
 | `soak.sh [秒] [目录]`（`board/soak.sh`，部署到 /root/des/） | 长时间运行：des_app run + canplc 当 PLC，每分钟记内存 / 负载 / CAN / PL 帧号，结束出 summary.txt（测试报告「连续运行」） |
 | `pl_check.sh`（`board/pl_check.sh`，部署到 /root/des/） | 换比特流后的上板回归（19 项，后台跑 `des_app probe`） |
+| `des_service.sh start\|stop\|restart\|status`（`board/des_service.sh`，部署到 /root/des/） | 开机自启 + 守护：`des_app run --can can0`，崩溃 2s 后重启（退避到 30s，5 分钟内退出 5 次就停），日志 `data/service.log`；设置在 `autostart.conf`（首次运行生成：ENABLED / MODE / CAN / CAN_MODE / ARGS）。带 CAN 时上电是「空闲」，PLC 或界面按启动才动；`--go` 写进 ARGS 机械臂才真动。**装开机自启要改 /etc**：`ln -s /root/des/des_service.sh /etc/init.d/S90des`（经用户同意再装） |
 
 - 坐标约定见 `src/sched/geom.hpp`：图像 px → 台面 mm（单应矩阵，配置 `px_to_table`），件在带上 `s = x − B`（B = 带走过的距离），停带 / 反转都无需特殊处理；停带 = 给步进位置模式写「停在 B = 抓取线 − s」，减速由 PL 梯形曲线完成（`stepper_ctrl`）。目标写得太晚（已在身后）时 PL 减速停在它之后（`AT_TARGET` = 0），调度器按刹车距离判断来不及就转复检、不倒车。
 - 取帧：厂家帧 DMA「提交一块写一帧」，完成后立即重提下一块（4 块环形缓冲）。**实测 SCHED_FIFO 与普通调度都 0 丢帧**，重提 0.2µs —— demo 的 28fps 是串行流水造成的，不是硬件限制。
