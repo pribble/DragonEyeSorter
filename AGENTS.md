@@ -66,7 +66,7 @@
 ## 操作禁忌（血的教训）
 
 - **BitWriter 往 SRAM 下载只在不跑 Linux 时进行**（PL 里是 Linux 依赖的 MIPI / VDMA / NPU，运行时下载会覆盖它们）；断电重启即恢复。
-- **关机用 `poweroff` 或先 `sync`**：根分区是持久化 ext4。
+- **关机用 `halt`**（`sync; halt`），看到 `reboot: System halted` 或等 15 秒再断电：根分区是持久化 ext4。`poweroff` 也会完整关机（服务停、盘卸载），但这块板子随后会**自己复位重启**（固件把关机当复位，10-15 用户实测）；⚠ `halt` 能否停住待用户下次关机确认。
 - **eMMC 出厂系统是救生艇**，保持原样。
 - 换 `BOOT.bin` 前把原文件改名备份。
 - 写 SD 卡用 `scripts/sd_image/flash_to_disk.ps1` 或 balenaEtcher（见 `scripts/README.md`）。
