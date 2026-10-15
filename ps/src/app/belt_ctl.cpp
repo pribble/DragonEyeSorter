@@ -5,7 +5,7 @@
 
 namespace des {
 
-static constexpr int32_t kFar = 10000000;       // steps ahead for "run" (~98 m at 0.0098 mm/step)
+static constexpr int32_t kFar = 10000000;       // steps ahead for "run" (~207 m at 0.0207 mm/step)
 static constexpr int32_t kReextend = kFar / 2;  // re-extend the far target when this close
 
 BeltDriver::BeltDriver(des_hw_t *hw, const BeltConfig &cfg) : hw_(hw), cfg_(cfg)

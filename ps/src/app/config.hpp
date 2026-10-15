@@ -30,7 +30,7 @@ struct LocateConfig {
 };
 
 struct BeltConfig {
-    double mm_per_step = 0.0098; // ⚠ estimate for the ~10 mm drive roller (pi * 10 / 3200); des_app calib-belt
+    double mm_per_step = 0.0207; // ruler, 10-16: 4 turns (12800 steps) = ~265 mm (effective roller ~21 mm); des_app calib-belt
     int dir = 1;                 // +1: stepper POS increasing moves parts toward +x
     double run_speed = 50;       // mm/s
     double accel = 400;          // mm/s^2
