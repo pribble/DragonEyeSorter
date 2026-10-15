@@ -1,34 +1,36 @@
-# 构建产物 / 大文件（见 AGENTS.md「大文件不入库」）
+# =============================================================================
+# 根 .gitignore —— 按用途分区维护；改这里之前先读 AGENTS.md 硬性约定第 7 条（不入库清单）
+#
+# 约定：
+#   ① 本文件只放"全仓库"规则；仓库局部规则写在各目录自己的 .gitignore
+#      （现有：pc/plc_sim/.gitignore 厂商 DLL/LIB，train/.gitignore 数据与训练输出）
+#   ② gitignore 是"最后匹配者生效"：任何白名单 `!` 行必须排在所有能命中它的忽略行之后
+#   ③ 注释只能独占一行（行首 #），不能写在规则同一行
+# =============================================================================
+
+# ---------- 1. 镜像与压缩包（SD 镜像、数据集、模型权重的打包形态都不入库） ----------
 *.img
 *.img.gz
-BOOT.bin
-# *.bit / *.hpf / *.elf 总体忽略；厂家底板与 boot 零件按 2026-10-09 决定白名单入库：
-#   pl/soc_base/soc_prj.hpf（打开工程必需；命令行编译实测不需要，GUI 打开工程要用）
-#   pl/soc_base/design_0/**（含 .v/.xml，无 .bit/.elf）
-#   scripts/bootbin/parts/fsbl.elf、u-boot.elf（不随 PL 重编而变，见 parts/MD5SUMS.txt）
-# 2026-10-13 删除 soc_prj_TD622.bit 后，soc_base 里的 .bit 不再有任何例外
-# 2026-10-15 删除 parts/vendor.bit、parts/vendor-BOOT.bin（前者被"接自己的 PL 逻辑"取代，
-#            后者只是 u-boot.elf 的提取来源，已改用 MD5 校验 u-boot.elf 本身）
-*.bit
-*.hpf
-!pl/soc_base/*.hpf
-*.elf
-!scripts/bootbin/parts/fsbl.elf
-!scripts/bootbin/parts/u-boot.elf
-*.o
-*.onnx
-*.pt
 *.zip
 *.tar.gz
+
+# ---------- 2. BOOT.bin 与 PL 二进制：总体忽略 + 白名单 ----------
+# 白名单只有 AGENTS.md 第 7 条登记的这几项，想加例外必须先改那一条再改这里：
+#   pl/soc_base/*.hpf            打开厂家底板工程必需（命令行编译不需要）
+#   scripts/bootbin/parts/       只留 fsbl.elf、u-boot.elf 两个固定零件 + MD5SUMS.txt 台账
+# 以下 4 组忽略 + 4 行白名单必须整体保持现在的先后顺序（BOOT.bin/镜像/比特流绝不入库）
+BOOT.bin
+*.bit
+*.hpf
+*.elf
 scripts/bootbin/parts/*
+!pl/soc_base/*.hpf
 !scripts/bootbin/parts/fsbl.elf
 !scripts/bootbin/parts/u-boot.elf
 !scripts/bootbin/parts/MD5SUMS.txt
-scripts/sd_image/flash_log.txt
 
-ps/tools/desreg
-
-# 安路 TD 工程产物
+# ---------- 3. 安路 TD / 厂家工程的运行产物（都是生成物，不是源码） ----------
+# 注意 *.ts 是 TD 的时序报告，不是 TypeScript：以后若加 Web UI，要改成按目录排除
 **/*_Runs/
 **/.Xil/
 *.log
@@ -42,36 +44,42 @@ ps/tools/desreg
 *.violation
 .*.f
 
-# TD 的 IP 参数缓存 / 阶段暂存目录：2026-10-13 已从 soc_base 删除 100 个，
-# 实测命令行编译（read_design/opt_rtl/opt_gate）不会重新生成。若某次开 GUI
-# 编辑块设计后它们又出现（会是未跟踪文件，不脏 diff），再取消下面的注释。
+# TD 的 IP 参数缓存 / 阶段暂存文件：已从 pl/soc_base 清掉且实测命令行编译不重建；
+# 若某次开 GUI 编辑块设计后它们以未跟踪文件形式再现（不脏 diff），再取消下面注释
 # **/.m_params_*.txt
 # **/.params_*.txt
 # **/.ports_*.txt
 # pl/soc_base/design_0/ip/.*/
 
-# FD / Eclipse 工作区
-.metadata/
+# ---------- 4. C/C++ / Python 编译产物 ----------
+*.o
+__pycache__/
+*.pyc
 **/build/
+ps/tools/desreg
 
-# 数据集
+# ---------- 5. 模型与训练数据（数据集、权重不入库，见 AGENTS.md 第 7 条） ----------
+*.onnx
+*.pt
 datasets/
 models/runs/
 
-# 编辑器 / 系统
+# ---------- 6. FD / Eclipse 工作区 ----------
+.metadata/
+
+# ---------- 7. 本机环境与私有路径（含硬编码主机路径，见 AGENTS.md 第 9 条） ----------
+.env
+.env.local
+.env.make
+/reference_src/
+
+# ---------- 8. 编辑器 / 系统垃圾文件 ----------
 .vscode/
 .idea/
 *.swp
 Thumbs.db
 .DS_Store
 System Volume Information/
-__pycache__/
-*.pyc
 
-# 本机参考底板（厂家工程，永不入库；入库白名单见 AGENTS.md 硬性约定第 7 条）
-/reference_src/
-
-# 本机环境配置（包含硬编码路径，不要提交）
-.env
-.env.local
-.env.make
+# ---------- 9. 脚本运行期日志 ----------
+scripts/sd_image/flash_log.txt
