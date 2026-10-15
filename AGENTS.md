@@ -60,6 +60,7 @@
 - Windows Git Bash 的 heredoc / `printf` 会吞反斜杠（`\b`、`\t` 被转义）：含 Windows 路径或 `\n` 的脚本先写成文件再执行。
 - `ssh -i ~/.ssh/id_ed25519_anlu root@192.168.137.100`（PS 网口，PC 192.168.137.1）；测试程序在 `/root/bin`、`/root/des`，不动系统文件和 eMMC。
 - `des_app` 运行期间 `desreg` 只用 `r` 只读（舵机总线 / 步进只能有一个主人）。
+- **板上装了开机自启**（`/etc/init.d/S90des` → `/root/des/des_service.sh`，上电即 `des_app run --can can0`）：手动跑 `des_app.sh` 或 `desreg` 写命令前先 `/root/des/des_service.sh stop`，用完 `start`（`des_app.sh` 发现已有 des_app 会拒绝启动；`pl_check.sh` / `soak.sh` 自动暂停、恢复）。
 - 跑长测试（`soak.sh`）或换 `BOOT.bin` 前先在用户侧确认（两边可能同时连板子）。
 
 ## 操作禁忌（血的教训）

@@ -50,6 +50,7 @@ DPHY、HDMI 控制器、AXI Matrix 等），随本工程编译。
 | `src/system_top.v`、`src/constraint/io.adc`（v7） | 接入 `des_pwm`（0x4xx）：`FLAP1_PWM` = PIN18 Y6、`FLAP2_PWM` = PIN20 Y8、`LAMP_EN` = PIN17 Y7；`stepper_ctrl` 启动预置相位（首脉冲 1.94ms → 10.6µs）；VERSION=7 | 带尾两级翻板 + 光源；指令响应 |
 | `src/constraint/timing.sdc`（v8） | **`clk_mipi` 挂到实际的字节时钟** `u_mipi_dphy_rx_over_lvds_wrapper/u_rx_clk_gen/U_io_clk_div_1.clkdivout`，8.0ns。厂家原约束挂在不存在的硬核 MIPI 引脚上（TD：`No pins matched … defined a virtual clock`），整个像素时钟域（ISP、des_vision、帧写入）从未做过时序分析，tuser 边沿检测因此漏帧 | 像素域时序收敛 |
 | `src/system_top.v`（v8） | `des_vision` / `des_pwm` 读数据用组合逻辑（桥接逻辑同一时钟取数，打拍的读回上一个地址）；VERSION=8 | 寄存器读回正确 |
+| `src/des/stepper_ctrl.v`、`src/system_top.v`（v9） | 运动中把 `TARGET` 改成恰好等于 `POS` 时就地停（原来一直 MOVING）；目标在身后仍减速停；VERSION=9。仓库内原地编译（`soc_prj_Runs/`），布线 46 分钟；HDMI 串行 742.9MHz 路径 +0.120ns（v8 −0.338ns） | 皮带「停在此处」写法不再卡死 |
 
 ## 已知问题（编译前先看）
 

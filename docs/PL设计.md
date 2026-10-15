@@ -96,7 +96,7 @@
 
 ### 步进控制 `stepper_ctrl`（`PL_BASE + 0x200`，已接入顶层上板；⬜ 待 TB6600 实物）
 
-[pl/soc_base/src/des/stepper_ctrl.v](../pl/soc_base/src/des/stepper_ctrl.v)：速度模式（传送带连续走、改速度自动平滑过渡）+ 位置模式（梯形加减速，停在精确步数）。速度用"每时钟前进的步数"Q0.32 定点数表示：`inc = v[步/s] × 2^32 / 75e6`，单位换算由 PS 做；升降速节拍 10kHz。模块输出按 TB6600 共阳接法（PUL 低有效、脉冲 5µs；换向后等 10µs 再发脉冲；ENA 使能时输出高）；**顶层 `STEP_COMMON_CATHODE=1` 反相为共阴直驱**（PUL 高有效，ENA 高 = 脱机），见 [硬件与接线](硬件与接线.md)。运动中可改写 `TARGET`：传送带"停在某步"就是这么做的（减速点自动重算）；目标若已落在运动方向身后（写得太晚），会减速停在目标之后（`AT_TARGET` = 0），不卡在 moving；改写成恰好等于当前位置则就地停（`AT_TARGET` = 1，v9 起；v8 及以前会一直 moving，PS `BeltDriver` 已避开这种写法）。`estop` 输入或写 HALT 立即停脉冲（不减速），置 HALTED。速度上限按每秒 5 万步用（5µs 脉冲需 10µs 周期）。
+[pl/soc_base/src/des/stepper_ctrl.v](../pl/soc_base/src/des/stepper_ctrl.v)：速度模式（传送带连续走、改速度自动平滑过渡）+ 位置模式（梯形加减速，停在精确步数）。速度用"每时钟前进的步数"Q0.32 定点数表示：`inc = v[步/s] × 2^32 / 75e6`，单位换算由 PS 做；升降速节拍 10kHz。模块输出按 TB6600 共阳接法（PUL 低有效、脉冲 5µs；换向后等 10µs 再发脉冲；ENA 使能时输出高）；**顶层 `STEP_COMMON_CATHODE=1` 反相为共阴直驱**（PUL 高有效，ENA 高 = 脱机），见 [硬件与接线](硬件与接线.md)。运动中可改写 `TARGET`：传送带"停在某步"就是这么做的（减速点自动重算）；目标若已落在运动方向身后（写得太晚），会减速停在目标之后（`AT_TARGET` = 0），不卡在 moving；改写成恰好等于当前位置则就地停（`AT_TARGET` = 1，v9 起，上板实测 31µs；v8 及以前会一直 moving，PS `BeltDriver` 已避开这种写法）。`estop` 输入或写 HALT 立即停脉冲（不减速），置 HALTED。速度上限按每秒 5 万步用（5µs 脉冲需 10µs 周期）。
 
 | 偏移 | R/W | 说明 |
 |---|---|---|

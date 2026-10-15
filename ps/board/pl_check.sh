@@ -6,6 +6,11 @@
 # target rewrite (TARGET = POS while moving stops there, a target behind ramps down). Prints PASS /
 # FAIL per item and a summary; exit code = failures. Uses the camera (des_app probe in the background).
 cd "$(dirname "$0")" || exit 1
+# the autostart service (des_service.sh) owns the camera / buses: pause it for this run, resume at the end
+SVC_PAUSED=0
+if [ -x ./des_service.sh ] && ./des_service.sh status | grep -q "^des_service: running"; then
+    ./des_service.sh stop > /dev/null && SVC_PAUSED=1
+fi
 R=/root/bin/desreg
 FAILS=0
 pass() { echo "PASS $*"; }
@@ -76,4 +81,5 @@ wait
 grep "== probe" /tmp/pl_check_probe.log | sed 's/^/     /'
 grep -q "skipped 0 " /tmp/pl_check_probe.log && pass "camera capture without skipped frames" || fail "camera capture skipped frames"
 echo "== pl_check: $FAILS failure(s)"
+[ $SVC_PAUSED -eq 1 ] && ./des_service.sh start > /dev/null
 exit $FAILS
