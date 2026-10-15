@@ -487,7 +487,7 @@ wire pwm_out_unused;
     wire des_estop = ~des_estop_sync[2];
 
     wire [31:0] st_pos;
-    des_regs #(.VERSION(32'd8)) des_regs_inst (
+    des_regs #(.VERSION(32'd9)) des_regs_inst (
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h0), .waddr(des_waddr), .wdata(des_wdata),
         .raddr(des_raddr), .rdata(regs_rdata), .sof_toggle(des_sof_toggle), .ts(des_ts),
         .cap_start_toggle(cap_start_tgl), .cap_done_toggle(cap_done_tgl), .pos(st_pos),

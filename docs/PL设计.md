@@ -56,7 +56,7 @@
 
 不改块设计：借用 GP0 上 `fvdma_ctrl`（`mipicam`）的 64KB 窗口 `0x8030_0000~0x8030_FFFF`，把它的地址线从 4 位加宽到 16 位，**偏移 `0x1000~0x1FFF` 引出到 PL 顶层的寄存器总线**（`des_clk` 75MHz / `des_wr` 单周期写脉冲 / `des_waddr` / `des_wdata` / `des_raddr` / `des_rdata`）。`0x0000~0x0FFF` 仍是厂家寄存器，`mipicam` 驱动照常使用；厂家寄存器的写入已排除我们的地址段。改动文件与原理见 [pl/soc_base](../pl/soc_base/)，仿真 [pl/sim/tb_des_axi.v](../pl/sim/tb_des_axi.v)。
 
-**`PL_BASE` = `0x8030_1000`**，已实现的寄存器（`des_regs`，在 `system_top.v` 里；板上为 **v5**（拍摄锁存 / BRAKE 实测通过，见 log/2026-10-10-相机60fps与PS骨架）：
+**`PL_BASE` = `0x8030_1000`**，已实现的寄存器（`des_regs`，在 `system_top.v` 里；拍摄锁存 / BRAKE 自 v5 起实测通过，见 log/2026-10-10-相机60fps与PS骨架；板上现为 v8）：
 
 | 偏移 | R/W | 名称 | 说明 |
 |---|---|---|---|
@@ -96,7 +96,7 @@
 
 ### 步进控制 `stepper_ctrl`（`PL_BASE + 0x200`，已接入顶层上板；⬜ 待 TB6600 实物）
 
-[pl/soc_base/src/des/stepper_ctrl.v](../pl/soc_base/src/des/stepper_ctrl.v)：速度模式（传送带连续走、改速度自动平滑过渡）+ 位置模式（梯形加减速，停在精确步数）。速度用"每时钟前进的步数"Q0.32 定点数表示：`inc = v[步/s] × 2^32 / 75e6`，单位换算由 PS 做；升降速节拍 10kHz。模块输出按 TB6600 共阳接法（PUL 低有效、脉冲 5µs；换向后等 10µs 再发脉冲；ENA 使能时输出高）；**顶层 `STEP_COMMON_CATHODE=1` 反相为共阴直驱**（PUL 高有效，ENA 高 = 脱机），见 [硬件与接线](硬件与接线.md)。运动中可改写 `TARGET`：传送带"停在某步"就是这么做的（减速点自动重算）；目标若已落在运动方向身后（写得太晚），会减速停在目标之后（`AT_TARGET` = 0），不卡在 moving。`estop` 输入或写 HALT 立即停脉冲（不减速），置 HALTED。速度上限按每秒 5 万步用（5µs 脉冲需 10µs 周期）。
+[pl/soc_base/src/des/stepper_ctrl.v](../pl/soc_base/src/des/stepper_ctrl.v)：速度模式（传送带连续走、改速度自动平滑过渡）+ 位置模式（梯形加减速，停在精确步数）。速度用"每时钟前进的步数"Q0.32 定点数表示：`inc = v[步/s] × 2^32 / 75e6`，单位换算由 PS 做；升降速节拍 10kHz。模块输出按 TB6600 共阳接法（PUL 低有效、脉冲 5µs；换向后等 10µs 再发脉冲；ENA 使能时输出高）；**顶层 `STEP_COMMON_CATHODE=1` 反相为共阴直驱**（PUL 高有效，ENA 高 = 脱机），见 [硬件与接线](硬件与接线.md)。运动中可改写 `TARGET`：传送带"停在某步"就是这么做的（减速点自动重算）；目标若已落在运动方向身后（写得太晚），会减速停在目标之后（`AT_TARGET` = 0），不卡在 moving；改写成恰好等于当前位置则就地停（`AT_TARGET` = 1，v9 起；v8 及以前会一直 moving，PS `BeltDriver` 已避开这种写法）。`estop` 输入或写 HALT 立即停脉冲（不减速），置 HALTED。速度上限按每秒 5 万步用（5µs 脉冲需 10µs 周期）。
 
 | 偏移 | R/W | 说明 |
 |---|---|---|
@@ -107,7 +107,7 @@
 | 0x218 / 0x21C / 0x220 | R | `POS` 当前位置（有符号）/ `CUR_INC` 当前速度 / `STEPS` 累计步数 |
 | 0x224 | R | `BRAKE`：从当前速度减速到停需要的步数（v5；PS 判断"还来不来得及停"） |
 
-仿真 [pl/sim/tb_stepper_ctrl.v](../pl/sim/tb_stepper_ctrl.v)（`run_sim.sh stepper`）用独立脉冲监视器核对：+1000 步与 −200 步精确到位、换向建立时间 ≥10µs、脉宽 5.0µs、最高速不超、速度模式减速停、HALT / 急停后零脉冲、ENA 极性；v5 加：巡航中 BRAKE > 0、运动中改写目标精确停住、目标改到身后减速停（越过步数 = BRAKE）不卡死，全部通过。
+仿真 [pl/sim/tb_stepper_ctrl.v](../pl/sim/tb_stepper_ctrl.v)（`run_sim.sh stepper`）用独立脉冲监视器核对：+1000 步与 −200 步精确到位、换向建立时间 ≥10µs、脉宽 5.0µs、最高速不超、速度模式减速停、HALT / 急停后零脉冲、ENA 极性；v5 加：巡航中 BRAKE > 0、运动中改写目标精确停住、目标改到身后减速停（越过步数 = BRAKE，减速时长 ≥1ms，不许急停）不卡死；v9 加：运动中目标改成当前位置 → 停住、到位、可再次启动，全部通过。
 
 ### PL 视觉 `des_vision`（`PL_BASE + 0x300`，✅ v8 上板验证）
 
@@ -135,7 +135,7 @@
 
 ### 带尾翻板 + 光源 `des_pwm`（`PL_BASE + 0x400`，✅ v8 上板验证，未接舵机）
 
-[pl/soc_base/src/des/des_pwm.v](../pl/soc_base/src/des/des_pwm.v)：2 路 50Hz 舵机 PWM（两级翻板，MG996R）+ 光源开关。脉宽单位 µs，新值在下一周期开头生效（不出半截脉冲），钳位 2550µs；周期计数供 PS 确认已生效。对应领域 3 中级「NG 不良品输出 IO 控制；不良品实时分拣触发」。仿真 [pl/sim/tb_des_pwm.v](../pl/sim/tb_des_pwm.v) 11 项过。管脚：#16 `FORK_PWM` = PIN18 Y6、#18 = PIN20 Y8、#15 `LAMP_EN` = PIN17 Y7。PS 侧 `scheduler/flap`（零件到达前 40mm 打到位、过去 60mm 释放）。
+[pl/soc_base/src/des/des_pwm.v](../pl/soc_base/src/des/des_pwm.v)：2 路 50Hz 舵机 PWM（两级翻板，MG996R）+ 光源开关。脉宽单位 µs，新值在下一周期开头生效（不出半截脉冲），钳位 2550µs；周期计数供 PS 确认已生效。对应领域 3 中级「NG 不良品输出 IO 控制；不良品实时分拣触发」。仿真 [pl/sim/tb_des_pwm.v](../pl/sim/tb_des_pwm.v) 11 项过。管脚：#16 `FORK_PWM` = PIN18 Y6、#18 = PIN20 Y8、#15 `LAMP_EN` = PIN17 Y7。PS 侧 `src/sched/flap`（零件到达前 40mm 打到位、过去 60mm 释放）。
 
 | 偏移 | R/W | 说明 |
 |---|---|---|

@@ -154,6 +154,7 @@ module tb_stepper_ctrl;
         t_end = $realtime;
         wait_idle;
         $display("     overshoot stop took %0.2f us", ($realtime - t_end) / 1000.0);
+        check_ge("overshoot ramps down (us)", ($realtime - t_end) / 1000.0, 1000.0);
         reg_rd(8'h04, r); check("stopped (not frozen) after target passed", r[0], 0);
         check("AT_TARGET 0 after overshoot", r[2], 0);
         reg_rd(8'h18, r); check_ge("ran past the passed target", $signed(r), t_start);

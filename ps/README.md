@@ -61,7 +61,7 @@ ps/
 | `soak.sh [秒] [目录]`（`board/soak.sh`，部署到 /root/des/） | 长时间运行：des_app run + canplc 当 PLC，每分钟记内存 / 负载 / CAN / PL 帧号，结束出 summary.txt（测试报告「连续运行」） |
 | `pl_check.sh`（`board/pl_check.sh`，部署到 /root/des/） | 换比特流后的上板回归（19 项，后台跑 `des_app probe`） |
 
-- 坐标约定见 `src/sched/geom.hpp`：图像 px → 台面 mm（单应矩阵，配置 `px_to_table`），件在带上 `s = x − B`（B = 带走过的距离），停带 / 反转都无需特殊处理；停带 = 给步进位置模式写「停在 B = 抓取线 − s」，减速由 PL 梯形曲线完成（`stepper_ctrl`）。⚠ 目标不能给在身后（会卡在 moving），调度器按刹车距离判断来不及就转复检。
+- 坐标约定见 `src/sched/geom.hpp`：图像 px → 台面 mm（单应矩阵，配置 `px_to_table`），件在带上 `s = x − B`（B = 带走过的距离），停带 / 反转都无需特殊处理；停带 = 给步进位置模式写「停在 B = 抓取线 − s」，减速由 PL 梯形曲线完成（`stepper_ctrl`）。目标写得太晚（已在身后）时 PL 减速停在它之后（`AT_TARGET` = 0），调度器按刹车距离判断来不及就转复检、不倒车。
 - 取帧：厂家帧 DMA「提交一块写一帧」，完成后立即重提下一块（4 块环形缓冲）。**实测 SCHED_FIFO 与普通调度都 0 丢帧**，重提 0.2µs —— demo 的 28fps 是串行流水造成的，不是硬件限制。
   PL v4 起相机 59.83fps，`src/des_app.json` 的 `camera.vmax = 2276` 补到 **60.02fps**（20s 1201 帧 0 丢帧）。PL v5 起每帧带 PL 锁存的拍摄时刻带位置（`CAP_*`，实测与「速度 × 读出时间」一致），旧比特流自动退回「完成后读」。
 - 定位：1/4 降采样灰度（480×270）+ Otsu（下限钳位）+ 开运算 + 外轮廓 + minAreaRect，板上 6.8ms/帧。1/2 降采样要 21ms（DMA 缓冲读像素慢），超帧预算。

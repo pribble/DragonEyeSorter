@@ -41,12 +41,12 @@ source ~/des-train/bin/activate
 
 | 版本 | 安装 | 训练速度参考 |
 |---|---|---|
-| CPU（调试 / 无 GPU） | `pip install -r requirements.txt` | 合成数据 2400 张 × 12 轮：约 6.4 分钟 |
-| GPU（推荐，CUDA 12.1） | `pip install -r requirements-gpu.txt` | RTX 4060 Laptop，合成数据 2400 张 × 12 轮：约 40 秒（含启动 1 分 14 秒） |
+| CPU（调试 / 无 GPU） | `pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu` | 合成数据 2400 张 × 12 轮：约 6.4 分钟 |
+| GPU（推荐，CUDA 13.0 轮子） | `pip install -r requirements-gpu.txt` | RTX 4060 Laptop，合成数据 2400 张 × 12 轮：约 40 秒（含启动 1 分 14 秒） |
 
 **注意事项**：
-- GPU 版本要 NVIDIA GPU + CUDA 12.1（或兼容版本）
-- WSL2 下 CUDA 可用（NVIDIA 驱动 ≥525.60.13）
+- 版本锁定为实际跑通、模型已上板验证的环境（torch 2.14.1 / ultralytics 8.4.175 / onnx 1.23.2 / ORT 1.23.2，Python 3.10）
+- GPU 版要 NVIDIA 驱动支持 CUDA 13（WSL 里 `nvidia-smi` 右上角 CUDA Version ≥ 13.0）
 - 两版 fp32 推理精度一致；量化后精度以板上 NPU 实测为准
 - 训练完成度：CPU 98.33% top1，GPU 98.75%（GPU 不完全确定性）
 

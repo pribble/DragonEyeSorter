@@ -121,10 +121,10 @@ module stepper_ctrl #(
             // ramp tick
             if (acc_cnt == ACC_DIV - 1) begin
                 acc_cnt <= 0;
-                // TARGET rewritten to exactly current position mid-move: no steps are left, stop immediately
-                // without waiting for decel complete (v9 bugfix: step_now gate at L71 freezes accel_steps,
-                // so we never reach the normal remaining==1 last-step exit at L147).
-                if (mode && remaining == 0) begin moving <= 0; cur_inc <= 0; end
+                // TARGET rewritten to exactly the current position mid-move: step_now emits nothing more, so the
+                // last-step exit below never fires -> stop here. Only pos == target: a target BEHIND the travel
+                // (remaining also reads 0 then) must keep ramping down past it (overshoot), not stop abruptly.
+                if (mode && at_target) begin moving <= 0; cur_inc <= 0; end
                 else if (want_down) begin
                     if (cur_inc > vmin_inc + acc_inc) cur_inc <= cur_inc - acc_inc;
                     else begin

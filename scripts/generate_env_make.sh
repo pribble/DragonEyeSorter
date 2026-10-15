@@ -23,6 +23,8 @@ grep -v '^#' "$ENV_FILE" | grep -v '^[[:space:]]*$' | while IFS='=' read -r key 
 
     # 处理 Windows 路径（替换反斜杠为正斜杠）
     value=$(echo "$value" | sed 's|\\|/|g')
+    # shell 写法 $HOME / ${HOME} → make 的 $(HOME)（make 里 $HOME 会被读成 $H + "OME"）
+    value=$(echo "$value" | sed -E 's/\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?/$(\1)/g')
 
     echo "export $key := $value" >> "$OUTPUT_FILE"
 done

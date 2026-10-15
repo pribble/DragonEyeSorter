@@ -22,7 +22,7 @@
               "finger_w": 12, "finger_t": 6, "grip_clear": 4, "max_open": 60, "round_ratio": 1.3,
               "neighbor_gap": 2, "flap_lead": 0, "flap_conflict": 30 },
 
-  "measure_comment": "几何测量（docs/02「几何测量」）：每件在离光轴最近的那帧测一次（per_frame = 每帧最多测几件，4~5ms/件）。TODO camera_h_mm = 0 表示不做视差校正，装好相机后填实测相机高度；gear_h_mm / rack_h_mm 填卡尺量的厚度；walls_visible 看实拍侧壁亮不亮。rule = 尺寸超差 / 规格混料 → ng_outlet（只改判 NPU 判 OK 的件），标定实测后再开 enabled",
+  "measure_comment": "几何测量（docs/视觉与检测.md「几何测量」）：每件在离光轴最近的那帧测一次（per_frame = 每帧最多测几件，4~5ms/件）。TODO camera_h_mm = 0 表示不做视差校正，装好相机后填实测相机高度；gear_h_mm / rack_h_mm 填卡尺量的厚度；walls_visible 看实拍侧壁亮不亮。rule = 尺寸超差 / 规格混料 → ng_outlet（只改判 NPU 判 OK 的件），标定实测后再开 enabled",
   "measure": { "enabled": true, "per_frame": 1, "gear_ratio": 0.6, "margin_mm": 3, "improve": 0.75,
                "camera_h_mm": 0, "gear_h_mm": 10, "rack_h_mm": 12, "walls_visible": true, "max_smear_mm": 0.8,
                "short_tooth_mm": 0.4, "flash_mm": 0.5,

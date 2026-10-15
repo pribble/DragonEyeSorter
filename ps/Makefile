@@ -92,7 +92,7 @@ $(BUILD)/test_scheduler: tests/test_scheduler.cpp $(SCHED_SRC) $(wildcard src/sc
 
 $(BUILD)/test_measure: tests/test_measure.cpp src/measure/measure.cpp src/measure/track_measure.cpp \
     src/measure/roi_crop.cpp src/app/part_log.cpp $(SCHED_SRC) \
-    $(wildcard src/measure/*measure*.hpp src/measure/roi_crop.hpp src/app/part_log.hpp src/sched/*.hpp) check-sdk | $(BUILD)
+    $(wildcard src/measure/*measure*.hpp src/measure/roi_crop.hpp src/app/part_log.hpp src/sched/*.hpp) | check-sdk $(BUILD)
 	$(CXX) $(CXXFLAGS) $(INC) -I$(OPENCV)/include/opencv4 -o $@ tests/test_measure.cpp src/measure/measure.cpp \
 	    src/measure/track_measure.cpp src/measure/roi_crop.cpp src/app/part_log.cpp $(SCHED_SRC) \
 	    -L$(OPENCV)/lib -Wl,-rpath-link,$(OPENCV)/lib $(RPATH) -lopencv_imgcodecs -lopencv_imgproc -lopencv_core -lpthread
@@ -104,14 +104,18 @@ $(BUILD)/test_can: tests/test_can.c src/hw/can_link.c src/hw/can_link.h src/hw/c
 	$(CC) $(CFLAGS) $(INC) -o $@ tests/test_can.c src/hw/can_link.c
 
 # hardware-in-the-loop: needs the board (PL v5+), no motor
-$(BUILD)/test_belt_hil: tests/test_belt_hil.cpp src/app/belt_ctl.cpp src/app/belt_ctl.hpp $(SCHED_SRC) src/hw/des_hw.c | $(BUILD)
-	$(CC) $(CFLAGS) $(INC) -c -o $(BUILD)/des_hw.o src/hw/des_hw.c
+$(BUILD)/test_belt_hil: tests/test_belt_hil.cpp src/app/belt_ctl.cpp src/app/belt_ctl.hpp $(SCHED_SRC) $(BUILD)/des_hw.o | $(BUILD)
 	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_belt_hil.cpp src/app/belt_ctl.cpp $(SCHED_SRC) \
 	    $(BUILD)/des_hw.o
 
-$(BUILD)/des_app: $(APP_SRC) $(SCHED_SRC) $(VISION_SRC) src/hw/des_hw.c $(HDRS) check-sdk check-board | $(BUILD)
-	$(CC) $(CFLAGS) $(INC) -c -o $(BUILD)/des_hw.o src/hw/des_hw.c
-	$(CC) $(CFLAGS) $(INC) -c -o $(BUILD)/can_link.o src/hw/can_link.c
+# shared objects: one rule each, so parallel make (-j) never has two recipes writing the same .o
+$(BUILD)/des_hw.o: src/hw/des_hw.c src/hw/des_hw.h src/hw/des_regs.h | $(BUILD)
+	$(CC) $(CFLAGS) $(INC) -c -o $@ src/hw/des_hw.c
+$(BUILD)/can_link.o: src/hw/can_link.c src/hw/can_link.h src/hw/can_proto.h | $(BUILD)
+	$(CC) $(CFLAGS) $(INC) -c -o $@ src/hw/can_link.c
+
+# check-sdk / check-board are order-only (after |): they run first but, being phony, must not force a relink
+$(BUILD)/des_app: $(APP_SRC) $(SCHED_SRC) $(VISION_SRC) $(BUILD)/des_hw.o $(BUILD)/can_link.o $(HDRS) | check-sdk check-board $(BUILD)
 	$(CXX) $(CXXFLAGS) $(INC) \
 	    -I$(ARMNN)/include -I$(OPENCV)/include/opencv4 -I$(FREETYPE_INC) \
 	    -o $@ $(APP_SRC) $(SCHED_SRC) $(VISION_SRC) $(BUILD)/des_hw.o $(BUILD)/can_link.o \
@@ -119,13 +123,13 @@ $(BUILD)/des_app: $(APP_SRC) $(SCHED_SRC) $(VISION_SRC) src/hw/des_hw.c $(HDRS) 
 	    $(OPENCV_LIBS) -larmnn -larmnnOnnxParser -lfreetype -lfmt -lpthread
 
 # NPU part classifier on the board vs the PC reference (train/eval_onnx.py --refs)
-$(BUILD)/test_npu: tests/test_npu.cpp src/app/npu_cls.cpp src/app/npu_cls.hpp $(VISION_SRC) check-sdk | $(BUILD)
+$(BUILD)/test_npu: tests/test_npu.cpp src/app/npu_cls.cpp src/app/npu_cls.hpp $(VISION_SRC) | check-sdk $(BUILD)
 	$(CXX) $(CXXFLAGS) $(INC) -I$(ARMNN)/include -I$(OPENCV)/include/opencv4 \
 	    -o $@ tests/test_npu.cpp src/app/npu_cls.cpp $(VISION_SRC) \
 	    -L$(ARMNN)/lib -L$(OPENCV)/lib -Wl,-rpath-link,$(ARMNN)/lib:$(OPENCV)/lib $(RPATH) \
 	    -lopencv_imgcodecs -lopencv_imgproc -lopencv_core -larmnn -larmnnOnnxParser -lfmt -lpthread
 
-$(BUILD)/test_calib: tests/test_calib.cpp src/measure/calib.cpp src/measure/calib.hpp src/sched/geom.hpp check-sdk | $(BUILD)
+$(BUILD)/test_calib: tests/test_calib.cpp src/measure/calib.cpp src/measure/calib.hpp src/sched/geom.hpp | check-sdk $(BUILD)
 	$(CXX) $(CXXFLAGS) $(INC) -I$(OPENCV)/include/opencv4 \
 	    -o $@ tests/test_calib.cpp src/measure/calib.cpp \
 	    -L$(OPENCV)/lib -Wl,-rpath-link,$(OPENCV)/lib $(RPATH) $(OPENCV_LIBS) -lpthread

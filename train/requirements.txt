@@ -1,6 +1,12 @@
-torch==2.1.4
-ultralytics==8.4.0
-opencv-python==4.10.0.84
-numpy>=1.24.0,<2.0.0
-onnx==1.16.2
-onnxruntime==1.19.2
+# 训练 / 导出 / 量化（WSL Ubuntu 22.04，Python 3.10）
+# 版本 = 实际跑通、导出的模型已在板上 NPU 验证的那套环境（~/des-train，pip list 实测）。
+# CPU 版 torch：pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
+# GPU 版用 requirements-gpu.txt（CUDA 13.0 轮子）。
+torch==2.14.1
+torchvision==0.29.1
+ultralytics==8.4.175
+onnx==1.23.2
+onnxruntime==1.23.2
+onnxslim==0.1.98
+opencv-python==5.0.0.93
+numpy==2.2.6
