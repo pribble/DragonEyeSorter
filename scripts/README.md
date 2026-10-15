@@ -17,7 +17,7 @@ cd scripts\bootbin
 ```
 
 - 路径不同用 `-FdRoot`（FD 安装目录）；**零件已在仓库内 `parts/`，常规打包不依赖仓库外的厂家 demo 目录**
-- 产物 `BOOT.bin` 替换板上 `/mnt/mmcblk0p1/BOOT.bin`，`sync` 后重启
+- 产物 `BOOT.bin` 替换板上 `/mnt/mmcblk0p1/BOOT.bin`：先传到 `/root`，板上旧的复制为 `BOOT.bin.prev`（上一个能启动的版本）再放新的，`sync` 后重启（完整步骤见 [环境与上手](../docs/环境与上手.md)「部署与运行」）
 - 与厂家原版差异：分区头全同、FSBL/U-Boot 逐字节同，仅比特流尾 32 字节及其校验值不同（新旧 BootGen 版本差异）
 
 **零件台账**（[parts/MD5SUMS.txt](bootbin/parts/MD5SUMS.txt)）：
