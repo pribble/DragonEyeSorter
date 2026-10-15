@@ -6,6 +6,7 @@
  *   desreg cmdlat [n]              command response: PS issues a 6-servo SYNC WRITE -> first start bit on the bus
  *                                  (ids 100..105: nobody answers, nothing moves; test report)
  *   desreg steplat [n]             command response: PS issues a 10-step move -> first step pulse (polls STEPS)
+ *   desreg steptgt                 stepper target rewrite while moving: TARGET = POS stops at once (v9+); a target behind ramps down past it
  *   desreg ping <id>               servo PING
  *   desreg sread <id> <addr> <n>   servo READ DATA (e.g. 0x38 2 = position, 0x2E 2 = current, 0x3F 1 = temp)
  *   desreg swrite <id> <addr> <b..> servo WRITE DATA (bytes)
@@ -134,6 +135,49 @@ static int steplat(int n)
     return 0;
 }
 
+/* stepper TARGET rewrite while moving (belt "stop at"): slow move (100 steps/s, 10 ms per step) so that a target
+ * written microseconds after reading POS equals POS. v9+: stops at once with AT_TARGET; v8 and older stay MOVING.
+ * Then a target behind the travel at speed: must ramp down past it (not stop abruptly). */
+static int steptgt(void)
+{
+    des_step_enable(&hw, 1);
+    usleep(20000);
+    int32_t p0 = des_step_pos(&hw);
+    des_step_move(&hw, p0 + 100000, 100, 100000);   /* reaches 100 steps/s within a ramp tick or two */
+    usleep(300000);
+    int32_t p = des_step_pos(&hw);
+    des_step_set_target(&hw, p);
+    uint32_t t0 = des_now(&hw), st;
+    while (((st = des_step_status(&hw)) & DES_ST_STATUS_MOVING) && des_now(&hw) - t0 < DES_FREE_CNT_HZ / 20) {}
+    const double us = des_ticks_us(des_now(&hw) - t0);
+    const int32_t pe = des_step_pos(&hw);
+    int rc = 0;
+    if (st & DES_ST_STATUS_MOVING) {
+        printf("TARGET = POS (%d) while moving: still MOVING after 50 ms (PL v8 and older)\n", p);
+        des_step_halt(&hw);
+        rc = 6;
+    } else {
+        printf("TARGET = POS (%d) while moving: stopped after %.1f us at %d, AT_TARGET %d\n", p, us, pe,
+               !!(st & DES_ST_STATUS_AT_TARGET));
+        if (!(st & DES_ST_STATUS_AT_TARGET) || pe != p) rc = 6;
+    }
+    /* overshoot: cruise at 4000 steps/s, then a target 10 steps behind */
+    usleep(20000);
+    des_step_enable(&hw, 1);   /* clears a HALT */
+    p0 = des_step_pos(&hw);
+    des_step_move(&hw, p0 + 1000000, 4000, 20000);
+    usleep(400000);
+    p = des_step_pos(&hw);
+    des_step_set_target(&hw, p - 10);
+    t0 = des_now(&hw);
+    while ((des_step_status(&hw) & DES_ST_STATUS_MOVING) && des_now(&hw) - t0 < DES_FREE_CNT_HZ) {}
+    const double ms = des_ticks_us(des_now(&hw) - t0) / 1000.0;
+    const int32_t past = des_step_pos(&hw) - p;
+    printf("target behind at 4000 steps/s: ramped down in %.1f ms, %d steps past\n", ms, past);
+    if (ms < 50 || past < 50) rc = 6;   /* 4000 -> 0 at 20000 steps/s^2 = 200 ms, ~400 steps */
+    return rc;
+}
+
 /* run one servo transaction and print timing / reply like the original tool */
 static int sb_print(const uint8_t *body, int n, int expect_reply, des_sb_result_t *out)
 {
@@ -182,6 +226,8 @@ int main(int argc, char **argv)
         rc = cmdlat(argc > 2 ? atoi(argv[2]) : 200);
     } else if (!strcmp(cmd, "steplat")) {
         rc = steplat(argc > 2 ? atoi(argv[2]) : 100);
+    } else if (!strcmp(cmd, "steptgt")) {
+        rc = steptgt();
     } else if (!strcmp(cmd, "ping") && argc == 3) {
         uint8_t b[3] = { (uint8_t)strtoul(argv[2], NULL, 0), 2, 0x01 };
         rc = sb_print(b, 3, 1, NULL);

@@ -2,7 +2,8 @@
 # pl_check.sh — PL regression after every new BOOT.bin (board side, /root/des/pl_check.sh). No actuators needed.
 # Checks: des_regs ID / VERSION, sensor frame rate seen by the PL (FRAME_CNT over 1 s, FRAME_PERIOD), des_vision (v6+):
 # register read-back, statistics advancing, pixel clock = CYCLES x fps, display modes 1..5 accepted; des_pwm (v7+):
-# width / enable / lamp read-back and period counter; command response latencies (servo bus, stepper). Prints PASS /
+# width / enable / lamp read-back and period counter; command response latencies (servo bus, stepper); v9+: stepper
+# target rewrite (TARGET = POS while moving stops there, a target behind ramps down). Prints PASS /
 # FAIL per item and a summary; exit code = failures. Uses the camera (des_app probe in the background).
 cd "$(dirname "$0")" || exit 1
 R=/root/bin/desreg
@@ -65,6 +66,10 @@ fi
 # --- command response
 echo "     $($R cmdlat 100)"
 echo "     $($R steplat 50)"
+if [ "$VER" -ge 9 ]; then   # stepper: TARGET rewritten to POS while moving stops there; target behind ramps down
+    OUT=$($R steptgt) && pass "stepper target rewrite" || fail "stepper target rewrite"
+    echo "$OUT" | sed 's/^/     /'
+fi
 $R step off > /dev/null
 
 wait
