@@ -67,7 +67,7 @@ struct SizeRule {
     float gear_od = 32, gear_od_tol = 0.15f;   // recipe example in 齿轮齿条_测量功能与数据.md: 32.00±0.15, 50.0±0.5
     float gear_bore = 6, gear_bore_tol = 0.3f;
     float gear_max_ecc = 0.3f;
-    float rack_len = 50, rack_len_tol = 0.5f;
+    float rack_len = 50, rack_len_tol = 1.0f;
     int ng_outlet = 1;              // flap outlet for size / spec NG (index into outlets, 1 = scrap)
     bool defect_recheck = true;     // class says OK but the measurement found tooth defects -> recheck
     bool require = false;           // no measurement by decide_x -> recheck
@@ -83,7 +83,7 @@ struct Recipe {
     float gear_od = 32, gear_od_tol = 0.15f;
     float gear_bore = 6, gear_bore_tol = 0.3f;
     float gear_max_ecc = 0.3f;
-    float rack_len = 50, rack_len_tol = 0.5f;
+    float rack_len = 50, rack_len_tol = 1.0f;
 
     void apply(SizeRule &r) const   // spec fields only: enabled / outlet / recheck policy stay as configured
     {

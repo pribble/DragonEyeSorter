@@ -186,6 +186,11 @@ static void test_size_rule()
         {0, meas_gear(30, 32.0f, 0.05f, 1, false), Disposition::Pick, 0, "short tooth not judged (far off-axis)"},
         {4, meas_rack(48.0f), Disposition::Flap, 1, "48 mm rack"},
         {4, meas_rack(50.1f), Disposition::Pick, 1, "50 mm rack"},
+        // racks are cut at whole teeth (pitch 3.125 mm, 16 teeth = 50.0): hand-cut 16-tooth parts scatter a few
+        // tenths, a tooth more or less is 3.1 mm -> tolerance 1.0 (2026-10-17)
+        {4, meas_rack(50.8f), Disposition::Pick, 1, "16-tooth rack, hand-cut +0.8"},
+        {4, meas_rack(46.875f), Disposition::Flap, 1, "15-tooth rack"},
+        {4, meas_rack(53.125f), Disposition::Flap, 1, "17-tooth rack"},
         {2, meas_gear(30, 32.0f, 0.05f, 0, true), Disposition::Flap, 2, "NPU flash stays NPU flash"},
         {0, PartMeasure{}, Disposition::Pick, 0, "not measured, require off"},
     }, "size rule:");

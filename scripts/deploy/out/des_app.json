@@ -28,7 +28,7 @@
                "short_tooth_mm": 0.4, "flash_mm": 0.5,
                "rule": { "enabled": false, "gear_teeth": 30, "gear_od": 32, "gear_od_tol": 0.15,
                          "gear_bore": 6, "gear_bore_tol": 0.3, "gear_max_ecc": 0.3,
-                         "rack_len": 50, "rack_len_tol": 0.5, "ng_outlet": "scrap",
+                         "rack_len": 50, "rack_len_tol": 1.0, "ng_outlet": "scrap",
                          "defect_recheck": true, "require": false } },
 
   "arm_comment": "TODO 全部实测：连杆长度对应关系、base_xy/base_yaw（臂安装位置）、belt_z、各关节 zero_count 与方向、夹爪开合码、home 与料盒姿态",
