@@ -9,3 +9,5 @@ cf71c73b7428dc137f3f10494a27986b  /root/des/des_app.sh
 4c770b3ebe0333afc23f9476ac9020ee  /root/des/des_app.json
 1a9d0da43912238c91365bbd053cd41d  /root/des/recipes.json
 8e75a65fdd96e353511cec9f6c965a02  /root/des/label_list.json
+7af895bd233b17200f579038b6ba113a  /root/des/part_cls.json
+182702d6653153904a1e48c738c968e4  /root/des/part_cls_uint8.onnx
