@@ -8,7 +8,7 @@
 #   要用的时候手动传上去，见文件末尾「手动上板」一节。**别往里加**。
 #
 # 板端不再有写死的路径：所有 .sh 与 des_app 都从 des.env 取（它按自己所在目录派生路径，
-# 所以 --dest 把整份目录拷到别处部署时自动跟着走），见 ps/board/des.env 头部说明。
+# 所以 --dest 把整份目录拷到别处部署时自动跟着走），见 scripts/deploy/out/des.env 头部说明。
 #
 # 列（TAB 分隔，不要用空格）：
 #   1 源         仓库内相对路径（有则传；没有就报"本地缺产物"，见 deploy.sh 结尾提示）
@@ -19,15 +19,16 @@
 #   4 重启服务    yes = des_app 跑着时改完要 des_service.sh restart 才生效
 #   5 说明        给人和脚本看的备注（可以含空格）
 #
-# 规矩：**板端脚本的唯一源是 ps/board/**，配置的唯一源是 ps/src/ 与 models/——本文件只登记"哪份上到哪"，
-#       不复制内容。编译产物（ps/build/）与模型（models/*.onnx）不入库，所以这里只写路径，仓库里可能没有。
+# 规矩：**板端脚本与 des.env 的唯一源就是 scripts/deploy/out/（它们就住在暂存目录里，不另存副本）**，
+#       配置的唯一源是 ps/src/ 与 models/——本文件只登记"哪份上到哪"，不复制内容。
+#       编译产物（ps/build/）与模型（models/*.onnx）不入库，所以这里只写路径，仓库里可能没有。
 #       新加文件前先问一句"项目跑通后还需要它吗"：是产品件才加一行，加完跑 deploy.sh --dry-run 验证。
 
-# ---------- ③ 开机自启链的脚本（源：ps/board/） ----------
-ps/board/des.env	/root/des/des.env	config	no	**板端路径唯一来源**：DES_HOME / DES_CONFIG / DES_PIDF / DES_TOOLS / DES_MIPICAM_KO 等，.sh 与 des_app 都从这里取，代码里不写死
-ps/board/des_service.sh	/root/des/des_service.sh	script	no	守护：开机自启（/etc/init.d/S90des 指向它）、拉起 can_up.sh 与 des_app.sh、崩溃退避重启
-ps/board/can_up.sh	/root/des/can_up.sh	script	no	CAN 起接口（经典模式被控制器拒时自动退 FD）
-ps/board/des_app.sh	/root/des/des_app.sh	script	no	启动器：缺 /dev/mipicam 时先 insmod mipicam.ko 再 exec des_app
+# ---------- ③ 开机自启链的脚本（源：scripts/deploy/out/，就地取材） ----------
+scripts/deploy/out/des.env	/root/des/des.env	config	no	**板端路径唯一来源**：DES_HOME / DES_CONFIG / DES_PIDF / DES_TOOLS / DES_MIPICAM_KO 等，.sh 与 des_app 都从这里取，代码里不写死
+scripts/deploy/out/des_service.sh	/root/des/des_service.sh	script	no	守护：开机自启（/etc/init.d/S90des 指向它）、拉起 can_up.sh 与 des_app.sh、崩溃退避重启
+scripts/deploy/out/can_up.sh	/root/des/can_up.sh	script	no	CAN 起接口（经典模式被控制器拒时自动退 FD）
+scripts/deploy/out/des_app.sh	/root/des/des_app.sh	script	no	启动器：缺 /dev/mipicam 时先 insmod mipicam.ko 再 exec des_app
 
 # ---------- ① 主程序（源：ps/build/，交叉编译产物，不入库） ----------
 ps/build/des_app	/root/des/des_app	bin	yes	主程序：调度 / 视觉 / 跟踪抓取 / 测量 / UI / CAN / 存储；编 make -C ps all
@@ -48,7 +49,7 @@ models/part_cls_uint8.onnx	/root/des/part_cls_uint8.onnx	model	yes	上面 json �
 #   scp ps/build/desreg $BOARD_HOST:/root/bin/          # 读寄存器 / 舵机总线 / 步进（跑 des_app 时只能 r 只读）
 #   scp ps/build/canplc $BOARD_HOST:/root/bin/          # 扮「产线 PLC」：start/stop/speed/recipe/monitor
 #   scp ps/build/test_* $BOARD_HOST:/root/bin/          # 调度单测 / 标定 / 测量 / 带 HIL / CAN 回环 / NPU 核对
-#   scp ps/board/pl_check.sh ps/board/soak.sh ps/board/display_check.sh $BOARD_HOST:/root/des/
+#   scp scripts/deploy/out/pl_check.sh scripts/deploy/out/soak.sh scripts/deploy/out/display_check.sh $BOARD_HOST:/root/des/
 #                                                       # 换比特流回归 / 长跑稳定性 / HDMI 黑屏对照实验
 #   ps/tests/bench_cma.cpp：无 Makefile 规则，手敲 g++（见文件头注释）
 

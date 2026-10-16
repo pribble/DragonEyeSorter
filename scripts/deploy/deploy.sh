@@ -9,11 +9,13 @@
 #   bash scripts/deploy/deploy.sh --dest /root/des/test   整份落到这个目录（文件名不变），不碰生产件
 #
 # 清单里只有"项目跑通后板上必须存在"的东西（主程序 + 它读的配置 + 开机自启链脚本，判据见 manifest.tsv 表头）。
-# 测试 / 调试件（desreg、canplc、test_*、pl_check.sh、soak.sh、display_check.sh）不在清单里：要用时手动 scp。
+# 测试 / 调试件（desreg、canplc、test_*、pl_check.sh、soak.sh、display_check.sh）不在清单里：要用时手动 scp
+# （三个测试脚本与产品脚本一起住在 out/，只是不进清单、部署器不传）。
 # 依赖：ssh / scp 免密（.env 的 BOARD_HOST）、awk、md5sum、sort、uniq。宿主机侧运行（Git Bash / WSL）。
 # --stage 完全不联网（板子不在线也能攒），部署与 dry-run 才需要板子。
-# 本脚本**不编译、不提交二进制**：产物来自 ps/build/；`out/` 里的脚本与配置会入库（它们就是发给板子
-# 的那一份），只有编出来的二进制被 .gitignore 挡住（见 manifest.tsv 与同目录 README.md）。
+# 本脚本**不编译、不提交二进制**：主程序来自 ps/build/；`out/` 里平铺的脚本、des.env 与配置**就是发给板子
+# 的那一份**（板端脚本与 des.env 的唯一源就在那儿：改那一份、提交那一份），只有编出来的二进制被 .gitignore
+# 挡住（见 manifest.tsv 与同目录 README.md）。
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -21,6 +23,7 @@ repo=$(cd "$here/../.." && pwd)
 manifest="$here/manifest.tsv"
 out="$here/out"
 stage="$out"      # 要上板的那一份：清单条目（产品运行时）平铺在这里；文本件入库，编出来的二进制不入库
+                  # 板端脚本与 des.env 的**唯一源**也在这里 —— 刷新只拷"源在别处"的文件，不重建目录
 TAB=$(printf '\t')
 
 MODE=deploy
@@ -33,7 +36,7 @@ usage() {
 用法（在仓库根目录）：
   bash scripts/deploy/deploy.sh --dry-run       只列差异，不传文件
   bash scripts/deploy/deploy.sh                 部署（差异 → 传输 → 校验）
-  bash scripts/deploy/deploy.sh --stage         刷新 out/（要上板的那一份；文本件入库，二进制不入库），不联网
+  bash scripts/deploy/deploy.sh --stage         刷 out/（主程序与配置从仓库别处拷进来；脚本与 des.env 就地不动）
   bash scripts/deploy/deploy.sh --only <子串>   只处理匹配的条目（如 des_app）
   bash scripts/deploy/deploy.sh --with-service  传 des_app 前停自启服务，校验完再起
   bash scripts/deploy/deploy.sh --dest <目录>   整份落到该目录（文件名不变），试新版而不覆盖生产件
@@ -122,32 +125,79 @@ REMOTE
     rsh sh -s "$@" < "$tmpd/remote.sh"
 }
 
-# ---------- 攒"要上板的那一份"（out/，文件平铺；文本件入库，编出来的二进制不入库） ----------
+# ---------- 攒"要上板的那一份"（out/，文件平铺；脚本与配置入库，编出来的二进制不入库） ----------
+# out/ **既是暂存也是源**：板端脚本与 des.env 就住在这里（改这里、提交这里，不另存副本）。所以这里**不再
+# rm -rf 重建**（那会把源删掉），改成"刷 + 清"：
+#   刷：清单里源在 out/ 之外的那些 —— ps/build/des_app、ps/src 与 models 的配置、导出的模型；
+#   清：不属于清单、也不在手动清单里的文件（旧版本留下的垃圾），以及本地已缺的旧产物，
+#       免得 U 盘 / 打包里混进"上一次的那一份"。
+# 手动清单：住在 out/、但不进清单、部署器不传的板端测试脚本（要用时 scp，见 manifest.tsv 末尾）。
+# 新增板端脚本要么进 manifest.tsv（产品件），要么加进这一行（测试件），否则刷新时会被清掉。
 # 用**全量**清单（$tmpd/raw）而不是 --only 过滤后的，免得不带参数的过滤把暂存刷成残缺的一份。
 # 平铺是因为"哪个文件去哪"在清单与 MD5SUMS.txt 里已经写清楚了，再按板端目录分层只是多层嵌套。
+manual_files="pl_check.sh soak.sh display_check.sh"
 stage_payload() {
     dup=$(awk -F'\t' '{n=$1; sub(/.*\//,"",n); print n}' "$tmpd/raw" | sort | uniq -d)
     [ -z "$dup" ] || { echo "manifest 里重名文件，平铺暂存会互相覆盖：$dup" >&2; exit 1; }
-    rm -rf "$stage"
     mkdir -p "$stage"
+    awk -F'\t' '{n=$1; sub(/.*\//,"",n); print n}' "$tmpd/raw" > "$tmpd/keep"
+    keep="MD5SUMS.txt"
+    while IFS= read -r b; do
+        if [ -n "$b" ]; then keep="$keep $b"; fi
+    done < "$tmpd/keep"
+    for b in $manual_files; do keep="$keep $b"; done
     {
         echo "# 要上板的那一份 = 板端产品运行时（scripts/deploy/out/，文件平铺；脚本与配置入库，只有编出来的二进制不入库）"
+        echo "# 板端脚本与 des.env 的**唯一源就在这里**（直接改这一份并提交）；其余文件由 deploy.sh 从仓库别处刷进来："
+        echo "#   主程序 ps/build/des_app、配置 ps/src/*.json 与 models/label_list.json、模型 models/part_cls*"
         echo "# 左列 = 哈希（脚本/配置/数据类去掉 CR 后算），右列 = 这个文件该去的板端路径"
         echo "# 清单指纹：scripts/deploy/manifest.tsv 的 MD5 = $(hash_file "$manifest")"
     } > "$stage/MD5SUMS.txt"
     n=0
+    stale=""
     while IFS="$TAB" read -r src dst kind restart note; do
         [ -n "$src" ] || continue
         if [ ! -f "$repo/$src" ]; then
-            echo "  暂存跳过（本地缺）：$src"
-            if [ "$kind" = model ]; then echo "      —— 模型没导出时板端 NPU 分类是关的（日志里 npu: cannot open …）"; fi
+            case "$src" in
+                scripts/deploy/out/*)   # 源就在 out/ 里却不在 = 手写的那一份被人删了，说一声继续
+                    echo "  清单里的板端文件不见了：$src" >&2 ;;
+                *)                      # 源在别处又不在本地 = 没编 / 没导出（des_app、模型）
+                    echo "  暂存跳过（本地缺）：$src"
+                    if [ "$kind" = model ]; then echo "      —— 模型没导出时板端 NPU 分类是关的（日志里 npu: cannot open …）"; fi
+                    stale="$stale $(basename "$src")" ;;
+            esac
             continue
         fi
-        cp "$repo/$src" "$stage/$(basename "$src")"
+        case "$src" in
+            scripts/deploy/out/*) ;;   # 源就在暂存目录里：本来就是它，不用拷
+            *)
+                cp "$repo/$src" "$stage/$(basename "$src")"
+                n=$((n + 1))
+                ;;
+        esac
         printf '%s  %s\n' "$(hash_file "$repo/$src")" "$dst" >> "$stage/MD5SUMS.txt"
-        n=$((n + 1))
     done < "$tmpd/raw"
-    echo "== 已刷新 out：$n 个文件（平铺；落位见里面的 MD5SUMS.txt）"
+    {
+        echo
+        echo "# ---- 手动上板：测试 / 回归脚本（**不进清单**，部署器不传；scp 到 /root/des/，用法见 README.md）----"
+        for b in $manual_files; do
+            if [ -f "$stage/$b" ]; then printf '%s  %s\n' "$(hash_file "$stage/$b")" "/root/des/$b"; fi
+        done
+    } >> "$stage/MD5SUMS.txt"
+    removed=0
+    for f in "$stage"/*; do
+        [ -e "$f" ] || continue
+        b=${f##*/}
+        case " $keep " in *" $b "*) ;; *)
+            echo "  清掉不在清单里的：$b（新增板端脚本请写进 manifest.tsv 或 deploy.sh 的 manual_files）"
+            rm -rf "$f"; removed=$((removed + 1)); continue ;;
+        esac
+        case " $stale " in *" $b "*)
+            echo "  清掉本地已缺的旧产物：$b"
+            rm -f "$f"; removed=$((removed + 1)) ;;
+        esac
+    done
+    echo "== 已刷新 out：从仓库别处刷入 $n 个文件，板端脚本与 des.env 就地不动，清掉 $removed 个"
 }
 
 # --stage：只攒本地这一份，不连板子（板子不在线、WSL 里也能跑）
@@ -157,7 +207,7 @@ if [ "$MODE" = stage ]; then
     echo "手工拷贝（U 盘 / 给队友）整份拷走，按 MD5SUMS.txt 右列的板端路径落位"
     exit 0
 fi
-# 部署前自动刷新那一份：编出来的二进制不用手工攒（dry-run 只读，不写盘）
+# 部署前自动刷新那一份：编出来的二进制不用手工攒，板端脚本与 des.env 就地不动（dry-run 只读，不写盘）
 [ "$MODE" = dry ] || stage_payload
 
 # ---------- 本地扫描 + 板上扫描 → 状态表 ----------

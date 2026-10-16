@@ -50,7 +50,7 @@ std::string Runner::start()
     t0_ = now_s();
     if (!opt_.can_if.empty()) {
         can_fd_ = can_open(opt_.can_if.c_str());
-        if (can_fd_ < 0) return "cannot open CAN " + opt_.can_if + " (bring it up with board/can_up.sh)";
+        if (can_fd_ < 0) return "cannot open CAN " + opt_.can_if + " (bring it up with scripts/deploy/out/can_up.sh)";
     }
     prev_status_ = des_step_status(hw_);
     belt_.enable(true);

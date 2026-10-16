@@ -14,7 +14,7 @@
 # （deploy --dest）时，配置 / 日志 / PID 文件跟着走；每份目录一个 PID 文件，两份服务不会互相认领。
 SELF=$(readlink -f -- "$0" 2>/dev/null || echo "$0")
 DES_HOME=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd)   # 以脚本自己所在目录为准，不吃继承来的 DES_HOME
-[ -f "$DES_HOME/des.env" ] || { echo "des_service: 缺 $DES_HOME/des.env（路径都从它取，源文件见 ps/board/des.env）" >&2; exit 1; }
+[ -f "$DES_HOME/des.env" ] || { echo "des_service: 缺 $DES_HOME/des.env（路径都从它取，源文件见 scripts/deploy/out/des.env）" >&2; exit 1; }
 . "$DES_HOME/des.env"
 
 DIR=$DES_HOME

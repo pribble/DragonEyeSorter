@@ -14,13 +14,15 @@
 # 本文件不写主机路径：FD_ROOT / ARMNN_LIB / OPENCV_LIB / FREETYPE_INC / BOARD_LIBS 一律来自 .env（本机、不入库）或命令行。
 #
 # 目录：src/ 产品源码（只放编进 des_app 的，再按角色分 app / hw / sched / measure / ui / vision）、
-#       board/ 上板脚本、tools/ 人敲的命令行、tests/ 测试、kernel/ 驱动、vendor/ 非我们写的。
+#       tools/ 人敲的命令行、tests/ 测试、kernel/ 驱动、vendor/ 非我们写的。
+#       上板脚本不在这里：唯一源是 ../scripts/deploy/out/（与部署清单同一份，见那里的 README）。
 #       **头文件平铺**（全仓库无跨目录 include），靠下面的 INC 解析 —— 各目录 basename 必须唯一。
 #
 # Targets: desreg (C, no deps), test_scheduler (C++, no deps), test_calib / test_measure / test_npu / des_app (C++, need SDK),
 #          test_belt_hil (board, PL v5+), test_can / canplc (SocketCAN), all, clean.
 # Deploy:  ../scripts/deploy/ 里是上板清单与部署器（对比 / 部署 / 暂存）：make -C ps all 结束会顺手刷一份
-#          ../scripts/deploy/out/（要上板的那一份，不入库；Linux/WSL 上这行会提示找不到 powershell，可忽略）。
+#          ../scripts/deploy/out/（要上板的那一份：主程序与配置刷进去，脚本与 des.env 就地不动；
+#          Linux/WSL 上这行会提示找不到 powershell，可忽略）。
 
 # 从 .env 文件读取配置（如果存在）
 -include ../.env.make

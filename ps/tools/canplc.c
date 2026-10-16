@@ -1,5 +1,5 @@
 /* canplc: plays the line PLC on the CAN bus (protocol v1, hw/can_proto.h). Reference for the PC-side program and a
- * test partner on the board (loopback: board/can_up.sh can0 loopback).
+ * test partner on the board (loopback: scripts/deploy/out/can_up.sh can0 loopback).
  *   canplc <if> start|stop|pause|resume|reset        send a command, wait for the ACK
  *   canplc <if> speed <mm/s> | recipe <n>
  *   canplc <if> monitor [sec]                        print STATUS / COUNTS / PART / ALARM, send PLC heartbeats (5 Hz)

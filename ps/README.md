@@ -8,13 +8,14 @@
 |---|---|---|---|
 | ★ **产品** | `src/` | **编进 `des_app` 的全部源码**——只有它决定产物 | 编出的 `des_app` + `des_app.json` → `/root/des/` |
 | 支撑 | `kernel/` | `mipicam.ko`（相机 DMA 驱动，厂家源码改造起点） | 板上已有厂家预编译模块；改驱动才重编 |
-| | `board/` | 上板脚本：启动器、CAN 起接口、回归、长跑 | `/root/des/` |
 | | `tools/` | 人敲的命令行：`desreg`（寄存器调试）、`canplc`（扮 PLC） | `/root/bin/` |
 | | `tests/` | `test_*`：离线算法回归 + 上板硬件在环 | 不进产物，需要时 scp 到 `/root/bin/` |
 | 非我们写的 | `vendor/` | nlohmann json 单头（编入）+ 厂家 demo 未编入件 | 不进产物（除 json.hpp） |
 | 产物 | `build/` | `make` 输出（`**/build/` 已忽略） | — |
 
 一句话：**读代码从 `src/` 开始，其余目录都是围绕它的支撑/工具/测试。**
+
+上板脚本（`des.env` + `des_app.sh` / `can_up.sh` / `des_service.sh` + 回归用的 `pl_check.sh` / `soak.sh` / `display_check.sh`）**不在 `ps/` 里**：它们的唯一源就是上板清单那一份 [scripts/deploy/out](../scripts/deploy/README.md)（2026-10-16 由 `ps/board/` 迁入），改脚本直接改那里。
 
 ## 目录
 
@@ -31,8 +32,6 @@ ps/
 │   ├── ui/         #   界面：hmi / ui_input / text_ft / hdmi_out（OpenCV 自绘 + FreeType，不用 Qt）
 │   ├── vision/     #   相机取帧 + 推理封装（厂家 face_detection demo 的 4 个改造件）
 │   └── des_app.json#   配置模板（板上与二进制同目录）
-├── board/          # 上板文件：des.env（板端路径唯一来源，.sh 与 des_app 都从它取）+ des_app.sh（insmod + 启动）
-│                   #   / can_up.sh / des_service.sh（自启守护）/ pl_check.sh / soak.sh / display_check.sh
 ├── tools/          # 人敲的命令行：desreg 寄存器调试、canplc（扮「PLC」，回环 / 联调）
 ├── tests/          # test_scheduler（调度库单元）、test_calib（标定，合成图）、test_measure（齿轮 / 齿条测量，合成图）、
 │                   #   test_belt_hil（传送带控制硬件在环，板上 PL v5）、test_can（CAN 协议与收发，回环自测）、
@@ -59,9 +58,42 @@ ps/
 | `des_app collect --cls <类别> [--belt mm/s] [--every N] [--max N] [--full N]` | live + 采训练裁切图（一次一类，按零件分目录；`--full` 另存整帧 + 自动 YOLO 框），见 train/README |
 | `des_app measure [-n 帧] [--image f.png] [--out raw.png] [--dump report.png]` | 每个齿轮 / 齿条都测一遍（定位 → ROI → 测量），打印外径 / 孔径 / 偏心 / 齿数 / 缺陷或长度 / 齿距；`-n` > 1 时零件不动、统计各量均值 / σ / 极差（重复性，测试报告用）；`--out` 存原始帧供 `--image` 离线复测；`--dump` 出标注图（拟合圆、齿条框、r(θ) 曲线）。实物到货后对卡尺真值 |
 | `des_app display [-n 秒]` | 相机 → HDMI 60fps：每帧 BGRA→BGR 进 CMA 显示缓冲 + 切显示 VDMA 帧存（`PARK_PTR`，帧边界生效；地址只在开机提交一次，docs/软件与UI.md）（实测 6.2ms/帧，60fps）；退出恢复 fb0 |
-| `soak.sh [秒] [目录]`（`board/soak.sh`，测试脚本，手动 `scp` 上板） | 长时间运行：des_app run + canplc 当 PLC，每分钟记内存 / 负载 / CAN / PL 帧号，结束出 summary.txt（测试报告「连续运行」） |
-| `pl_check.sh`（`board/pl_check.sh`，测试脚本，手动 `scp` 上板） | 换比特流后的上板回归（19 项，后台跑 `des_app probe`） |
-| `des_service.sh start\|stop\|restart\|status`（`board/des_service.sh`，产品运行时，随部署清单上板） | 开机自启 + 守护：`des_app run --can can0`，崩溃 2s 后重启（退避到 30s，5 分钟内退出 5 次就停），日志 `data/service.log`；设置在 `autostart.conf`（首次运行生成：ENABLED / MODE / CAN / CAN_MODE / ARGS）。带 CAN 时上电是「空闲」，PLC 或界面按启动才动；`--go` 写进 ARGS 机械臂才真动。**装开机自启要改 /etc**：`ln -s /root/des/des_service.sh /etc/init.d/S90des`（经用户同意再装） |
+| `soak.sh [秒] [目录]`（`scripts/deploy/out/soak.sh`，测试脚本，手动 `scp` 上板） | 长时间运行：des_app run + canplc 当 PLC，每分钟记内存 / 负载 / CAN / PL 帧号，结束出 summary.txt（测试报告「连续运行」） |
+| `pl_check.sh`（`scripts/deploy/out/pl_check.sh`，测试脚本，手动 `scp` 上板） | 换比特流后的上板回归（19 项，后台跑 `des_app probe`） |
+| `des_service.sh start\|stop\|restart\|status`（`scripts/deploy/out/des_service.sh`，产品运行时，随部署清单上板） | 开机自启 + 守护：`des_app run --can can0`，崩溃 2s 后重启（退避到 30s，5 分钟内退出 5 次就停），日志 `data/service.log`；设置在 `autostart.conf`（首次运行生成：ENABLED / MODE / CAN / CAN_MODE / ARGS）。带 CAN 时上电是「空闲」，PLC 或界面按启动才动；`--go` 写进 ARGS 机械臂才真动。**装开机自启要改 /etc**：`ln -s /root/des/des_service.sh /etc/init.d/S90des`（经用户同意再装） |
+
+### 谁在用这些命令（免得把精力花在边角模式上）
+
+| 位置 | 命令 | 什么时候用 |
+|---|---|---|
+| ★ 产品链，天天跑 | `run`（自启服务跑的就是 `des_app run --can can0`）；`live` = 它去掉带 / 臂 / CAN 的版本，演示用 | 上料分拣、演示、整机联调 |
+| ★ 每次改动的回归 | `probe`、`display` | 换比特流 / 改相机或显示代码后验 60fps、0 丢帧、BGRA→BGR 开销；`pl_check.sh` 后台跑的也是 `probe` |
+| ★ 到货标定（一次性，换相机 / 换带 / 换臂位才重做） | `calib-cam` → `calib-belt` → `calib-arm` | 结果写 `calib.json`，之后所有模式自动加载 |
+| 到货后的验收 / 出数 | `measure -n`、`collect`、`soak.sh` | 重复性与卡尺误差、采训练图、2h 稳定性 |
+| 舵机 / 机械臂首次上电 | `arm scan` / `read` / `teach` / `torque-*`，再 `torque-on` / `home` / `goto` / `pick` | 见 [到货联调清单](../docs/到货联调清单.md) §2；运动子命令不加 `--go` 只打印舵机帧 |
+| 调参 / 排障备用（`live` 能覆盖一部分，价值在"一次只看一件事"） | `locate`（阈值 + 单帧定位耗时）、`track`（不带 HDMI 的跟踪表 / 停带计划）、`ik`（纯逆解，不碰 PL） | 定位或调度出问题时分段隔离；`locate` / `track` 本来就是 bring-up 链上的一环（probe → locate → track → arm） |
+
+**没有"用不上"的模式，但有几条只在特定场合跑**：`locate` / `track` / `display` 分别是定位、调度、显示链路的隔离工具（`display` 是 HDMI 黑屏对照实验的第 2 段），日常被 `live` / `run` 覆盖；`pl_check.sh` / `soak.sh` / `display_check.sh` 三个脚本同理 —— 不进部署清单，要用时手动 `scp`。
+
+### 开关速查（权威定义在 `src/app/main.cpp` 的 `usage()`）
+
+| 开关 | 用在哪 | 含义 |
+|---|---|---|
+| `-c <cfg.json>` | 全部 | 配置文件；缺省 `$DES_CONFIG`（`des.env` 给），再缺省当前目录 `des_app.json` |
+| `-n <N>` | 除 `ik` / `arm *` | 秒（`probe` / `display` / `track` / `live` / `run` / `collect`）、帧数（`locate` / `measure`）、标定点数（`calib-arm`） |
+| `--vmax N` `--exp <µs>` `--gain <dB×10>` | 用相机的模式 | 只影响本次运行：覆盖 VMAX（帧率）/ 曝光 / 增益，不写回配置 |
+| `--dump <png>` | `locate` / `live` / `calib-cam` / `measure` | 存调试图（定位叠加、角点、测量标注） |
+| `--image <png>` | `calib-cam` / `measure` | 不连相机，读一张图离线复测 |
+| `--out <文件\|目录>` | `calib-*` / `measure` / `collect` | 标定结果 json / 原始帧 png / 采集目录（`collect` 缺省用 `$DES_COLLECT`） |
+| `--belt <mm/s>` | `track` / `live` / `collect` / `run` | 皮带速度：前三者带会走、但抓取只打印计划（空跑），`run` 是给状态机的运行速度 |
+| `--go` | `run` / `arm home\|goto\|pick` | 真动机械臂；不加只打印舵机帧（干跑） |
+| `--can <if>` | `run` | CAN 接口（如 `can0`）；不写就不联 PLC，直接进运行态 |
+| `--no-rt` | 全部 | 不进 SCHED_FIFO、不 `mlockall`（排查调度 / 内存问题时用） |
+| `--board <列>x<行>` `--square <mm>` `--travel …` `--exhaustive` | `calib-cam` | 棋盘格内角数 / 格边长 mm / 零件走向 / 角点搜索更慢更全（超时 20s → 120s） |
+| `--steps <N>` | `calib-belt` | 长走步数（0 = 走到视野约 75%） |
+| `--marker-h <mm>` | `calib-arm` | 标记物顶面高出带面的高度（顺带拟合 `arm.belt_z`） |
+| `--cls <名>` `--every N` `--max N` `--full N` | `collect` | 类别名 / 每 N 帧采一张 / 每件最多 N 张 / 每 N 帧另存整帧 + YOLO 框 |
+| 裸数字 | `ik <x> <y> [z] [角度]`、`arm goto\|pick <x> <y> …` | 台面坐标 mm、角度 deg、料盒号 |
 
 - 坐标约定见 `src/sched/geom.hpp`：图像 px → 台面 mm（单应矩阵，配置 `px_to_table`），件在带上 `s = x − B`（B = 带走过的距离），停带 / 反转都无需特殊处理；停带 = 给步进位置模式写「停在 B = 抓取线 − s」，减速由 PL 梯形曲线完成（`stepper_ctrl`）。目标写得太晚（已在身后）时 PL 减速停在它之后（`AT_TARGET` = 0），调度器按刹车距离判断来不及就转复检、不倒车。
 - 取帧：厂家帧 DMA「提交一块写一帧」，完成后立即重提下一块（4 块环形缓冲）。**实测 SCHED_FIFO 与普通调度都 0 丢帧**，重提 0.2µs —— demo 的 28fps 是串行流水造成的，不是硬件限制。

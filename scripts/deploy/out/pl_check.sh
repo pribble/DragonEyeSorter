@@ -8,7 +8,7 @@
 # FAIL per item and a summary; exit code = failures. Uses the camera (des_app probe in the background).
 SELF=$(readlink -f -- "$0" 2>/dev/null || echo "$0")
 DES_HOME=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd)   # 以脚本自己所在目录为准，不吃继承来的 DES_HOME
-[ -f "$DES_HOME/des.env" ] || { echo "pl_check: 缺 $DES_HOME/des.env（路径都从它取，源文件见 ps/board/des.env）" >&2; exit 1; }
+[ -f "$DES_HOME/des.env" ] || { echo "pl_check: 缺 $DES_HOME/des.env（路径都从它取，源文件见 scripts/deploy/out/des.env）" >&2; exit 1; }
 . "$DES_HOME/des.env"
 cd "$DES_HOME" || exit 1
 # the autostart service (des_service.sh) owns the camera / buses: pause it for this run, resume at the end

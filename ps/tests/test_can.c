@@ -1,5 +1,5 @@
 /* test_can: CAN protocol v1 (hw/can_proto.h) and SocketCAN link test on the board.
- * Run after `board/can_up.sh can0 loopback` (self test) or with a real partner on the bus.
+ * Run after `scripts/deploy/out/can_up.sh can0 loopback` (self test) or with a real partner on the bus.
  *   ./test_can [ifname] [roundtrips]     exit code = failed checks
  * Two sockets on the same interface play the PLC and DragonEyeSorter: frames one sends, the other receives.
  */
@@ -69,7 +69,7 @@ int main(int argc, char **argv)
 
     int plc = can_open(ifn), des = can_open(ifn);
     if (plc < 0 || des < 0) {
-        perror("can_open (interface up? see board/can_up.sh)");
+        perror("can_open (interface up? see scripts/deploy/out/can_up.sh)");
         return 1;
     }
     long tx_err0 = can_stat(ifn, "tx_errors"), rx_err0 = can_stat(ifn, "rx_errors");

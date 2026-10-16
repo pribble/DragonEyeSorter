@@ -6,7 +6,7 @@
 # 整份目录拷到别处部署（deploy --dest）时，它跑的就是那一份的程序与配置。
 SELF=$(readlink -f -- "$0" 2>/dev/null || echo "$0")
 DES_HOME=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd)   # 以脚本自己所在目录为准，不吃继承来的 DES_HOME
-[ -f "$DES_HOME/des.env" ] || { echo "des_app.sh: 缺 $DES_HOME/des.env（路径都从它取，源文件见 ps/board/des.env）" >&2; exit 1; }
+[ -f "$DES_HOME/des.env" ] || { echo "des_app.sh: 缺 $DES_HOME/des.env（路径都从它取，源文件见 scripts/deploy/out/des.env）" >&2; exit 1; }
 . "$DES_HOME/des.env"
 cd "$DES_HOME" || exit 1
 # one des_app at a time (camera DMA, servo bus and stepper are single-owner); the autostart service may hold them

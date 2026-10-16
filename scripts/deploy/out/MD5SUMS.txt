@@ -1,13 +1,18 @@
 # 要上板的那一份 = 板端产品运行时（scripts/deploy/out/，文件平铺；脚本与配置入库，只有编出来的二进制不入库）
+# 板端脚本与 des.env 的**唯一源就在这里**（直接改这一份并提交）；其余文件由 deploy.sh 从仓库别处刷进来：
+#   主程序 ps/build/des_app、配置 ps/src/*.json 与 models/label_list.json、模型 models/part_cls*
 # 左列 = 哈希（脚本/配置/数据类去掉 CR 后算），右列 = 这个文件该去的板端路径
-# 清单指纹：scripts/deploy/manifest.tsv 的 MD5 = 6bd4b82fdeb704c80ad5d7790d42df8a
+# 清单指纹：scripts/deploy/manifest.tsv 的 MD5 = bea85fcb5bbd7d73e9934a3bf9b2e7c8
 ecee03eb40125104efb616920fc00577  /root/des/des.env
-83c780833765310c2fecda5186513d2c  /root/des/des_service.sh
+f12e08c32d51edc12a0e5292852d9e7a  /root/des/des_service.sh
 33dea57fd3f6aa6e1f936751ca37490e  /root/des/can_up.sh
-cf71c73b7428dc137f3f10494a27986b  /root/des/des_app.sh
-279d323945c0b883cb1a8d5a864ffc11  /root/des/des_app
+819e5898b36c01700b8d5412af7f8655  /root/des/des_app.sh
+d2f0a4f50deaa2ecee36d815e82ea6ed  /root/des/des_app
 4c770b3ebe0333afc23f9476ac9020ee  /root/des/des_app.json
 1a9d0da43912238c91365bbd053cd41d  /root/des/recipes.json
 8e75a65fdd96e353511cec9f6c965a02  /root/des/label_list.json
-7af895bd233b17200f579038b6ba113a  /root/des/part_cls.json
-182702d6653153904a1e48c738c968e4  /root/des/part_cls_uint8.onnx
+
+# ---- 手动上板：测试 / 回归脚本（**不进清单**，部署器不传；scp 到 /root/des/，用法见 README.md）----
+29f011865aa1a8e209fa43aa56db3094  /root/des/pl_check.sh
+ad548c47891a4b349e16158898dc872c  /root/des/soak.sh
+7d9977130cea3fa6a4e4e5aee7827193  /root/des/display_check.sh
