@@ -62,7 +62,7 @@ VISION_SRC := src/vision/mipi_camera.cpp src/vision/logger_forward.cpp src/visio
 APP_SRC := src/app/main.cpp src/app/camera_rig.cpp src/app/locate.cpp src/app/config.cpp \
            src/app/live.cpp src/app/runner.cpp src/app/belt_ctl.cpp src/app/arm_exec.cpp \
            src/app/part_log.cpp src/app/img_writer.cpp src/app/collector.cpp \
-           src/app/npu_cls.cpp src/app/npu_async.cpp \
+           src/app/npu_cls.cpp src/app/npu_async.cpp src/app/arm_manual.cpp \
            src/measure/calib.cpp src/measure/measure.cpp src/measure/track_measure.cpp \
            src/measure/measure_tool.cpp src/measure/roi_crop.cpp \
            src/ui/hdmi_out.cpp src/ui/scale34.cpp src/ui/text_ft.cpp src/ui/ui_input.cpp src/ui/hmi.cpp

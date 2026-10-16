@@ -2,6 +2,7 @@
 #include "des_hw.h"
 
 #include <fcntl.h>
+#include <pthread.h>
 #include <stddef.h>
 #include <sys/mman.h>
 #include <time.h>
@@ -206,7 +207,7 @@ static void wait_quiet(const des_hw_t *h, const uint8_t *body, int n)
     if (wait) sleep_us((long)wait + 100);
 }
 
-int des_sb_xfer(des_hw_t *h, const uint8_t *body, int n, int expect_reply, des_sb_result_t *r)
+static int sb_xfer(des_hw_t *h, const uint8_t *body, int n, int expect_reply, des_sb_result_t *r)
 {
     des_sb_result_t tmp;
     if (!r) r = &tmp;
@@ -246,6 +247,17 @@ int des_sb_xfer(des_hw_t *h, const uint8_t *body, int n, int expect_reply, des_s
     r->status = (st >> 16) & 0xff;
     if ((st & 8) || !(st & 16)) return r->rc = DES_E_RXERR;
     return r->rc = DES_OK;
+}
+
+/* one frame at a time: the production arm thread (Runner) and the manual arm page (ArmManual) share the bus */
+static pthread_mutex_t g_sb_lock = PTHREAD_MUTEX_INITIALIZER;
+
+int des_sb_xfer(des_hw_t *h, const uint8_t *body, int n, int expect_reply, des_sb_result_t *r)
+{
+    pthread_mutex_lock(&g_sb_lock);
+    const int rc = sb_xfer(h, body, n, expect_reply, r);
+    pthread_mutex_unlock(&g_sb_lock);
+    return rc;
 }
 
 int des_servo_ping(des_hw_t *h, uint8_t id, des_sb_result_t *r)

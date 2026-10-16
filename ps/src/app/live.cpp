@@ -27,6 +27,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include "hdmi_out.hpp"
+#include "arm_manual.hpp"
 #include "hmi.hpp"
 #include "scale34.hpp"
 #include "locate.hpp"
@@ -214,6 +215,8 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
     // operator interface: parameters from ui_params.json override des_app.json, applied here (the worker owns them)
     Hmi hmi(cfg, cfg.config_dir + "/ui_params.json");
     if (!hmi.fonts_ok()) fprintf(stderr, "hmi: Chinese font not found, ASCII fallback\n");
+    // manual arm page (own thread; shares the servo bus with the production arm thread, hw/des_hw serialises)
+    ArmManual arm_manual(&hw, cfg.arm, cfg.config_dir + "/data/arm_teach.csv");
     auto apply_params = [&](const HmiParams &p) {
         SizeRule &r = tr.config().size;
         if (const Recipe *rc = find_recipe(cfg.recipes, p.recipe)) rc->apply(r);   // then the operator's sizes
@@ -421,10 +424,18 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
             hs.tracks = int(tr.tracks().size());
             hs.logged = plog.written;
             hs.log_images = plog.images;
+            {   // manual arm commands only while the line is not running and no pick is being executed
+                const int st = runner ? int(runner->state()) : -1;
+                const char *why = st == CANP_ST_RUN ? "产线运行中" : st == CANP_ST_ESTOP ? "急停中"
+                                : runner && runner->arm_busy() ? "机械臂正在抓取" : nullptr;
+                arm_manual.context(hmi.arm_page(), why == nullptr, why);
+                hs.arm = arm_manual.view();
+            }
             hmi.status(hs, now_s());
             if (input)
                 for (const HmiAction &a : hmi.handle(input->take())) {
                     if (a.kind == HmiAction::Params) apply_params(hmi.params());
+                    else if (a.kind == HmiAction::Arm) arm_manual.request(a.arm);
                     else if (a.kind == HmiAction::Recipe) {
                         if (runner) runner->select_recipe(a.cmd, "HMI");   // applied below, same path as the PLC's
                         else if (hmi.set_recipe(a.cmd)) apply_params(hmi.params());

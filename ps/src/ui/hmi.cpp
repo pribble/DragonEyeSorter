@@ -16,13 +16,18 @@
 namespace des {
 namespace {
 
-enum { A_TAB = 1, A_DEC, A_INC, A_TOGGLE, A_IMAGES, A_CMD, A_SELECT, A_PLMODE, A_PLTHR, A_RECIPE };
+enum { A_TAB = 1, A_DEC, A_INC, A_TOGGLE, A_IMAGES, A_CMD, A_SELECT, A_PLMODE, A_PLTHR, A_RECIPE, A_ARM_LOCK,
+       A_ARM_TORQUE, A_ARM_JOG, A_ARM_STEP, A_ARM_MS, A_ARM_TEACH };
 
 const cv::Scalar BG(34, 31, 29), PANEL(52, 48, 45), LINE(80, 76, 72), WHITE(235, 235, 235), DIM(150, 150, 150),
     GREEN(90, 200, 90), RED(80, 80, 235), ORANGE(40, 165, 255), CYAN(220, 200, 70), YELLOW(70, 215, 235),
     ACCENT(225, 150, 60);
 
-const char *kPages[] = {"总览", "曲线", "参数", "记录"};
+const char *kPages[] = {"总览", "曲线", "参数", "记录", "机械臂"};
+constexpr int kNPages = 5;
+const double kArmStepDeg[] = {1, 5, 15};
+const int kArmMs[] = {500, 1000, 2000};
+const char *kArmJoint[6] = {"#1 底座", "#2 肩", "#3 肘", "#4 腕俯仰", "#5 腕旋", "#6 夹爪"};
 const char *kImages[] = {"不存", "NG + 复检", "全部"};
 const char *kPlModes[] = {"原图", "PL 灰度", "PL 高斯滤波", "PL 二值", "PL Sobel", "PL 边缘"};
 
@@ -184,9 +189,9 @@ std::vector<HmiAction> Hmi::handle(const std::vector<UiEvent> &ev)
     std::vector<HmiAction> out;
     for (const UiEvent &e : ev) {
         if (e.kind == UiEvent::Key) {
-            if (e.value >= KEY_F1 && e.value <= KEY_F4) page_ = e.value - KEY_F1;
-            else if (e.value == KEY_TAB || e.value == KEY_RIGHT) page_ = (page_ + 1) % 4;
-            else if (e.value == KEY_LEFT) page_ = (page_ + 3) % 4;
+            if (e.value >= KEY_F1 && e.value <= KEY_F5) page_ = e.value - KEY_F1;
+            else if (e.value == KEY_TAB || e.value == KEY_RIGHT) page_ = (page_ + 1) % kNPages;
+            else if (e.value == KEY_LEFT) page_ = (page_ + kNPages - 1) % kNPages;
             continue;
         }
         if (e.kind == UiEvent::Wheel) {
@@ -202,7 +207,26 @@ std::vector<HmiAction> Hmi::handle(const std::vector<UiEvent> &ev)
             switch (h.action) {
             case A_TAB: page_ = h.arg; break;
             case A_SELECT: selected_ = h.arg; break;
-            case A_CMD: out.push_back({HmiAction::Command, h.arg}); break;
+            case A_CMD: out.push_back({HmiAction::Command, h.arg, {}}); break;
+            case A_ARM_STEP: arm_step_ = h.arg; break;
+            case A_ARM_MS: arm_ms_ = h.arg; break;
+            case A_ARM_LOCK:
+            case A_ARM_TORQUE:
+            case A_ARM_JOG:
+            case A_ARM_TEACH: {
+                HmiAction a;
+                a.kind = HmiAction::Arm;
+                a.arm.kind = h.action == A_ARM_LOCK ? (h.arg ? ArmRequest::Unlock : ArmRequest::Lock)
+                           : h.action == A_ARM_TORQUE ? ArmRequest::Torque
+                           : h.action == A_ARM_JOG ? ArmRequest::Jog : ArmRequest::Teach;
+                a.arm.on = h.arg;
+                a.arm.joint = h.arg / 2;   // jog: arg = joint * 2 + (1 = plus)
+                a.arm.dir = h.arg % 2 ? 1 : -1;
+                a.arm.step_deg = kArmStepDeg[arm_step_];
+                a.arm.ms = kArmMs[arm_ms_];
+                out.push_back(a);
+                break;
+            }
             case A_TOGGLE: p_.size_rule = !p_.size_rule; changed = true; break;
             case A_IMAGES: p_.images = (p_.images + 1) % 3; changed = true; break;
             case A_PLMODE: p_.pl_mode = (p_.pl_mode + 1) % 6; changed = true; break;
@@ -212,7 +236,7 @@ std::vector<HmiAction> Hmi::handle(const std::vector<UiEvent> &ev)
                 const int n = int(rs.size());
                 int k = 0;
                 while (k < n && rs[k].id != p_.recipe) k++;
-                if (n > 1) out.push_back({HmiAction::Recipe, rs[((k < n ? k : 0) + h.arg + n) % n].id});
+                if (n > 1) out.push_back({HmiAction::Recipe, rs[((k < n ? k : 0) + h.arg + n) % n].id, {}});
                 break;
             }
             case A_DEC:
@@ -236,7 +260,7 @@ std::vector<HmiAction> Hmi::handle(const std::vector<UiEvent> &ev)
             }
             if (changed) {
                 save_params();
-                out.push_back({HmiAction::Params, 0});
+                out.push_back({HmiAction::Params, 0, {}});
             }
             break;
         }
@@ -265,7 +289,7 @@ cv::Mat Hmi::render(double now)
     cv::line(img, {0, 0}, {W - 1, 0}, ACCENT, 2);
     // navigation + status
     text(img, "DragonEyeSorter", 12, 8, 17, DIM);
-    for (int i = 0; i < 4; i++) button(img, {8, 34 + i * 50, 136, 44}, kPages[i], page_ == i, A_TAB, i, 22);
+    for (int i = 0; i < kNPages; i++) button(img, {8, 30 + i * 41, 136, 37}, kPages[i], page_ == i, A_TAB, i, 21);
     text(img, st_.npu ? "NPU 在线" : "NPU 未加载", 12, 240, 16, st_.npu ? GREEN : ORANGE);
     text(img, std::string("输入设备 ") + std::to_string(st_.inputs) + (st_.clock_synced ? "  已对时" : "  未对时"), 12,
          264, 15, DIM);
@@ -274,7 +298,8 @@ cv::Mat Hmi::render(double now)
     case 0: page_overview(img, now); break;
     case 1: page_curves(img); break;
     case 2: page_params(img); break;
-    default: page_records(img); break;
+    case 3: page_records(img); break;
+    default: page_arm(img); break;
     }
     return img;
 }
@@ -535,6 +560,69 @@ void Hmi::page_records(cv::Mat &img)
     }
     if (r.pl_area > 0)
         line(fmt("PL 粗测 等效Ø %.1f", r.pl_d_mm) + fmt("  框 %.1f", r.pl_w_mm) + fmt("×%.1f mm", r.pl_h_mm), CYAN);
+}
+
+// 机械臂: manual jogging (app/arm_manual.hpp). Left: one row per joint with the polled state and -/+ ; right: lock,
+// torque, step size, move time, teach. Every command goes through the manual arm thread, which refuses while the
+// line runs or the production arm thread is busy.
+void Hmi::page_arm(cv::Mat &img)
+{
+    const ArmManualView &a = st_.arm;
+    const ArmConfig &ac = cfg_.arm;
+    text(img, "机械臂手动调试", 175, 6, 22, WHITE);
+    std::string state;
+    cv::Scalar sc;
+    if (!a.allowed) { state = "不可用：产线运行中或机械臂正在抓取（先停止产线）"; sc = RED; }
+    else if (a.unlocked) { state = "已解锁 · 点 -/+ 微调；动作前确认机械臂周围无障碍"; sc = GREEN; }
+    else { state = "未解锁：点右侧「解锁」后才能动"; sc = ORANGE; }
+    text(img, state, 380, 9, 18, sc);
+    const int cx[] = {175, 330, 430, 530, 630, 730, 810};
+    const char *head[] = {"关节", "位置", "角度", "目标", "电流", "温度", "状态"};
+    for (int c = 0; c < 7; c++) text(img, head[c], cx[c], 40, 16, DIM);
+    text(img, "微调", 930, 40, 16, DIM);
+    for (int k = 0; k < 6; k++) {
+        const int y = 62 + k * 33;
+        const ArmJointView &j = a.j[k];
+        const JointCal &jc = ac.joint[k];
+        text(img, kArmJoint[k], cx[0], y + 4, 19, WHITE);
+        auto num = [&](int c, int v, const char *f) { text(img, v < 0 ? "—" : fmt(f, v), cx[c], y + 4, 19, YELLOW); };
+        num(1, j.pos, "%.0f");
+        text(img, j.pos < 0 ? "—" : fmt("%+.1f°", (j.pos - jc.zero_count) / jc.counts_per_deg), cx[2], y + 4, 19,
+             YELLOW);
+        num(3, j.target, "%.0f");
+        num(4, j.current_ma, "%.0f mA");
+        num(5, j.temp_c, "%.0f ℃");
+        std::string flags;
+        if (!j.alive) flags = j.pos < 0 && !a.shown ? "—" : "无应答";
+        else if (j.status & 0x20) flags = "过载";
+        else if (j.status & 0x04) flags = "过热";
+        else if (j.status & 0x01) flags = "电压";
+        else flags = "正常";
+        text(img, flags, cx[6], y + 4, 18, flags == "正常" ? GREEN : flags == "—" ? DIM : RED);
+        const bool can = a.allowed && a.unlocked;
+        button(img, {930, y, 64, 28}, "-", false, can ? A_ARM_JOG : 0, k * 2, 26);
+        button(img, {1002, y, 64, 28}, "+", false, can ? A_ARM_JOG : 0, k * 2 + 1, 26);
+    }
+    // right: controls
+    const int x0 = 1110;
+    cv::line(img, {x0 - 18, 14}, {x0 - 18, H - 14}, LINE, 1);
+    button(img, {x0, 36, 150, 40}, a.unlocked ? "上锁" : "解锁", a.unlocked, a.allowed ? A_ARM_LOCK : 0,
+           a.unlocked ? 0 : 1, 21);
+    const bool can = a.allowed && a.unlocked;
+    button(img, {x0 + 170, 36, 130, 40}, "扭矩 开", a.torque == 1, can ? A_ARM_TORQUE : 0, 1, 20);
+    button(img, {x0 + 310, 36, 130, 40}, "扭矩 关", a.torque == 0, can ? A_ARM_TORQUE : 0, 0, 20);
+    text(img, "关扭矩前先托住机械臂", x0 + 460, 47, 16, ORANGE);
+    text(img, "步长", x0, 99, 19, WHITE);
+    for (int i = 0; i < 3; i++)
+        button(img, {x0 + 70 + i * 96, 90, 86, 36}, fmt("%.0f°", kArmStepDeg[i]), arm_step_ == i, A_ARM_STEP, i, 20);
+    text(img, "动作时间", x0 + 380, 99, 19, WHITE);
+    for (int i = 0; i < 3; i++)
+        button(img, {x0 + 470 + i * 96, 90, 86, 36}, fmt("%.1f s", kArmMs[i] / 1000.0), arm_ms_ == i, A_ARM_MS, i, 20);
+    button(img, {x0, 142, 200, 40}, "记录当前姿态", false, a.allowed ? A_ARM_TEACH : 0, 0, 20);
+    text(img, a.taught ? fmt("本次已记录 %.0f 个（data/arm_teach.csv）", a.taught) : "存到 data/arm_teach.csv，标定零位 / 料盒用",
+         x0 + 216, 153, 16, DIM);
+    text(img, "零位、夹爪开合计数还没标定：暂不提供一键回零 / 夹爪开合", x0, 200, 16, DIM);
+    text(img, a.msg.empty() ? "—" : a.msg, x0, 232, 18, CYAN);
 }
 
 }  // namespace des

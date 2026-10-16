@@ -45,6 +45,7 @@ public:
     uint8_t select_recipe(int id, const char *who);
     int take_recipe();                      // id accepted since the last call, -1 = none
     uint8_t state() const { return state_; }
+    bool arm_busy() const { return arm_busy_; }   // a pick is being executed (the manual arm page waits)
     double speed_mm_s() const { return speed_mm_s_; }
 
 private:
