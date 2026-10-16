@@ -156,6 +156,56 @@ static uint8_t rx_byte(const des_hw_t *h, int i)
     return (des_rd(h, DES_SB_RX_BUF + (i & ~3)) >> (8 * (i & 3))) & 0xff;
 }
 
+/* The 15 kg body servos (DS-SY15A, ID 1..5) ignore a frame that arrives within ~10..15 ms after their own reply
+ * (2026-10-17, first servos on the bus, tests/test_servo_gap.c: strict ok / timeout alternation up to 10 ms of idle
+ * after the reply, none from 15 ms; no RX errors - they simply do not answer or act; the gripper servo has no such
+ * window). So every frame waits until each servo it addresses has been quiet this long since its last reply: a
+ * second READ to the same servo, or a SYNC WRITE right after reading a position, would otherwise be dropped.
+ * Frames to other servos are not delayed. Two sources for "last reply": this process's own table (per id), and the
+ * PL's record of the last reply on the bus (RX_T + id in RX_BUF) for frames sent by another process just before
+ * (two desreg calls in a row). */
+static unsigned g_quiet_us = 20000;
+static uint64_t g_reply_us[256];   /* CLOCK_MONOTONIC us of the last reply seen from each id (0 = none) */
+
+void des_servo_set_quiet_us(unsigned us) { g_quiet_us = us; }
+
+static uint64_t mono_us(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000u + (uint64_t)ts.tv_nsec / 1000u;
+}
+
+/* does this frame reach servo id? */
+static int addresses(const uint8_t *body, int n, uint8_t id)
+{
+    if (body[0] != DES_SERVO_BROADCAST) return body[0] == id;
+    if (n >= 5 && body[2] == 0x83) {   /* SYNC WRITE: FE LEN 83 addr L {id, L data bytes}... */
+        for (int k = 5; k < n; k += body[4] + 1)
+            if (body[k] == id) return 1;
+        return 0;
+    }
+    return 1;                          /* other broadcasts reach every servo */
+}
+
+static void wait_quiet(const des_hw_t *h, const uint8_t *body, int n)
+{
+    if (!g_quiet_us) return;
+    const uint64_t now = mono_us();
+    uint64_t wait = 0;
+    for (int id = 0; id < 255; id++) {
+        if (!g_reply_us[id] || !addresses(body, n, (uint8_t)id)) continue;
+        const uint64_t since = now - g_reply_us[id];
+        if (since < g_quiet_us && g_quiet_us - since > wait) wait = g_quiet_us - since;
+    }
+    const uint8_t last_id = rx_byte(h, 0);   /* last reply on the bus, whoever sent the request */
+    if (addresses(body, n, last_id)) {
+        const double since = des_ticks_us(des_now(h) - des_rd(h, DES_SB_RX_T));
+        if (since < g_quiet_us && g_quiet_us - since > wait) wait = (uint64_t)(g_quiet_us - since);
+    }
+    if (wait) sleep_us((long)wait + 100);
+}
+
 int des_sb_xfer(des_hw_t *h, const uint8_t *body, int n, int expect_reply, des_sb_result_t *r)
 {
     des_sb_result_t tmp;
@@ -164,6 +214,7 @@ int des_sb_xfer(des_hw_t *h, const uint8_t *body, int n, int expect_reply, des_s
     r->status = 0;
     r->n = 0;
     if (n < 3 || n > 64) return r->rc = DES_E_ARG;
+    wait_quiet(h, body, n);
 
     for (int w = 0; w < (n + 3) / 4; w++) {
         uint32_t v = 0;
@@ -191,6 +242,7 @@ int des_sb_xfer(des_hw_t *h, const uint8_t *body, int n, int expect_reply, des_s
     if (cnt > 32) cnt = 32;
     r->n = (uint8_t)cnt;
     for (int i = 0; i < cnt; i++) r->raw[i] = rx_byte(h, i);
+    if (cnt > 0) g_reply_us[r->raw[0]] = mono_us();   /* reply ended at most one poll (100 us) ago */
     r->status = (st >> 16) & 0xff;
     if ((st & 8) || !(st & 16)) return r->rc = DES_E_RXERR;
     return r->rc = DES_OK;

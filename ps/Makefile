@@ -106,6 +106,10 @@ $(BUILD)/canplc: tools/canplc.c src/hw/can_link.c src/hw/can_link.h src/hw/can_p
 $(BUILD)/test_can: tests/test_can.c src/hw/can_link.c src/hw/can_link.h src/hw/can_proto.h | $(BUILD)
 	$(CC) $(CFLAGS) $(INC) -o $@ tests/test_can.c src/hw/can_link.c
 
+# servo bus: idle time a servo needs after its reply before the next frame (board, servos wired; stop des_app)
+$(BUILD)/test_servo_gap: tests/test_servo_gap.c $(BUILD)/des_hw.o | $(BUILD)
+	$(CC) $(CFLAGS) $(INC) -o $@ tests/test_servo_gap.c $(BUILD)/des_hw.o
+
 # hardware-in-the-loop: needs the board (PL v5+), no motor
 $(BUILD)/test_belt_hil: tests/test_belt_hil.cpp src/app/belt_ctl.cpp src/app/belt_ctl.hpp $(SCHED_SRC) $(BUILD)/des_hw.o | $(BUILD)
 	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_belt_hil.cpp src/app/belt_ctl.cpp $(SCHED_SRC) \

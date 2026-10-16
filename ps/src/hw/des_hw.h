@@ -96,6 +96,8 @@ typedef struct {
 
 /* body = [ID, LEN, INSTR, params...]; blocks until the transaction ends (<= ~100 ms). */
 int des_sb_xfer(des_hw_t *h, const uint8_t *body, int n, int expect_reply, des_sb_result_t *r);
+/* idle time a servo gets after its reply before the next frame to it (default 20 ms, see des_hw.c); 0 = off */
+void des_servo_set_quiet_us(unsigned us);
 
 int des_servo_ping(des_hw_t *h, uint8_t id, des_sb_result_t *r);
 int des_servo_read(des_hw_t *h, uint8_t id, uint8_t addr, uint8_t n, uint8_t *out, des_sb_result_t *r);
