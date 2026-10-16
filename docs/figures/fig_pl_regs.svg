@@ -6,11 +6,11 @@
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-10-15T13:26:51.807477</dc:date>
+    <dc:date>2026-10-17T01:28:35.603205</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
-      <dc:title>Matplotlib v3.10.8, https://matplotlib.org/</dc:title>
+      <dc:title>Matplotlib v3.11.2, https://matplotlib.org/</dc:title>
      </cc:Agent>
     </dc:creator>
    </cc:Work>
@@ -40,17 +40,17 @@ Q 14.4 172.8 14.4 181.44
 L 14.4 264.96 
 Q 14.4 273.6 23.04 273.6 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #e0f2e3; stroke: #2e8b57; stroke-width: 1.3; stroke-linejoin: miter"/>
+" clip-path="url(#p4267679887)" style="fill: #e0f2e3; stroke: #2e8b57; stroke-width: 1.3; stroke-linejoin: miter"/>
    </g>
    <g id="patch_3">
     <path d="M 158.4 223.2 
 Q 187.2 223.2 214.434752 223.2 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #444444; stroke-width: 1.4; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #444444; stroke-width: 1.4; stroke-linecap: round"/>
     <path d="M 210.034752 221 
 L 214.434752 223.2 
 L 210.034752 225.4 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #444444; stroke: #444444; stroke-width: 1.4; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: #444444; stroke: #444444; stroke-width: 1.4; stroke-linecap: round"/>
    </g>
    <g id="patch_4">
     <path d="M 224.64 288 
@@ -63,7 +63,7 @@ Q 216 158.4 216 167.04
 L 216 279.36 
 Q 216 288 224.64 288 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #dbe9f7; stroke: #2f6db3; stroke-width: 1.3; stroke-linejoin: miter"/>
+" clip-path="url(#p4267679887)" style="fill: #dbe9f7; stroke: #2f6db3; stroke-width: 1.3; stroke-linejoin: miter"/>
    </g>
    <g id="patch_5">
     <path d="M 224.64 115.2 
@@ -76,17 +76,17 @@ Q 216 57.6 216 66.24
 L 216 106.56 
 Q 216 115.2 224.64 115.2 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #eeeeee; stroke: #666666; stroke-width: 1.3; stroke-linejoin: miter"/>
+" clip-path="url(#p4267679887)" style="fill: #eeeeee; stroke: #666666; stroke-width: 1.3; stroke-linejoin: miter"/>
    </g>
    <g id="patch_6">
     <path d="M 295.2 158.4 
 Q 295.2 136.8 295.2 116.765248 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #666666; stroke-width: 1.4; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #666666; stroke-width: 1.4; stroke-linecap: round"/>
     <path d="M 293 121.165248 
 L 295.2 116.765248 
 L 297.4 121.165248 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #666666; stroke: #666666; stroke-width: 1.4; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: #666666; stroke: #666666; stroke-width: 1.4; stroke-linecap: round"/>
    </g>
    <g id="patch_7">
     <path d="M 224.64 460.8 
@@ -99,17 +99,17 @@ Q 216 331.2 216 339.84
 L 216 452.16 
 Q 216 460.8 224.64 460.8 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #dbe9f7; stroke: #2f6db3; stroke-width: 1.3; stroke-linejoin: miter"/>
+" clip-path="url(#p4267679887)" style="fill: #dbe9f7; stroke: #2f6db3; stroke-width: 1.3; stroke-linejoin: miter"/>
    </g>
    <g id="patch_8">
     <path d="M 295.2 288 
 Q 295.2 309.6 295.2 329.634752 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #444444; stroke-width: 1.4; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #444444; stroke-width: 1.4; stroke-linecap: round"/>
     <path d="M 297.4 325.234752 
 L 295.2 329.634752 
 L 293 325.234752 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #444444; stroke: #444444; stroke-width: 1.4; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: #444444; stroke: #444444; stroke-width: 1.4; stroke-linecap: round"/>
    </g>
    <g id="patch_9">
     <path d="M 411.84 460.8 
@@ -122,17 +122,17 @@ Q 403.2 331.2 403.2 339.84
 L 403.2 452.16 
 Q 403.2 460.8 411.84 460.8 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #dbe9f7; stroke: #2f6db3; stroke-width: 1.3; stroke-linejoin: miter"/>
+" clip-path="url(#p4267679887)" style="fill: #dbe9f7; stroke: #2f6db3; stroke-width: 1.3; stroke-linejoin: miter"/>
    </g>
    <g id="patch_10">
     <path d="M 374.4 396 
 Q 388.8 396 401.634752 396 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #444444; stroke-width: 1.4; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #444444; stroke-width: 1.4; stroke-linecap: round"/>
     <path d="M 397.234752 393.8 
 L 401.634752 396 
 L 397.234752 398.2 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #444444; stroke: #444444; stroke-width: 1.4; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: #444444; stroke: #444444; stroke-width: 1.4; stroke-linecap: round"/>
    </g>
    <g id="patch_11">
     <path d="M 541.44 115.2 
@@ -145,17 +145,17 @@ Q 532.8 36 532.8 44.64
 L 532.8 106.56 
 Q 532.8 115.2 541.44 115.2 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #dbe9f7; stroke: #2f6db3; stroke-width: 1.3; stroke-linejoin: miter"/>
+" clip-path="url(#p4267679887)" style="fill: #dbe9f7; stroke: #2f6db3; stroke-width: 1.3; stroke-linejoin: miter"/>
    </g>
    <g id="patch_12">
     <path d="M 511.2 75.6 
 Q 522 75.6 531.570163 75.6 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
     <path d="M 527.170163 73.4 
 L 531.570163 75.6 
 L 527.170163 77.8 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #2f6db3; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: #2f6db3; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
    </g>
    <g id="patch_13">
     <path d="M 541.44 216 
@@ -168,17 +168,17 @@ Q 532.8 136.8 532.8 145.44
 L 532.8 207.36 
 Q 532.8 216 541.44 216 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #dbe9f7; stroke: #2f6db3; stroke-width: 1.3; stroke-linejoin: miter"/>
+" clip-path="url(#p4267679887)" style="fill: #dbe9f7; stroke: #2f6db3; stroke-width: 1.3; stroke-linejoin: miter"/>
    </g>
    <g id="patch_14">
     <path d="M 511.2 176.4 
 Q 522 176.4 531.570163 176.4 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
     <path d="M 527.170163 174.2 
 L 531.570163 176.4 
 L 527.170163 178.6 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #2f6db3; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: #2f6db3; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
    </g>
    <g id="patch_15">
     <path d="M 944.64 208.8 
@@ -191,17 +191,17 @@ Q 936 144 936 152.64
 L 936 200.16 
 Q 936 208.8 944.64 208.8 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #eeeeee; stroke: #666666; stroke-width: 1.3; stroke-linejoin: miter"/>
+" clip-path="url(#p4267679887)" style="fill: #eeeeee; stroke: #666666; stroke-width: 1.3; stroke-linejoin: miter"/>
    </g>
    <g id="patch_16">
     <path d="M 892.8 176.4 
 Q 914.4 176.4 934.770163 176.4 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
     <path d="M 930.370163 174.2 
 L 934.770163 176.4 
 L 930.370163 178.6 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #2f6db3; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: #2f6db3; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
    </g>
    <g id="patch_17">
     <path d="M 541.44 316.8 
@@ -214,17 +214,17 @@ Q 532.8 237.6 532.8 246.24
 L 532.8 308.16 
 Q 532.8 316.8 541.44 316.8 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #dbe9f7; stroke: #2f6db3; stroke-width: 1.3; stroke-linejoin: miter"/>
+" clip-path="url(#p4267679887)" style="fill: #dbe9f7; stroke: #2f6db3; stroke-width: 1.3; stroke-linejoin: miter"/>
    </g>
    <g id="patch_18">
     <path d="M 511.2 277.2 
 Q 522 277.2 531.570163 277.2 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
     <path d="M 527.170163 275 
 L 531.570163 277.2 
 L 527.170163 279.4 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #2f6db3; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: #2f6db3; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
    </g>
    <g id="patch_19">
     <path d="M 944.64 309.6 
@@ -237,17 +237,17 @@ Q 936 244.8 936 253.44
 L 936 300.96 
 Q 936 309.6 944.64 309.6 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #eeeeee; stroke: #666666; stroke-width: 1.3; stroke-linejoin: miter"/>
+" clip-path="url(#p4267679887)" style="fill: #eeeeee; stroke: #666666; stroke-width: 1.3; stroke-linejoin: miter"/>
    </g>
    <g id="patch_20">
     <path d="M 892.8 277.2 
 Q 914.4 277.2 934.770163 277.2 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
     <path d="M 930.370163 275 
 L 934.770163 277.2 
 L 930.370163 279.4 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #2f6db3; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: #2f6db3; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
    </g>
    <g id="patch_21">
     <path d="M 541.44 417.6 
@@ -260,17 +260,17 @@ Q 532.8 338.4 532.8 347.04
 L 532.8 408.96 
 Q 532.8 417.6 541.44 417.6 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #dbe9f7; stroke: #2f6db3; stroke-width: 1.3; stroke-linejoin: miter"/>
+" clip-path="url(#p4267679887)" style="fill: #dbe9f7; stroke: #2f6db3; stroke-width: 1.3; stroke-linejoin: miter"/>
    </g>
    <g id="patch_22">
     <path d="M 511.2 378 
 Q 522 378 531.570163 378 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
     <path d="M 527.170163 375.8 
 L 531.570163 378 
 L 527.170163 380.2 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #2f6db3; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: #2f6db3; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
    </g>
    <g id="patch_23">
     <path d="M 944.64 410.4 
@@ -283,17 +283,17 @@ Q 936 345.6 936 354.24
 L 936 401.76 
 Q 936 410.4 944.64 410.4 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #eeeeee; stroke: #666666; stroke-width: 1.3; stroke-linejoin: miter"/>
+" clip-path="url(#p4267679887)" style="fill: #eeeeee; stroke: #666666; stroke-width: 1.3; stroke-linejoin: miter"/>
    </g>
    <g id="patch_24">
     <path d="M 892.8 378 
 Q 914.4 378 934.770163 378 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
     <path d="M 930.370163 375.8 
 L 934.770163 378 
 L 930.370163 380.2 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #2f6db3; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: #2f6db3; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
    </g>
    <g id="patch_25">
     <path d="M 541.44 518.4 
@@ -306,17 +306,17 @@ Q 532.8 439.2 532.8 447.84
 L 532.8 509.76 
 Q 532.8 518.4 541.44 518.4 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #dbe9f7; stroke: #2f6db3; stroke-width: 1.3; stroke-linejoin: miter"/>
+" clip-path="url(#p4267679887)" style="fill: #dbe9f7; stroke: #2f6db3; stroke-width: 1.3; stroke-linejoin: miter"/>
    </g>
    <g id="patch_26">
     <path d="M 511.2 478.8 
 Q 522 478.8 531.570163 478.8 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
     <path d="M 527.170163 476.6 
 L 531.570163 478.8 
 L 527.170163 481 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #2f6db3; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: #2f6db3; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
    </g>
    <g id="patch_27">
     <path d="M 944.64 511.2 
@@ -329,17 +329,17 @@ Q 936 446.4 936 455.04
 L 936 502.56 
 Q 936 511.2 944.64 511.2 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #eeeeee; stroke: #666666; stroke-width: 1.3; stroke-linejoin: miter"/>
+" clip-path="url(#p4267679887)" style="fill: #eeeeee; stroke: #666666; stroke-width: 1.3; stroke-linejoin: miter"/>
    </g>
    <g id="patch_28">
     <path d="M 892.8 478.8 
 Q 914.4 478.8 934.770163 478.8 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
     <path d="M 930.370163 476.6 
 L 934.770163 478.8 
 L 930.370163 481 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #2f6db3; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: #2f6db3; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
    </g>
    <g id="patch_29">
     <path d="M 541.44 619.2 
@@ -352,17 +352,17 @@ Q 532.8 540 532.8 548.64
 L 532.8 610.56 
 Q 532.8 619.2 541.44 619.2 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #eeeeee; stroke: #666666; stroke-width: 1.3; stroke-linejoin: miter"/>
+" clip-path="url(#p4267679887)" style="fill: #eeeeee; stroke: #666666; stroke-width: 1.3; stroke-linejoin: miter"/>
    </g>
    <g id="patch_30">
     <path d="M 511.2 579.6 
 Q 522 579.6 531.570163 579.6 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
     <path d="M 527.170163 577.4 
 L 531.570163 579.6 
 L 527.170163 581.8 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #2f6db3; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: #2f6db3; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
    </g>
    <g id="patch_31">
     <path d="M 944.64 108 
@@ -375,17 +375,17 @@ Q 936 43.2 936 51.84
 L 936 99.36 
 Q 936 108 944.64 108 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #eeeeee; stroke: #666666; stroke-width: 1.3; stroke-linejoin: miter"/>
+" clip-path="url(#p4267679887)" style="fill: #eeeeee; stroke: #666666; stroke-width: 1.3; stroke-linejoin: miter"/>
    </g>
    <g id="patch_32">
     <path d="M 936 75.6 
 Q 914.4 75.6 894.029837 75.6 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
     <path d="M 898.429837 77.8 
 L 894.029837 75.6 
 L 898.429837 73.4 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #2f6db3; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: #2f6db3; stroke: #2f6db3; stroke-width: 1.1; stroke-linecap: round"/>
    </g>
    <g id="patch_33">
     <path d="M 23.04 561.6 
@@ -398,170 +398,169 @@ Q 14.4 489.6 14.4 498.24
 L 14.4 552.96 
 Q 14.4 561.6 23.04 561.6 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #fbe3e3; stroke: #c0392b; stroke-width: 1.3; stroke-linejoin: miter"/>
+" clip-path="url(#p4267679887)" style="fill: #fbe3e3; stroke: #c0392b; stroke-width: 1.3; stroke-linejoin: miter"/>
    </g>
    <g id="patch_34">
     <path d="M 524.16 302.4 
 Q 528.48 302.4 531.458359 302.4 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #c0392b; stroke-width: 1.2; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #c0392b; stroke-width: 1.2; stroke-linecap: round"/>
     <path d="M 527.058359 300.2 
 L 531.458359 302.4 
 L 527.058359 304.6 
 z
-" clip-path="url(#pb7e6368f71)" style="fill: #c0392b; stroke: #c0392b; stroke-width: 1.2; stroke-linecap: round"/>
+" clip-path="url(#p4267679887)" style="fill: #c0392b; stroke: #c0392b; stroke-width: 1.2; stroke-linecap: round"/>
    </g>
    <g id="line2d_1">
     <path d="M 489.6 396 
 L 511.2 396 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1"/>
    </g>
    <g id="line2d_2">
     <path d="M 511.2 396 
 L 511.2 75.6 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1"/>
    </g>
    <g id="line2d_3">
     <path d="M 489.6 396 
 L 511.2 396 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1"/>
    </g>
    <g id="line2d_4">
     <path d="M 511.2 396 
 L 511.2 176.4 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1"/>
    </g>
    <g id="line2d_5">
     <path d="M 489.6 396 
 L 511.2 396 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1"/>
    </g>
    <g id="line2d_6">
     <path d="M 511.2 396 
 L 511.2 277.2 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1"/>
    </g>
    <g id="line2d_7">
     <path d="M 489.6 396 
 L 511.2 396 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1"/>
    </g>
    <g id="line2d_8">
     <path d="M 511.2 396 
 L 511.2 378 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1"/>
    </g>
    <g id="line2d_9">
     <path d="M 489.6 396 
 L 511.2 396 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1"/>
    </g>
    <g id="line2d_10">
     <path d="M 511.2 396 
 L 511.2 478.8 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1"/>
    </g>
    <g id="line2d_11">
     <path d="M 489.6 396 
 L 511.2 396 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1"/>
    </g>
    <g id="line2d_12">
     <path d="M 511.2 396 
 L 511.2 579.6 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #2f6db3; stroke-width: 1.1"/>
    </g>
    <g id="line2d_13">
     <path d="M 172.8 525.6 
 L 524.16 525.6 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #c0392b; stroke-width: 1.2"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #c0392b; stroke-width: 1.2"/>
    </g>
    <g id="line2d_14">
     <path d="M 524.16 525.6 
 L 524.16 302.4 
-" clip-path="url(#pb7e6368f71)" style="fill: none; stroke: #c0392b; stroke-width: 1.2"/>
+" clip-path="url(#p4267679887)" style="fill: none; stroke: #c0392b; stroke-width: 1.2"/>
    </g>
    <g id="text_1">
-    <text style="font-weight: 700; font-size: 15px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #222222" x="576" y="29.990625" transform="rotate(-0 576 29.990625)">PL 自研模块与寄存器窗口（不改官方块设计）</text>
+    <text style="font-weight: 700; font-size: 15px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #222222" x="576" y="30.546094" transform="rotate(-0 576 30.546094)">PL 自研模块与寄存器窗口（不改官方块设计）</text>
    </g>
    <g id="text_2">
-    <text style="font-size: 8.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(62.142461 214.226391)">PS（Linux）</text>
-    <text style="font-size: 8.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(51.495547 225.512266)">des_app / desreg</text>
-    <text style="font-size: 8.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(55.274727 236.85525)">/dev/mem 映射</text>
+    <text style="font-size: 8.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(62.142461 213.603218)">PS（Linux）</text>
+    <text style="font-size: 8.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(51.497539 225.512266)">des_app / desreg</text>
+    <text style="font-size: 8.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(55.274727 238.414087)">/dev/mem 映射</text>
    </g>
    <g id="text_3">
-    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #444444" x="187.2" y="214.135547" transform="rotate(-0 187.2 214.135547)">AXI GP0</text>
+    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #444444" x="187.2" y="214.099365" transform="rotate(-0 187.2 214.099365)">AXI GP0</text>
    </g>
    <g id="text_4">
-    <text style="font-size: 8px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(266.08625 209.356625)">官方 fvdma_ctrl</text>
-    <text style="font-size: 8px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(255.063125 220.032375)">（相机 DMA 控制器）</text>
-    <text style="font-size: 8px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(250.160625 231.086375)">64KB 窗口 0x8030_0000</text>
-    <text style="font-size: 8px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(263.428125 241.762125)">地址线 4 → 16 位</text>
+    <text style="font-size: 8px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(266.0825 208.272539)">官方 fvdma_ctrl</text>
+    <text style="font-size: 8px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(255.063125 220.108555)">（相机 DMA 控制器）</text>
+    <text style="font-size: 8px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(250.160625 231.28957)">64KB 窗口 0x8030_0000</text>
+    <text style="font-size: 8px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(263.428125 243.272461)">地址线 4 → 16 位</text>
    </g>
    <g id="text_5">
-    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(267.247266 83.259346)">0x0000~0x0FFF</text>
-    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(244.968164 93.671514)">厂家寄存器（mipicam 驱动）</text>
+    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(267.247266 83.842786)">0x0000~0x0FFF</text>
+    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(244.968164 94.027332)">厂家寄存器（mipicam 驱动）</text>
    </g>
    <g id="text_6">
-    <text style="font-weight: 700; font-size: 8px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(263.509375 382.217625)">0x1000~0x1FFF</text>
-    <text style="font-weight: 700; font-size: 8px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(251.621875 392.839625)">自研寄存器总线 75MHz</text>
-    <text style="font-weight: 700; font-size: 8px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(266.926875 403.461625)">单拍写 / 组合读</text>
-    <text style="font-weight: 700; font-size: 8px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(250.62875 414.083625)">PL_BASE 0x8030_1000</text>
+    <text style="font-weight: 700; font-size: 8px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(263.509375 381.779414)">0x1000~0x1FFF</text>
+    <text style="font-weight: 700; font-size: 8px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(251.621875 393.05918)">自研寄存器总线 75MHz</text>
+    <text style="font-weight: 700; font-size: 8px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(266.926875 404.546445)">单拍写 / 组合读</text>
+    <text style="font-weight: 700; font-size: 8px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(250.62875 415.304961)">PL_BASE 0x8030_1000</text>
    </g>
    <g id="text_7">
-    <text style="font-size: 8px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(426.87125 392.892125)">addr[11:8]</text>
-    <text style="font-size: 8px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(430.4 403.514125)">分段译码</text>
+    <text style="font-size: 8px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(426.87125 392.75668)">addr[11:8]</text>
+    <text style="font-size: 8px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(430.4 404.550195)">分段译码</text>
    </g>
    <g id="text_8">
-    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 67.567705)">0x0xx  des_regs</text>
-    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 77.442773)">ID / 版本 / 75MHz 自由计数 / 帧计数</text>
-    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 87.658358)">拍摄锁存：帧号 + FREE_CNT + 带位置</text>
+    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 66.969389)">0x0xx  des_regs</text>
+    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 78.151266)">ID / 版本 / 75MHz 自由计数 / 帧计数</text>
+    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 88.401205)">拍摄锁存：帧号 + FREE_CNT + 带位置</text>
    </g>
    <g id="text_9">
-    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 168.587681)">0x1xx  servo_bus</text>
-    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 178.46275)">德晟协议主机：硬件补帧头与校验、SYNC WRITE</text>
-    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 188.2881)">FF F5 应答解析、超时、发送 / 应答时间戳</text>
+    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 167.769389)">0x1xx  servo_bus</text>
+    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 178.958203)">德晟协议主机：硬件补帧头与校验、SYNC WRITE</text>
+    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 189.656189)">FF F5 应答解析、超时、发送 / 应答时间戳</text>
    </g>
    <g id="text_10">
-    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(995.543844 173.558169)">SERVO_BUS Y9（开漏）</text>
-    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(1002.348375 183.433238)">→ BSS138 → 6 舵机</text>
+    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(995.544422 173.149022)">SERVO_BUS Y9（开漏）</text>
+    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(1002.348375 184.319915)">→ BSS138 → 6 舵机</text>
    </g>
    <g id="text_11">
-    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 269.192564)">0x2xx  stepper_ctrl</text>
-    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 279.067633)">梯形加减速、运动中改目标、刹车距离 BRAKE</text>
-    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 289.283217)">命令 → 首脉冲 10.6µs</text>
+    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 268.569389)">0x2xx  stepper_ctrl</text>
+    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 279.801562)">梯形加减速、运动中改目标、刹车距离 BRAKE</text>
+    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 290.026064)">命令 → 首脉冲 10.6µs</text>
    </g>
    <g id="text_12">
-    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(998.1535 274.275497)">STEP_PUL / DIR / ENA</text>
-    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(992.811047 284.150566)">Y12 / Y13 / T9 → TB6600</text>
+    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(998.1535 273.779054)">STEP_PUL / DIR / ENA</text>
+    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(992.811047 284.917571)">Y12 / Y13 / T9 → TB6600</text>
    </g>
    <g id="text_13">
-    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 370.187681)">0x3xx  des_vision</text>
-    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 380.06275)">像素域 111MHz，串在 ISP 与帧写之间</text>
-    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 389.8881)">灰度 / 高斯 / 二值 / Sobel / 边缘 + ROI 统计</text>
+    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 369.369389)">0x3xx  des_vision</text>
+    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 380.558203)">像素域 111MHz，串在 ISP 与帧写之间</text>
+    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 391.263127)">灰度 / 高斯 / 二值 / Sobel / 边缘 + ROI 统计</text>
    </g>
    <g id="text_14">
-    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(999.728891 375.258762)">HDMI 60fps 直接显示</text>
-    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(1020.442531 385.084113)">PL 处理图</text>
+    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(999.728891 374.849616)">HDMI 60fps 直接显示</text>
+    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(1020.442531 385.851118)">PL 处理图</text>
    </g>
    <g id="text_15">
-    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 475.900356)">0x4xx  des_pwm</text>
-    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 485.775425)">2 路 50Hz 舵机 PWM（下周期生效）+ 光源开关</text>
+    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 475.49121)">0x4xx  des_pwm</text>
+    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 486.591571)">2 路 50Hz 舵机 PWM（下周期生效）</text>
    </g>
    <g id="text_16">
-    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(1000.000031 475.900356)">FLAP1 Y6 / FLAP2 Y8</text>
-    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(1014.104547 485.725706)">LAMP_EN Y7</text>
+    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #1a1a1a" x="1036.8" y="481.19575" transform="rotate(-0 1036.8 481.19575)">FLAP1 Y6 / FLAP2 Y8</text>
    </g>
    <g id="text_17">
-    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 576.510702)">0x5xx~</text>
-    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 586.71536)">预留（io_sync 等新模块从这里排）</text>
+    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 577.075147)">0x5xx~</text>
+    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(541.44 587.075337)">预留（io_sync 等新模块从这里排）</text>
    </g>
    <g id="text_18">
-    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(996.029469 72.725216)">帧写模块：开始写 / 写完</text>
-    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(991.165703 82.550566)">（像素域翻转 + 两级同步）</text>
+    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(996.029469 72.839851)">帧写模块：开始写 / 写完</text>
+    <text style="font-size: 7.4px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(991.165703 83.377118)">（像素域翻转 + 两级同步）</text>
    </g>
    <g id="text_19">
-    <text style="font-size: 8px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(66.485625 522.438375)">ESTOP_IN V11</text>
-    <text style="font-size: 8px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(61.6 533.114125)">（急停常开触点）</text>
+    <text style="font-size: 8px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(66.48375 521.917305)">ESTOP_IN V11</text>
+    <text style="font-size: 8px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(61.6 534.035195)">（急停常开触点）</text>
    </g>
    <g id="text_20">
     <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #c0392b" x="187.2" y="518.4" transform="rotate(-0 187.2 518.4)">硬件立即停脉冲、锁存 HALTED</text>
@@ -572,7 +571,7 @@ L 524.16 302.4
   </g>
  </g>
  <defs>
-  <clipPath id="pb7e6368f71">
+  <clipPath id="p4267679887">
    <rect x="0" y="0" width="1152" height="720"/>
   </clipPath>
  </defs>

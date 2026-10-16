@@ -14,7 +14,7 @@
 
 ## 模块清单
 
-**实现状态**：`des_regs`（寄存器窗口 + 自由计数器 + 帧号 / 拍摄锁存带位置 = 下表 `axi_lite_regs` + `enc_frame_latch`）✅ v5 上板；`servo_bus`（= `servo_bus_master`）✅ v2 上板，帧时序 = 理论值，等舵机实物；`stepper_ctrl` ✅ v2 上板，计步精确（实测命令 → 首脉冲 10.6µs），等驱动器实物；`des_vision`（= `img_sobel` / `img_binarize` + 投影粗测，另加灰度 / 高斯）✅ **v8 上板**，6 种模式实画面验证、统计读回正确；`des_pwm`（= 翻板 PWM + 光源）✅ v8 上板，读回 / 50Hz 验证（未接舵机）；ISP 白平衡改逐位除法器 ✅。v8 实测（`pl_check.sh` 19 项全过）：① 读多路选择须为组合逻辑（`fvdma_ctrl` 桥按 1 拍取数，打 1 拍则 0x3xx 读回全是 THR）；② `clk_mipi` 在 `timing.sdc` 约束到 `U_io_clk_div_1.clkdivout` 8.0ns（约束缘由见 `des_vision` 一节），实测像素时钟 111.1MHz；`io_sync` 队友负责；`encoder_qei` / `rs485_modbus` / P2 各项未做。**PL 资源**：ISP 白平衡改造后 slice 约 82%、ERAM 93%（只剩 19 块），不再加大模块。
+**实现状态**：`des_regs`（寄存器窗口 + 自由计数器 + 帧号 / 拍摄锁存带位置 = 下表 `axi_lite_regs` + `enc_frame_latch`）✅ v5 上板；`servo_bus`（= `servo_bus_master`）✅ v2 上板，帧时序 = 理论值，等舵机实物；`stepper_ctrl` ✅ v2 上板，计步精确（实测命令 → 首脉冲 10.6µs），等驱动器实物；`des_vision`（= `img_sobel` / `img_binarize` + 投影粗测，另加灰度 / 高斯）✅ **v8 上板**，6 种模式实画面验证、统计读回正确；`des_pwm`（= 翻板 PWM）✅ v8 上板，读回 / 50Hz 验证（未接舵机）；v10 去掉光源输出（源码，未上板）；ISP 白平衡改逐位除法器 ✅。v8 实测（`pl_check.sh` 19 项全过）：① 读多路选择须为组合逻辑（`fvdma_ctrl` 桥按 1 拍取数，打 1 拍则 0x3xx 读回全是 THR）；② `clk_mipi` 在 `timing.sdc` 约束到 `U_io_clk_div_1.clkdivout` 8.0ns（约束缘由见 `des_vision` 一节），实测像素时钟 111.1MHz；`io_sync` 队友负责；`encoder_qei` / `rs485_modbus` / P2 各项未做。**PL 资源**：ISP 白平衡改造后 slice 约 82%、ERAM 93%（只剩 19 块），不再加大模块。
 
 下表为规划（沿用规划时的命名）：
 
@@ -61,7 +61,7 @@
 | 偏移 | R/W | 名称 | 说明 |
 |---|---|---|---|
 | 0x000 | R | `DES_ID` | 固定 `0x44455301`（"DES" + 版本 01） |
-| 0x004 | R | `DES_VERSION` | 1 = 仅寄存器通道（v1 此处为编译日期 `0x20261010`）/ 2 = 接入舵机总线 + 步进 / 3 = 帧起始修正、步进共阴 / 4 = 相机 INCK 改 27MHz（60fps）/ 5 = 拍摄锁存 + 步进 BRAKE |
+| 0x004 | R | `DES_VERSION` | 1 = 仅寄存器通道（v1 此处为编译日期 `0x20261010`）/ 2 = 接入舵机总线 + 步进 / 3 = 帧起始修正、步进共阴 / 4 = 相机 INCK 改 27MHz（60fps）/ 5 = 拍摄锁存 + 步进 BRAKE / 6 = `des_vision` / 7 = `des_pwm` + AWB 除法器 / 8 = 读多路选择 + `clk_mipi` 修正 / 9 = 步进 `TARGET == POS` 就地停 / 10 = `des_pwm` 去掉光源输出（光源改人工手动，源码，未上板） |
 | 0x008 | R/W | `SCRATCH` | 读写测试 |
 | 0x00C | R | `FREE_CNT` | 75MHz 自由计数器（硬件时间戳 / 延迟测量） |
 | 0x010 | R/W | `LED_CTRL` | b0 = 接管 LED1，b1 = LED1 亮灭 |
@@ -133,13 +133,13 @@
 | 0x33C | R | `CYCLES` 每帧像素时钟数 |
 | 0x340 | R | `ACTIVE` 正在用的设置：[2:0] 模式、[8] FULL、[23:16] 阈值、[27:24] LANES |
 
-### 带尾翻板 + 光源 `des_pwm`（`PL_BASE + 0x400`，✅ v8 上板验证，未接舵机）
+### 带尾翻板 `des_pwm`（`PL_BASE + 0x400`，✅ v8 上板验证，未接舵机）
 
-[pl/soc_base/src/des/des_pwm.v](../pl/soc_base/src/des/des_pwm.v)：2 路 50Hz 舵机 PWM（两级翻板，MG996R）+ 光源开关。脉宽单位 µs，新值在下一周期开头生效（不出半截脉冲），钳位 2550µs；周期计数供 PS 确认已生效。对应领域 3 中级「NG 不良品输出 IO 控制；不良品实时分拣触发」。仿真 [pl/sim/tb_des_pwm.v](../pl/sim/tb_des_pwm.v) 11 项过。管脚：#16 `FORK_PWM` = PIN18 Y6、#18 = PIN20 Y8、#15 `LAMP_EN` = PIN17 Y7。PS 侧 `src/sched/flap`（零件到达前 40mm 打到位、过去 60mm 释放）。
+[pl/soc_base/src/des/des_pwm.v](../pl/soc_base/src/des/des_pwm.v)：2 路 50Hz 舵机 PWM（两级翻板，MG996R）。脉宽单位 µs，新值在下一周期开头生效（不出半截脉冲），钳位 2550µs；周期计数供 PS 确认已生效。对应领域 3 中级「NG 不良品输出 IO 控制；不良品实时分拣触发」。仿真 [pl/sim/tb_des_pwm.v](../pl/sim/tb_des_pwm.v) 11 项过。管脚：#16 `FORK_PWM` = PIN18 Y6、#18 = PIN20 Y8。PS 侧 `src/sched/flap`（零件到达前 40mm 打到位、过去 60mm 释放）。v10 去掉光源输出（`CTRL` b8 与 `LAMP_EN` 管脚，源码，未上板，见 [log/2026-10-17](log/2026-10-17-des_pwm去掉光源.md)）：光源是**人工手动**开关 / 调光，不需要 PL 控制，PIN17 Y7 释放为空闲。
 
 | 偏移 | R/W | 说明 |
 |---|---|---|
-| 0x400 | R/W | `CTRL`：[1:0] 通道使能，[8] 光源 |
+| 0x400 | R/W | `CTRL`：[1:0] 通道使能（v7~v9 的 b8 光源已在 v10 去掉） |
 | 0x404 | R/W | `PERIOD` µs（默认 20000，最小 2600） |
 | 0x408 / 0x40C | R/W | `CH0_US` / `CH1_US` 脉宽 µs |
 | 0x410 | R | `CNT` 已开始的周期数 |
@@ -168,7 +168,7 @@
 | 0x080~0x094 | R | `ARM_FB_TEMP[0..5]` | 舵机温度 |
 | 0x098~0x09C | R | `BUS_STAT` | 总线应答 / 校验错 / 超时计数 |
 | 0x0A0~0x0A8 | W | `FLAP_*` | 翻板 1/2 角度、触发位置（P1） |
-| 0x0B0 | W | `IO_OUT` | 光源使能 / 三色灯 |
+| 0x0B0 | W | `IO_OUT` | 三色灯 |
 | 0x0B4 | R | `IO_IN` | 对射 / 限位 / 急停 |
 | 0x0B8 | R | `IO_TIMESTAMP` | 多通道同步采样时间戳 |
 | 0x0C0~ | R/W | `RS485_*` | Modbus 主站帧缓冲与状态（P1） |

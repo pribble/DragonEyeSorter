@@ -3,7 +3,7 @@
 # No actuators needed.
 # Checks: des_regs ID / VERSION, sensor frame rate seen by the PL (FRAME_CNT over 1 s, FRAME_PERIOD), des_vision (v6+):
 # register read-back, statistics advancing, pixel clock = CYCLES x fps, display modes 1..5 accepted; des_pwm (v7+):
-# width / enable / lamp read-back and period counter; command response latencies (servo bus, stepper); v9+: stepper
+# width / enable read-back (v10: no lamp bit) and period counter; command response latencies (servo bus, stepper); v9+: stepper
 # target rewrite (TARGET = POS while moving stops there, a target behind ramps down). Prints PASS /
 # FAIL per item and a summary; exit code = failures. Uses the camera (des_app probe in the background).
 SELF=$(readlink -f -- "$0" 2>/dev/null || echo "$0")
@@ -63,14 +63,14 @@ fi
 if [ "$VER" -ge 7 ]; then
     PID_=$($R r 0x414)
     [ "$PID_" = "0x50574d31" ] && pass "des_pwm ID $PID_" || fail "des_pwm ID $PID_"
-    $R pwm 0 1500 > /dev/null; $R pwm 1 1200 > /dev/null; $R lamp on > /dev/null
+    $R pwm 0 1500 > /dev/null; $R pwm 1 1200 > /dev/null
     W0=$(hex "$($R r 0x408)"); W1=$(hex "$($R r 0x40C)"); C=$(hex "$($R r 0x400)")
     N0=$(hex "$($R r 0x410)"); sleep 1; N1=$(hex "$($R r 0x410)")
     [ "$W0" = 1500 ] && [ "$W1" = 1200 ] && pass "PWM widths read back 1500 / 1200 us" || fail "PWM widths $W0 / $W1"
-    [ $((C & 0x103)) = $((0x103)) ] && pass "PWM enable + lamp read back (CTRL $C)" || fail "PWM CTRL $C"
+    [ $((C & 0x3)) = $((0x3)) ] && pass "PWM enable read back (CTRL $C)" || fail "PWM CTRL $C"
     awk -v n=$((N1 - N0)) 'BEGIN { exit !(n >= 48 && n <= 52) }' && pass "PWM periods $((N1 - N0)) / s (50 Hz)" \
         || fail "PWM periods $((N1 - N0)) / s"
-    $R pwm off > /dev/null; $R lamp off > /dev/null
+    $R pwm off > /dev/null
 fi
 
 # --- command response

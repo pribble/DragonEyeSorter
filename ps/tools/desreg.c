@@ -13,7 +13,7 @@
  *   desreg sync <pos> <ms> <id...> servo SYNC WRITE target position / time to several ids
  *   desreg step status | vel <steps/s> [acc] | move <target> [vmax] [acc] | stop | halt | off | zero
  *   desreg vis                     PL vision statistics (v6)
- *   desreg pwm <ch> <us> | pwm off | lamp on|off   flap servo pulse width (v7)
+ *   desreg pwm <ch> <us> | pwm off             flap servo pulse width (v7)
  *   desreg vis <mode> [thr] [edge_thr] [full|x0 y0 x1 y1]   mode 0 camera 1 gray 2 gauss 3 binary 4 sobel 5 edges
  * Do not use the write commands while des_app is running (single-master servo bus / stepper).
  */
@@ -263,15 +263,12 @@ int main(int argc, char **argv)
                des_ticks_us(rd(DES_SB_TX_T1) - rd(DES_SB_TX_T0)));
         rc = rc ? 5 : 0;
     } else if (!strcmp(cmd, "pwm") && argc >= 3) {
-        if (!strcmp(argv[2], "off")) rc = des_pwm_enable(&hw, 0, (int)((rd(DES_PWM_CTRL) >> 8) & 1)) ? 2 : 0;
+        if (!strcmp(argv[2], "off")) rc = des_pwm_enable(&hw, 0) ? 2 : 0;
         else if (argc >= 4) {
             int ch = atoi(argv[2]);
             rc = des_pwm_set(&hw, ch, atoi(argv[3])) ? 2 : 0;
-            if (!rc) rc = des_pwm_enable(&hw, (rd(DES_PWM_CTRL) & 3u) | (1u << ch), (int)((rd(DES_PWM_CTRL) >> 8) & 1)) ? 2 : 0;
+            if (!rc) rc = des_pwm_enable(&hw, (rd(DES_PWM_CTRL) & 3u) | (1u << ch)) ? 2 : 0;
         }
-        if (rc) fprintf(stderr, "bitstream before v7: no des_pwm\n");
-    } else if (!strcmp(cmd, "lamp") && argc == 3) {
-        rc = des_pwm_enable(&hw, rd(DES_PWM_CTRL) & 3u, !strcmp(argv[2], "on")) ? 2 : 0;
         if (rc) fprintf(stderr, "bitstream before v7: no des_pwm\n");
     } else if (!strcmp(cmd, "vis")) {
         if (argc >= 3) {

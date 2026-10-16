@@ -1,7 +1,8 @@
 // DragonEyeSorter PL register file, PS address 0x8030_1000 + offset (see docs/PL设计.md).
 //   0x000 R  DES_ID       0x44455301
 //   0x004 R  DES_VERSION  1 = register channel, 2 = servo_bus + stepper, 3 = SOF fix, 4 = INCK 27 MHz, 5 = capture latch,
-//                         6 = des_vision, 7 = des_pwm + AWB divider, 8 = read mux / clk_mipi fixes, 9 = stepper TARGET == POS stop
+//                         6 = des_vision, 7 = des_pwm + AWB divider, 8 = read mux / clk_mipi fixes, 9 = stepper TARGET == POS stop,
+//                         10 = des_pwm without the lamp output
 //   0x008 RW SCRATCH
 //   0x00C R  FREE_CNT     75 MHz free-running counter (also exported as ts)
 //   0x010 RW LED_CTRL     b0 override LED1, b1 LED1 value

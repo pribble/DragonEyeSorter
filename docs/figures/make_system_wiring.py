@@ -212,7 +212,7 @@ note(184, 125.8, 'J12 排针（CEP，3.3V）', fs=10.5, weight='bold', color='#4
 pins = [(122, 'PIN15', 'ESTOP_IN（低 = 急停）', EST), (118, 'PIN2', 'GND（= PL 地，接 WAGO）', G24),
         (111, 'PIN3', 'STEP_PUL', PUL), (105, 'PIN4', 'STEP_DIR', DIR), (99, 'PIN5', 'STEP_ENA', ENA),
         (80, 'PIN1', '3.3V（只给逻辑，<100mA）', P33), (68, 'PIN19', 'SERVO_BUS', BUS),
-        (60, 'PIN18', 'FLAP1_PWM', FLAP), (54, 'PIN20', 'FLAP2_PWM', FLAP), (48, 'PIN17', 'LAMP_EN（预留）', '#9e9e9e')]
+        (60, 'PIN18', 'FLAP1_PWM', FLAP), (54, 'PIN20', 'FLAP2_PWM', FLAP)]
 for y, p, f, c in pins:
     term(182, y, '', 'l')
     note(183.5, y, p, fs=10, color=c, weight='bold', va='center')

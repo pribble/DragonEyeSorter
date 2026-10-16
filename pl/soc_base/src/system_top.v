@@ -23,7 +23,6 @@ module system_top(
     inout          SERVO_BUS,    // CEP PIN19 Y9, via BSS138, open-drain
     output         FLAP1_PWM,    // CEP PIN18 Y6 (#16 FORK_PWM), belt-end flap stage 1 (MG996R)
     output         FLAP2_PWM,    // CEP PIN20 Y8 (#18), flap stage 2
-    output         LAMP_EN,      // CEP PIN17 Y7 (#15), light MOSFET module
     
 	input  wire		    I_clk_hs_p  ,
 	input  wire	[3:0]	I_data_hs_p , 
@@ -487,7 +486,7 @@ wire pwm_out_unused;
     wire des_estop = ~des_estop_sync[2];
 
     wire [31:0] st_pos;
-    des_regs #(.VERSION(32'd9)) des_regs_inst (
+    des_regs #(.VERSION(32'd10)) des_regs_inst (
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h0), .waddr(des_waddr), .wdata(des_wdata),
         .raddr(des_raddr), .rdata(regs_rdata), .sof_toggle(des_sof_toggle), .ts(des_ts),
         .cap_start_toggle(cap_start_tgl), .cap_done_toggle(cap_done_tgl), .pos(st_pos),
@@ -514,7 +513,7 @@ wire pwm_out_unused;
 
     des_pwm pwm_inst (
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h4), .waddr(des_waddr[7:0]), .wdata(des_wdata),
-        .raddr(des_raddr[7:0]), .rdata(pwm_rdata), .pwm({FLAP2_PWM, FLAP1_PWM}), .lamp(LAMP_EN)
+        .raddr(des_raddr[7:0]), .rdata(pwm_rdata), .pwm({FLAP2_PWM, FLAP1_PWM})
     );
 
     // TB6600 common-cathode wiring (PUL-/DIR-/ENA- to GND, PUL+/DIR+/ENA+ from these pins): pulse active high,

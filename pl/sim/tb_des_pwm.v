@@ -1,6 +1,7 @@
 `timescale 1ns/1ps
 // des_pwm: period, pulse widths, change only at a period start (no truncated / doubled pulse), enable / disable,
-// width 0, clamp, lamp, period counter. Short period (2600 us minimum) to keep the simulation fast.
+// width 0, clamp, period counter, CTRL bit 8 ignored (the lamp output was dropped in v10).
+// Short period (2600 us minimum) to keep the simulation fast.
 module tb_des_pwm;
     reg clk = 0;
     always #6.6667 clk = ~clk;   // 75 MHz
@@ -10,8 +11,7 @@ module tb_des_pwm;
     reg  [31:0] wdata = 0;
     wire [31:0] rdata;
     wire [1:0] pwm;
-    wire       lamp;
-    des_pwm dut (.clk(clk), .wr(wr), .waddr(waddr), .wdata(wdata), .raddr(raddr), .rdata(rdata), .pwm(pwm), .lamp(lamp));
+    des_pwm dut (.clk(clk), .wr(wr), .waddr(waddr), .wdata(wdata), .raddr(raddr), .rdata(rdata), .pwm(pwm));
 
     integer fails = 0, passes = 0;
     reg [8*80-1:0] msg;
@@ -46,8 +46,8 @@ module tb_des_pwm;
         rreg(8'h04, r); check(r == 2600, "period clamped to 2600 us");
         wreg(8'h08, 32'd1500);
         wreg(8'h0C, 32'd9999);                     // clamped to 2550
-        wreg(8'h00, 32'h103);                      // both channels + lamp
-        #1 check(lamp == 1'b1, "lamp on");
+        wreg(8'h00, 32'h103);                      // both channels + bit 8, which used to be the lamp
+        rreg(8'h00, r); check(r == 32'h0003, "CTRL bit 8 ignored (no lamp in v10)");
         #(3 * 2600 * 1000);
         $sformat(msg, "ch0 width 1500 us (%0.2f)", last_w0); check(near(last_w0, 1500), msg);
         $sformat(msg, "period 2600 us (%0.3f)", last_t0); check(near(last_t0, 2600), msg);
@@ -69,9 +69,9 @@ module tb_des_pwm;
         #(3 * 2600 * 1000);
         check(n0 <= k + 1 && pwm[0] == 1'b0, "width 0: no pulses");
         k = n1;
-        wreg(8'h00, 32'h001);                      // ch1 off, lamp off
+        wreg(8'h00, 32'h001);                      // ch1 off
         #(3 * 2600 * 1000);
-        check(n1 <= k + 1 && pwm[1] == 1'b0 && lamp == 1'b0, "channel disable / lamp off");
+        check(n1 <= k + 1 && pwm[1] == 1'b0, "channel disable");
         $display("des_pwm: %0d passed, %0d failed", passes, fails);
         $finish;
     end

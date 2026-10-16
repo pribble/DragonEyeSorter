@@ -100,7 +100,7 @@ def fig_architecture():
         '75MHz 自由计数器 · 帧号 / 帧周期 · 拍摄瞬间的帧号 + 时间戳 + 带位置', 'pl', fs=8)
     box(ax, 25, 35, 24, 10, 'servo_bus  德晟协议主机\n补帧头/校验 · SYNC WRITE\n应答解析 · 超时 · 时间戳', 'pl', fs=7.8)
     box(ax, 25, 23, 24, 10, 'stepper_ctrl\n梯形加减速 · 位置/速度模式\n刹车距离 · 首脉冲 10.6µs', 'pl', fs=7.8)
-    box(ax, 25, 12.5, 24, 8, 'des_pwm\n两级翻板 50Hz + 光源', 'pl', fs=7.8)
+    box(ax, 25, 12.5, 24, 8, 'des_pwm\n两级翻板 50Hz', 'pl', fs=7.8)
     box(ax, 25, 3, 24, 7, '急停锁存：步进立即停', 'acc', fs=7.8)
     box(ax, 52, 3, 24, 42, 'NPU\n硬核 512 MAC\n+ 软核算子\n（官方 IP）\n\nArmNN + Alnpu\nUINT8 QDQ', 'npu', fs=8.5)
 
@@ -249,7 +249,7 @@ def fig_pl_regs():
         (56, '0x2xx  stepper_ctrl', '梯形加减速、运动中改目标、刹车距离 BRAKE\n命令 → 首脉冲 10.6µs', 'STEP_PUL / DIR / ENA\nY12 / Y13 / T9 → TB6600'),
         (42, '0x3xx  des_vision', '像素域 111MHz，串在 ISP 与帧写之间\n灰度 / 高斯 / 二值 / Sobel / 边缘 + ROI 统计',
          'HDMI 60fps 直接显示\nPL 处理图'),
-        (28, '0x4xx  des_pwm', '2 路 50Hz 舵机 PWM（下周期生效）+ 光源开关', 'FLAP1 Y6 / FLAP2 Y8\nLAMP_EN Y7'),
+        (28, '0x4xx  des_pwm', '2 路 50Hz 舵机 PWM（下周期生效）', 'FLAP1 Y6 / FLAP2 Y8'),
         (14, '0x5xx~', '预留（io_sync 等新模块从这里排）', None),
     ]
     for y, name, desc, pin in mods:

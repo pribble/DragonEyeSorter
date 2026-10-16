@@ -14,7 +14,7 @@ pl/
 │   │   ├── servo_bus.v          # ✅ 德晟总线主机 @+0x100，仿真 + 上板（帧时长 = 理论值）
 │   │   ├── stepper_ctrl.v       # ✅ 步进 @+0x200，仿真 + 上板（计步精确）
 │   │   ├── des_vision.v         # ISP 后图像路径（灰度/高斯/Sobel/二值 + ROI 统计）@+0x300，仿真 790 项过，v8 上板验证
-│   │   ├── des_pwm.v            # 带尾两级翻板 PWM + 光源 @+0x400（仿真 11 项过），v8 上板验证（读回 / 50Hz）
+│   │   ├── des_pwm.v            # 带尾两级翻板 PWM @+0x400（仿真 11 项过），v8 上板验证（读回 / 50Hz）；v10 去光源输出（光源手动）
 │   │   ├── awb_seq_div.v        # 仿真过：ISP 白平衡逐位除法器（awb.v 改版用，省约 4k LUT）
 │   │   └── io_sync.v            # ⬜ 急停锁存/对射/限位 去抖 + 统一时间戳（待接入 des 寄存器总线）
 │   ├── src/constraint/  #   管脚 io.adc（CEP = BANK11 3.3V）、时序 timing.sdc

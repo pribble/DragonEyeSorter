@@ -232,7 +232,7 @@ void Runner::cycle(Tracker &tr, Picker &pk)
                     des_pwm_set(hw_, ch, fs.us[ch]);
                     flap_us_[ch] = fs.us[ch];
                 }
-            if (!pwm_enabled_) pwm_enabled_ = des_pwm_enable(hw_, 3u, 1) == DES_OK;   // both flaps + light
+            if (!pwm_enabled_) pwm_enabled_ = des_pwm_enable(hw_, 3u) == DES_OK;   // both flaps
         }
         if (out.have_job) {
             std::lock_guard<std::mutex> lk(m_);

@@ -133,7 +133,7 @@ int des_vis_read(const des_hw_t *h, des_vis_t *v)
     return DES_OK;
 }
 
-/* ---------------- flaps + light ---------------- */
+/* ---------------- belt-end flaps ---------------- */
 
 int des_pwm_set(des_hw_t *h, int ch, int us)
 {
@@ -142,10 +142,10 @@ int des_pwm_set(des_hw_t *h, int ch, int us)
     return DES_OK;
 }
 
-int des_pwm_enable(des_hw_t *h, unsigned ch_mask, int lamp)
+int des_pwm_enable(des_hw_t *h, unsigned ch_mask)
 {
     if (h->version < DES_VERSION_PWM) return DES_E_ARG;
-    des_wr(h, DES_PWM_CTRL, (ch_mask & 3u) | (lamp ? 0x100u : 0u));
+    des_wr(h, DES_PWM_CTRL, ch_mask & 3u);
     return DES_OK;
 }
 

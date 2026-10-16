@@ -1,5 +1,5 @@
-// des_pwm.v — hobby-servo PWM for the belt-end flaps (MG996R, 两级翻板: 复检 vs NG, 返修 vs 报废) and the light
-// enable (赛题领域 3 中级「NG 不良品输出 IO 控制；不良品实时分拣触发」).
+// des_pwm.v — hobby-servo PWM for the belt-end flaps (MG996R, 两级翻板: 复检 vs NG, 返修 vs 报废)
+// (赛题领域 3 中级「NG 不良品输出 IO 控制；不良品实时分拣触发」).
 //
 // NCH channels, one period of PERIOD_US (default 20 ms = 50 Hz) for all, pulse width per channel in microseconds
 // (0 = no pulse: the servo holds without torque on most hobby servos). A new width written by the PS takes effect
@@ -7,7 +7,7 @@
 // (3.3 V LVCMOS; MG996R signal threshold ~2 V).
 //
 // Registers (byte offsets in the 0x400 window, register clock):
-//   0x00 CTRL    RW [NCH-1:0] channel enable, [8] LAMP (light on)
+//   0x00 CTRL    RW [NCH-1:0] channel enable (b8 drove the lamp in v7..v9, dropped in v10)
 //   0x04 PERIOD  RW period in us (default 20000, minimum 2600)
 //   0x08 CH0_US  RW pulse width in us (500..2500 typical)
 //   0x0C CH1_US  RW
@@ -23,13 +23,11 @@ module des_pwm #(
     input  wire [31:0]    wdata,
     input  wire [7:0]     raddr,
     output reg  [31:0]    rdata,
-    output reg  [NCH-1:0] pwm,
-    output wire           lamp
+    output reg  [NCH-1:0] pwm
 );
     localparam integer CLK_PER_US = CLK_HZ / 1_000_000;
 
     reg [NCH-1:0] en = {NCH{1'b0}};
-    reg           lamp_r = 1'b0;
     reg [15:0]    period_us = 16'd20000;
     reg [11:0]    width_w [0:NCH-1];   // written by the PS
     reg [11:0]    width_a [0:NCH-1];   // in force this period
@@ -39,12 +37,10 @@ module des_pwm #(
     integer i;
     initial for (i = 0; i < NCH; i = i + 1) begin width_w[i] = 12'd0; width_a[i] = 12'd0; end
 
-    assign lamp = lamp_r;
-
     always @(posedge clk) begin
         if (wr) begin
             case (waddr[7:2])
-                6'h00: begin en <= wdata[NCH-1:0]; lamp_r <= wdata[8]; end
+                6'h00: en <= wdata[NCH-1:0];
                 6'h01: period_us <= (wdata[15:0] < 16'd2600) ? 16'd2600 : wdata[15:0];
                 default:
                     for (i = 0; i < NCH; i = i + 1)
@@ -71,7 +67,7 @@ module des_pwm #(
     // next clock edge (a registered mux returned the previous address's data on the board, v7)
     always @* begin
         case (raddr[7:2])
-            6'h00: rdata = {23'd0, lamp_r, {(8 - NCH){1'b0}}, en};
+            6'h00: rdata = {24'd0, {(8 - NCH){1'b0}}, en};
             6'h01: rdata = {16'd0, period_us};
             6'h02: rdata = {20'd0, width_w[0]};
             6'h03: rdata = (NCH > 1) ? {20'd0, width_w[1]} : 32'd0;

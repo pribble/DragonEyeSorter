@@ -33,7 +33,7 @@ DPHY、HDMI 控制器、AXI Matrix 等），随本工程编译。
 - 寄存器定义见 [docs/PL设计.md](../../docs/PL设计.md)
 - 仿真：[pl/sim/tb_des_axi.v](../sim/tb_des_axi.v)（`run_sim.sh des_axi`）
 
-## 改动记录（对厂家 soc_prj 的改动，v2~v8）
+## 改动记录（对厂家 soc_prj 的改动，v2~v10）
 
 | 文件 | 改动 | 目的 |
 |---|---|---|
@@ -47,10 +47,11 @@ DPHY、HDMI 控制器、AXI Matrix 等），随本工程编译。
 | `src/write_fdma/uidbuf_write.v`、`src/system_top.v`（v5） | 帧写模块新增输出 `O_W_start_tgl`（真正开始写一帧时翻转）；顶层把它与完成中断 `f2p_irq` 上升沿的翻转送进 `des_regs` 的拍摄锁存（`CAP_*`），`stepper_ctrl` 新增 `pos_o` 供锁存；VERSION=5 | 跟踪表要「这一帧拍摄时刻的带位置」（docs/PL设计.md 拍摄锁存） |
 | `src/system_top.v`、`soc_prj.al`、`soc_prj_Runs/syn_1/soc_prj.prj`（v6） | ISP 输出与帧写模块之间插入 `des_vision`（`ud_wvs / ud_wde / ud_wdata` 改走 `vis_*`），寄存器段 0x3xx；VERSION=6。布线失败（slice 90%），未上板 | PL 硬件灰度 / 滤波 / 边缘 / 粗测（领域 3） |
 | `src/ui_isp/awb_1_1/awb.v`（v7，新文件 `src/des/awb_seq_div.v`） | ISP 自动白平衡的两个 50 级流水线除法器 IP 用背靠背逐位除法器（每 49 时钟一个增益），增益不随帧复位；对照仿真 `run_sim.sh awb` | 省约 4k LUT + 5k FF：slice 90.2% → 81.7%，布线 5h 不通 → 23 分钟通过 |
-| `src/system_top.v`、`src/constraint/io.adc`（v7） | 接入 `des_pwm`（0x4xx）：`FLAP1_PWM` = PIN18 Y6、`FLAP2_PWM` = PIN20 Y8、`LAMP_EN` = PIN17 Y7；`stepper_ctrl` 启动预置相位（首脉冲 1.94ms → 10.6µs）；VERSION=7 | 带尾两级翻板 + 光源；指令响应 |
+| `src/system_top.v`、`src/constraint/io.adc`（v7） | 接入 `des_pwm`（0x4xx）：`FLAP1_PWM` = PIN18 Y6、`FLAP2_PWM` = PIN20 Y8；`stepper_ctrl` 启动预置相位（首脉冲 1.94ms → 10.6µs）；VERSION=7 | 带尾两级翻板；指令响应 |
 | `src/constraint/timing.sdc`（v8） | **`clk_mipi` 挂到实际的字节时钟** `u_mipi_dphy_rx_over_lvds_wrapper/u_rx_clk_gen/U_io_clk_div_1.clkdivout`，8.0ns。厂家原约束挂在不存在的硬核 MIPI 引脚上（TD：`No pins matched … defined a virtual clock`），整个像素时钟域（ISP、des_vision、帧写入）从未做过时序分析，tuser 边沿检测因此漏帧 | 像素域时序收敛 |
 | `src/system_top.v`（v8） | `des_vision` / `des_pwm` 读数据用组合逻辑（桥接逻辑同一时钟取数，打拍的读回上一个地址）；VERSION=8 | 寄存器读回正确 |
 | `src/des/stepper_ctrl.v`、`src/system_top.v`（v9） | 运动中把 `TARGET` 改成恰好等于 `POS` 时就地停（原来一直 MOVING）；目标在身后仍减速停；VERSION=9。仓库内原地编译（`soc_prj_Runs/`），布线 46 分钟；HDMI 串行 742.9MHz 路径 +0.120ns（v8 −0.338ns） | 皮带「停在此处」写法不再卡死 |
+| `src/des/des_pwm.v`、`src/system_top.v`、`src/constraint/io.adc`（v10） | 去掉光源输出：`CTRL` b8、`lamp` 端口与 `LAMP_EN` 管脚（PIN17 Y7 释放）；VERSION=10（**源码，未重编 / 未上板**） | 光源为人工手动开关 / 调光（不接 PL），少一个管脚与一位寄存器 |
 
 ## 已知问题（编译前先看）
 
