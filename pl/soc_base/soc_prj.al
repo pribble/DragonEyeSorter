@@ -83,123 +83,6 @@
                     <Attr Name="CompileOrder" Val="4"/>
                 </FileInfo>
             </File>
-            <File Path="src/MIPI_V2/src/raw10_unpacket.v">
-                <FileInfo>
-                    <Attr Name="AutoExcluded" Val="true"/>
-                    <Attr Name="UsedInSyn" Val="true"/>
-                    <Attr Name="UsedInP&R" Val="true"/>
-                    <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="5"/>
-                </FileInfo>
-            </File>
-            <File Path="src/MIPI_V2/src/raw8_to_rgb888.v">
-                <FileInfo>
-                    <Attr Name="AutoExcluded" Val="true"/>
-                    <Attr Name="UsedInSyn" Val="true"/>
-                    <Attr Name="UsedInP&R" Val="true"/>
-                    <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="6"/>
-                </FileInfo>
-            </File>
-            <File Path="src/MIPI_V2/src/rgb888_to_axi_stream.v">
-                <FileInfo>
-                    <Attr Name="AutoExcluded" Val="true"/>
-                    <Attr Name="UsedInSyn" Val="true"/>
-                    <Attr Name="UsedInP&R" Val="true"/>
-                    <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="7"/>
-                </FileInfo>
-            </File>
-            <File Path="src/MIPI_V2/src/video_cuttting.v">
-                <FileInfo>
-                    <Attr Name="AutoExcluded" Val="true"/>
-                    <Attr Name="UsedInSyn" Val="true"/>
-                    <Attr Name="UsedInP&R" Val="true"/>
-                    <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="8"/>
-                </FileInfo>
-            </File>
-            <File Path="src/MIPI_V2/src/w32_d482_shifter.v">
-                <FileInfo>
-                    <Attr Name="AutoExcluded" Val="true"/>
-                    <Attr Name="UsedInSyn" Val="true"/>
-                    <Attr Name="UsedInP&R" Val="true"/>
-                    <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="9"/>
-                </FileInfo>
-            </File>
-            <File Path="src/MIPI_V2/src/w40_d512_fifo.v">
-                <FileInfo>
-                    <Attr Name="AutoExcluded" Val="true"/>
-                    <Attr Name="UsedInSyn" Val="true"/>
-                    <Attr Name="UsedInP&R" Val="true"/>
-                    <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="10"/>
-                </FileInfo>
-            </File>
-            <File Path="src/isp/axis_sobel.v">
-                <FileInfo>
-                    <Attr Name="AutoExcluded" Val="true"/>
-                    <Attr Name="UsedInSyn" Val="true"/>
-                    <Attr Name="UsedInP&R" Val="true"/>
-                    <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="11"/>
-                </FileInfo>
-            </File>
-            <File Path="src/isp/gray_mean.v">
-                <FileInfo>
-                    <Attr Name="AutoExcluded" Val="true"/>
-                    <Attr Name="UsedInSyn" Val="true"/>
-                    <Attr Name="UsedInP&R" Val="true"/>
-                    <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="12"/>
-                </FileInfo>
-            </File>
-            <File Path="src/isp/matrix_3x3.v">
-                <FileInfo>
-                    <Attr Name="AutoExcluded" Val="true"/>
-                    <Attr Name="UsedInSyn" Val="true"/>
-                    <Attr Name="UsedInP&R" Val="true"/>
-                    <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="13"/>
-                </FileInfo>
-            </File>
-            <File Path="src/isp/rgb2yuv_4ppc.v">
-                <FileInfo>
-                    <Attr Name="AutoExcluded" Val="true"/>
-                    <Attr Name="UsedInSyn" Val="true"/>
-                    <Attr Name="UsedInP&R" Val="true"/>
-                    <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="14"/>
-                </FileInfo>
-            </File>
-            <File Path="src/isp/shift_ram.v">
-                <FileInfo>
-                    <Attr Name="AutoExcluded" Val="true"/>
-                    <Attr Name="UsedInSyn" Val="true"/>
-                    <Attr Name="UsedInP&R" Val="true"/>
-                    <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="15"/>
-                </FileInfo>
-            </File>
-            <File Path="src/isp/ram0/ram0.v">
-                <FileInfo>
-                    <Attr Name="AutoExcluded" Val="true"/>
-                    <Attr Name="UsedInSyn" Val="true"/>
-                    <Attr Name="UsedInP&R" Val="true"/>
-                    <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="16"/>
-                </FileInfo>
-            </File>
-            <File Path="src/isp/ram0/ram_dca62376a38a.v">
-                <FileInfo>
-                    <Attr Name="AutoExcluded" Val="true"/>
-                    <Attr Name="UsedInSyn" Val="true"/>
-                    <Attr Name="UsedInP&R" Val="true"/>
-                    <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="17"/>
-                </FileInfo>
-            </File>
             <File Path="src/write_fdma/fs_cap.v">
                 <FileInfo>
                     <Attr Name="UsedInSyn" Val="true"/>
@@ -296,15 +179,6 @@
                     <Attr Name="CompileOrder" Val="32"/>
                 </FileInfo>
             </File>
-            <File Path="src/MIPI_V2/src/auto_white_balance.v">
-                <FileInfo>
-                    <Attr Name="AutoExcluded" Val="true"/>
-                    <Attr Name="UsedInSyn" Val="true"/>
-                    <Attr Name="UsedInP&R" Val="true"/>
-                    <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="33"/>
-                </FileInfo>
-            </File>
             <File Path="src/ui_isp/awb_1_1/awb.v">
                 <FileInfo>
                     <Attr Name="UsedInSyn" Val="true"/>
@@ -319,14 +193,6 @@
                     <Attr Name="UsedInP&R" Val="true"/>
                     <Attr Name="BelongTo" Val="design_1"/>
                     <Attr Name="CompileOrder" Val="35"/>
-                </FileInfo>
-            </File>
-            <File Path="src/ui_isp/awb_1_1/devider/divider_gate.v">
-                <FileInfo>
-                    <Attr Name="UsedInSyn" Val="true"/>
-                    <Attr Name="UsedInP&R" Val="true"/>
-                    <Attr Name="BelongTo" Val="design_1"/>
-                    <Attr Name="CompileOrder" Val="36"/>
                 </FileInfo>
             </File>
             <File Path="src/ui_isp/isp_top.v">

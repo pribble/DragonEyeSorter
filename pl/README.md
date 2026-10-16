@@ -37,5 +37,5 @@ pl/
 ## 约定
 
 - 寄存器偏移与 `docs/PL设计.md`、`ps/src/hw/des_regs.h` 同一次提交更新。
-- 自研图像算子（P1/P2）复用官方 line_buffer / `matrix_3x3` 框架时直接在 `soc_base/src/` 改，改动登记进 `soc_base/README.md` 改动记录表。
+- 自研图像算子（P1/P2）直接在 `soc_base/src/des/` 里写（厂家 `src/isp/` 那套 line_buffer / `matrix_3x3` 框架没接进链路，已于 2026-10-17 删除），改动登记进 `soc_base/README.md` 改动记录表。
 - 每个模块配 testbench；时序关键模块要能导出测试报告用的时间戳 / 计数。

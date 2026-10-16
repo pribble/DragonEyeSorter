@@ -8,8 +8,9 @@
 
 ### 官方源码可复用性（`soc_prj/src/` 清点）
 
-- **明文可改**：`isp/axis_sobel.v`、`isp/matrix_3x3.v` + `shift_ram.v`（3×3 窗口 / 行缓存）、`isp/gray_mean.v`、`ui_isp/` 整套 ISP（含 `image_cut`、`bilinear_interpolation.v`）、`write_fdma/uiFDMA.v`（帧写 DDR）、`MIPI_V2/src/` 解包全链、`pwm.v`（AXI PWM，7 个实例）、`design_0` 里的 AXI4-Lite 从机寄存器模板。
-- **加密（不需要改）**：MIPI D-PHY 与 HDMI TMDS 物理层 3 个 `.enc` 文件。
+- **明文可改（在用的）**：`ui_isp/` 整套 ISP（含 `image_cut`、`bilinear_interpolation.v`、白平衡 `awb.v`）、`write_fdma/uiFDMA.v` + `uidbuf_write.v`（帧写 DDR）、`MIPI_V2/src/csi_unpacket.v` + `design_top_wrapper.v`、`MIPI_V2/mipi_rx/`（`rx_clk_gen.v`、`hs_rx_wrapper.sv`、D-PHY 包装）、`hdmi_tx/`（`uihdmi_tx.v`、`hdmi_phy_warpper.v`、`lane_lvds_10_1.v`）、`pwm.v`（厂家 AXI PWM，块设计里 **3 个实例**，输出只驱动 `vtg_lock` / `axis_to_video_lock` 状态位）、`design_0` 里的 AXI4-Lite 从机寄存器模板（`fvdma_ctrl`，即我们改过的寄存器桥）。
+- **加密（改不了）**：共 15 个 `pragma protect` 文件 —— NPU 软核、VDMA（含 2 个 `.vh`）、视频时序发生器、AXI Matrix ×3 / 协议转换 ×2 / Stream-to-Video Out、HDMI 控制器、MIPI D-PHY 两条数据通道、`write_fdma/wfifo.v`（清单见 [pl/soc_base/README](../pl/soc_base/README.md)）。
+- **已删（没被例化的厂家源码，2026-10-17）**：`src/isp/`（厂家 Sobel / 3×3 / 行缓存 / 灰度均值七个文件）、`src/MIPI_V2/src/` 的 RAW8 老解包路径与第二套 AWB（七个文件）、白平衡用的厂家流水线除法器 `divider`（1.3 MB）；理由与验证见 [log/2026-10-17](log/2026-10-17-清理未用的厂家PL源码.md)。
 - **官方一行都没有、是我们的贡献点**：运动控制全家桶（步进脉冲 + 加减速、舵机总线主机、QEI、帧锁存、IO 同步）、二值 / 形态学 / CCL / 投影测量 / ROI 缩放 / 张量打包、AXI 寄存器堆。
 
 ## 模块清单
@@ -28,7 +29,7 @@
 | 翻板 PWM | 带尾翻板舵机 PWM，按带位置触发 | 官方 `pwm.v` + 自研触发 | P1 |
 | `encoder_qei` | 编码器 4 倍频计数 + 测速 + 失步偏差 | 自研 | P1 |
 | `enc_frame_latch` | MIPI 帧起始时锁存带位置并与帧号绑定（采集延迟硬件实测值；X 基准误差从 ±1~2mm 降到 1 个计数） | 自研 | P1 |
-| `img_sobel` / `img_binarize` + 投影测尺寸 | 边缘 / 二值显示 + 尺寸粗测 | 官方 `axis_sobel.v` 改 + 自研 | P1 |
+| `des_vision`（含 Sobel / 二值 + ROI 投影测尺寸） | 边缘 / 二值显示 + 尺寸粗测 | 自研（厂家 `axis_sobel.v` 那套未接，已删） | P1 |
 | `rs485_modbus` | Modbus-RTU 主站 | 自研 | P1 |
 | `img_morph` / `blob_ccl` / `roi_scaler` / `tensor_pack` / `overlay` | 形态学、连通域、ROI 缩放、张量打包、叠加 | 自研 / 官方改 | P2 |
 | `traj_interp` | 多轴时间同步插补（115200 带宽承载不了高频插补点） | 自研 | P2 |

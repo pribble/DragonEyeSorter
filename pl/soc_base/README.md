@@ -14,7 +14,8 @@ TD 6.2.1 打开 `soc_prj.al` → 综合 / 布局布线 → `soc_prj.bit`。
   （PL_BASE）从这里分配，避开上述段**
 - `design_0/ip/` — 例化 IP 的包装与 RTL（多数为安路闭源加密文件，见下）
 - `al_ip/` — 安路 IP 参数（PLL、NPU_SOFT 等）
-- `src/` — 明文 RTL：system_top.v、isp/、hdmi_tx/、MIPI_V2/、write_fdma/、ui_isp/、pwm.v
+- `src/` — 明文 RTL：system_top.v、hdmi_tx/、MIPI_V2/（`mipi_rx/` + `src/` 只剩 `csi_unpacket.v`
+  与 `design_top_wrapper.v`）、write_fdma/、ui_isp/、pwm.v
 - `src/des/` — **自研模块**：des_regs、servo_bus、stepper_ctrl、des_vision、des_pwm、
   awb_seq_div、io_sync（已登记进 `soc_prj.al`）
 - `src/constraint/` — 管脚 `io.adc`（CEP = BANK11 3.3V）、时序 `timing.sdc`
@@ -22,8 +23,26 @@ TD 6.2.1 打开 `soc_prj.al` → 综合 / 布局布线 → `soc_prj.bit`。
 
 ## 加密 IP
 
-`design_0/ip/` 下 13 个 `*.enc.v` / `pragma protect` 文件是安路闭源 IP（NPU 软核、MIPI
-DPHY、HDMI 控制器、AXI Matrix 等），随本工程编译。
+实测 **15 个 `pragma protect`（加密）文件**，随本工程编译，改不了：
+
+| 位置 | 个数 | 内容 |
+|---|---|---|
+| `design_0/ip/**/RTL/` | 11 | NPU 软核 `video_npu_top_*.v`、VDMA（`VDMA_*.v` + `alc_axi_vdma_{param,pkg}.vh`）、视频时序发生器、AXI Matrix ×3、AXI 协议转换 ×2、AXI4-Stream to Video Out |
+| `src/hdmi_tx/hdmi_tx_controller_wrapper.enc.v` | 1 | HDMI 控制器（TMDS） |
+| `src/MIPI_V2/mipi_rx/` | 2 | D-PHY 数据通道接收 `data_lane_rx_wrapper.enc.v`、通道对齐 `channel_aligner_wrapper.enc.sv` |
+| `src/write_fdma/wfifo.v` | 1 | 帧写 FIFO（文件名没带 `.enc`，内容同样是 `pragma protect`） |
+
+## 删掉的厂家未用源码（2026-10-17）
+
+对 140 个明文 `.v/.sv/.vh` 做引用链扫描（从 `system_top` 出发、逐级看谁例化了谁）后，删掉 **15 个没有任何例化的厂家文件**，同时删掉 `soc_prj.al` 与 `syn_1` / `phy_1` 两份 `soc_prj.prj` 里的对应登记条目（73 → 58 条）：
+
+| 组 | 文件 | 为什么删 |
+|---|---|---|
+| 厂家图像算子 | `src/isp/`：`axis_sobel.v`、`matrix_3x3.v`、`shift_ram.v`、`ram0/{ram0,ram_dca62376a38a}.v`、`gray_mean.v`、`rgb2yuv_4ppc.v`（7 个） | 从没接进视频链路；Sobel / 3×3 窗口由自研 `des_vision` 覆盖 |
+| RAW8 老解包路径 | `src/MIPI_V2/src/`：`raw10_unpacket.v`、`raw8_to_rgb888.v`、`rgb888_to_axi_stream.v`、`video_cuttting.v`、`auto_white_balance.v`、`w32_d482_shifter.v`、`w40_d512_fifo.v`（7 个） | IMX334 / RAW8 路径；本机相机是 IMX415 / RAW10，走 `csi_unpacket` + `raw10_unpacket_4lane` + `image_correction` + `isp_top` |
+| 厂家除法器 IP | `src/ui_isp/awb_1_1/devider/divider_gate.v`（模块 `divider`，1.3 MB） | 已被自研 `src/des/awb_seq_div.v` 替代，`awb.v` 里两处除法器都换了，全工程只剩注释提到它 |
+
+未动的：`design_0/ip/**`（含 `vtg_*.v`、`dr1_pll_vtc_*.v`、0 字节的 `RTL/include/define.v`——被加密 IP 内部或块设计引用，引用链扫描看不见）、厂家 `pwm.v` 及其块设计实例（输出当 lock 状态用）、`src/des/io_sync.v`（自研、待接线）。理由、效率对比与验证见 [log/2026-10-17](../../docs/log/2026-10-17-清理未用的厂家PL源码.md)。
 
 ## 寄存器总线
 
