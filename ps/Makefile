@@ -132,13 +132,6 @@ $(BUILD)/test_npu: tests/test_npu.cpp src/app/npu_cls.cpp src/app/npu_cls.hpp $(
 	    -L$(ARMNN)/lib -L$(OPENCV)/lib -Wl,-rpath-link,$(ARMNN)/lib:$(OPENCV)/lib $(RPATH) \
 	    -lopencv_imgcodecs -lopencv_imgproc -lopencv_core -larmnn -larmnnOnnxParser -lfmt -lpthread
 
-# display conversion vs CMA cache mapping (camera / display buffers); run on the board with des_app stopped
-$(BUILD)/bench_scale: tests/bench_scale.cpp src/ui/scale34.cpp src/ui/scale34.hpp | check-sdk $(BUILD)
-	$(CXX) $(CXXFLAGS) $(INC) -I$(ARMNN)/include -I$(OPENCV)/include/opencv4 \
-	    -o $@ tests/bench_scale.cpp src/ui/scale34.cpp \
-	    -L$(ARMNN)/lib -L$(OPENCV)/lib -Wl,-rpath-link,$(ARMNN)/lib:$(OPENCV)/lib $(RPATH) \
-	    -lopencv_imgproc -lopencv_core -larmnn -lfmt -lpthread
-
 $(BUILD)/test_calib: tests/test_calib.cpp src/measure/calib.cpp src/measure/calib.hpp src/sched/geom.hpp | check-sdk $(BUILD)
 	$(CXX) $(CXXFLAGS) $(INC) -I$(OPENCV)/include/opencv4 \
 	    -o $@ tests/test_calib.cpp src/measure/calib.cpp \

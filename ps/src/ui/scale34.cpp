@@ -67,7 +67,8 @@ bool scale34_bgra_to_bgr(const uint8_t *src, int sw, int sh, int sstride, uint8_
 #if defined(__aarch64__)
     // Each group of 4 source rows gives 3 output rows, each written straight into the display buffer: row 0,
     // the average of rows 1 and 2 (averaged before the horizontal pass, so 3 horizontal passes per group, not 4),
-    // row 3. Measured per frame (tests/bench_scale): 9.7 ms when rows 1 and 2 were each scaled and then averaged.
+    // row 3. Measured per frame (板上实测，见 docs/log/2026-10-16-HDMI周期性黑屏.md): 9.7 ms when rows 1 and 2 were each
+    // scaled and then averaged.
     for (int y = 0, oy = 0; y < sh; y += 4, oy += 3) {
         const uint8_t *s = src + size_t(y) * sstride;
         uint8_t *d = dst + size_t(oy) * dstride;

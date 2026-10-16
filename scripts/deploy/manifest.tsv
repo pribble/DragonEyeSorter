@@ -52,7 +52,6 @@ models/part_cls_uint8.onnx	/root/des/part_cls_uint8.onnx	model	yes	上面 json �
 #   scp ps/build/test_* $BOARD_HOST:/root/bin/          # 调度单测 / 标定 / 测量 / 带 HIL / CAN 回环 / NPU 核对
 #   scp scripts/deploy/out/pl_check.sh scripts/deploy/out/soak.sh scripts/deploy/out/display_check.sh $BOARD_HOST:/root/des/
 #                                                       # 换比特流回归 / 长跑稳定性 / HDMI 黑屏对照实验
-#   ps/tests/bench_cma.cpp：无 Makefile 规则，手敲 g++（见文件头注释）
 
 # ---------- 系统与厂家件（我们不传，也不动） ----------
 # /opt（armnn_lib、ffmpeg_opencv4.7.0_aarch64、厂家 .ko 与 demo）、/usr/share/fonts/wqy-zenhei（UI 中文）、

@@ -2,7 +2,7 @@
 //
 // The A35's NEON unit is 64 bits wide, so per-pixel arithmetic, not memory, limits this on the board: reading a
 // 1080p BGRA frame takes 4.7 ms and OpenCV's plain BGRA->BGR copy 4.6 ms (writes to the display buffer are almost
-// free), while a full 2-tap linear 2/3 scaler took 11.1 ms (tests/bench_scale.cpp, 2026-10-16). 3/4 lets whole
+// free), while a full 2-tap linear 2/3 scaler took 11.1 ms (板上实测，见 docs/log/2026-10-16-HDMI周期性黑屏.md). 3/4 lets whole
 // pixels be grouped by 4 with one vld4 and keeps the arithmetic small:
 //   horizontal, each 4 source pixels -> 3: 3/4 s0 + 1/4 s1, (s1 + s2) / 2, 1/4 s2 + 3/4 s3 (rounding halving adds),
 //              packed straight to BGR with table lookups;

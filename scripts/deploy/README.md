@@ -23,7 +23,7 @@
 
 - 测试脚本：`pl_check.sh`（换比特流回归）、`soak.sh`（长跑）、`display_check.sh`（HDMI 黑屏对照）
 - 调试 / 陪测：`desreg`（寄存器、舵机总线、步进，`ps/build/`）、`canplc`（扮「产线 PLC」，`ps/build/`）
-- 测试程序：`test_scheduler`、`test_calib`、`test_measure`、`test_belt_hil`、`test_can`、`test_npu`、`bench_cma`
+- 测试程序：`test_scheduler`、`test_calib`、`test_measure`、`test_belt_hil`、`test_can`、`test_npu`
 
 ```bash
 scp ps/build/desreg ps/build/canplc ps/build/test_* $BOARD_HOST:/root/bin/

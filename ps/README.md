@@ -35,7 +35,7 @@ ps/
 ├── tools/          # 人敲的命令行：desreg 寄存器调试、canplc（扮「PLC」，回环 / 联调）
 ├── tests/          # test_scheduler（调度库单元）、test_calib（标定，合成图）、test_measure（齿轮 / 齿条测量，合成图）、
 │                   #   test_belt_hil（传送带控制硬件在环，板上 PL v5）、test_can（CAN 协议与收发，回环自测）、
-│                   #   test_npu（NPU 推理核对与耗时）、bench_cma（CMA 读速基准，手编，无规则）
+│                   #   test_npu（NPU 推理核对与耗时）
 ├── kernel/         # mipicam 驱动源码 + 独立 Makefile（唯一一份 mipicam_module.h 也在这里）；板上其余驱动用厂家预编译 .ko
 └── vendor/         # 非我们写的：third_party/json.hpp（编入）+ demo/（厂家 demo 未编入件，改造起点）
 ```
@@ -120,7 +120,7 @@ ps/
 # 板上运行：/root/des/des_app.sh probe -n 10   （mipicam.ko 开机不自动加载，脚本缺模块时先 insmod）
 ```
 
-- **`make all` 出 8 个产物**，其中只有 `des_app` 属于板端产品运行时（进部署清单），`desreg` / `canplc` / `test_*` 要用时手动 `scp`；`test_npu` 还要显式点名（`make -C ps build/test_npu`，需模型 JSON + refs）；`tests/bench_cma.cpp` 目前无 Makefile 规则，要用手敲的 g++ 行（见文件头注释）。
+- **`make all` 出 8 个产物**，其中只有 `des_app` 属于板端产品运行时（进部署清单），`desreg` / `canplc` / `test_*` 要用时手动 `scp`；`test_npu` 不在 `all` 里，要显式点名（`make -C ps build/test_npu`，需模型 JSON + refs）。
 - `des_app` 需要厂家 NPU demo 的 `libs/`（OpenCV 4.7 + ArmNN，CMA 分配在 libarmnn 里），Makefile 变量 `SDK` 指向它；不入库（113MB）。Windows 解压会丢 `.so` 软链接，先跑 `sh scripts/sdk_fix_sonames.sh <SDK> <readelf>` 按 SONAME 补齐。
 - 运行时库路径已写进 rpath（`/opt/armnn_lib/lib`、`/opt/ffmpeg_opencv4.7.0_aarch64/lib`），板上不用设 `LD_LIBRARY_PATH`；`/dev/mipicam` 独占打开，`des_app` 与厂家 demo 二选一运行。
 
