@@ -63,7 +63,7 @@ APP_SRC := src/app/main.cpp src/app/camera_rig.cpp src/app/locate.cpp src/app/co
            src/app/npu_cls.cpp src/app/npu_async.cpp \
            src/measure/calib.cpp src/measure/measure.cpp src/measure/track_measure.cpp \
            src/measure/measure_tool.cpp src/measure/roi_crop.cpp \
-           src/ui/hdmi_out.cpp src/ui/scale23.cpp src/ui/text_ft.cpp src/ui/ui_input.cpp src/ui/hmi.cpp
+           src/ui/hdmi_out.cpp src/ui/scale34.cpp src/ui/text_ft.cpp src/ui/ui_input.cpp src/ui/hmi.cpp
 HDRS := $(wildcard src/app/*.hpp src/hw/*.h src/sched/*.hpp src/measure/*.hpp src/ui/*.hpp src/vision/*.hpp)
 OPENCV_LIBS := -lopencv_calib3d -lopencv_features2d -lopencv_flann -lopencv_imgproc -lopencv_imgcodecs -lopencv_core
 
@@ -129,6 +129,13 @@ $(BUILD)/test_npu: tests/test_npu.cpp src/app/npu_cls.cpp src/app/npu_cls.hpp $(
 	    -o $@ tests/test_npu.cpp src/app/npu_cls.cpp $(VISION_SRC) \
 	    -L$(ARMNN)/lib -L$(OPENCV)/lib -Wl,-rpath-link,$(ARMNN)/lib:$(OPENCV)/lib $(RPATH) \
 	    -lopencv_imgcodecs -lopencv_imgproc -lopencv_core -larmnn -larmnnOnnxParser -lfmt -lpthread
+
+# display conversion vs CMA cache mapping (camera / display buffers); run on the board with des_app stopped
+$(BUILD)/bench_scale: tests/bench_scale.cpp src/ui/scale34.cpp src/ui/scale34.hpp | check-sdk $(BUILD)
+	$(CXX) $(CXXFLAGS) $(INC) -I$(ARMNN)/include -I$(OPENCV)/include/opencv4 \
+	    -o $@ tests/bench_scale.cpp src/ui/scale34.cpp \
+	    -L$(ARMNN)/lib -L$(OPENCV)/lib -Wl,-rpath-link,$(ARMNN)/lib:$(OPENCV)/lib $(RPATH) \
+	    -lopencv_imgproc -lopencv_core -larmnn -lfmt -lpthread
 
 $(BUILD)/test_calib: tests/test_calib.cpp src/measure/calib.cpp src/measure/calib.hpp src/sched/geom.hpp | check-sdk $(BUILD)
 	$(CXX) $(CXXFLAGS) $(INC) -I$(OPENCV)/include/opencv4 \

@@ -20,6 +20,7 @@ public:
     ~HdmiOut();
     std::string open();
     cv::Mat back();           // 1080 x 1920 CV_8UC3 view of the buffer to draw next
+    int back_index() const;   // which of the two buffers back() is (0 / 1): what it still holds from two frames ago
     void flip();
     void close();
     double last_flush_ms() const { return flush_ms_; }

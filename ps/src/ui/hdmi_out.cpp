@@ -66,6 +66,7 @@ std::string HdmiOut::open()
 }
 
 cv::Mat HdmiOut::back() { return cv::Mat(kH, kW, CV_8UC3, p_->buf[p_->k]->virt_addr); }
+int HdmiOut::back_index() const { return p_->k; }
 
 void HdmiOut::flip()
 {

@@ -28,7 +28,7 @@
 
 #include "hdmi_out.hpp"
 #include "hmi.hpp"
-#include "scale23.hpp"
+#include "scale34.hpp"
 #include "locate.hpp"
 #include "npu_async.hpp"
 #include "part_log.hpp"
@@ -108,11 +108,13 @@ struct Shared {
     bool quit = false;
 };
 
-// Screen layout (1920 x 1080): the camera picture scaled to 2/3 (1280 x 720, aspect kept, nothing hidden behind the
-// operator band; scale23 does it in ~7 ms, OpenCV resize cannot keep 60 fps here), the status panel to its right
-// (640 x 780), the operator band (Hmi, 1920 x 300) below.
-constexpr int kVidW = 1280, kVidH = 720;
-constexpr double kVidScale = 2.0 / 3;
+// Screen layout (1920 x 1080): the camera picture scaled to 3/4 with its aspect kept, filling the whole height above
+// the operator band (1440 x 780 = source rows 20..1059, i.e. 20 rows / ~4 mm of belt edge cut at top and bottom;
+// scale34, OpenCV resize cannot keep 60 fps here), the status panel to its right (480 x 780), the operator band
+// (Hmi, 1920 x 300) below. Nothing is drawn over the picture except its own overlays.
+constexpr int kVidW = 1440, kVidH = Hmi::Y0;
+constexpr double kVidScale = 0.75;
+constexpr int kSrcH = kVidH * 4 / 3, kCropY = (1080 - kSrcH) / 2;   // source rows shown, first row shown
 constexpr int kPanelX = kVidW, kPanelW = 1920 - kVidW, kPanelH = Hmi::Y0;
 
 // Hershey text is expensive: rendered here on core 1 (~10 Hz), never on the capture core, which only blits it.
@@ -152,7 +154,12 @@ cv::Mat render_panel(const Snapshot &s, const Shared &sh, uint32_t pl_frame, uin
     line(b, white);
     snprintf(b, sizeof b, "saved %llu  (images %llu)", (unsigned long long)s.logged, (unsigned long long)s.log_images);
     line(b, white, 0.62, 48);
-    // runner / collector status, word-wrapped to the panel width
+    // runner / collector status, word-wrapped to the panel width (measured: Hershey glyph widths vary)
+    const int wrap_px = kPanelW - 2 * 18;
+    auto fits = [&](const std::string &t) {
+        int base = 0;
+        return cv::getTextSize(t, cv::FONT_HERSHEY_SIMPLEX, 0.62, 1, &base).width <= wrap_px;
+    };
     std::string word, cur;
     auto flush = [&] {
         if (!cur.empty()) line(cur, yellow, 0.62, 30);
@@ -162,7 +169,7 @@ cv::Mat render_panel(const Snapshot &s, const Shared &sh, uint32_t pl_frame, uin
         const char ch = i < s.run_line.size() ? s.run_line[i] : ' ';
         if (ch != ' ') { word += ch; continue; }
         if (word.empty()) continue;
-        if (cur.size() + word.size() + 1 > 46) flush();
+        if (!cur.empty() && !fits(cur + " " + word)) flush();
         cur += (cur.empty() ? "" : " ") + word;
         word.clear();
     }
@@ -488,7 +495,10 @@ cv::Scalar color_of(const TrackView &t)
 }
 
 // camera pixel -> screen pixel of the scaled picture
-cv::Point to_screen(float x, float y) { return cv::Point(int(x * kVidScale + 0.5), int(y * kVidScale + 0.5)); }
+cv::Point to_screen(float x, float y)
+{
+    return cv::Point(int(x * kVidScale + 0.5), int((y - kCropY) * kVidScale + 0.5));
+}
 
 void line_at_x(cv::Mat &vid, const Homography &hinv, float x, const char *label, cv::Scalar col)
 {
@@ -500,7 +510,15 @@ void line_at_x(cv::Mat &vid, const Homography &hinv, float x, const char *label,
         cv::putText(vid, label, cv::Point(pm.x + 6, vid.rows - 16), cv::FONT_HERSHEY_SIMPLEX, 0.6, col, 1);
 }
 
-void draw(cv::Mat &img, const Snapshot &s, const Homography &hinv, double belt_mm, const AppConfig &cfg)
+// What one display buffer still holds from the last time it was drawn (two frames ago): the status panel and the
+// operator band it got (references, so their memory cannot be reused and a pointer compare is exact) and where the
+// cursor was drawn.
+struct BufState {
+    cv::Mat panel, hmi;
+    cv::Rect cursor;
+};
+
+void draw(cv::Mat &img, const Snapshot &s, const Homography &hinv, double belt_mm, const AppConfig &cfg, BufState &b)
 {
     cv::Mat vid = img(cv::Rect(0, 0, kVidW, kVidH));
     // raw blobs of the frame the worker last processed (thin)
@@ -533,21 +551,39 @@ void draw(cv::Mat &img, const Snapshot &s, const Homography &hinv, double belt_m
     line_at_x(vid, hinv, cfg.tracker.decide_x, "decide", cv::Scalar(255, 255, 255));
     line_at_x(vid, hinv, cfg.picker.pick_x, "pick", cv::Scalar(0, 210, 0));
 
-    // status panel right of the picture and the operator band below it: rendered by the worker, blitted with wide
-    // stores (the display buffer is uncached)
-    if (!s.panel.empty() && s.panel.cols == kPanelW)
+    // Status panel right of the picture and the operator band below it, rendered by the worker (~10 / 8 Hz). Copying
+    // both into the display buffer every frame cost ~3 ms of the 16.7 (2.9 MB), which left too little margin in run
+    // mode: a buffer gets a new copy only when it holds an older one, plus the strips the cursor was drawn over.
+    const bool new_panel = !s.panel.empty() && s.panel.cols == kPanelW && s.panel.data != b.panel.data;
+    const bool new_hmi = !s.hmi.empty() && s.hmi.cols == img.cols && s.hmi.data != b.hmi.data;
+    if (new_panel) {
         for (int r = 0; r < s.panel.rows && r < kPanelH; r++)
             memcpy(img.ptr(r) + kPanelX * 3, s.panel.ptr(r), size_t(s.panel.cols) * 3);
-    if (!s.hmi.empty() && s.hmi.cols == img.cols)
+        b.panel = s.panel;
+    }
+    if (new_hmi) {
         for (int r = 0; r < s.hmi.rows; r++) memcpy(img.ptr(Hmi::Y0 + r), s.hmi.ptr(r), size_t(s.hmi.cols) * 3);
+        b.hmi = s.hmi;
+    }
+    // erase the old cursor where it lies over panel / band that were not just copied (the picture is redrawn anyway)
+    const cv::Rect c = b.cursor & cv::Rect(0, 0, img.cols, img.rows);
+    for (int r = c.y; r < c.y + c.height; r++) {
+        if (r < kPanelH && !new_panel && !b.panel.empty()) {
+            const int x0 = std::max(c.x, kPanelX), x1 = c.x + c.width;
+            if (x1 > x0) memcpy(img.ptr(r) + x0 * 3, b.panel.ptr(r) + (x0 - kPanelX) * 3, size_t(x1 - x0) * 3);
+        } else if (r >= Hmi::Y0 && r - Hmi::Y0 < b.hmi.rows && !new_hmi)
+            memcpy(img.ptr(r) + c.x * 3, b.hmi.ptr(r - Hmi::Y0) + c.x * 3, size_t(c.width) * 3);
+    }
+    b.cursor = cv::Rect();
 }
 
-void draw_cursor(cv::Mat &img, const UiInput &in)
+// returns the area drawn over (empty when the cursor is hidden)
+cv::Rect draw_cursor(cv::Mat &img, const UiInput &in)
 {
     int x, y;
     bool vis;
     in.cursor(x, y, vis);
-    if (!vis) return;
+    if (!vis) return cv::Rect();
     const cv::Point pts[] = {{x, y}, {x, y + 22}, {x + 6, y + 17}, {x + 11, y + 27}, {x + 15, y + 25}, {x + 10, y + 15},
                              {x + 17, y + 15}};
     cv::fillConvexPoly(img, pts, 3, cv::Scalar(255, 255, 255));
@@ -555,6 +591,7 @@ void draw_cursor(cv::Mat &img, const UiInput &in)
     cv::polylines(img, poly, true, cv::Scalar(0, 0, 0), 1, cv::LINE_8);
     cv::line(img, pts[0], pts[1], cv::Scalar(255, 255, 255), 2);
     cv::line(img, pts[0], pts[6], cv::Scalar(255, 255, 255), 2);
+    return cv::Rect(x - 2, y - 2, 22, 32);   // shape 18 x 28 plus the 2 px lines
 }
 
 }  // namespace
@@ -600,6 +637,7 @@ int run_live(des_hw_t &hw, const AppConfig &cfg, CameraRig &cam, const LiveOptio
     const bool no_worker = getenv("LIVE_NO_WORKER") != nullptr, no_overlay = getenv("LIVE_NO_OVERLAY") != nullptr;
     CapturedFrame f;
     Snapshot snap;
+    BufState bufs[2];   // per display buffer
     while (!stop && (opt.seconds <= 0 || now_s() - t_start < opt.seconds)) {
         err = cam.next(f, true);
         if (!err.empty()) {
@@ -621,8 +659,10 @@ int run_live(des_hw_t &hw, const AppConfig &cfg, CameraRig &cam, const LiveOptio
         double t0 = now_s();
         cv::Mat src(f.height, f.width, CV_8UC4, const_cast<uint8_t *>(f.bgra));
         cv::Mat dst = hdmi.back();
-        // camera picture scaled to 2/3 into its rectangle (aspect kept)
-        if (!scale23_bgra_to_bgr(f.bgra, f.width, f.height, f.width * 4, dst.data, int(dst.step))) {
+        // camera picture scaled to 3/4 into its rectangle (aspect kept, kCropY rows cut at top and bottom)
+        if (f.height < kCropY + kSrcH ||
+            !scale34_bgra_to_bgr(f.bgra + size_t(kCropY) * f.width * 4, f.width, kSrcH, f.width * 4, dst.data,
+                                 int(dst.step))) {
             cv::Mat small;   // other sensor sizes: slow fallback
             cv::resize(src, small, cv::Size(kVidW, kVidH), 0, 0, cv::INTER_NEAREST);
             cv::Mat vid = dst(cv::Rect(0, 0, kVidW, kVidH));
@@ -631,8 +671,9 @@ int run_live(des_hw_t &hw, const AppConfig &cfg, CameraRig &cam, const LiveOptio
         double tc = now_s();
         sh.disp_fps.store(float(fps));
         sh.disp_skipped.store(skipped);
-        if (!no_overlay) draw(dst, snap, hinv, 0.5 * (f.step_pos + f.step_pos_end) * mmps, cfg);
-        draw_cursor(dst, input);
+        BufState &bs = bufs[hdmi.back_index()];
+        if (!no_overlay) draw(dst, snap, hinv, 0.5 * (f.step_pos + f.step_pos_end) * mmps, cfg, bs);
+        bs.cursor = draw_cursor(dst, input);
         double td = now_s();
         if (!opt.dump.empty() && seq == 180) {
             cv::Mat copy = dst.clone();   // slow read from the uncached buffer, once
