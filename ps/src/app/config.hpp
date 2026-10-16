@@ -69,6 +69,7 @@ struct AppConfig {
     std::string calib_loaded;                  // path actually merged (empty = none)
     float pick_after_fov = 0;                  // > 0: picker.pick_x = calibrated fov_x1 + this (mm)
     bool belt_calibrated = false;
+    bool arm_home_taught = false;              // arm_home.json (HMI arm page) replaced arm.home_deg
     bool arm_calibrated = false;               // calib file had an "arm" section (des_app calib-arm)
     std::string config_dir = ".";             // folder of the loaded des_app.json (ui_params.json lives there)
     std::vector<std::string> bins = {"gear_box", "rack_box"};          // pick destinations (arm drop poses)

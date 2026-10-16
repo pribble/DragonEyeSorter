@@ -232,6 +232,26 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             return cp + ": " + e.what();
         }
     }
+    {   // ready pose taught on the HMI arm page (「设为初始姿态」): counts of the six servos, over arm.home_deg
+        const std::string hp = cfg.config_dir + "/arm_home.json";
+        std::ifstream hf(hp);
+        if (hf) {
+            try {
+                json h;
+                hf >> h;
+                if (h.contains("counts") && h["counts"].size() == 6) {
+                    for (int i = 0; i < 5; i++) {
+                        const JointCal &jc = cfg.arm.joint[i];
+                        cfg.arm.home_deg[i] = (h["counts"][i].get<float>() - jc.zero_count) / jc.counts_per_deg;
+                    }
+                    cfg.arm.home_grip_count = h["counts"][5].get<float>();
+                    cfg.arm_home_taught = true;
+                }
+            } catch (const std::exception &e) {
+                return hp + ": " + e.what();
+            }
+        }
+    }
     // recipes (after measure.rule, which is the fallback recipe 1)
     get(j, "recipe", cfg.recipe);
     get(j, "recipes_file", cfg.recipes_file);

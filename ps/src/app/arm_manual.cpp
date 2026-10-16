@@ -23,9 +23,18 @@ const char *kJointName[6] = {"#1 底座", "#2 肩", "#3 肘", "#4 腕俯仰", "#
 
 }  // namespace
 
-ArmManual::ArmManual(des_hw_t *hw, const ArmConfig &cfg, std::string teach_path)
-    : arm_(hw, cfg), hw_(hw), teach_path_(std::move(teach_path))
+ArmManual::ArmManual(des_hw_t *hw, const ArmConfig &cfg, bool home_taught, std::string teach_path,
+                     std::string home_path)
+    : arm_(hw, cfg), hw_(hw), teach_path_(std::move(teach_path)), home_path_(std::move(home_path))
 {
+    JointAngles h;
+    h.q = cfg.home_deg;
+    std::array<uint16_t, 6> c{};
+    if (!arm_to_counts(cfg, h, cfg.grip_max_open, c)) {
+        for (int k = 0; k < 6; k++) v_.home[k] = c[k];
+        if (cfg.home_grip_count >= 0) v_.home[5] = int(cfg.home_grip_count);
+    }
+    v_.home_taught = home_taught;
     th_ = std::thread(&ArmManual::loop, this);
 }
 
@@ -66,6 +75,15 @@ ArmManualView ArmManual::view() const
 {
     std::lock_guard<std::mutex> lk(m_);
     return v_;
+}
+
+bool ArmManual::take_home(std::array<int, 6> &counts)
+{
+    std::lock_guard<std::mutex> lk(m_);
+    if (!home_changed_) return false;
+    home_changed_ = false;
+    counts = v_.home;
+    return true;
 }
 
 void ArmManual::poll(bool full)
@@ -118,6 +136,8 @@ void ArmManual::handle(const ArmRequest &r)
     case ArmRequest::Lock: {
         std::lock_guard<std::mutex> lk(m_);
         v_.unlocked = r.kind == ArmRequest::Unlock;
+        if (v_.unlocked)
+            for (auto &j : v_.j) j.target = -1;   // the arm may have moved since: start from where it is
         v_.msg = v_.unlocked ? "已解锁：可以微调关节（动作前确认机械臂周围无障碍）" : "已上锁";
         return;
     }
@@ -151,14 +171,64 @@ void ArmManual::handle(const ArmRequest &r)
         const int rc = arm_.torque(r.on != 0);
         std::lock_guard<std::mutex> lk(m_);
         v_.torque = r.on != 0;
+        if (!r.on)
+            for (auto &j : v_.j) j.target = -1;   // moved by hand from here on: jog from the read-back position
         v_.msg = rc == DES_OK ? (r.on ? "扭矩已开（6 个舵机保持当前位置）" : "扭矩已关：机械臂可以用手扳动")
                               : std::string("扭矩命令失败：") + des_strerror(rc);
         return;
     }
-    // Jog: from the last read position (or the last target if the servo did not answer), clamped to the soft limits
+    if (r.kind == ArmRequest::SetHome) {
+        std::array<int, 6> c;
+        for (int k = 0; k < 6; k++) {
+            if (!v.j[k].alive || v.j[k].pos < 0) {
+                say(std::string(kJointName[k]) + " 没有应答，不能设初始姿态");
+                return;
+            }
+            c[k] = v.j[k].pos;
+        }
+        FILE *f = fopen(home_path_.c_str(), "w");
+        if (!f) {
+            say("保存失败：打不开 " + home_path_);
+            return;
+        }
+        fprintf(f, "{\"comment\": \"arm ready pose taught on the HMI arm page (servo counts, joints 1..6)\",\n"
+                   " \"counts\": [%d, %d, %d, %d, %d, %d]}\n", c[0], c[1], c[2], c[3], c[4], c[5]);
+        fclose(f);
+        std::lock_guard<std::mutex> lk(m_);
+        v_.home = c;
+        v_.home_taught = true;
+        home_changed_ = true;
+        v_.msg = "已设为初始姿态（生产流程每次抓取从这里开始、回到这里）";
+        return;
+    }
+    if (r.kind == ArmRequest::Reset) {
+        if (!v.home_taught) {
+            say("还没有设定初始姿态：先把机械臂调到位，点「设为初始姿态」");
+            return;
+        }
+        uint8_t ids[6];
+        uint16_t pos[6], ms[6];
+        const uint16_t t = uint16_t(std::clamp(r.ms, 2000, 5000));   // all six together: never faster than 2 s
+        for (int k = 0; k < 6; k++) {
+            ids[k] = arm_.id(k);
+            pos[k] = uint16_t(std::clamp(v.home[k], 0, 4095));
+            ms[k] = t;
+        }
+        const int rc = des_servo_sync_pos(hw_, ids, pos, ms, 6);
+        std::lock_guard<std::mutex> lk(m_);
+        for (int k = 0; k < 6; k++) v_.j[k].target = pos[k];
+        snprintf(b, sizeof b, "复位：6 个关节回初始姿态（%.1f s）%s", t / 1000.0, rc == DES_OK ? "" : des_strerror(rc));
+        v_.msg = b;
+        return;
+    }
+    // Jog: from the last target (exact steps; the servo dead band does not add up), else from the read-back
+    // position; clamped to the soft limits
     const int k = std::clamp(r.joint, 0, 5);
     const JointCal &jc = arm_.config().joint[k];
-    const int base = v.j[k].pos >= 0 ? v.j[k].pos : v.j[k].target;
+    // ... but only while the servo is near it: after a pick, a hand move or a blocked move the target is stale and
+    // stepping from it would jump the joint back
+    const int tgt = v.j[k].target, rb = v.j[k].pos;
+    const int base = tgt >= 0 && (rb < 0 || std::abs(tgt - rb) <= std::abs(int(3 * jc.counts_per_deg))) ? tgt : rb;
     if (base < 0) {
         say(std::string(kJointName[k]) + " 还没读到位置，不能微调");
         return;

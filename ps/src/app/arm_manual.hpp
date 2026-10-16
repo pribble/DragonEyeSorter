@@ -4,8 +4,11 @@
 // is idle (the servo bus itself is serialised in hw/des_hw), and only after the operator unlocks the page; leaving
 // the page locks it again. While the page is shown and allowed it polls the six servos (~4 Hz positions, current
 // and temperature every 4th poll). Jog = one SYNC WRITE to one servo (no reply, no 3 ms timeout), clamped to the
-// joint's soft limits. Teach appends the current pose to <config dir>/data/arm_teach.csv (zero counts, bin poses).
-// No home / gripper open-close buttons yet: zero counts and gripper counts are still uncalibrated (⚠ arm config).
+// joint's soft limits, stepping from the last jog target (the servo stops within its dead band, up to ~1 deg short;
+// stepping from the read-back position would lose that every time). Teach appends the current pose to
+// <config dir>/data/arm_teach.csv (zero counts, bin poses). Set home stores the current pose in
+// <config dir>/arm_home.json (the ready pose every pick starts and ends in, loaded at start, handed to the Runner
+// at once through take_home); Reset moves all six servos there together, slowly (>= 2 s).
 #pragma once
 
 #include <array>
@@ -33,23 +36,26 @@ struct ArmManualView {
     std::array<ArmJointView, 6> j;
     std::string msg;           // result of the last command (for the page)
     int taught = 0;            // poses written to the teach file in this session
+    std::array<int, 6> home{{-1, -1, -1, -1, -1, -1}};   // ready pose (counts)
+    bool home_taught = false;  // from arm_home.json (else the config default, which Reset will not go to)
 };
 
 struct ArmRequest {
-    enum Kind { Unlock, Lock, Torque, Jog, Teach } kind = Lock;
+    enum Kind { Unlock, Lock, Torque, Jog, Teach, SetHome, Reset } kind = Lock;
     int joint = 0, dir = 0;    // Jog: joint 0..5, dir +1 / -1
     int on = 0;                // Torque
     double step_deg = 1;       // Jog
-    int ms = 1000;             // Jog: move time
+    int ms = 1000;             // Jog / Reset: move time
 };
 
 class ArmManual {
 public:
-    ArmManual(des_hw_t *hw, const ArmConfig &cfg, std::string teach_path);
+    ArmManual(des_hw_t *hw, const ArmConfig &cfg, bool home_taught, std::string teach_path, std::string home_path);
     ~ArmManual();
     void context(bool shown, bool allowed, const char *why_not);   // worker, every cycle
     void request(const ArmRequest &r);                              // worker
     ArmManualView view() const;
+    bool take_home(std::array<int, 6> &counts);   // worker: a new ready pose was set since the last call
 
 private:
     void loop();
@@ -58,7 +64,8 @@ private:
 
     ArmExec arm_;
     des_hw_t *hw_;
-    std::string teach_path_;
+    std::string teach_path_, home_path_;
+    bool home_changed_ = false;
     mutable std::mutex m_;
     std::condition_variable cv_;
     std::deque<ArmRequest> q_;

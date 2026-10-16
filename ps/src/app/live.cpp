@@ -216,7 +216,8 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
     Hmi hmi(cfg, cfg.config_dir + "/ui_params.json");
     if (!hmi.fonts_ok()) fprintf(stderr, "hmi: Chinese font not found, ASCII fallback\n");
     // manual arm page (own thread; shares the servo bus with the production arm thread, hw/des_hw serialises)
-    ArmManual arm_manual(&hw, cfg.arm, cfg.config_dir + "/data/arm_teach.csv");
+    ArmManual arm_manual(&hw, cfg.arm, cfg.arm_home_taught, cfg.config_dir + "/data/arm_teach.csv",
+                         cfg.config_dir + "/arm_home.json");
     auto apply_params = [&](const HmiParams &p) {
         SizeRule &r = tr.config().size;
         if (const Recipe *rc = find_recipe(cfg.recipes, p.recipe)) rc->apply(r);   // then the operator's sizes
@@ -441,6 +442,10 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
                         else if (hmi.set_recipe(a.cmd)) apply_params(hmi.params());
                     } else if (runner) runner->command(uint8_t(a.cmd), "HMI");
                 }
+            {   // ready pose re-taught on the arm page: the production picks use it from the next one
+                std::array<int, 6> home;
+                if (arm_manual.take_home(home) && runner) runner->set_home(home);
+            }
             if (runner) {   // recipe accepted from the PLC (CAN RECIPE) or the HMI under the run rules
                 const int rc = runner->take_recipe();
                 if (rc > 0 && hmi.set_recipe(rc)) apply_params(hmi.params());

@@ -25,12 +25,13 @@ static const char *state_name(uint8_t s)
 }
 
 Runner::Runner(des_hw_t *hw, const AppConfig &cfg, const RunOptions &opt)
-    : hw_(hw), cfg_(cfg), opt_(opt), belt_(hw, cfg.belt), arm_(hw, cfg.arm), flaps_(cfg.flaps)
+    : hw_(hw), cfg_(cfg), opt_(opt), belt_(hw, cfg.belt), arm_(hw, cfg.arm), arm_cfg_(cfg.arm), flaps_(cfg.flaps)
 {
     if (opt.speed_mm_s > 0) belt_.set_speed(opt.speed_mm_s);
     JointAngles home;
     home.q = cfg.arm.home_deg;
     arm_to_counts(cfg.arm, home, cfg.arm.grip_max_open, arm_counts_);
+    if (cfg.arm.home_grip_count >= 0) arm_counts_[5] = uint16_t(cfg.arm.home_grip_count);
 }
 
 Runner::~Runner()
@@ -298,20 +299,32 @@ std::string Runner::status_line() const
     return b;
 }
 
+void Runner::set_home(const std::array<int, 6> &counts)
+{
+    std::lock_guard<std::mutex> lk(m_);
+    for (int k = 0; k < 5; k++) {
+        const JointCal &jc = arm_cfg_.joint[k];
+        arm_cfg_.home_deg[k] = (counts[k] - jc.zero_count) / jc.counts_per_deg;
+    }
+    arm_cfg_.home_grip_count = float(counts[5]);
+}
+
 void Runner::arm_loop()
 {
     for (;;) {
         PickJob j;
+        ArmConfig ac;
         {
             std::unique_lock<std::mutex> lk(m_);
             cv_.wait(lk, [&] { return job_pending_ || quit_; });
             if (quit_) return;
             j = job_;
+            ac = arm_cfg_;
             job_pending_ = false;
         }
         std::vector<ServoFrame> wp;
         Done d{j.track_id, false, ""};
-        const char *why = plan_pick(cfg_.arm, j.p, j.close_axis, j.open_mm, j.part_wid, j.bin, arm_counts_, wp);
+        const char *why = plan_pick(ac, j.p, j.close_axis, j.open_mm, j.part_wid, j.bin, arm_counts_, wp);
         if (why) {
             d.why = why;
         } else {

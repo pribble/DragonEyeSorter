@@ -46,6 +46,8 @@ public:
     int take_recipe();                      // id accepted since the last call, -1 = none
     uint8_t state() const { return state_; }
     bool arm_busy() const { return arm_busy_; }   // a pick is being executed (the manual arm page waits)
+    // new ready pose (HMI arm page 「设为初始姿态」): every following pick starts and ends there
+    void set_home(const std::array<int, 6> &counts);
     double speed_mm_s() const { return speed_mm_s_; }
 
 private:
@@ -61,6 +63,7 @@ private:
     RunOptions opt_;
     BeltDriver belt_;
     ArmExec arm_;
+    ArmConfig arm_cfg_;          // cfg.arm + the ready pose taught at run time (guarded by m_)
     int can_fd_ = -1;
     std::deque<canp_frame_t> txq_;
     uint64_t tx_dropped_ = 0;

@@ -32,7 +32,7 @@ scp scripts/deploy/out/pl_check.sh scripts/deploy/out/soak.sh scripts/deploy/out
 
 （完整清单与理由写在 [`manifest.tsv`](manifest.tsv) 末尾。）测试件走本目录只会让"板上跑的到底是哪一份"更难看清，而且它们不是产品的一部分。
 
-**板上生成、别覆盖**：`autostart.conf`、`ui_params.json`、`calib.json`、`data/`（CSV、NG 图、`service.log`）。
+**板上生成、别覆盖**：`autostart.conf`、`ui_params.json`、`calib.json`、`arm_home.json`（机械臂初始姿态，界面「设为初始姿态」写）、`data/`（CSV、NG 图、`service.log`）。
 **系统与厂家件（我们不传也不动）**：`/opt`（ArmNN、OpenCV、厂家 `.ko`）、`/usr/share/fonts/wqy-zenhei`（UI 中文）、`/etc/init.d/S90des`（软链接）、`/mnt/mmcblk0p1/BOOT.bin`（换比特流走 [../bootbin/](../bootbin/)）。
 
 ## 用法

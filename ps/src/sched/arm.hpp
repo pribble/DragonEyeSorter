@@ -54,6 +54,7 @@ struct ArmConfig {
     float joint_speed = 120;     // deg/s used to size move times
     uint16_t min_ms = 150, descend_ms = 400, close_ms = 300, open_ms = 250;
     std::array<float, 5> home_deg{{0, 60, -120, -30, 0}};   // ready pose, outside the camera view ⚠ teach
+    float home_grip_count = -1;  // gripper count at the ready pose (taught on the HMI arm page; -1 = open)
     std::vector<std::array<float, 5>> bins;                  // drop poses per bin (joint angles) ⚠ teach
 };
 

@@ -17,7 +17,7 @@ namespace des {
 namespace {
 
 enum { A_TAB = 1, A_DEC, A_INC, A_TOGGLE, A_IMAGES, A_CMD, A_SELECT, A_PLMODE, A_PLTHR, A_RECIPE, A_ARM_LOCK,
-       A_ARM_TORQUE, A_ARM_JOG, A_ARM_STEP, A_ARM_MS, A_ARM_TEACH };
+       A_ARM_TORQUE, A_ARM_JOG, A_ARM_STEP, A_ARM_MS, A_ARM_TEACH, A_ARM_SETHOME, A_ARM_RESET };
 
 const cv::Scalar BG(34, 31, 29), PANEL(52, 48, 45), LINE(80, 76, 72), WHITE(235, 235, 235), DIM(150, 150, 150),
     GREEN(90, 200, 90), RED(80, 80, 235), ORANGE(40, 165, 255), CYAN(220, 200, 70), YELLOW(70, 215, 235),
@@ -213,12 +213,16 @@ std::vector<HmiAction> Hmi::handle(const std::vector<UiEvent> &ev)
             case A_ARM_LOCK:
             case A_ARM_TORQUE:
             case A_ARM_JOG:
-            case A_ARM_TEACH: {
+            case A_ARM_TEACH:
+            case A_ARM_SETHOME:
+            case A_ARM_RESET: {
                 HmiAction a;
                 a.kind = HmiAction::Arm;
                 a.arm.kind = h.action == A_ARM_LOCK ? (h.arg ? ArmRequest::Unlock : ArmRequest::Lock)
                            : h.action == A_ARM_TORQUE ? ArmRequest::Torque
-                           : h.action == A_ARM_JOG ? ArmRequest::Jog : ArmRequest::Teach;
+                           : h.action == A_ARM_JOG ? ArmRequest::Jog
+                           : h.action == A_ARM_SETHOME ? ArmRequest::SetHome
+                           : h.action == A_ARM_RESET ? ArmRequest::Reset : ArmRequest::Teach;
                 a.arm.on = h.arg;
                 a.arm.joint = h.arg / 2;   // jog: arg = joint * 2 + (1 = plus)
                 a.arm.dir = h.arg % 2 ? 1 : -1;
@@ -563,8 +567,8 @@ void Hmi::page_records(cv::Mat &img)
 }
 
 // 机械臂: manual jogging (app/arm_manual.hpp). Left: one row per joint with the polled state and -/+ ; right: lock,
-// torque, step size, move time, teach. Every command goes through the manual arm thread, which refuses while the
-// line runs or the production arm thread is busy.
+// torque, step size, move time, reset / set ready pose, teach. Every command goes through the manual arm thread,
+// which refuses while the line runs or the production arm thread is busy.
 void Hmi::page_arm(cv::Mat &img)
 {
     const ArmManualView &a = st_.arm;
@@ -576,33 +580,36 @@ void Hmi::page_arm(cv::Mat &img)
     else if (a.unlocked) { state = "已解锁 · 点 -/+ 微调；动作前确认机械臂周围无障碍"; sc = GREEN; }
     else { state = "未解锁：点右侧「解锁」后才能动"; sc = ORANGE; }
     text(img, state, 380, 9, 18, sc);
-    const int cx[] = {175, 330, 430, 530, 630, 730, 810};
-    const char *head[] = {"关节", "位置", "角度", "目标", "电流", "温度", "状态"};
-    for (int c = 0; c < 7; c++) text(img, head[c], cx[c], 40, 16, DIM);
+    // 角度 = read back, 目标 = last command (jogs add up exactly on it; the servo stops within its dead band, up to
+    // ~1 deg short, so 角度 can differ from 目标 by that much), 初始 = ready pose
+    const int cx[] = {175, 305, 390, 490, 590, 690, 780, 850};
+    const char *head[] = {"关节", "位置", "角度", "目标", "初始", "电流", "温度", "状态"};
+    for (int c = 0; c < 8; c++) text(img, head[c], cx[c], 40, 16, DIM);
     text(img, "微调", 930, 40, 16, DIM);
     for (int k = 0; k < 6; k++) {
         const int y = 62 + k * 33;
         const ArmJointView &j = a.j[k];
         const JointCal &jc = ac.joint[k];
+        auto deg = [&](int counts) { return counts < 0 ? std::string("—") : fmt("%+.1f°", (counts - jc.zero_count) / jc.counts_per_deg); };
         text(img, kArmJoint[k], cx[0], y + 4, 19, WHITE);
-        auto num = [&](int c, int v, const char *f) { text(img, v < 0 ? "—" : fmt(f, v), cx[c], y + 4, 19, YELLOW); };
-        num(1, j.pos, "%.0f");
-        text(img, j.pos < 0 ? "—" : fmt("%+.1f°", (j.pos - jc.zero_count) / jc.counts_per_deg), cx[2], y + 4, 19,
-             YELLOW);
-        num(3, j.target, "%.0f");
-        num(4, j.current_ma, "%.0f mA");
-        num(5, j.temp_c, "%.0f ℃");
+        text(img, j.pos < 0 ? "—" : fmt("%.0f", j.pos), cx[1], y + 4, 19, YELLOW);
+        text(img, deg(j.pos), cx[2], y + 4, 19, YELLOW);
+        text(img, deg(j.target), cx[3], y + 4, 19, CYAN);
+        text(img, deg(a.home[k]), cx[4], y + 4, 19, a.home_taught ? WHITE : DIM);
+        text(img, j.current_ma < 0 ? "—" : fmt("%.0f", j.current_ma), cx[5], y + 4, 19, YELLOW);
+        text(img, j.temp_c < 0 ? "—" : fmt("%.0f", j.temp_c), cx[6], y + 4, 19, YELLOW);
         std::string flags;
         if (!j.alive) flags = j.pos < 0 && !a.shown ? "—" : "无应答";
         else if (j.status & 0x20) flags = "过载";
         else if (j.status & 0x04) flags = "过热";
         else if (j.status & 0x01) flags = "电压";
         else flags = "正常";
-        text(img, flags, cx[6], y + 4, 18, flags == "正常" ? GREEN : flags == "—" ? DIM : RED);
+        text(img, flags, cx[7], y + 4, 18, flags == "正常" ? GREEN : flags == "—" ? DIM : RED);
         const bool can = a.allowed && a.unlocked;
         button(img, {930, y, 64, 28}, "-", false, can ? A_ARM_JOG : 0, k * 2, 26);
         button(img, {1002, y, 64, 28}, "+", false, can ? A_ARM_JOG : 0, k * 2 + 1, 26);
     }
+    text(img, "电流 mA · 温度 ℃", cx[5], 264, 14, DIM);
     // right: controls
     const int x0 = 1110;
     cv::line(img, {x0 - 18, 14}, {x0 - 18, H - 14}, LINE, 1);
@@ -618,11 +625,16 @@ void Hmi::page_arm(cv::Mat &img)
     text(img, "动作时间", x0 + 380, 99, 19, WHITE);
     for (int i = 0; i < 3; i++)
         button(img, {x0 + 470 + i * 96, 90, 86, 36}, fmt("%.1f s", kArmMs[i] / 1000.0), arm_ms_ == i, A_ARM_MS, i, 20);
-    button(img, {x0, 142, 200, 40}, "记录当前姿态", false, a.allowed ? A_ARM_TEACH : 0, 0, 20);
-    text(img, a.taught ? fmt("本次已记录 %.0f 个（data/arm_teach.csv）", a.taught) : "存到 data/arm_teach.csv，标定零位 / 料盒用",
-         x0 + 216, 153, 16, DIM);
-    text(img, "零位、夹爪开合计数还没标定：暂不提供一键回零 / 夹爪开合", x0, 200, 16, DIM);
-    text(img, a.msg.empty() ? "—" : a.msg, x0, 232, 18, CYAN);
+    button(img, {x0, 142, 230, 40}, "复位（回初始姿态）", false, can && a.home_taught ? A_ARM_RESET : 0, 0, 20);
+    button(img, {x0 + 246, 142, 190, 40}, "设为初始姿态", false, can ? A_ARM_SETHOME : 0, 0, 20);
+    button(img, {x0 + 452, 142, 190, 40}, "记录当前姿态", false, a.allowed ? A_ARM_TEACH : 0, 0, 20);
+    text(img, a.home_taught ? "初始姿态：已设定（arm_home.json）；复位时 6 个关节一起慢速动作，至少 2 s"
+                            : "初始姿态：未设定 —— 先把机械臂调到合适位置，点「设为初始姿态」，复位才可用",
+         x0, 196, 16, a.home_taught ? DIM : ORANGE);
+    text(img, a.taught ? "「记录当前姿态」本次已记 " + std::to_string(a.taught) + " 个 → data/arm_teach.csv"
+                       : std::string("「记录当前姿态」存到 data/arm_teach.csv（标定零位 / 料盒姿态用）"),
+         x0, 220, 16, DIM);
+    text(img, a.msg.empty() ? "—" : a.msg, x0, 252, 18, CYAN);
 }
 
 }  // namespace des
