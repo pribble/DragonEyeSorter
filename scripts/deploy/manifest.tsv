@@ -3,7 +3,7 @@
 # 判据是**用途，不是名字**。只登记运行链路必需的三类：
 #   ① 主程序 des_app（含它加载的 NPU 模型）
 #   ② 主程序读的配置：des_app.json / recipes.json / label_list.json
-#   ③ 开机自启链：des.env（**板端路径唯一来源**）→ des_service.sh → can_up.sh + des_app.sh（→ des_app）
+#   ③ 开机自启链：des.env（**板端路径唯一来源**）→ des_service.sh → can_up.sh + des_app.sh（→ des_app）；关机脚本 shutdown.sh
 # 测试 / 校准 / HIL / 长跑 / 换比特流回归 / 寄存器调试一律**不登记**（哪怕名字里没有 test）：
 #   要用的时候手动传上去，见文件末尾「手动上板」一节。**别往里加**。
 #
@@ -29,6 +29,7 @@ scripts/deploy/out/des.env	/root/des/des.env	config	no	**板端路径唯一来�
 scripts/deploy/out/des_service.sh	/root/des/des_service.sh	script	no	守护：开机自启（/etc/init.d/S90des 指向它）、拉起 can_up.sh 与 des_app.sh、崩溃退避重启
 scripts/deploy/out/can_up.sh	/root/des/can_up.sh	script	no	CAN 起接口（经典模式被控制器拒时自动退 FD）
 scripts/deploy/out/des_app.sh	/root/des/des_app.sh	script	no	启动器：缺 /dev/mipicam 时先 insmod mipicam.ko 再 exec des_app
+scripts/deploy/out/shutdown.sh	/root/des/shutdown.sh	script	no	关机：停 des_app → 硬件看门狗超时拉到最大（约 2 分钟）→ halt。看门狗在永久在线域、关不掉，halt 后必然自己复位重启，这 2 分钟里断电（「6_关机」快捷方式调它）
 
 # ---------- ① 主程序（源：ps/build/，交叉编译产物，不入库） ----------
 ps/build/des_app	/root/des/des_app	bin	yes	主程序：调度 / 视觉 / 跟踪抓取 / 测量 / UI / CAN / 存储；编 make -C ps all
