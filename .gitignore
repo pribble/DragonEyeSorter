@@ -57,12 +57,15 @@ __pycache__/
 *.pyc
 **/build/
 ps/tools/desreg
-# 部署暂存（scripts/deploy/out/）：里面平铺着要上板的那些文件（脚本、配置、编译产物）
-scripts/deploy/out/
+# 部署暂存（scripts/deploy/out/）：平铺着要上板的那些文件。脚本与配置**入库**（它们就是发到板子上的
+# 那一份，都是文本，改一次提交一次）；不入库的是**能由源码编出来的二进制**（des_app，换机器重新 make）
+scripts/deploy/out/des_app
 
 # ---------- 5. 模型与训练数据（数据集、权重不入库，见 AGENTS.md 第 7 条） ----------
+#      part_cls.json = 训练导出的 NPU 网络描述，与 *.onnx 同批生成，同属导出物（2026-10-16 定）
 *.onnx
 *.pt
+part_cls.json
 datasets/
 models/runs/
 

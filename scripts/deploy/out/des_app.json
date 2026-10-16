@@ -1,0 +1,66 @@
+{
+  "comment": "des_app 配置。所有带 TODO 的值必须在实物上标定（camera homography / belt mm_per_step / arm 几何与零位 / 料盒姿态）。label_list 相对本文件所在目录；部署时把 models/label_list.json 一起拷到 /root/des/。",
+
+  "camera": { "vmax": 2276, "buffers": 4, "realtime": true },
+
+  "locate": { "scale": 4, "thresh": 0, "min_thresh": 60, "open_iter": 1, "border_px": 2,
+              "min_area_mm2": 40, "max_area_mm2": 3000 },
+
+  "px_to_table_comment": "未标定时的占位：视野宽 300mm / 1920px，x 沿图像向右（皮带前进方向），y 沿图像向上（右手系，z 朝上），原点 = 左边缘中点。用 des_app calib-cam 标定后由 calib.json 覆盖",
+  "px_to_table": [0.15625, 0, 0,  0, -0.15625, 84.375,  0, 0, 1],
+  "calib_file": "calib.json",
+
+  "belt_comment": "mm_per_step = 10-16 尺量：主动轴 4 圈（12800 步）皮带走约 265mm → 0.0207（有效辊径约 21mm）；dir = -1（前进 = 步进位置递减，10-16 实测）。des_app calib-belt 用相机实测后写进 calib.json 覆盖这里",
+  "belt": { "mm_per_step": 0.0207, "dir": -1, "run_speed": 50, "accel": 400 },
+
+  "tracker": { "fov_x0": 0, "fov_x1": 300, "edge_margin": 10, "decide_x": 270, "tail_x": 600,
+               "gate_s": 12, "gate_y": 12, "min_hits": 3, "max_miss_new": 2, "max_miss": 8,
+               "min_conf": 0.5, "pick_unclassified": false, "unclassified_bin": 0 },
+
+  "picker_comment": "pick_after_fov_mm > 0 时抓取线 = 标定出的视野下游边 fov_x1 + 该值（用户 10-11 定 80mm），pick_x 被覆盖；arm.base_xy 的 x 应约等于抓取线（实测）",
+  "picker": { "pick_after_fov_mm": 80, "pick_x": 380, "pick_tol": 3, "reach_y0": -80, "reach_y1": 80, "brake_margin": 5,
+              "finger_w": 12, "finger_t": 6, "grip_clear": 4, "max_open": 60, "round_ratio": 1.3,
+              "neighbor_gap": 2, "flap_lead": 0, "flap_conflict": 30 },
+
+  "measure_comment": "几何测量（docs/视觉与检测.md「几何测量」）：每件在离光轴最近的那帧测一次（per_frame = 每帧最多测几件，4~5ms/件）。TODO camera_h_mm = 0 表示不做视差校正，装好相机后填实测相机高度；gear_h_mm / rack_h_mm 填卡尺量的厚度；walls_visible 看实拍侧壁亮不亮。rule = 尺寸超差 / 规格混料 → ng_outlet（只改判 NPU 判 OK 的件），标定实测后再开 enabled",
+  "measure": { "enabled": true, "per_frame": 1, "gear_ratio": 0.6, "margin_mm": 3, "improve": 0.75,
+               "camera_h_mm": 0, "gear_h_mm": 10, "rack_h_mm": 12, "walls_visible": true, "max_smear_mm": 0.8,
+               "short_tooth_mm": 0.4, "flash_mm": 0.5,
+               "rule": { "enabled": false, "gear_teeth": 30, "gear_od": 32, "gear_od_tol": 0.15,
+                         "gear_bore": 6, "gear_bore_tol": 0.3, "gear_max_ecc": 0.3,
+                         "rack_len": 50, "rack_len_tol": 0.5, "ng_outlet": "scrap",
+                         "defect_recheck": true, "require": false } },
+
+  "arm_comment": "TODO 全部实测：连杆长度对应关系、base_xy/base_yaw（臂安装位置）、belt_z、各关节 zero_count 与方向、夹爪开合码、home 与料盒姿态",
+  "arm": {
+    "base_h": 107.5, "l_upper": 82.85, "l_fore": 82.85, "l_wrist": 79.05, "l_tool": 50,
+    "base_xy": [380, -170], "base_yaw_deg": 90, "belt_z": 0, "grip_axis_at_zero_deg": 0,
+    "joints": [
+      { "id": 1, "zero_count": 2048, "counts_per_deg": 13.65, "min_deg": -135, "max_deg": 135 },
+      { "id": 2, "zero_count": 2048, "counts_per_deg": 13.65, "min_deg": -10,  "max_deg": 150 },
+      { "id": 3, "zero_count": 2048, "counts_per_deg": 13.65, "min_deg": -150, "max_deg": 10 },
+      { "id": 4, "zero_count": 2048, "counts_per_deg": 13.65, "min_deg": -135, "max_deg": 135 },
+      { "id": 5, "zero_count": 2048, "counts_per_deg": 13.65, "min_deg": -90,  "max_deg": 90 },
+      { "id": 6, "zero_count": 2048, "counts_per_deg": 22.75, "min_deg": -90,  "max_deg": 90 }
+    ],
+    "grip_open_count": 2600, "grip_closed_count": 1500, "grip_max_open": 60, "grip_squeeze": 2,
+    "z_safe": 60, "z_grasp": 6, "joint_speed": 120,
+    "min_ms": 150, "descend_ms": 400, "close_ms": 300, "open_ms": 250,
+    "home_deg": [0, 60, -120, -30, 0],
+    "bins_deg": [[120, 40, -100, -30, 0], [-120, 40, -100, -30, 0]]
+  },
+
+  "flaps_comment": "带尾两级翻板（des_pwm，v7 比特流；MG996R）：第 1 级 复检 / NG，第 2 级 返修 / 报废。TODO 装好后实测各位置脉宽（us），再开 enabled",
+  "flaps": { "enabled": false, "prepare_mm": 40, "clear_mm": 60,
+             "f1_pass_us": 1000, "f1_ng_us": 1900, "f2_rework_us": 1000, "f2_scrap_us": 1900 },
+
+  "storage_comment": "本地存储（赛题硬性项②）：每件判定后一行 CSV（<dir>/<日期>/parts_<会话>.csv）+ 零件裁切图（images: none / ng = 翻板和复检件 / all）。dir 不写就是 data/log、按本文件所在目录解析（生产配置 → /root/des/data/log；把这份配置连同程序拷到别的目录部署时，数据就落在那个目录，不污染生产数据），写绝对路径则原样用。板子没有 RTC，日期目录按系统时钟，测试前先对时",
+  "storage": { "enabled": true, "images": "ng", "jpeg_quality": 92, "max_queue": 256 },
+
+  "bins": ["gear_box", "rack_box"],
+  "outlets": ["recheck", "scrap", "rework"],
+  "recipe_comment": "启动配方号（recipes.json 里的 id；界面上次选的优先）。recipes.json 缺失时只有配方 1 = 上面 measure.rule 的规格",
+  "recipe": 1,
+  "recipes_file": "recipes.json",
+  "label_list": "label_list.json"
+}

@@ -1,6 +1,8 @@
 # scripts/deploy/ — 板端部署清单与上板
 
 > 板端要跑的东西来自三处（脚本、配置、编译产物），以前只在文档的几条 `scp` 命令里；本目录把它们登记成**一份清单**，并提供一个部署器。**二进制不入库**（AGENTS.md 硬性约定第 7 条）。
+>
+> 本目录只管"**哪份上到哪**"（机器读的 `manifest.tsv`）；板上整体的结构与规矩（两个分区、四类文件、各件缺了会怎样、行尾 / 权限、路径与相对引用）见 [docs/板端布局](../../docs/板端布局.md)。
 
 ## 谁进清单：只放产品运行时
 
@@ -50,7 +52,7 @@ bash scripts/deploy/deploy.sh --dry-run
 | "板上跑的到底是哪一份？和仓库差在哪？" | `--dry-run`（文本类比较前去掉 CR，不会因 CRLF/LF 误报；只读，不写盘） |
 | 改完代码要上板 | `make -C ps all` 后跑部署；`--with-service` 可让脚本自己停/起自启服务 |
 | **先在板上试新版，不动现在跑的这份** | `--dest /root/des/test`（见下节） |
-| 板子没网、要给队友一份、或要拷 U 盘 | `--stage`（**不联网**，板子不在线也能攒；产物在 `out/`，不入库） |
+| 板子没网、要给队友一份、或要拷 U 盘 | `--stage`（**不联网**，板子不在线也能攒；产物在 `out/`，文本件入库、二进制不入库） |
 
 ### 先试再上：`--dest <目录>`
 
@@ -103,18 +105,10 @@ ssh $BOARD_HOST /root/des/test/des_service.sh start      # 测试目录自己的
 2. **Text file busy**：`/root/des/des_app` 正在运行时覆盖它会失败。脚本检测到 `pidof des_app` 且要更新 `des_app` 时会**直接报错退出**（不会传到一半），要么先 `des_service.sh stop`，要么加 `--with-service`。
 3. **覆盖正在跑的 `des_service.sh`**：`cp -f` 是原地截断同一个 inode，而 `ash` 是边读边执行的，会读到半新半旧；而且新旧版的 PID 文件位置不同（新版在 `<目录>/data/des_service.pid`，旧版在 `/var/run/des_service.pid`）。**正式部署**时检测到监督进程在跑会**拦下**，要 `--with-service`（stop 由旧脚本执行、读的正是旧 PID 文件，起服务由新脚本执行）；`--dest` 写测试目录不受此限制（生产没被碰）。
 
-## 自测（不需要板子）
-
-```bash
-sh scripts/deploy/selftest/run.sh
-```
-
-假 `ssh` / `scp` 把板端 `/root/...` 与 `/tmp/desdeploy` 映射到 `${TMPDIR:-/tmp}/des-selftest-board`，把"空板 → 传输 → 安装 → 校验"整条路走两遍（第一遍应全部"板上还没有"、传完校验通过，第二遍应"一致"且不再传输），第三、四遍走 `--dest`：断言生产件哈希未变、测试目录是全套（含 `des_service.sh` 与 `des.env`）、落地脚本里**没有写死的布局路径**（`/root/des`、`/root/bin`、`/var/run`），并打印 CR 字节数与板上真正执行的安装脚本（权限位看它，别看 Windows 的 `ls`）。**改过 `deploy.sh` 或 `ps/board/*.sh` 先跑这个**。
-
 ## 不做什么
 
 - **不编译**：产物来自 `ps/build/`（`make -C ps all`）。`make -C ps all` 结束时会让本脚本刷一次 `out/`，编不出来就只是提示，不影响编译结果。
-- **不入库二进制**：`out/` 与 `ps/build/` 都被忽略，换机器要重新编（或从队友的 `out/` 拷）。
+- **`out/` 里只有能编出来的二进制不入库**：`out/` 的**脚本与配置入库**（它们就是发到板子上的那一份，是"这一版部署了什么"的凭据，改一次提交一次），被 `.gitignore` 挡住的只有 `scripts/deploy/out/des_app` 与 `ps/build/`（换机器 `make -C ps all` 重新编，或从队友的 `out/` 拷）。所以 `--stage` / `make` 刷新后 `git status` 出现文本件 diff 是正常的，提交它们即可。
 - **不动系统件**：`/opt`、`/etc`、`/mnt/mmcblk0p1` 一概不碰；开机自启的安装/卸载见 [环境与上手](../../docs/环境与上手.md) §4「启动脚本」。
 - **不管测试 / 调试件**：它们不走本目录（手动 `scp`），所以 `--dry-run` 只对上面那 10 个文件负责——板上的 `test_npu`、`soak.sh` 是哪一版，本目录不跟踪。
 - **不反向拉取**：板端新建/手改的文件不会被自动取回仓库；要在板上改脚本，改完把内容搬回 `ps/board/` 再提交（`--dry-run` 能告出"板上与仓库不一致"的文件，但只对清单里已有的那些）。

@@ -12,14 +12,15 @@
 # 测试 / 调试件（desreg、canplc、test_*、pl_check.sh、soak.sh、display_check.sh）不在清单里：要用时手动 scp。
 # 依赖：ssh / scp 免密（.env 的 BOARD_HOST）、awk、md5sum、sort、uniq。宿主机侧运行（Git Bash / WSL）。
 # --stage 完全不联网（板子不在线也能攒），部署与 dry-run 才需要板子。
-# 本脚本**不编译、不入库二进制**：产物来自 ps/build/（见 manifest.tsv 与同目录 README.md）。
+# 本脚本**不编译、不提交二进制**：产物来自 ps/build/；`out/` 里的脚本与配置会入库（它们就是发给板子
+# 的那一份），只有编出来的二进制被 .gitignore 挡住（见 manifest.tsv 与同目录 README.md）。
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
 manifest="$here/manifest.tsv"
 out="$here/out"
-stage="$out"      # 要上板的那一份：清单条目（产品运行时）平铺在这里，不入库、也不手放别的东西
+stage="$out"      # 要上板的那一份：清单条目（产品运行时）平铺在这里；文本件入库，编出来的二进制不入库
 TAB=$(printf '\t')
 
 MODE=deploy
@@ -32,7 +33,7 @@ usage() {
 用法（在仓库根目录）：
   bash scripts/deploy/deploy.sh --dry-run       只列差异，不传文件
   bash scripts/deploy/deploy.sh                 部署（差异 → 传输 → 校验）
-  bash scripts/deploy/deploy.sh --stage         刷新 out/（要上板的那一份，不入库），不联网
+  bash scripts/deploy/deploy.sh --stage         刷新 out/（要上板的那一份；文本件入库，二进制不入库），不联网
   bash scripts/deploy/deploy.sh --only <子串>   只处理匹配的条目（如 des_app）
   bash scripts/deploy/deploy.sh --with-service  传 des_app 前停自启服务，校验完再起
   bash scripts/deploy/deploy.sh --dest <目录>   整份落到该目录（文件名不变），试新版而不覆盖生产件
@@ -121,7 +122,7 @@ REMOTE
     rsh sh -s "$@" < "$tmpd/remote.sh"
 }
 
-# ---------- 攒"要上板的那一份"（out/，文件平铺，不入库） ----------
+# ---------- 攒"要上板的那一份"（out/，文件平铺；文本件入库，编出来的二进制不入库） ----------
 # 用**全量**清单（$tmpd/raw）而不是 --only 过滤后的，免得不带参数的过滤把暂存刷成残缺的一份。
 # 平铺是因为"哪个文件去哪"在清单与 MD5SUMS.txt 里已经写清楚了，再按板端目录分层只是多层嵌套。
 stage_payload() {
@@ -130,9 +131,9 @@ stage_payload() {
     rm -rf "$stage"
     mkdir -p "$stage"
     {
-        echo "# 要上板的那一份 = 板端产品运行时（scripts/deploy/out/，文件平铺；本目录与里面的文件都不入库）"
+        echo "# 要上板的那一份 = 板端产品运行时（scripts/deploy/out/，文件平铺；脚本与配置入库，只有编出来的二进制不入库）"
         echo "# 左列 = 哈希（脚本/配置/数据类去掉 CR 后算），右列 = 这个文件该去的板端路径"
-        echo "# 生成：$(date '+%F %T')    清单：scripts/deploy/manifest.tsv"
+        echo "# 清单指纹：scripts/deploy/manifest.tsv 的 MD5 = $(hash_file "$manifest")"
     } > "$stage/MD5SUMS.txt"
     n=0
     while IFS="$TAB" read -r src dst kind restart note; do
