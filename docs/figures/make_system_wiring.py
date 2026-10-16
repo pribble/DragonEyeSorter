@@ -23,6 +23,7 @@ plt.rcParams['axes.unicode_minus'] = False
 P24, G24 = '#d32f2f', '#111111'      # +24 V (after the e-stop), 24 V ground
 P68, G68 = '#c2185b', '#6d4c41'      # 6.8 V servo supply, its ground (XY6020L OUT-)
 P5, P33 = '#f9a825', '#ff7f0e'       # 5 V, 3.3 V
+G5 = '#5d4037'                        # 5 V ground = 5 V module OUT- (same potential as 24 V ground)
 PUL, DIR, ENA = '#1565c0', '#2e7d32', '#00838f'
 BUS, FLAP, EST = '#7b1fa2', '#8d6e63', '#006064'
 
@@ -144,10 +145,10 @@ wire([(54, 99), (56, 99), (56, 76), (52, 76)], G24, dashed=True)
 note(59, 92, '+V ③ / −V ③ 走「常电」\n（不经过急停）', fs=9)
 wire([(28, 80), (25, 80)], P5, dashed=True)
 tag(24.5, 80, '5V', P5, side='l')
-wire([(28, 76), (25, 76)], G24, dashed=True)
-tag(24.5, 76, '24V 地', G24, side='l')
+wire([(28, 76), (25, 76)], G5, dashed=True)
+tag(24.5, 76, '5V 地', G5, side='l')
 box(28, 56, 24, 10, '风扇 5V（可选）', fc='#fffde7', ec=P5, dashed=True, fs=10, ty=64.3)
-note(29.5, 60.6, '红 ← 5V   黑 ← 24V 地\n过渡期可插 USB 口', fs=8.5)
+note(29.5, 60.6, '红 ← 5V   黑 ← 5V 地\n过渡期可插 USB 口', fs=8.5)
 
 # ---------------- servo supply XY6020L ----------------
 box(100, 34, 32, 24, '数控降压 XY6020L', fc='#fce4ec', ec=P68)
@@ -191,15 +192,15 @@ for lab, y in (('HV', 80), ('GND', 74), ('HV1', 68)):
     term(146, y, lab, 'l', '#1565c0')
 for lab, y in (('LV', 80), ('GND', 74), ('LV1', 68)):
     term(170, y, lab, 'r', '#1565c0')
-note(158, 64.6, '两侧 GND 内部相通\n= PL 地与 24V 地\n唯一的连接点', fs=8.5, ha='center')
+note(158, 64.6, '两侧 GND 内部相通\n= PL 地与 24V 地（经 5V 地）\n唯一的连接点', fs=8.5, ha='center')
 wire([(170, 80), (182, 80)], P33)
 wire([(170, 68), (182, 68)], BUS)
 wire([(170, 74), (172, 74)], G24)
 tag(172.5, 74, 'PL 地', G24, side='r')
 wire([(146, 80), (143, 80)], P5, dashed=True)
 tag(142.5, 80, '5V', P5, side='l')
-wire([(146, 74), (143, 74)], G24, dashed=True)
-tag(142.5, 74, '24V 地', G24, side='l')
+wire([(146, 74), (143, 74)], G5, dashed=True)
+tag(142.5, 74, '5V 地', G5, side='l')
 wire([(146, 68), (141, 68), (141, 21), (107, 21), (107, 16)], BUS, dashed=True)
 note(142, 25, '舵机信号', fs=9.5, color=BUS, weight='bold')
 note(146, 89.5, '低压侧（右）今天接；高压侧（左）\n等万用表 + 5V 模块调好再接', fs=9, color='#1565c0')
@@ -234,11 +235,12 @@ note(4, 43.5, '① 一个螺钉端子只压一根线；多股线压管型端子\
      '   （到货前：拧紧，压在压板下，拽一下不松）\n'
      '② 数控电源 OUT− 只接舵机地（及翻板地），\n'
      '   不接 24V 地、不接 PL 地（采样电阻旁路 → 限流失效）\n'
-     '③ PL 地与 24V 地只在 BSS138 那一处相连\n'
-     '④ J12 PIN1 只给 BSS138 的 LV，别的都不接\n'
-     '⑤ 接线、插拔一律断电；先量电压再接负载\n'
+     '③ PL 地与 24V 地只在 BSS138 那一处相连（经 5V 地）\n'
+     '④ 5V 地从 5V 模块 OUT− 取；它的 IN−、OUT− 不在外面并联\n'
+     '⑤ J12 PIN1 只给 BSS138 的 LV，别的都不接\n'
+     '⑥ 接线、插拔一律断电；先量电压再接负载\n'
      '   （5V 模块、数控电源都要先空载量过）\n'
-     '⑥ 舵机先在 5V / 6.8V 下只 ping、读位置，\n'
+     '⑦ 舵机先在 5V / 6.8V 下只 ping、读位置，\n'
      '   机械臂收拢、周围无障碍再让它动', fs=10)
 
 out = os.path.join(HERE, 'fig_system_wiring.png')
