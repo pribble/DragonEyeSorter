@@ -43,6 +43,7 @@ rotate() {
 running() { [ -f "$PIDF" ] && kill -0 "$(cat "$PIDF")" 2>/dev/null; }
 
 supervise() {
+    mkdir -p "$(dirname "$PIDF")"   # 全新部署没有 data/：目录必须先于任何 PID 写入存在
     echo $$ > "$PIDF"   # our own pid (start wrote setsid's, the same unless setsid had to fork)
     child=""
     quit=0
@@ -88,6 +89,7 @@ start)
     if [ "$ENABLED" != 1 ] && [ "$2" != force ]; then echo "des_service: disabled in $CONF"; exit 0; fi
     if running; then echo "des_service: already running (pid $(cat "$PIDF"))"; exit 0; fi
     # own session, no inherited descriptors: otherwise the caller (an SSH command) never sees EOF
+    mkdir -p "$(dirname "$PIDF")"   # 全新部署没有 data/，先建目录再写 PID（否则 status/stop 失效）
     setsid "$0" _supervise < /dev/null > /dev/null 2>&1 &
     echo $! > "$PIDF"
     echo "des_service: started (pid $!, log $LOG)"
