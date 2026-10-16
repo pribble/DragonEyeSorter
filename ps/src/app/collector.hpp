@@ -26,7 +26,7 @@ namespace des {
 struct CollectOptions {
     std::string label;           // class label from models/label_list.json ("" = not collecting)
     int label_id = -1;
-    std::string out = "/root/des/data/collect";
+    std::string out = "data/collect";  // 相对值按 des_app.json 所在目录解析（绝对值原样）；des.env 的 DES_COLLECT 可覆盖
     int every = 6;               // processed frames between two crops of the same part
     int max_per_part = 10;
     int full_every = 0;          // 0 = no full frames

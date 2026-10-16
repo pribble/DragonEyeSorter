@@ -1,15 +1,19 @@
 #!/bin/sh
 # soak.sh — long-run stability test on the board (test report: 工程可靠性「连续运行 2h 无故障」).
-#   /root/des/soak.sh [seconds=7200] [outdir=/root/des/data/soak-<uptime>]
+#   <本目录>/soak.sh [seconds=7200] [outdir=<DES_DATA>/soak-<uptime>]
 # Runs des_app run with CAN (loopback unless SOAK_CAN=normal, then a real PLC / USB-CAN must answer) and canplc as the
 # PLC (START, 5 Hz heartbeats, monitor), and samples once a minute: des_app RSS / threads, CPU load, free memory, disk,
 # CAN error counters, PL frame counter. Everything goes to <outdir>; summary at the end (and in summary.txt).
 # Stop early: kill the soak.sh process (des_app gets SIGINT and prints its totals).
 SECS=${1:-7200}
-OUT=${2:-/root/des/data/soak-$(cut -d. -f1 /proc/uptime)}
 IF=${SOAK_IF:-can0}
 MODE=${SOAK_CAN:-loopback}
-DIR=$(cd "$(dirname "$0")" && pwd)
+SELF=$(readlink -f -- "$0" 2>/dev/null || echo "$0")
+DES_HOME=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd)   # 以脚本自己所在目录为准，不吃继承来的 DES_HOME
+[ -f "$DES_HOME/des.env" ] || { echo "soak: 缺 $DES_HOME/des.env（路径都从它取，源文件见 ps/board/des.env）" >&2; exit 1; }
+. "$DES_HOME/des.env"
+DIR=$DES_HOME
+OUT=${2:-$DES_DATA/soak-$(cut -d. -f1 /proc/uptime)}
 mkdir -p "$OUT" || exit 1
 cd "$DIR" || exit 1
 # the autostart service (des_service.sh) owns the camera / buses: pause it for this run, resume at the end
@@ -25,8 +29,8 @@ ip -s -d link show "$IF" > "$OUT/can_before.txt"
 APP=$!
 sleep 5
 PID=$(pidof des_app)
-/root/bin/canplc "$IF" start > "$OUT/plc_start.txt" 2>&1
-/root/bin/canplc "$IF" monitor "$SECS" > "$OUT/plc.log" 2>&1 &
+"$DES_TOOLS/canplc" "$IF" start > "$OUT/plc_start.txt" 2>&1
+"$DES_TOOLS/canplc" "$IF" monitor "$SECS" > "$OUT/plc.log" 2>&1 &
 PLC=$!
 trap 'kill -INT $PID 2>/dev/null; kill $PLC 2>/dev/null' INT TERM
 
@@ -39,10 +43,10 @@ while kill -0 "$APP" 2>/dev/null; do
     LOAD=$(cut -d' ' -f1 /proc/loadavg)
     MF=$(awk '/MemFree/ {print $2}' /proc/meminfo)
     MA=$(awk '/MemAvailable/ {print $2}' /proc/meminfo)
-    DF=$(df -k /root | awk 'NR==2 {print $4}')
+    DF=$(df -k "$DES_HOME" | awk 'NR==2 {print $4}')
     CAN=$(ip -s link show "$IF" | awk '/RX:/ {getline; rx=$2} /TX:/ {getline; tx=$2} END {print rx","tx}')
     CERR=$(ip -s -d link show "$IF" | awk '/re-started/ {getline; s=$1+$2+$3+$4+$5+$6} END {print s+0}')
-    FR=$(/root/bin/desreg r 0x014 2>/dev/null)   # PL frame counter (hex), read-only access is safe next to des_app
+    FR=$("$DES_TOOLS/desreg" r 0x014 2>/dev/null)   # PL frame counter (hex), read-only access is safe next to des_app
     echo "$((NOW - T0)),$RSS,$THR,$LOAD,$MF,$MA,$DF,$CAN,$CERR,$FR" >> "$OUT/mon.csv"
     i=0
     while [ $i -lt 60 ] && kill -0 "$APP" 2>/dev/null; do sleep 1; i=$((i + 1)); done

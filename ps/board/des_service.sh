@@ -1,18 +1,26 @@
 #!/bin/sh
 # des_service.sh — start des_app at boot and restart it if it dies (BusyBox init, /etc/init.d/S??* style).
 #
-#   /root/des/des_service.sh start|stop|restart|status
-#   Install (once, changes /etc):  ln -s /root/des/des_service.sh /etc/init.d/S90des
-#   Disable without touching /etc: set ENABLED=0 in /root/des/autostart.conf (or delete the symlink)
+#   <本目录>/des_service.sh start|stop|restart|status
+#   Install (once, changes /etc):  ln -s <本目录>/des_service.sh /etc/init.d/S90des   （按实际部署目录写）
+#   Disable without touching /etc: set ENABLED=0 in <本目录>/autostart.conf (or delete the symlink)
 #
 # Safe by default: with CAN the line starts IDLE and moves nothing until the PLC (or the HMI button) sends START;
 # the arm only moves for real when ARGS contains --go. Without CAN (CAN="") des_app starts in RUN.
 # The supervisor restarts des_app after a crash (2 s, doubling to 30 s) and gives up after 5 crashes within
-# 5 minutes, so a broken build does not flap forever. Log: /root/des/data/service.log (rotated at 1 MB).
-DIR=/root/des
-CONF=$DIR/autostart.conf
-LOG=$DIR/data/service.log
-PIDF=/var/run/des_service.pid
+# 5 minutes, so a broken build does not flap forever. Log: <DES_SERVICE_LOG> (rotated at 1 MB).
+#
+# 路径全部来自同目录的 des.env（板端路径唯一来源），本文件不写死任何绝对路径：整份目录拷到别处部署
+# （deploy --dest）时，配置 / 日志 / PID 文件跟着走；每份目录一个 PID 文件，两份服务不会互相认领。
+SELF=$(readlink -f -- "$0" 2>/dev/null || echo "$0")
+DES_HOME=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd)   # 以脚本自己所在目录为准，不吃继承来的 DES_HOME
+[ -f "$DES_HOME/des.env" ] || { echo "des_service: 缺 $DES_HOME/des.env（路径都从它取，源文件见 ps/board/des.env）" >&2; exit 1; }
+. "$DES_HOME/des.env"
+
+DIR=$DES_HOME
+CONF=$DES_AUTOSTART_CONF
+LOG=$DES_SERVICE_LOG
+PIDF=$DES_PIDF
 
 if [ ! -f "$CONF" ]; then
     cat > "$CONF" <<'EOF'
@@ -26,7 +34,7 @@ EOF
 fi
 . "$CONF"
 
-log() { mkdir -p "$DIR/data"; echo "$(date '+%F %T') $*" >> "$LOG"; }
+log() { mkdir -p "$(dirname "$LOG")"; echo "$(date '+%F %T') $*" >> "$LOG"; }
 
 rotate() {
     if [ -f "$LOG" ] && [ "$(wc -c < "$LOG")" -gt 1048576 ]; then mv "$LOG" "$LOG.1"; fi

@@ -18,7 +18,7 @@
 //                                                                   live + training crops of one class (des_app.json labels)
 //   des_app measure [-n frames] [--image f.png] [--out raw.png] [--dump report.png]
 //                                                                   measure every gear / rack in view; -n > 1: repeatability
-// common: -c <config.json> (default /root/des/des_app.json), --no-rt
+// common: -c <config.json> (default: $DES_CONFIG from des.env, else ./des_app.json — never a hardcoded absolute path)
 //
 // Bring-up order: probe (60 fps without skips) -> locate (thresholds, homography) -> track (belt + tracker)
 // -> arm (after the servos are wired). The NPU pipeline from src/vision/ attaches classes to detections later.
@@ -65,7 +65,7 @@ static double now_s()
 }
 
 struct Args {
-    std::string mode, config = "/root/des/des_app.json", dump;
+    std::string mode, config, dump;   // -c 缺省在 main() 里给：$DES_CONFIG，否则 ./des_app.json（见 des.env）
     std::string board = "9x6", travel = "right", image, out;
     double square = 0;
     bool exhaustive = false;
@@ -394,7 +394,8 @@ static int run_live_mode(des_hw_t &hw, const AppConfig &cfg, const Args &a)
         opt.collect.every = std::max(1, a.every);
         opt.collect.max_per_part = std::max(1, a.maxpp);
         opt.collect.full_every = std::max(0, a.full);
-        if (!a.out.empty()) opt.collect.out = a.out;
+        if (!a.out.empty()) opt.collect.out = a.out;                 // --out 优先
+        else if (const char *e = getenv("DES_COLLECT")) opt.collect.out = e;   // 否则环境里的 DES_COLLECT（des.env）
     }
     if (a.mode == "run") {
         opt.run = true;
@@ -846,6 +847,10 @@ int main(int argc, char **argv)
 {
     Args a;
     if (!parse(argc, argv, a)) { usage(); return 1; }
+    if (a.config.empty()) {   // 没给 -c：环境里的 DES_CONFIG（des.env export 的），否则当前目录的 des_app.json
+        const char *e = getenv("DES_CONFIG");
+        a.config = (e && *e) ? e : "des_app.json";
+    }
 
     AppConfig cfg;
     std::string err = load_config(a.config, cfg);

@@ -1,5 +1,7 @@
 * text=auto
 *.sh   text eol=lf
+# des.env 是被 source 的：值尾部带 \r 会一路带进路径（DES_HOME=/root/des\r），必须 LF，与 *.sh 同一条理由
+*.env  text eol=lf
 *.cmd  text eol=lf
 *.ps1  text eol=crlf
 *.bat  text eol=crlf
@@ -8,3 +10,5 @@
 *.adc  text
 *.sdc  text
 *.bif  text
+# 部署自测的假 ssh / scp 桩没有扩展名，单独钉 LF（CRLF 的 shebang 在 Git Bash 里直接跑不起来）
+scripts/deploy/selftest/fakebin/* text eol=lf

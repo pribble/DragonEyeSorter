@@ -1,17 +1,22 @@
 #!/bin/sh
-# pl_check.sh — PL regression after every new BOOT.bin (board side, /root/des/pl_check.sh). No actuators needed.
+# pl_check.sh — PL regression after every new BOOT.bin (board side; runs from whatever folder it is deployed in).
+# No actuators needed.
 # Checks: des_regs ID / VERSION, sensor frame rate seen by the PL (FRAME_CNT over 1 s, FRAME_PERIOD), des_vision (v6+):
 # register read-back, statistics advancing, pixel clock = CYCLES x fps, display modes 1..5 accepted; des_pwm (v7+):
 # width / enable / lamp read-back and period counter; command response latencies (servo bus, stepper); v9+: stepper
 # target rewrite (TARGET = POS while moving stops there, a target behind ramps down). Prints PASS /
 # FAIL per item and a summary; exit code = failures. Uses the camera (des_app probe in the background).
-cd "$(dirname "$0")" || exit 1
+SELF=$(readlink -f -- "$0" 2>/dev/null || echo "$0")
+DES_HOME=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd)   # 以脚本自己所在目录为准，不吃继承来的 DES_HOME
+[ -f "$DES_HOME/des.env" ] || { echo "pl_check: 缺 $DES_HOME/des.env（路径都从它取，源文件见 ps/board/des.env）" >&2; exit 1; }
+. "$DES_HOME/des.env"
+cd "$DES_HOME" || exit 1
 # the autostart service (des_service.sh) owns the camera / buses: pause it for this run, resume at the end
 SVC_PAUSED=0
 if [ -x ./des_service.sh ] && ./des_service.sh status | grep -q "^des_service: running"; then
     ./des_service.sh stop > /dev/null && SVC_PAUSED=1
 fi
-R=/root/bin/desreg
+R=$DES_TOOLS/desreg
 FAILS=0
 pass() { echo "PASS $*"; }
 fail() { echo "FAIL $*"; FAILS=$((FAILS + 1)); }

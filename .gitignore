@@ -57,6 +57,8 @@ __pycache__/
 *.pyc
 **/build/
 ps/tools/desreg
+# 部署暂存（scripts/deploy/out/）：里面平铺着要上板的那些文件（脚本、配置、编译产物）
+scripts/deploy/out/
 
 # ---------- 5. 模型与训练数据（数据集、权重不入库，见 AGENTS.md 第 7 条） ----------
 *.onnx

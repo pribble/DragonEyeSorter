@@ -19,8 +19,8 @@
 #
 # Targets: desreg (C, no deps), test_scheduler (C++, no deps), test_calib / test_measure / test_npu / des_app (C++, need SDK),
 #          test_belt_hil (board, PL v5+), test_can / canplc (SocketCAN), all, clean.
-# Deploy:  scp build/<prog> $BOARD_HOST:/root/bin/
-#          des_app 连配置一起放 /root/des/（见 README「部署」）。
+# Deploy:  ../scripts/deploy/ 里是上板清单与部署器（对比 / 部署 / 暂存）：make -C ps all 结束会顺手刷一份
+#          ../scripts/deploy/out/（要上板的那一份，不入库；Linux/WSL 上这行会提示找不到 powershell，可忽略）。
 
 # 从 .env 文件读取配置（如果存在）
 -include ../.env.make
@@ -80,6 +80,7 @@ check-board:
 	@$(if $(wildcard $(BOARD_LIBS)),echo BOARD_LIBS ok,$(error BOARD_LIBS 未设置或目录不存在：$(BOARD_LIBS)。$(ENV_HINT)))
 
 all: $(BUILD)/desreg $(BUILD)/test_scheduler $(BUILD)/test_calib $(BUILD)/test_measure $(BUILD)/test_belt_hil $(BUILD)/test_can $(BUILD)/canplc $(BUILD)/des_app
+	-@powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/deploy/deploy.ps1 -Stage
 
 $(BUILD):
 	-@mkdir $(BUILD)

@@ -25,7 +25,7 @@
 | `train/` | 分类模型：合成数据、训练、导出 + UINT8 量化、评估 | Python + ultralytics + ORT（WSL / GPU） |
 | `models/` | `label_list.json`（类别表唯一源） | 数据文件 |
 | `pc/` | PC 端：plc_sim（CAN「产线 PLC」模拟器）、report（测试报告出数） | Python |
-| `scripts/` | 构建与部署：BOOT.bin 打包、写 SD 卡 | PowerShell / Bash |
+| `scripts/` | 构建与部署：`bootbin/` 打 BOOT.bin、`sd_image/` 写 SD 卡、`deploy/` 板端部署清单与上板 | PowerShell / Bash |
 
 ## 硬性约定（违反会导致联调事故）
 

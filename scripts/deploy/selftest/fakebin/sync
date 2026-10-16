@@ -1,0 +1,3 @@
+#!/bin/sh
+# 自测用假 sync（Git Bash 里未必有）
+exit 0

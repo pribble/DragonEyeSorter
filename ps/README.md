@@ -31,7 +31,8 @@ ps/
 │   ├── ui/         #   界面：hmi / ui_input / text_ft / hdmi_out（OpenCV 自绘 + FreeType，不用 Qt）
 │   ├── vision/     #   相机取帧 + 推理封装（厂家 face_detection demo 的 4 个改造件）
 │   └── des_app.json#   配置模板（板上与二进制同目录）
-├── board/          # 上板脚本：des_app.sh（insmod + 启动）/ can_up.sh / pl_check.sh / soak.sh / des_service.sh（自启守护）
+├── board/          # 上板文件：des.env（板端路径唯一来源，.sh 与 des_app 都从它取）+ des_app.sh（insmod + 启动）
+│                   #   / can_up.sh / des_service.sh（自启守护）/ pl_check.sh / soak.sh / display_check.sh
 ├── tools/          # 人敲的命令行：desreg 寄存器调试、canplc（扮「PLC」，回环 / 联调）
 ├── tests/          # test_scheduler（调度库单元）、test_calib（标定，合成图）、test_measure（齿轮 / 齿条测量，合成图）、
 │                   #   test_belt_hil（传送带控制硬件在环，板上 PL v5）、test_can（CAN 协议与收发，回环自测）、
@@ -58,16 +59,16 @@ ps/
 | `des_app collect --cls <类别> [--belt mm/s] [--every N] [--max N] [--full N]` | live + 采训练裁切图（一次一类，按零件分目录；`--full` 另存整帧 + 自动 YOLO 框），见 train/README |
 | `des_app measure [-n 帧] [--image f.png] [--out raw.png] [--dump report.png]` | 每个齿轮 / 齿条都测一遍（定位 → ROI → 测量），打印外径 / 孔径 / 偏心 / 齿数 / 缺陷或长度 / 齿距；`-n` > 1 时零件不动、统计各量均值 / σ / 极差（重复性，测试报告用）；`--out` 存原始帧供 `--image` 离线复测；`--dump` 出标注图（拟合圆、齿条框、r(θ) 曲线）。实物到货后对卡尺真值 |
 | `des_app display [-n 秒]` | 相机 → HDMI 60fps：每帧 BGRA→BGR 进 CMA 显示缓冲 + 切显示 VDMA 帧存（`PARK_PTR`，帧边界生效；地址只在开机提交一次，docs/软件与UI.md）（实测 6.2ms/帧，60fps）；退出恢复 fb0 |
-| `soak.sh [秒] [目录]`（`board/soak.sh`，部署到 /root/des/） | 长时间运行：des_app run + canplc 当 PLC，每分钟记内存 / 负载 / CAN / PL 帧号，结束出 summary.txt（测试报告「连续运行」） |
-| `pl_check.sh`（`board/pl_check.sh`，部署到 /root/des/） | 换比特流后的上板回归（19 项，后台跑 `des_app probe`） |
-| `des_service.sh start\|stop\|restart\|status`（`board/des_service.sh`，部署到 /root/des/） | 开机自启 + 守护：`des_app run --can can0`，崩溃 2s 后重启（退避到 30s，5 分钟内退出 5 次就停），日志 `data/service.log`；设置在 `autostart.conf`（首次运行生成：ENABLED / MODE / CAN / CAN_MODE / ARGS）。带 CAN 时上电是「空闲」，PLC 或界面按启动才动；`--go` 写进 ARGS 机械臂才真动。**装开机自启要改 /etc**：`ln -s /root/des/des_service.sh /etc/init.d/S90des`（经用户同意再装） |
+| `soak.sh [秒] [目录]`（`board/soak.sh`，测试脚本，手动 `scp` 上板） | 长时间运行：des_app run + canplc 当 PLC，每分钟记内存 / 负载 / CAN / PL 帧号，结束出 summary.txt（测试报告「连续运行」） |
+| `pl_check.sh`（`board/pl_check.sh`，测试脚本，手动 `scp` 上板） | 换比特流后的上板回归（19 项，后台跑 `des_app probe`） |
+| `des_service.sh start\|stop\|restart\|status`（`board/des_service.sh`，产品运行时，随部署清单上板） | 开机自启 + 守护：`des_app run --can can0`，崩溃 2s 后重启（退避到 30s，5 分钟内退出 5 次就停），日志 `data/service.log`；设置在 `autostart.conf`（首次运行生成：ENABLED / MODE / CAN / CAN_MODE / ARGS）。带 CAN 时上电是「空闲」，PLC 或界面按启动才动；`--go` 写进 ARGS 机械臂才真动。**装开机自启要改 /etc**：`ln -s /root/des/des_service.sh /etc/init.d/S90des`（经用户同意再装） |
 
 - 坐标约定见 `src/sched/geom.hpp`：图像 px → 台面 mm（单应矩阵，配置 `px_to_table`），件在带上 `s = x − B`（B = 带走过的距离），停带 / 反转都无需特殊处理；停带 = 给步进位置模式写「停在 B = 抓取线 − s」，减速由 PL 梯形曲线完成（`stepper_ctrl`）。目标写得太晚（已在身后）时 PL 减速停在它之后（`AT_TARGET` = 0），调度器按刹车距离判断来不及就转复检、不倒车。
 - 取帧：厂家帧 DMA「提交一块写一帧」，完成后立即重提下一块（4 块环形缓冲）。**实测 SCHED_FIFO 与普通调度都 0 丢帧**，重提 0.2µs —— demo 的 28fps 是串行流水造成的，不是硬件限制。
   PL v4 起相机 59.83fps，`src/des_app.json` 的 `camera.vmax = 2276` 补到 **60.02fps**（20s 1201 帧 0 丢帧）。PL v5 起每帧带 PL 锁存的拍摄时刻带位置（`CAP_*`，实测与「速度 × 读出时间」一致），旧比特流自动退回「完成后读」。
 - 定位：1/4 降采样灰度（480×270）+ Otsu（下限钳位）+ 开运算 + 外轮廓 + minAreaRect，板上 6.8ms/帧。1/2 降采样要 21ms（DMA 缓冲读像素慢），超帧预算。
 - 几何测量（P1）：`src/measure/measure`，齿轮外径 / 根径 / 孔径 / 偏心 / 规格齿数 / 缺料·缺齿·飞边，齿条长度 / 齿距 / 同上，含视差校正，4~5ms / 件；方法与合成图精度见 docs/视觉与检测.md「几何测量」，测试 `build/test_measure`（57 项）。✅ 已接入 live / run（`src/measure/track_measure`：每件取离光轴最近那帧，结果进跟踪表与 CAN；尺寸 / 规格判定 `measure.rule` 默认关）。
-- 配置：`src/des_app.json`（所有标定值，标 TODO 的待实物标定）；产品配方 `src/recipes.json`（齿数 / 外径 / 孔径 / 偏心 / 齿条长度及公差，PLC 的 CAN RECIPE 或界面参数页切换，停机换型）；类别表从 `models/label_list.json` 读（由 `src/app/config.cpp` 解析）。板上部署到 `/root/des/`（`des_app`、`des_app.json`、`label_list.json`）。
+- 配置：`src/des_app.json`（所有标定值，标 TODO 的待实物标定）；产品配方 `src/recipes.json`（齿数 / 外径 / 孔径 / 偏心 / 齿条长度及公差，PLC 的 CAN RECIPE 或界面参数页切换，停机换型）；类别表从 `models/label_list.json` 读（由 `src/app/config.cpp` 解析）。板上部署到 `/root/des/`，走 [scripts/deploy](../scripts/deploy/README.md) 的清单（`des_app`、`des_app.json`、`recipes.json`、`label_list.json` + NPU 模型 + 自启链脚本 `des_service.sh` / `can_up.sh` / `des_app.sh`）。
 
 ## src/vision/ 的定位与改造边界
 
@@ -80,11 +81,14 @@ ps/
 ```bash
 # Windows Git Bash（FD 自带 make 与交叉 gcc）；Linux 上传 CROSS= / SDK= 覆盖
 <FD_ROOT>/toolchain/build-tools/bin/make.exe -C ps   # → ps/build/{desreg,test_*,canplc,des_app}
-scp ps/build/des_app ps/board/des_app.sh ps/src/des_app.json ps/src/recipes.json models/label_list.json $BOARD_HOST:/root/des/
+# 上板走 scripts/deploy（清单 + 对比 / 部署 / 暂存）：make -C ps all 结束会自动刷新 out/
+.\scripts\deploy\deploy.ps1 -DryRun   # 板上现在跑的是哪一份
+.\scripts\deploy\deploy.ps1           # 部署（要更新 des_app 时加 -WithService，自己停/起自启服务）
+# 手工传也行（目标路径就是清单里的那两条）：scp ps/build/des_app ps/src/des_app.json $BOARD_HOST:/root/des/
 # 板上运行：/root/des/des_app.sh probe -n 10   （mipicam.ko 开机不自动加载，脚本缺模块时先 insmod）
 ```
 
-- **`make all` 出 8 个产物**；`test_npu` 要显式点名（`make -C ps build/test_npu`，需模型 JSON + refs）；`tests/bench_cma.cpp` 目前无 Makefile 规则，要用手敲的 g++ 行（见文件头注释）。
+- **`make all` 出 8 个产物**，其中只有 `des_app` 属于板端产品运行时（进部署清单），`desreg` / `canplc` / `test_*` 要用时手动 `scp`；`test_npu` 还要显式点名（`make -C ps build/test_npu`，需模型 JSON + refs）；`tests/bench_cma.cpp` 目前无 Makefile 规则，要用手敲的 g++ 行（见文件头注释）。
 - `des_app` 需要厂家 NPU demo 的 `libs/`（OpenCV 4.7 + ArmNN，CMA 分配在 libarmnn 里），Makefile 变量 `SDK` 指向它；不入库（113MB）。Windows 解压会丢 `.so` 软链接，先跑 `sh scripts/sdk_fix_sonames.sh <SDK> <readelf>` 按 SONAME 补齐。
 - 运行时库路径已写进 rpath（`/opt/armnn_lib/lib`、`/opt/ffmpeg_opencv4.7.0_aarch64/lib`），板上不用设 `LD_LIBRARY_PATH`；`/dev/mipicam` 独占打开，`des_app` 与厂家 demo 二选一运行。
 

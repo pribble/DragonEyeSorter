@@ -46,7 +46,7 @@ struct NpuConfig {
 // local storage of inspection results (part_log.hpp)
 struct StorageConfig {
     bool enabled = true;
-    std::string dir = "/root/des/data/log";
+    std::string dir = "data/log";   // 相对值按 des_app.json 所在目录解析（绝对值原样）→ 测试目录部署时各写各的
     std::string images = "ng";   // none | ng (flap + recheck) | all
     int jpeg_quality = 92;
     int max_queue = 256;

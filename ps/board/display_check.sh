@@ -4,7 +4,7 @@
 #   阶段 2：des_app display（最简单的相机 → HDMI，没有界面、没有处理线程）
 #   阶段 3：恢复自启服务（正常运行：相机 + 叠加 + 底部界面）
 # 同时每段都记录显示 VDMA 状态寄存器的变化（/tmp/display_check_vdma.log）。
-# SSH 断开 / Ctrl-C 也会恢复自启服务。用法：/root/des/display_check.sh [秒]
+# SSH 断开 / Ctrl-C 也会恢复自启服务。用法：./display_check.sh [秒]（在本文件所在目录跑）
 N=${1:-180}
 cd "$(dirname "$0")" || exit 1
 LOG=/tmp/display_check_vdma.log

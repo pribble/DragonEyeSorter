@@ -162,6 +162,9 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             auto &s = cfg.storage;
             get(c, "enabled", s.enabled); get(c, "dir", s.dir); get(c, "images", s.images);
             get(c, "jpeg_quality", s.jpeg_quality); get(c, "max_queue", s.max_queue);
+            // 相对的落盘目录按 des_app.json 所在目录解析（与 label_list / recipes / calib / npu.model 同规矩）：
+            // 生产配置在 /root/des/ → 仍写 /root/des/data/log；测试目录部署的副本 → 写自己的，不污染生产数据
+            if (!s.dir.empty() && s.dir[0] != '/') s.dir = dir_of(path) + "/" + s.dir;
             if (s.images != "none" && s.images != "ng" && s.images != "all")
                 return path + ": storage.images must be none / ng / all";
         }

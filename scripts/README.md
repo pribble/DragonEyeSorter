@@ -4,6 +4,7 @@
 
 | 目录 | 用途 | 运行环境 |
 |---|---|---|
+| [deploy/](deploy/) | 板端部署：`manifest.tsv` 登记"板端产品运行时（主程序 / 配置 / 自启链脚本）上到板子哪里"，`deploy.ps1` / `deploy.sh` 做对比 / 部署 / 暂存；测试与调试件不进清单，手动 `scp` | Windows PowerShell / Git Bash |
 | [bootbin/](bootbin/) | 用新比特流打包 `BOOT.bin`（FSBL、U-Boot 复用厂家的） | Windows PowerShell + FD |
 | [sd_image/](sd_image/) | 写 SD 卡（镜像生成脚本已于 2026-10-15 删除，见下） | Windows 管理员 |
 
