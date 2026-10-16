@@ -11,6 +11,7 @@
 - **两个 AI 同时在改这个仓库**：提交身份、文档同步、Git 与板子的额外规矩见本文件「工作流」与「Git 与板子」两节，必须遵守。
 - 设计与决策：[docs/README.md](docs/README.md)（文档地图）。**已锁定的决策**汇总在 [docs/系统概述](docs/系统概述.md)。
 - 工具链、构建、部署、操作禁忌：[docs/开发环境与构建](docs/开发环境与构建.md)。
+- 板上有什么文件、放哪、上板前对文件本身的要求：[docs/板端布局](docs/板端布局.md)（机器读的清单在 [scripts/deploy/manifest.tsv](scripts/deploy/manifest.tsv)）。
 - 事实裁决顺序：**板卡手册 / 原理图 / 实测数据 > docs/log/ > 设计文档 > README**。
 - **参数一律查文档**：型号、电压、bank 号、寄存器偏移、拨码凭记忆复述最容易错。
 - 标"草案，待确认"的条目视为未拍板，提方案时注明"待确认"。
@@ -35,7 +36,7 @@
 4. **PL 贡献要真实**：评分规则"全部功能仅 PS 实现扣分"——时序关键的脉冲、总线帧、IO 采样放在 PL。
 5. **实测与口径诚实**：指令分辨率 vs 实测精度、"采集 / 显示实时性" vs "推理按物料触发"分开报告；未实测的标 ⚠。
 6. **定量数据进 log**：实测数字写 `docs/log/YYYY-MM-DD-主题.md`，设计文档只保留结论与引用。
-7. **不入库**：数据集、模型权重、压缩包、SD 镜像、内核/rootfs/ArmNN 二进制。采购清单、价格、链接也不放进本仓库。**白名单例外**（2026-10-09 决定）：① `pl/soc_base/`（厂家 soc_prj 底板工程，含加密 IP）；② `scripts/bootbin/parts/` 的 `fsbl.elf`、`u-boot.elf`（BOOT.bin 中不随 PL/应用重编而变的固定零件，有 MD5 记录）与 `MD5SUMS.txt`（零件台账）。`*.bit`/`*.hpf`/`*.elf` 仍总体忽略，BOOT.bin 不入库、打包产出。**BOOT.bin 的第 2 分区一律接我们自己的比特流**（`-Bit` 必填）：厂家基线比特流、厂家完整 BOOT.bin、以及「原样重打包验证」路径已于 2026-10-15 全部下线，`parts/` 只留两个 `.elf`。
+7. **不入库**：数据集、模型权重、压缩包、SD 镜像、内核/rootfs/ArmNN 二进制，以及**能由源码编出来的二进制**（`ps/build/`、`scripts/deploy/out/des_app`）。反过来，**文本类的部署件要入库**：`scripts/deploy/out/` 里平铺的脚本与配置（`des.env`、三个 `.sh`、三个 `.json`、`MD5SUMS.txt`）就是发到板子上的那一份，改一次提交一次（2026-10-16 拍板）。采购清单、价格、链接也不放进本仓库。**白名单例外**（2026-10-09 决定）：① `pl/soc_base/`（厂家 soc_prj 底板工程，含加密 IP）；② `scripts/bootbin/parts/` 的 `fsbl.elf`、`u-boot.elf`（BOOT.bin 中不随 PL/应用重编而变的固定零件，有 MD5 记录）与 `MD5SUMS.txt`（零件台账）。`*.bit`/`*.hpf`/`*.elf` 仍总体忽略，BOOT.bin 不入库、打包产出。**BOOT.bin 的第 2 分区一律接我们自己的比特流**（`-Bit` 必填）：厂家基线比特流、厂家完整 BOOT.bin、以及「原样重打包验证」路径已于 2026-10-15 全部下线，`parts/` 只留两个 `.elf`。
 8. **测试埋点随代码一起写**：时间戳、计数器、统计接口不能等最后补。
 9. **文档不写主机路径**：设计文档、README、脚本注释里只允许出现 ① 仓库内相对路径 ② 板端路径（`/root/des`、`/mnt/mmcblk0p1`、`/opt/armnn_lib`） ③ 环境变量名与 `<占位符>`。要引用外部路径就写 `.env` 的变量（`$FD_ROOT` / `$TD_ROOT` / `$ARMNN_LIB` / `$OPENCV_LIB` / `$FREETYPE_INC` / `$BOARD_LIBS` / `$BOARD_HOST` / `$BOARD_IP` / `$SSH_KEY`）。**板端命令一律写 `ssh $BOARD_HOST` / `scp <本地文件> $BOARD_HOST:<板端路径>`**，不写 IP、不写 `-i <私钥>`。带盘符的主机绝对路径只允许出现在 `docs/log/` 的历史记录与本机 `.env` 里（原因见 [docs/log/README](docs/log/README.md)）。
 10. **新 PL 模块**：跨时钟域用「翻转 + 两级同步」（像素域 ↔ 75MHz 已在 `set_clock_groups -exclusive` 里），不要直接跨域采样；单模块控制在几百 LUT 以内（整片 slice 已约 82%、ERAM 只剩 19 块），大块图像算法放 PS。
