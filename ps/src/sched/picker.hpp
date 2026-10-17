@@ -21,6 +21,8 @@ struct PickerConfig {
     float grip_clear = 4;        // opening = part width + 2 * grip_clear
     float max_open = 60;         // gripper maximum opening (product page: 60 mm)
     float round_ratio = 1.3f;    // len / wid below this: treat as round (gear), any closing angle
+    bool tangential_first = false;   // round parts: try the axis tangential to the arm base first (what a tilted
+    Vec2 arm_base{0, 0};             // grasp needs; set from arm.base_xy / max_tilt_deg in load_config), table mm
     float neighbor_gap = 2;      // keep-out grown around other parts
     float tail_x = 600;          // belt end, where the flap acts
     float flap_lead = 0;         // fire the flap this far before tail_x (mechanical latency)

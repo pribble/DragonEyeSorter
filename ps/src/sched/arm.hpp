@@ -3,6 +3,10 @@
 // Joints (servo bus ids 1..6): #1 base yaw, #2 shoulder pitch, #3 elbow pitch, #4 wrist pitch,
 // #5 wrist rotate, #6 gripper. Picking keeps the gripper pointing straight down, so the pitch chain is
 // a planar 2-link problem to the wrist-pitch axis plus q4 = -90 - (q2 + q3).
+// Tilted grasp (round parts out of the vertical reach): the tool leans away from the base by `tilt` in the arm's
+// vertical plane, q4 = -90 + tilt - (q2 + q3); the fingers must then close along the tangential direction (the one
+// horizontal axis the lean does not tip), so both fingertips stay at the same height. Vertical reach is ~150 mm
+// from the base axis; 30 deg of tilt adds ~60 mm (docs/运动控制与分拣.md).
 //
 // Angle conventions (deg): q1 0 = arm frame +x, CCW +; q2 from horizontal, up +; q3 forearm relative to
 // upper arm (0 = straight, negative = bent down); q4 relative to forearm; q5 0 = fingers close along the
@@ -42,6 +46,8 @@ struct ArmConfig {
     float base_yaw = kPi / 2;    // direction of arm +x in the table frame (rad)
     float belt_z = 0.f;          // belt surface height above the arm base plate (mm) ⚠
     float grip_axis_at_zero = 0; // closing direction at q5 = 0 relative to the radial direction (rad)
+    float max_tilt_deg = 0;      // tilted grasp: lean the tool away from the base up to this (0 = vertical only)
+    float tilt_step_deg = 5;     // tilts tried: 0, step, 2 step, ... (the smallest that reaches wins)
 
     std::array<JointCal, 6> joint{};
     // gripper (#6): count at fully open (max_open mm) and fully closed (0 mm), linear in between ⚠
@@ -70,9 +76,12 @@ struct ServoFrame {
     const char *what = "";
 };
 
-// Inverse kinematics for a grasp point p (arm frame, mm) with the gripper pointing down and the fingers
-// closing along close_axis (arm frame, rad). Returns nullptr on success, else the reason.
-const char *arm_ik(const ArmConfig &c, Vec3 p, float close_axis, JointAngles &out);
+// Inverse kinematics for a grasp point p (arm frame, mm) with the gripper pointing down (tilted away from the base
+// by tilt, rad) and the fingers closing along close_axis (arm frame, rad; with tilt != 0 it must be tangential
+// within 10 deg). Returns nullptr on success, else the reason.
+const char *arm_ik(const ArmConfig &c, Vec3 p, float close_axis, JointAngles &out, float tilt = 0);
+// Closing axis (table frame, rad) tangential to the arm base at table point p: the one a tilted grasp can use.
+float arm_tangential_axis(const ArmConfig &c, Vec2 p_table);
 // Forward kinematics of the grasp point (pitch chain + yaw), for tests and the UI.
 Vec3 arm_fk(const ArmConfig &c, const JointAngles &j);
 
@@ -86,9 +95,12 @@ const char *arm_to_counts(const ArmConfig &c, const JointAngles &j, float grip_m
 JointAngles arm_from_counts(const ArmConfig &c, const std::array<uint16_t, 6> &pos, float &grip_mm);
 
 // Waypoints for one pick: above -> descend -> close -> lift (belt clear) -> bin -> open -> home.
-// prev = counts the arm is at now (sizes the first move time).
+// prev = counts the arm is at now (sizes the first move time). Vertical first; out of reach and the closing axis
+// tangential -> the smallest tilt up to max_tilt_deg that reaches (same tilt above and down: the descent stays
+// vertical). tilt_deg (optional) = the tilt used.
 const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, float open_mm, float part_wid,
-                      int bin, const std::array<uint16_t, 6> &prev, std::vector<ServoFrame> &out);
+                      int bin, const std::array<uint16_t, 6> &prev, std::vector<ServoFrame> &out,
+                      float *tilt_deg = nullptr);
 
 // Hand-eye calibration (des_tool calib-arm): the grasp point of taught poses (forward kinematics, arm frame) and the
 // same marker positions seen by the camera (table frame). Least-squares 2D rigid fit table = base + R(yaw) * arm

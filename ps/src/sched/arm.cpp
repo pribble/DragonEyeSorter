@@ -8,18 +8,22 @@ namespace des {
 
 static constexpr float kDeg = 180.f / kPi;
 
-const char *arm_ik(const ArmConfig &c, Vec3 p, float close_axis, JointAngles &out)
+const char *arm_ik(const ArmConfig &c, Vec3 p, float close_axis, JointAngles &out, float tilt)
 {
     float q1 = std::atan2(p.y, p.x);
     float r = std::hypot(p.x, p.y);
-    float zw = p.z + c.l_wrist + c.l_tool;           // wrist pitch axis straight above the grasp point
-    float dx = r, dz = zw - c.base_h;
+    if (tilt != 0 && std::fabs(wrap_axis(close_axis - q1 - kPi / 2)) > 10.f / kDeg)
+        return "tilted grasp needs a tangential closing axis";
+    const float lt = c.l_wrist + c.l_tool;
+    float zw = p.z + lt * std::cos(tilt);            // wrist pitch axis above the grasp point (behind it when tilted)
+    float dx = r - lt * std::sin(tilt), dz = zw - c.base_h;
+    if (dx < 20) return "too close for this tilt";
     float L1 = c.l_upper, L2 = c.l_fore;
     float c3 = (dx * dx + dz * dz - L1 * L1 - L2 * L2) / (2 * L1 * L2);
     if (c3 > 1.f || c3 < -1.f) return "out of reach";
     float q3 = -std::acos(c3);                        // elbow up
     float q2 = std::atan2(dz, dx) - std::atan2(L2 * std::sin(q3), L1 + L2 * std::cos(q3));
-    float q4 = -kPi / 2 - (q2 + q3);
+    float q4 = -kPi / 2 + tilt - (q2 + q3);
     float q5 = wrap_axis(close_axis - q1 - c.grip_axis_at_zero);
 
     out.q = {q1 * kDeg, q2 * kDeg, q3 * kDeg, q4 * kDeg, q5 * kDeg};
@@ -46,6 +50,11 @@ Vec3 table_to_arm(const ArmConfig &c, Vec2 p, float z_above_belt)
 }
 
 float table_axis_to_arm(const ArmConfig &c, float axis_table) { return wrap_axis(axis_table - c.base_yaw); }
+
+float arm_tangential_axis(const ArmConfig &c, Vec2 p)
+{
+    return wrap_axis(std::atan2(p.y - c.base_xy.y, p.x - c.base_xy.x) + kPi / 2);
+}
 
 const char *arm_to_counts(const ArmConfig &c, const JointAngles &j, float grip_mm, std::array<uint16_t, 6> &pos)
 {
@@ -85,13 +94,23 @@ static uint16_t move_ms(const ArmConfig &c, const std::array<uint16_t, 6> &a, co
 }
 
 const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, float open_mm, float part_wid,
-                      int bin, const std::array<uint16_t, 6> &prev, std::vector<ServoFrame> &out)
+                      int bin, const std::array<uint16_t, 6> &prev, std::vector<ServoFrame> &out, float *tilt_deg)
 {
     out.clear();
     float ax = table_axis_to_arm(c, close_axis_table);
     JointAngles above, down, home, drop;
-    if (const char *why = arm_ik(c, table_to_arm(c, p_table, c.z_safe), ax, above)) return why;
-    if (const char *why = arm_ik(c, table_to_arm(c, p_table, c.z_grasp), ax, down)) return why;
+    const char *vertical_why = nullptr;
+    for (float t = 0;; t += c.tilt_step_deg) {
+        const float tr = t / kDeg;
+        const char *why = arm_ik(c, table_to_arm(c, p_table, c.z_safe), ax, above, tr);
+        if (!why) why = arm_ik(c, table_to_arm(c, p_table, c.z_grasp), ax, down, tr);
+        if (!why) {
+            if (tilt_deg) *tilt_deg = t;
+            break;
+        }
+        if (t == 0) vertical_why = why;
+        if (c.tilt_step_deg <= 0 || t + c.tilt_step_deg > c.max_tilt_deg + 1e-3f) return vertical_why;
+    }
     if (bin < 0 || size_t(bin) >= c.bins.size()) return "no drop pose for bin";
     drop.q = c.bins[bin];
     home.q = c.home_deg;

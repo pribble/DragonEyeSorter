@@ -413,6 +413,66 @@ static void test_arm()
         CHECK(wp[2].pos[5] < wp[1].pos[5], "gripper closes (count drops)");
         CHECK(wp[1].pos[4] == wp[0].pos[4], "wrist rotate fixed while descending");
     }
+
+    // tilted grasp: out of the vertical reach, fingers closing tangentially
+    {
+        ArmConfig t = arm_cfg();
+        JointAngles jv, jt;
+        const Vec3 far{200, 0, 6};   // 200 mm in front of the base axis, at grasp height
+        CHECK(arm_ik(t, far, kPi / 2, jv) != nullptr, "200 mm is out of the vertical reach");
+        const float tilt = 30.f * kPi / 180;
+        const char *w = arm_ik(t, far, kPi / 2, jt, tilt);
+        CHECK(!w, "200 mm tilted 30 deg: %s", w ? w : "ok");
+        if (!w) {
+            Vec3 q = arm_fk(t, jt);
+            CHECK(std::hypot(std::hypot(q.x - far.x, q.y - far.y), q.z - far.z) < 0.01f,
+                  "tilted ik/fk round trip (%.3f, %.3f, %.3f)", q.x, q.y, q.z);
+            CHECK(std::fabs(jt.q[1] + jt.q[2] + jt.q[3] + 60.f) < 1e-3f, "tool leans 30 deg: q2+q3+q4 = %.3f",
+                  jt.q[1] + jt.q[2] + jt.q[3]);
+        }
+        CHECK(arm_ik(t, far, 0.f, jt, tilt) != nullptr, "a tilted grasp refuses a radial closing axis");
+
+        std::array<uint16_t, 6> h{{2048, 2048, 2048, 2048, 2048, 2048}};
+        std::vector<ServoFrame> wt;
+        const Vec2 tp{t.base_xy.x, t.base_xy.y + 200.f};   // base_yaw 90 deg: arm +x = table +y
+        float used = -1;
+        t.max_tilt_deg = 40;
+        w = plan_pick(t, tp, arm_tangential_axis(t, tp), 40, 32, 0, h, wt, &used);
+        CHECK(!w && used > 0 && used <= 40 && wt.size() == 7, "plan_pick 200 mm: %s, tilt %.0f deg", w ? w : "ok",
+              used);
+        CHECK(plan_pick(t, tp, arm_tangential_axis(t, tp) + kPi / 2, 40, 32, 0, h, wt) != nullptr,
+              "radial closing axis at 200 mm: out of reach");
+        const Vec2 np{t.base_xy.x + 10.f, t.base_xy.y + 120.f};
+        w = plan_pick(t, np, arm_tangential_axis(t, np), 40, 32, 0, h, wt, &used);
+        CHECK(!w && used == 0, "120 mm stays vertical: %s, tilt %.0f", w ? w : "ok", used);
+        t.max_tilt_deg = 0;
+        CHECK(plan_pick(t, tp, arm_tangential_axis(t, tp), 40, 32, 0, h, wt) != nullptr,
+              "max_tilt_deg 0: vertical only");
+    }
+}
+
+// round parts: with tilted grasps enabled the picker tries the closing axis tangential to the arm base first
+static void test_picker_tangential()
+{
+    std::mt19937 rng(5);
+    Tracker tr(tracker_cfg());
+    PickerConfig pc;
+    pc.tangential_first = true;
+    pc.arm_base = {380, -170};
+    Picker pk(pc);
+    const std::vector<SimPart> parts = {{-30, 20, 30, 30, 0.7f, 0}};
+    double B = 0;
+    for (uint32_t f = 0; f < 60; f++, B += 2) tr.update(observe(parts, B, f, rng));
+    const Track *t = nullptr;
+    for (const Track &x : tr.tracks())
+        if (x.n_geom > 0) t = &x;
+    CHECK(t != nullptr, "no track for the round part");
+    if (!t) return;
+    float ax = 0, op = 0;
+    const char *w = pk.plan_grip(tr, *t, B, ax, op);
+    CHECK(!w, "round part grip: %s", w ? w : "ok");
+    const float want = std::atan2(t->y - pc.arm_base.y, t->x_at(B) - pc.arm_base.x) + kPi / 2;
+    CHECK(std::fabs(wrap_axis(ax - want)) < 1e-4f, "tangential axis first: %.4f vs %.4f", ax, wrap_axis(want));
 }
 
 static void test_arm_base_fit()
@@ -467,6 +527,7 @@ int main()
     test_votes();
     test_flaps();
     test_picker();
+    test_picker_tangential();
     test_arm();
     test_arm_base_fit();
     printf("%d passed, %d failed\n", g_pass, g_fail);

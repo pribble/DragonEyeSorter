@@ -19,15 +19,19 @@ const char *Picker::plan_grip(const Tracker &tr, const Track &t, double belt_mm,
     open_mm = (round ? t.len : t.wid) + 2 * cfg_.grip_clear;
     if (open_mm > cfg_.max_open) return "too wide";
 
-    // elongated part: close across its width; round part: any angle, try every 15 deg
+    // elongated part: close across its width; round part: any angle, try every 15 deg (starting tangential to the
+    // arm base when tilted grasps are enabled: only that axis keeps both fingertips level while leaning)
+    Vec2 c{t.x_at(belt_mm), t.y};
     float cand[12];
     int n = 0;
-    if (round)
-        for (int k = 0; k < 12; k++) cand[n++] = t.axis + k * kPi / 12;
-    else
+    if (round) {
+        const float a0 = cfg_.tangential_first ? std::atan2(c.y - cfg_.arm_base.y, c.x - cfg_.arm_base.x) + kPi / 2
+                                               : t.axis;
+        for (int k = 0; k < 12; k++) cand[n++] = a0 + k * kPi / 12;
+    } else {
         cand[n++] = t.axis + kPi / 2;
+    }
 
-    Vec2 c{t.x_at(belt_mm), t.y};
     float off = open_mm / 2 + cfg_.finger_t / 2;
     for (int i = 0; i < n; i++) {
         Vec2 u{std::cos(cand[i]), std::sin(cand[i])};

@@ -119,6 +119,7 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             a.base_yaw = yaw_deg * kPi / 180.f;
             a.grip_axis_at_zero = g0_deg * kPi / 180.f;
             get(c, "belt_z", a.belt_z);
+            get(c, "max_tilt_deg", a.max_tilt_deg); get(c, "tilt_step_deg", a.tilt_step_deg);
             get(c, "grip_open_count", a.grip_open_count); get(c, "grip_closed_count", a.grip_closed_count);
             get(c, "grip_max_open", a.grip_max_open); get(c, "grip_squeeze", a.grip_squeeze);
             get(c, "z_safe", a.z_safe); get(c, "z_grasp", a.z_grasp); get(c, "joint_speed", a.joint_speed);
@@ -292,6 +293,8 @@ std::string load_config(const std::string &path, AppConfig &cfg)
     if (cfg.pick_after_fov > 0) cfg.picker.pick_x = cfg.tracker.fov_x1 + cfg.pick_after_fov;   // after calib.json
     cfg.picker.tail_x = cfg.tracker.tail_x;
     cfg.picker.recheck_outlet = 0;
+    cfg.picker.arm_base = cfg.arm.base_xy;                 // after calib.json (calib-arm may have moved it)
+    cfg.picker.tangential_first = cfg.arm.max_tilt_deg > 0;
 
     if (!cfg.npu.model.empty() && cfg.npu.model[0] != '/') cfg.npu.model = dir_of(path) + "/" + cfg.npu.model;
     std::string ll = cfg.label_list;
