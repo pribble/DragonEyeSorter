@@ -6,6 +6,13 @@
 
 namespace des {
 
+int Picker::gate_for(int outlet) const
+{
+    for (size_t g = 0; g < cfg_.gates.size(); g++)
+        if (cfg_.gates[g].outlet == outlet) return int(g);
+    return -1;
+}
+
 void Picker::to_recheck(Track &t, const char *why)
 {
     t.disp = Disposition::Recheck;
@@ -111,30 +118,42 @@ Picker::Output Picker::tick(Tracker &tr, const Input &in)
         }
     }
 
-    // tail flap: every decided part that is not going to be picked
+    // NG / recheck parts: an outlet with a side gate is served there, everything else rides to the belt end
     for (const Track &t : tr.tracks()) {
         if (t.state != TrackState::Decided) continue;
         if (t.disp != Disposition::Flap && t.disp != Disposition::Recheck) continue;
         FlapEvent e;
         e.track_id = t.id;
         e.outlet = t.disp == Disposition::Flap ? t.dest : cfg_.recheck_outlet;
-        e.belt_mm = cfg_.tail_x - cfg_.flap_lead - t.s;
+        e.gate = gate_for(e.outlet);
+        e.belt_mm = (e.gate >= 0 ? cfg_.gates[e.gate].x : cfg_.tail_x) - t.s;
         out.flaps.push_back(e);
+    }
+    // a closed gate diverts whatever reaches it: if another part not meant for that gate would meet it while it is
+    // closed (or still sweeping in), this part is not diverted and rides on to the recheck box. Decided only before
+    // the gate starts closing; once committed it stays committed.
+    for (FlapEvent &e : out.flaps) {
+        if (e.gate < 0 || B >= e.belt_mm - cfg_.gate_prepare) continue;
+        const float gx = cfg_.gates[e.gate].x;
+        const double lo = e.belt_mm - cfg_.gate_prepare - cfg_.gate_gap, hi = e.belt_mm + cfg_.gate_clear;
+        bool hit = false;
+        for (const Track &o : tr.tracks()) {
+            if (o.id == e.track_id || o.state == TrackState::Done || o.state == TrackState::Picking) continue;
+            if (o.state == TrackState::Decided && o.disp == Disposition::Pick) continue;   // stops at the pick line
+            if (o.state == TrackState::Decided && o.disp == Disposition::Flap && gate_for(o.dest) == e.gate) continue;
+            const double b = gx - o.s;
+            if (b >= lo && b <= hi) { hit = true; break; }
+        }
+        if (!hit) continue;
+        Track *t = tr.find(e.track_id);
+        if (t) to_recheck(*t, "gate conflict");
+        e.outlet = cfg_.recheck_outlet;
+        e.gate = -1;
+        e.belt_mm = cfg_.tail_x - (t ? t->s : 0.f);
+        stats.flap_conflicts++;
     }
     std::sort(out.flaps.begin(), out.flaps.end(),
               [](const FlapEvent &a, const FlapEvent &b) { return a.belt_mm < b.belt_mm; });
-    for (size_t i = 1; i < out.flaps.size(); i++) {
-        FlapEvent &a = out.flaps[i - 1], &b = out.flaps[i];
-        if (a.outlet != b.outlet && b.belt_mm - a.belt_mm < cfg_.flap_conflict) {
-            // the flap cannot switch between two close parts: both go to recheck
-            for (FlapEvent *e : {&a, &b}) {
-                e->outlet = cfg_.recheck_outlet;
-                Track *t = tr.find(e->track_id);
-                if (t && t->disp != Disposition::Recheck) to_recheck(*t, "flap conflict");   // keep earlier reason
-            }
-            stats.flap_conflicts++;
-        }
-    }
     return out;
 }
 

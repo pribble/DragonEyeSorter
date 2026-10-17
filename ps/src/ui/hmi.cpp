@@ -355,7 +355,7 @@ void Hmi::page_overview(cv::Mat &img, double)
         const std::string cls = r.cls >= 0 && size_t(r.cls) < class_cn_.size() ? class_cn_[r.cls] : "未分类";
         text(img, std::to_string(r.track_id), cx[0], y, 19, WHITE);
         text(img, cls, cx[1], y, 19, WHITE);
-        text(img, r.disp == "pick" ? "抓取" : r.disp == "flap" ? "翻板" : "复检", cx[2], y, 19, col);
+        text(img, r.disp == "pick" ? "抓取" : r.disp == "flap" ? "挡板" : "复检", cx[2], y, 19, col);
         text(img, r.dest, cx[3], y, 17, WHITE);
         text(img, r.meas.valid ? fmt("%.2f", r.meas.size) : "—", cx[4], y, 19, WHITE);
         text(img, r.cls >= 0 ? fmt("%.2f", r.conf) : "—", cx[5], y, 19, WHITE);
@@ -521,7 +521,7 @@ void Hmi::page_records(cv::Mat &img)
         text(img, std::to_string(r.track_id), cx[1], y, 18, WHITE);
         text(img, r.cls >= 0 && size_t(r.cls) < class_cn_.size() ? class_cn_[r.cls] : "未分类", cx[2], y, 18, WHITE);
         text(img, r.cls >= 0 ? fmt("%.2f", r.conf) : "—", cx[3], y, 18, WHITE);
-        text(img, r.disp == "pick" ? "抓取" : r.disp == "flap" ? "翻板" : "复检", cx[4], y, 18, col);
+        text(img, r.disp == "pick" ? "抓取" : r.disp == "flap" ? "挡板" : "复检", cx[4], y, 18, col);
         text(img, r.why.substr(0, 42), cx[5], y, 16, WHITE);
         text(img, r.meas.valid ? fmt("%.3f", r.meas.size) : "—", cx[6], y, 18, WHITE);
     }
@@ -547,7 +547,7 @@ void Hmi::page_records(cv::Mat &img)
     };
     line("件号 " + std::to_string(r.track_id) + "   " + (r.cls >= 0 && size_t(r.cls) < class_cn_.size() ? class_cn_[r.cls] : "未分类"),
          WHITE);
-    line(std::string(r.disp == "pick" ? "抓取 → " : r.disp == "flap" ? "翻板 → " : "复检 → ") + r.dest,
+    line(std::string(r.disp == "pick" ? "抓取 → " : r.disp == "flap" ? "挡板 → " : "复检 → ") + r.dest,
          r.disp == "pick" ? GREEN : r.disp == "flap" ? RED : ORANGE);
     line(r.why.substr(0, 26), DIM);
     if (m.valid) {

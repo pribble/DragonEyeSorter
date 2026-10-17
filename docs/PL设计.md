@@ -24,7 +24,7 @@
 | `stepper_ctrl` | 步进脉冲 + 梯形 / S 曲线加减速 + 速度 / 位置模式 + 已发脉冲计数 | 自研 | P0 | ✅ v9 在板；TB6600 + 57 步进走带、3200 步定位准确（[log/2026-10-16-传送带首次上电](log/2026-10-16-传送带首次上电.md)） |
 | `servo_bus`（= `servo_bus_master`） | 半双工 UART 115200 + 德晟 v4.01 帧 + SYNC WRITE / REG WRITE + ACTION + 位置 / 电流 / 温度轮询 | 自研 | P0 | ✅ v2 加入，板端 v9；6 个舵机全部应答（[log/2026-10-17-舵机总线首次联通](log/2026-10-17-舵机总线首次联通.md)） |
 | `io_sync` | 急停（锁存）/ 对射 / 限位去抖 + 统一时间戳同步采样 | 自研 | P0 | ⬜ 未接入寄存器总线 |
-| `des_pwm` | 带尾两级翻板舵机 PWM，按带位置触发 | 自研 | P1 | ✅ v8 上板验证（读回 / 50Hz，未接舵机）；v10 源码去光源输出、未上板 |
+| `des_pwm` | 两个侧边导流挡板的舵机 PWM，按带位置触发 | 自研 | P1 | ✅ v8 上板验证（读回 / 50Hz，未接舵机）；v10 源码去光源输出、未上板 |
 | `encoder_qei` | 编码器 4 倍频计数 + 测速 + 失步偏差 | 自研 | P1 | ⬜ 未做 |
 | `des_vision` | 边缘 / 二值显示 + ROI 投影测尺寸 | 自研 | P1 | ✅ v8 上板，6 种模式实画面验证、统计读回正确（[log/2026-10-11-软件闭环_NPU_界面_PL视觉](log/2026-10-11-软件闭环_NPU_界面_PL视觉.md)） |
 | `rs485_modbus` | Modbus-RTU 主站 | 自研 | P1 | ⬜ 未做 |
@@ -162,9 +162,9 @@
 | 0x33C | R | `CYCLES` 每帧像素时钟数 |
 | 0x340 | R | `ACTIVE` 正在用的设置：[2:0] 模式、[8] FULL、[23:16] 阈值、[27:24] LANES |
 
-### 带尾翻板 `des_pwm`（`PL_BASE + 0x400`，✅ v8 上板验证，未接舵机）
+### 导流挡板 `des_pwm`（`PL_BASE + 0x400`，✅ v8 上板验证，未接舵机）
 
-[pl/soc_base/src/des/des_pwm.v](../pl/soc_base/src/des/des_pwm.v)：2 路 50Hz 舵机 PWM（两级翻板，MG996R）。脉宽单位 µs，新值在下一周期开头生效（不出半截脉冲），钳位 2550µs；周期计数供 PS 确认已生效。对应领域 3 中级「NG 不良品输出 IO 控制；不良品实时分拣触发」。仿真 [pl/sim/tb_des_pwm.v](../pl/sim/tb_des_pwm.v) 11 项过。
+[pl/soc_base/src/des/des_pwm.v](../pl/soc_base/src/des/des_pwm.v)：2 路 50Hz 舵机 PWM（两个侧边导流挡板，MG996R；通道 = 挡板序号）。脉宽单位 µs，新值在下一周期开头生效（不出半截脉冲），钳位 2550µs；周期计数供 PS 确认已生效。对应领域 3 中级「NG 不良品输出 IO 控制；不良品实时分拣触发」。仿真 [pl/sim/tb_des_pwm.v](../pl/sim/tb_des_pwm.v) 11 项过。
 
 - 管脚：#16 `FORK_PWM` = PIN18 Y6、#18 `FLAP2_PWM` = PIN20 Y8。
 - PS 侧 `src/sched/flap`：零件到达前 40mm 打到位、过去 60mm 释放。

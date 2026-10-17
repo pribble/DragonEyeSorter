@@ -106,7 +106,6 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             get(c, "reach_y0", p.reach_y0); get(c, "reach_y1", p.reach_y1); get(c, "brake_margin", p.brake_margin);
             get(c, "finger_w", p.finger_w); get(c, "finger_t", p.finger_t); get(c, "grip_clear", p.grip_clear);
             get(c, "max_open", p.max_open); get(c, "round_ratio", p.round_ratio); get(c, "neighbor_gap", p.neighbor_gap);
-            get(c, "flap_lead", p.flap_lead); get(c, "flap_conflict", p.flap_conflict);
         }
         if (j.contains("arm")) {
             const json &c = j["arm"];
@@ -153,8 +152,21 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             const json &c = j["flaps"];
             auto &f = cfg.flaps;
             get(c, "enabled", f.enabled); get(c, "prepare_mm", f.prepare_mm); get(c, "clear_mm", f.clear_mm);
-            get(c, "f1_pass_us", f.f1_pass_us); get(c, "f1_ng_us", f.f1_ng_us);
-            get(c, "f2_rework_us", f.f2_rework_us); get(c, "f2_scrap_us", f.f2_scrap_us);
+            get(c, "gap_mm", f.gap_mm);
+            if (c.contains("gates")) {
+                f.gates.clear();
+                for (const json &gj : c["gates"]) {
+                    FlapConfig::Gate g;
+                    get(gj, "after_pick_mm", g.after_pick_mm); get(gj, "outlet", g.outlet_name);
+                    get(gj, "open_us", g.open_us); get(gj, "closed_us", g.closed_us);
+                    g.outlet = -1;
+                    for (size_t k = 0; k < cfg.outlets.size(); k++) if (cfg.outlets[k] == g.outlet_name) g.outlet = int(k);
+                    if (g.outlet < 0) return path + ": flaps.gates outlet \"" + g.outlet_name + "\" is not in outlets";
+                    if (g.outlet == 0) return path + ": flaps.gates: the recheck outlet is the belt end, not a gate";
+                    f.gates.push_back(g);
+                }
+                if (f.gates.size() > 2) return path + ": flaps.gates: at most 2 (des_pwm has 2 channels)";
+            }
         }
         if (j.contains("npu")) {
             const json &c = j["npu"];
@@ -295,6 +307,12 @@ std::string load_config(const std::string &path, AppConfig &cfg)
     cfg.picker.recheck_outlet = 0;
     cfg.picker.arm_base = cfg.arm.base_xy;                 // after calib.json (calib-arm may have moved it)
     cfg.picker.tangential_first = cfg.arm.max_tilt_deg > 0;
+    cfg.picker.gates.clear();                              // side gates exist for the picker only once mounted
+    if (cfg.flaps.enabled)
+        for (const FlapConfig::Gate &g : cfg.flaps.gates) cfg.picker.gates.push_back({cfg.picker.pick_x + g.after_pick_mm, g.outlet});
+    cfg.picker.gate_prepare = cfg.flaps.prepare_mm;
+    cfg.picker.gate_clear = cfg.flaps.clear_mm;
+    cfg.picker.gate_gap = cfg.flaps.gap_mm;
 
     if (!cfg.npu.model.empty() && cfg.npu.model[0] != '/') cfg.npu.model = dir_of(path) + "/" + cfg.npu.model;
     std::string ll = cfg.label_list;

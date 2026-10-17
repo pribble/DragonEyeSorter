@@ -225,15 +225,16 @@ void Runner::cycle(Tracker &tr, Picker &pk)
         in.arm_clear = arm_clear_;
         Picker::Output out = pk.tick(tr, in);
         belt_.apply(out.belt);
-        // belt-end flaps follow the picker's flap events (two stages, des_pwm; no-op before v7 or when disabled)
-        if (cfg_.flaps.enabled) {
+        // side diverter gates follow the picker's flap events (des_pwm channel = gate; no-op before v7 or when disabled)
+        if (cfg_.flaps.enabled && !cfg_.flaps.gates.empty()) {
             const FlapSequencer::State &fs = flaps_.update(out.flaps, in.belt_mm);
-            for (int ch = 0; ch < 2; ch++)
+            const int n = int(std::min<size_t>(cfg_.flaps.gates.size(), 2));
+            for (int ch = 0; ch < n; ch++)
                 if (fs.us[ch] != flap_us_[ch]) {
                     des_pwm_set(hw_, ch, fs.us[ch]);
                     flap_us_[ch] = fs.us[ch];
                 }
-            if (!pwm_enabled_) pwm_enabled_ = des_pwm_enable(hw_, 3u) == DES_OK;   // both flaps
+            if (!pwm_enabled_) pwm_enabled_ = des_pwm_enable(hw_, n == 2 ? 3u : 1u) == DES_OK;
         }
         if (out.have_job) {
             std::lock_guard<std::mutex> lk(m_);

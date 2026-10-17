@@ -259,25 +259,62 @@ static void test_votes()
 // two-stage flaps follow the picker's flap events: set prepare_mm ahead, held until clear_mm past, rest = recheck
 static void test_flaps()
 {
-    FlapConfig fc;   // prepare 40, clear 60, f1 1000 / 1900, f2 1000 / 1900
+    FlapConfig fc;   // prepare 110, clear 190
+    fc.gates.resize(2);
+    fc.gates[0].outlet = 1; fc.gates[0].open_us = 1000; fc.gates[0].closed_us = 1900;
+    fc.gates[1].outlet = 2; fc.gates[1].open_us = 1100; fc.gates[1].closed_us = 1800;
     FlapSequencer fs(fc);
-    std::vector<FlapEvent> ev = {{1, 1, 100.0}, {2, 2, 200.0}, {3, 0, 300.0}};   // scrap, rework, recheck
+    // part 1 -> gate 0 (meets it at belt 300), part 3 -> belt end (recheck), part 2 -> gate 1 (at 700)
+    std::vector<FlapEvent> ev = {{1, 1, 300.0, 0}, {3, 0, 650.0, -1}, {2, 2, 700.0, 1}};
     auto at = [&](double b) { return fs.update(ev, b); };
-    FlapSequencer::State s = at(50);
-    CHECK(s.track_id == -1 && s.us[0] == 1000, "rest: stage 1 lets parts through to recheck");
-    s = at(61);
-    CHECK(s.track_id == 1 && s.us[0] == 1900 && s.us[1] == 1900, "part 1 (scrap) set 40 mm ahead: %d %d %d",
-          s.track_id, s.us[0], s.us[1]);
-    s = at(159);
-    CHECK(s.track_id == 1, "held while part 1 passes");
-    s = at(160);
-    CHECK(s.track_id == 2 && s.us[0] == 1900 && s.us[1] == 1000, "part 2 (rework) next: %d %d %d", s.track_id, s.us[0],
-          s.us[1]);
-    s = at(261);
-    CHECK(s.track_id == 3 && s.us[0] == 1000, "part 3 (recheck): stage 1 straight");
-    s = at(400);
-    CHECK(s.track_id == -1 && s.us[0] == 1000 && fs.served == 3, "all served, resting (%llu)",
+    FlapSequencer::State s = at(100);
+    CHECK(s.us[0] == 1000 && s.us[1] == 1100 && s.track_id[0] == -1 && s.track_id[1] == -1, "rest: both gates open");
+    s = at(191);
+    CHECK(s.track_id[0] == 1 && s.us[0] == 1900 && s.us[1] == 1100, "gate 0 closes 110 mm ahead of part 1: %d %d %d",
+          s.track_id[0], s.us[0], s.us[1]);
+    s = at(489);
+    CHECK(s.track_id[0] == 1, "gate 0 held while part 1 slides off");
+    ev.erase(ev.begin());   // part 1 left the belt: its event is gone, the gate still waits until clear_mm
+    s = at(489.5);
+    CHECK(s.track_id[0] == 1, "held after the event vanished");
+    s = at(490);
+    CHECK(s.track_id[0] == -1 && s.us[0] == 1000, "gate 0 reopens 190 mm past");
+    s = at(600);
+    CHECK(s.track_id[1] == 2 && s.us[1] == 1800 && s.us[0] == 1000, "gate 1 for part 2; the recheck part closes none");
+    s = at(900);
+    CHECK(s.track_id[0] == -1 && s.track_id[1] == -1 && fs.served == 2, "all open, served %llu",
           (unsigned long long)fs.served);
+}
+
+// a lone NG part is routed to its gate; with no gates configured it rides to the belt end
+static void test_gate_events()
+{
+    std::mt19937 rng(7);
+    for (int with_gates = 1; with_gates >= 0; with_gates--) {
+        Tracker tr(tracker_cfg());
+        PickerConfig pc;
+        pc.pick_x = 400; pc.tail_x = 800;
+        if (with_gates) pc.gates = {{470, 1}, {570, 2}};
+        Picker pk(pc);
+        const std::vector<SimPart> parts = {{-30, 5, 28, 28, 0.f, 1}};   // gear_short -> outlet 1 (scrap)
+        Picker::Output out;
+        double B = 0;
+        for (uint32_t f = 0; f < 400; f++, B += 1) {
+            tr.update(observe(parts, B, f, rng));
+            Picker::Input in;
+            in.belt_mm = B; in.brake_mm = 2; in.belt_stopped = false;
+            out = pk.tick(tr, in);
+            if (!out.flaps.empty()) break;
+        }
+        CHECK(out.flaps.size() == 1, "%s: %zu flap events", with_gates ? "gates" : "no gates", out.flaps.size());
+        if (out.flaps.size() != 1) continue;
+        const FlapEvent &e = out.flaps[0];
+        const Track *t = tr.find(e.track_id);
+        const float x = with_gates ? 470.f : 800.f;
+        CHECK(e.outlet == 1 && e.gate == (with_gates ? 0 : -1) && t && std::fabs(e.belt_mm - (x - t->s)) < 1e-3,
+              "%s: outlet %d gate %d belt %.1f", with_gates ? "gates" : "no gates", e.outlet, e.gate, e.belt_mm);
+        CHECK(pk.stats.flap_conflicts == 0, "lone part: no conflict");
+    }
 }
 
 static void test_picker()
@@ -286,6 +323,7 @@ static void test_picker()
     Tracker tr(tracker_cfg());
     PickerConfig pc;
     pc.pick_x = 400; pc.tail_x = 600; pc.reach_y0 = -80; pc.reach_y1 = 80;
+    pc.gates = {{470, 1}, {570, 2}};   // side gates: scrap, rework
     Picker pk(pc);
     std::vector<SimPart> parts = {
         {-30, 5, 30, 30, 0.f, 0},          // gear_ok
@@ -526,6 +564,7 @@ int main()
     test_recipes();
     test_votes();
     test_flaps();
+    test_gate_events();
     test_picker();
     test_picker_tangential();
     test_arm();

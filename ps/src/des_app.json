@@ -21,7 +21,7 @@
   "picker_comment": "pick_after_fov_mm > 0 时抓取线 = 标定出的视野下游边 fov_x1 + 该值（用户 10-11 定 80mm），pick_x 被覆盖；arm.base_xy 的 x 应约等于抓取线（实测）",
   "picker": { "pick_after_fov_mm": 80, "pick_x": 380, "pick_tol": 3, "reach_y0": -80, "reach_y1": 80, "brake_margin": 5,
               "finger_w": 12, "finger_t": 6, "grip_clear": 4, "max_open": 60, "round_ratio": 1.3,
-              "neighbor_gap": 2, "flap_lead": 0, "flap_conflict": 30 },
+              "neighbor_gap": 2 },
 
   "measure_comment": "几何测量（docs/视觉与检测.md「几何测量」）：每件在离光轴最近的那帧测一次（per_frame = 每帧最多测几件，4~5ms/件）。TODO camera_h_mm = 0 表示不做视差校正，装好相机后填实测相机高度；gear_h_mm / rack_h_mm 填卡尺量的厚度；walls_visible 看实拍侧壁亮不亮。rule = 尺寸超差 / 规格混料 → ng_outlet（只改判 NPU 判 OK 的件），标定实测后再开 enabled",
   "measure": { "enabled": true, "per_frame": 1, "gear_ratio": 0.6, "margin_mm": 3, "improve": 0.75,
@@ -52,9 +52,10 @@
     "bins_deg": [[120, 40, -100, -30, 0], [-120, 40, -100, -30, 0]]
   },
 
-  "flaps_comment": "带尾两级翻板（des_pwm，v7 比特流；MG996R）：第 1 级 复检 / NG，第 2 级 返修 / 报废。TODO 装好后实测各位置脉宽（us），再开 enabled",
-  "flaps": { "enabled": false, "prepare_mm": 40, "clear_mm": 60,
-             "f1_pass_us": 1000, "f1_ng_us": 1900, "f2_rework_us": 1000, "f2_scrap_us": 1900 },
+  "flaps_comment": "侧边导流挡板（des_pwm 通道 = 挡板序号，MG996R）：after_pick_mm = 拦截点（合上的摆杆与零件摆放带中线的交点）在抓取线下游多远；没有挡板的去向（复检）走到带尾。零件到拦截点前 prepare_mm 合上、过后 clear_mm 打开；合上期间会碰到别的件则这件改走复检。TODO 装好后用 desreg pwm 实测开 / 合脉宽、点动皮带标拦截点，再开 enabled",
+  "flaps": { "enabled": false, "prepare_mm": 110, "clear_mm": 190, "gap_mm": 40,
+             "gates": [ { "after_pick_mm": 70,  "outlet": "scrap",  "open_us": 1000, "closed_us": 1900 },
+                        { "after_pick_mm": 170, "outlet": "rework", "open_us": 1000, "closed_us": 1900 } ] },
 
   "storage_comment": "本地存储（赛题硬性项②）：每件判定后一行 CSV（<dir>/<日期>/parts_<会话>.csv）+ 零件裁切图（images: none / ng = 翻板和复检件 / all）。dir 不写就是 data/log、按本文件所在目录解析（生产配置 → /root/des/data/log；把这份配置连同程序拷到别的目录部署时，数据就落在那个目录，不污染生产数据），写绝对路径则原样用。板子没有 RTC，日期目录按系统时钟，测试前先对时",
   "storage": { "enabled": true, "images": "ng", "jpeg_quality": 92, "max_queue": 256 },

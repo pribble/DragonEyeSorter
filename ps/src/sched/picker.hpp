@@ -24,10 +24,17 @@ struct PickerConfig {
     bool tangential_first = false;   // round parts: try the axis tangential to the arm base first (what a tilted
     Vec2 arm_base{0, 0};             // grasp needs; set from arm.base_xy / max_tilt_deg in load_config), table mm
     float neighbor_gap = 2;      // keep-out grown around other parts
-    float tail_x = 600;          // belt end, where the flap acts
-    float flap_lead = 0;         // fire the flap this far before tail_x (mechanical latency)
-    float flap_conflict = 30;    // flap parts with different outlets closer than this both go to recheck
+    float tail_x = 600;          // belt end: parts no gate takes fall into the recheck box there
     int recheck_outlet = 0;      // outlet index for Disposition::Recheck
+    // side diverter gates (flap.hpp): contact point = table x where a part's centre meets the closed paddle
+    struct Gate {
+        float x = 0;
+        int outlet = 1;
+    };
+    std::vector<Gate> gates;     // empty = no gates: every NG / recheck part rides to the belt end
+    float gate_prepare = 110;    // a gate closes this far before the part reaches its contact point ...
+    float gate_clear = 190;      // ... and reopens this far after it
+    float gate_gap = 40;         // another part meeting the gate in [b - prepare - gap, b + clear]: conflict
 };
 
 struct PickJob {
@@ -43,7 +50,8 @@ struct PickJob {
 struct FlapEvent {
     int track_id = 0;
     int outlet = 0;
-    double belt_mm = 0;          // the part reaches tail_x - flap_lead when the belt travel equals this
+    double belt_mm = 0;          // the part's centre reaches its gate's contact point (or tail_x) at this belt travel
+    int gate = -1;               // index into PickerConfig::gates, -1 = belt end (recheck box)
 };
 
 struct BeltPlan {
@@ -91,6 +99,7 @@ public:
 
 private:
     void to_recheck(Track &t, const char *why);
+    int gate_for(int outlet) const;
     PickerConfig cfg_;
     int committed_id_ = 0;       // target the belt has already been told to stop for
 };
