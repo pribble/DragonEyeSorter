@@ -364,7 +364,7 @@ int main()
         Scene b = render(rack(cr, 50, 15, 25 * kPi / 180, {}), {}, 1.f);
         cv::Mat gray = cv::max(a.img, b.img), bgra;
         cv::cvtColor(gray, bgra, cv::COLOR_GRAY2BGRA);
-        if (const char *save = getenv("TEST_MEASURE_SAVE"))   // frame for des_app measure --image (px_to_table = S)
+        if (const char *save = getenv("TEST_MEASURE_SAVE"))   // frame for des_tool measure --image (px_to_table = S)
             printf("saved %s: %d\n", save, int(cv::imwrite(save, gray)));
         TrackerConfig tc;
         tc.fov_x0 = 0; tc.fov_x1 = 1920 * S; tc.decide_x = 1000; tc.tail_x = 2000;

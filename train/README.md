@@ -8,14 +8,14 @@
 
 **量化实验（合成数据，ReLU 模型）**：校准方法 MinMax / Entropy / Percentile 结果相同（uint8 96.46%）→ 损失来自权重 per-tensor 量化；per-channel 在 PC 上 97.7%，但**板上 NPU 推理中止**（只支持 per-tensor，与厂家模型一致）。要补这 2 个点：跨层均衡（ReLU 下严格等价）或量化感知训练，等实物数据再看值不值。
 
-**ArmNN 坑**：量化后必须做形状推断（`export_npu.py` 已做），缺张量形状时板上解析器直接段错误、不打日志。**准确率以板上 NPU 实测为准**：`NPU_EVAL_DIR=<val 目录> test_npu <model.json> <refs> 100`。
+**ArmNN 已知问题**：量化后必须做形状推断（`export_npu.py` 已做），缺张量形状时板上解析器直接段错误、不打日志。**准确率以板上 NPU 实测为准**：`NPU_EVAL_DIR=<val 目录> test_npu <model.json> <refs> 100`。
 
 **训练和推理用同一个裁切函数**（`roi_crop`），归一化一致（RGB、÷255、均值 0）——精度不掉的前提。
 
 ## 流程
 
 ```
-采集（板上）  des_app collect --cls gear_ok          一次只放一类零件，每件自动存 ≤10 张裁切图
+采集（板上）  des_tool.sh collect --cls gear_ok     一次只放一类零件，每件自动存 ≤10 张裁切图
      ↓        /root/des/data/collect/<会话>_<类别>/<id>_<类别>/*.jpg
 整理（PC）    prepare_dataset.py                      合并会话，按「零件」分 train / val（不按图片，防同件两边都有）
      ↓
@@ -27,6 +27,8 @@
      ↓
 上板          scp 模型 + JSON → /root/des/；test_npu 核对 NPU 与 PC 一致、测推理耗时；des_app live / run 自动加载
 ```
+
+板上用 `des_tool.sh` 的运维模式采集（分层见 [ps/README](../ps/README.md)「四类产物」）；模型两文件与配置随 [scripts/deploy/README](../scripts/deploy/README.md) 的清单一起上板。
 
 ## 环境配置
 
@@ -42,10 +44,10 @@ source ~/des-train/bin/activate
 | 版本 | 安装 | 训练速度参考 |
 |---|---|---|
 | CPU（调试 / 无 GPU） | `pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu` | 合成数据 2400 张 × 12 轮：约 6.4 分钟 |
-| GPU（推荐，CUDA 13.0 轮子） | `pip install -r requirements-gpu.txt` | RTX 4060 Laptop，合成数据 2400 张 × 12 轮：约 40 秒（含启动 1 分 14 秒） |
+| GPU（推荐，CUDA 13.0 轮子） | `pip install -r requirements-gpu.txt` | RTX 4060 Laptop，合成数据 2400 张 × 12 轮：训练约 40 秒，端到端含启动约 1 分 14 秒 |
 
 **注意事项**：
-- 版本锁定为实际跑通、模型已上板验证的环境（torch 2.14.1 / ultralytics 8.4.175 / onnx 1.23.2 / ORT 1.23.2，Python 3.10）
+- 版本为实际跑通、模型已上板验证的环境（来源 `pip list`：torch 2.14.1 / ultralytics 8.4.175 / onnx 1.23.2 / ORT 1.23.2，Python 3.10）；换机重装以实际环境为准，版本变了重新核对一遍导出与量化
 - GPU 版要 NVIDIA 驱动支持 CUDA 13（WSL 里 `nvidia-smi` 右上角 CUDA Version ≥ 13.0）
 - 两版 fp32 推理精度一致；量化后精度以板上 NPU 实测为准
 - 训练完成度：CPU 98.33% top1，GPU 98.75%（GPU 不完全确定性）

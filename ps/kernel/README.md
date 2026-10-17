@@ -4,7 +4,7 @@
 
 `mipicam_module.h`（ioctl ABI）**只有这一份**：用户态 `src/vision/mipi_camera.cpp` 通过 `ps/Makefile` 的 `-Ikernel` 用同一个文件，改 ioctl 两边不会分叉。
 
-重编（需米联客 Linux 开发包内核树，见 docs/开发环境与构建.md）：
+重编（需米联客 Linux 开发包内核树，见 [开发环境与构建](../../docs/开发环境与构建.md)）：
 
 ```bash
 cd ps/kernel

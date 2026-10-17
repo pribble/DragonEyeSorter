@@ -37,6 +37,6 @@
 
 ## 待改造方向（零件检测）
 
-- 类别换成 `models/label_list.json` 的 8 类（齿轮/齿条 × 良品/缺料/飞边/黑点），NPU JSON 由 label_list 生成，不手抄（AGENTS.md 约定 1）
+- 类别换成 `models/label_list.json` 的 8 类（齿轮/齿条 × 良品/缺料/飞边/黑点），NPU JSON 由 label_list 生成，不手抄（[AGENTS.md](../../../AGENTS.md) 约定 1）
 - 增加分拣判定输出：检测框 → label_list 的 verdict/action/dest → 调度器
 - 前处理 resize（实测 37ms）优化

@@ -121,7 +121,7 @@ static void run_pose(const Pose &p, const BoardSpec &b, const std::string &dump_
     CHECK(std::fabs(r.px_to_table.map({960, 540}).y) < 1e-3f, "[%s] center y not 0", p.name);
 
     if (!dump_dir.empty()) {
-        cv::imwrite(dump_dir + "/raw_" + p.name + ".png", img);   // input for `des_app calib-cam --image`
+        cv::imwrite(dump_dir + "/raw_" + p.name + ".png", img);   // input for `des_tool calib-cam --image`
         cv::Mat bgr;
         cv::cvtColor(img, bgr, cv::COLOR_GRAY2BGR);
         draw_calib(bgr, r);

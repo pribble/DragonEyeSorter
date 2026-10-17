@@ -2,7 +2,7 @@
 """make_system_wiring.py — the whole system's wiring on one page: mains, 24 V supply, emergency stop, conveyor driver,
 servo supply (XY6020L 6.8 V), 5 V supply, level shifter, arm servo chain, flap servos and the board header J12.
 Solid = wired, dashed = still to wire / to buy. Long-distance nets (PL ground, 5 V) are drawn as labelled tags.
-Source of truth for the values: 10_项目文档/系统接线.md, docs/硬件与接线.md, docs/到货联调清单.md.
+Source of truth for the values: docs/硬件与接线.md, docs/到货联调清单.md.
 
     python docs/figures/make_system_wiring.py
 """

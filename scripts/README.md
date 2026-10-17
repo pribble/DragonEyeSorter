@@ -1,25 +1,24 @@
 # scripts/ — 构建与部署脚本
 
-背景与原理见 [开发环境与构建](../docs/开发环境与构建.md)。
+背景与原理见 [开发环境与构建](../docs/开发环境与构建.md)；板端文件的落点与规矩见 [板端布局](../docs/板端布局.md)。
 
 | 目录 | 用途 | 运行环境 |
 |---|---|---|
 | [deploy/](deploy/) | 板端部署：`manifest.tsv` 登记"板端产品运行时（主程序 / 配置 / 自启链脚本）上到板子哪里"，`deploy.ps1` / `deploy.sh` 做对比 / 部署 / 暂存；测试与调试件不进清单，手动 `scp` | Windows PowerShell / Git Bash |
 | [bootbin/](bootbin/) | 用新比特流打包 `BOOT.bin`（FSBL、U-Boot 复用厂家的） | Windows PowerShell + FD |
-| [sd_image/](sd_image/) | 写 SD 卡（镜像生成脚本已于 2026-10-15 删除，见下） | Windows 管理员 |
+| [sd_image/](sd_image/) | 写 SD 卡（镜像生成脚本已删除，见下） | Windows 管理员 |
 
 ## bootbin
 
 ```powershell
 cd scripts\bootbin
-.\make_bootbin.ps1                      # 原样重打包（验证工具链），MD5 应为 41489E57…
-.\make_bootbin.ps1 -Bit <TD 生成的 .bit>  # 只改 PL 逻辑时
-.\make_bootbin.ps1 -Bit <.bit> -Fsbl <FD 重编的 soc_fsbl.elf>   # 改了 design_0 的 PS 配置时
+.\make_bootbin.ps1 -Bit <TD 生成的 .bit>                        # 只改 PL 逻辑（唯一日常操作）
+.\make_bootbin.ps1 -Bit <.bit> -Fsbl <FD 重编的 soc_fsbl.elf>    # 改了 design_0 的 PS 配置时
 ```
 
 - 路径不同用 `-FdRoot`（FD 安装目录）；**零件已在仓库内 `parts/`，常规打包不依赖仓库外的厂家 demo 目录**
-- 产物 `BOOT.bin` 替换板上 `/mnt/mmcblk0p1/BOOT.bin`：先传到 `/root`，板上旧的复制为 `BOOT.bin.prev`（上一个能启动的版本）再放新的，`sync` 后重启（完整步骤见 [环境与上手](../docs/环境与上手.md)「部署与运行」）
-- 与厂家原版差异：分区头全同、FSBL/U-Boot 逐字节同，仅比特流尾 32 字节及其校验值不同（新旧 BootGen 版本差异）
+- 产物 `BOOT.bin` 替换板上 `/mnt/mmcblk0p1/BOOT.bin`：先传到 `/root`，板上旧的复制为 `BOOT.bin.prev`（上一个能启动的版本）再放新的，`sync` 后重启（完整步骤见 [开发环境与构建](../docs/开发环境与构建.md)「部署与运行」）
+- 与厂家原版差异：分区头全同、FSBL / U-Boot 逐字节同，仅比特流尾 32 字节及其校验值不同（新旧 BootGen 版本差异）
 
 **零件台账**（[parts/MD5SUMS.txt](bootbin/parts/MD5SUMS.txt)）：
 
@@ -28,13 +27,13 @@ cd scripts\bootbin
 | `fsbl.elf` | ✔ | `A64A56C0C37003AF025C45ABF0DA2732` | 厂家 `soc_fsbl/build/soc_fsbl.elf`，逐字节相同 |
 | `u-boot.elf` | ✔ | `E844648EC910C87EA8A036AD4D3D3E45` | 由厂家 `boot/BOOT.bin` 偏移 `0x40e4c0`、长 `0xe2248` 截出 |
 
-- **换比特流就是唯一日常操作**：`.\make_bootbin.ps1 -Bit <自己的 .bit>`。`-Bit` 是**必填**——厂家基线比特流与「原样重打包验证」那条回归路径已随 `make_sd_image.sh` 一并下线（见 [log/2026-10-15](../docs/log/2026-10-15-厂家boot零件入库与NPU_DEMO下线.md)），不给参数会明确报错
-- `u-boot.elf` 每次打包都校验 MD5（它进 BOOT.bin 第 3 分区，静默损坏要到开机失败才发现）；`fsbl.elf` 与厂家原件逐字节相同
-- 只有两种情况才需要 `-VendorDemo <厂家 demo 目录>`：① `u-boot.elf` 损坏要重建；② 改 PS 配置后取厂家原始 FSBL。`.env` 里**已不设** `NPU_DEMO`
+- `-Bit` 是**必填**：比特流分区（P1）一律接我们自己的比特流，脚本不再有默认值，不给参数会明确报错（厂家基线比特流与「原样重打包验证」路径已随镜像生成脚本一并下线，见 [log/2026-10-15-厂家boot零件入库与NPU_DEMO下线](../docs/log/2026-10-15-厂家boot零件入库与NPU_DEMO下线.md)）
+- `u-boot.elf` 每次打包都校验 MD5（它进 `BOOT.bin` 的 P2 分区，静默损坏要到开机失败才发现）；`fsbl.elf` 与厂家原件逐字节相同
+- 只有两种情况才需要 `-VendorDemo <厂家 demo 目录>`：① `parts/u-boot.elf` 丢失要重建；② 取厂家原始 `fsbl.elf`。常规打包两者都不需要；`.env` 里可选的 `NPU_DEMO` 与 `-VendorDemo` 等效（填了就自动取用），不是必需项
 
 ## sd_image
 
-**镜像生成脚本（`make_sd_image.sh`）已于 2026-10-15 删除**：持久化卡早就做好并上板通过（[log/2026-10-08](../docs/log/2026-10-08-持久化SD与BOOT.bin打包.md)），它是一次性工具，且要厂家 demo 的 `uInitrd.lz4`（72 MB，不入库）才能跑。留下的是烧卡脚本：
+**镜像生成脚本（`make_sd_image.sh`）已删除**：它是一次性工具，且要厂家 demo 的 `uInitrd.lz4`（72 MB，不入库）才能跑；持久化卡早已做好并上板通过（[log/2026-10-08-持久化SD与BOOT.bin打包](../docs/log/2026-10-08-持久化SD与BOOT.bin打包.md)）。留下的是烧卡脚本：
 
 ```powershell
 # Windows 管理员 PowerShell：先 Get-Disk 认准读卡器的磁盘号
@@ -44,11 +43,11 @@ cd scripts\bootbin
 
 也可用 balenaEtcher / Rufus 烧镜像。
 
-要**新做**一张持久化卡时（现有卡坏了 / 要给第二块板子）：① 直接用厂家预装的卡；② 或照 [开发环境与构建](../docs/开发环境与构建.md)「SD 卡布局」用厂家 demo 的 `boot/` 目录手工复刻——分区布局（p1 FAT32 / p2 ext4）、`boot.scr` 的改动、rootfs 来自 `uInitrd.lz4` 解包，都记在那里。
+要**新做**一张持久化卡时（现有卡坏了 / 要给第二块板子）：① 直接用厂家预装的卡；② 或照 [开发环境与构建](../docs/开发环境与构建.md)「SD 卡布局与烧卡」用厂家 demo 的 `boot/` 目录手工复刻——分区布局（p1 FAT32 / p2 ext4）、`boot.scr` 的改动、rootfs 来自 `uInitrd.lz4` 解包，都记在那里。
 
 ## sdk_fix_sonames.sh — 修复 Windows 解压丢失的 .so 软链接
 
-Windows 解压 tar.gz / zip 会丢 `.so` 软链接（变独立文件或损坏）：链接器找不到 `libopencv_core.so`（只有 `libopencv_core.so.4.7.0`），运行时动态链接器报 `error while loading shared libraries`。库目录布局与背景见 [环境与上手](../docs/环境与上手.md)。
+Windows 解压 tar.gz / zip 会丢 `.so` 软链接（变独立文件或损坏）：链接器找不到 `libopencv_core.so`（只有 `libopencv_core.so.4.7.0`），运行时动态链接器报 `error while loading shared libraries`。库目录的布局与获取见 [环境与上手](../docs/环境与上手.md) §3。
 
 ```bash
 # 1. 判据：`libopencv_core.so` 和它指向的 SONAME 名（实测是 `libopencv_core.so.407`）都得是 `lrwxrwxrwx`，`-rwxr-xr-x` 或缺失即需修复
@@ -63,11 +62,11 @@ sh scripts/sdk_fix_sonames.sh "$OPENCV_LIB" <readelf路径>
 
 # 3. 验证
 ls -l $OPENCV_LIB/lib/libopencv_core.so*   # 应全部显示为 lrwxrwxrwx（软链接）
-make -C ps des_app                         # 编译 PS 应用，应无 “cannot find -l...” 错误
+make -C ps build/des_app                   # 编译 PS 应用，应无 "cannot find -l..." 错误
 ```
 
-- `<库目录>` - 给**单个库目录**（`$ARMNN_LIB` / `$OPENCV_LIB` / `$BOARD_LIBS` 都是），扫它自己的 `lib/`
-- `<readelf路径>` - 交叉编译工具链的 `aarch64-linux-gnu-readelf` 路径
+- `<库目录>` —— 给**单个库目录**（`$ARMNN_LIB` / `$OPENCV_LIB` / `$BOARD_LIBS` 都是），扫它自己的 `lib/`；给同时含 `armnn_lib/` 与 `ffmpeg_opencv4.7.0_aarch64/` 的父目录时两个子目录都扫（兼容写法，`.env` 不用这样配）
+- `<readelf路径>` —— 交叉编译工具链的 `aarch64-linux-gnu-readelf` 路径
 
 ```bash
 # 两个参数都用 .env 里的变量（先 source scripts/env_loader.sh 或直接展开）
@@ -87,9 +86,9 @@ sh scripts/sdk_fix_sonames.sh \
 
 **常见问题**
 
-- 报 `readelf: command not found`：第二个参数 `readelf` 路径不对，检查 FD 安装目录，完整路径应为 `<FD安装目录>/toolchain/gcc/aarch64_linux/bin/aarch64-linux-gnu-readelf.exe`
-- 修复后仍链接失败，检查：1. `.env` 中 `ARMNN_LIB` / `OPENCV_LIB` 是否各指向库目录本身 2. 运行 `bash scripts/generate_env_make.sh` 重新生成 Makefile 配置 3. `make clean -C ps && make -C ps des_app` 清理重新编译
-- 能不修复直接编译吗？不能：Makefile 链接标志为 `-lopencv_core`（查找 `libopencv_core.so`），没有软链接就找不到库；除非在 Makefile 写死版本号（不推荐）
+- 报 `readelf: command not found`：第二个参数 `readelf` 路径不对，检查 FD 安装目录，完整路径应为 `$FD_ROOT/toolchain/gcc/aarch64_linux/bin/aarch64-linux-gnu-readelf.exe`
+- 修复后仍链接失败，检查：1. `.env` 中 `ARMNN_LIB` / `OPENCV_LIB` 是否各指向库目录本身 2. 运行 `bash scripts/generate_env_make.sh` 重新生成 Makefile 配置 3. `make clean -C ps && make -C ps build/des_app` 清理重新编译
+- 不修复直接编译不行：Makefile 的链接标志是 `-lopencv_core`（找 `libopencv_core.so`），没有软链接就找不到库；在 Makefile 里写死版本号不可取
 
 ## 板上库（`$BOARD_LIBS`）也要两套名字
 
@@ -101,7 +100,7 @@ sh scripts/sdk_fix_sonames.sh \
 | SONAME 名 `libpng16.so.16` / `libz.so.1` | 链接报 `undefined reference to png_*@PNG16_0` / `inflate*`，或 warning `libpng16.so.16, needed by .../libfreetype.so, not found` |
 
 ```bash
-# 同一个脚本：给普通目录就扫它自己（给 SDK 根才扫 armnn_lib/ 与 ffmpeg_opencv4.7.0_aarch64/）
+# 同一个脚本：给单个库目录就扫它自己（$BOARD_LIBS 是平铺的 .so 目录，直接给它）
 sh scripts/sdk_fix_sonames.sh "$BOARD_LIBS" \
   "$FD_ROOT/toolchain/gcc/aarch64_linux/bin/aarch64-linux-gnu-readelf.exe"
 ls "$BOARD_LIBS"/libfreetype.so*     # 链接名与 SONAME 名都在

@@ -3,6 +3,8 @@
 厂家 NPU demo `soc_prj` 底板 + 我们的全部改动；**仓库里这一份即可直接编译**：
 TD 6.2.1 打开 `soc_prj.al` → 综合 / 布局布线 → `soc_prj.bit`。
 
+**当前状态：板端运行 v9；源码为 v10（去 `des_pwm` 光源输出），未重编、未上板。**
+
 来源：米联客/安路 NPU 演示套件 `demo.zip → demo/soc_prj/`（2025-12 版）。TD 统一 6.2.1（与厂家比特流同版本，原样重编逐位一致已验证）；其他版本打开会提示格式升级，diff 用 `git checkout` 还原。
 
 ## 目录内容
@@ -19,7 +21,7 @@ TD 6.2.1 打开 `soc_prj.al` → 综合 / 布局布线 → `soc_prj.bit`。
 - `src/des/` — **自研模块**：des_regs、servo_bus、stepper_ctrl、des_vision、des_pwm、
   awb_seq_div、io_sync（已登记进 `soc_prj.al`）
 - `src/constraint/` — 管脚 `io.adc`（CEP = BANK11 3.3V）、时序 `timing.sdc`
-- `soc_prj_Runs/syn_1/soc_prj.prj` — 综合工程文件（`*_Runs/` 被 ignore 规则挡住，改动要 `git add -f`）
+- `soc_prj_Runs/syn_1/soc_prj.prj` 与 `soc_prj_Runs/phy_1/soc_prj.prj` — 综合 / 布局布线工程文件（`*_Runs/` 被 ignore 规则挡住，改动要 `git add -f`）
 
 ## 加密 IP
 
