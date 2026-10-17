@@ -17,6 +17,8 @@ struct CameraConfig {
     int vmax = 0;                // IMX415 VMAX override after init (0 = keep the driver's 2283); 2276 -> 60.0 fps
     int buffers = 4;             // DMA ring; a frame stays valid for buffers-2 further frames
     bool realtime = true;        // SCHED_FIFO capture loop (PREEMPT_RT kernel)
+    int exposure_us = 0;         // 0 = driver default (SHR0 8: almost the whole frame, ~16.6 ms); --exp overrides
+    int gain_db10 = 0;           // sensor gain in 0.1 dB (0 = driver default); --gain overrides
 };
 
 struct LocateConfig {

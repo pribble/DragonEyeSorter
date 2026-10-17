@@ -68,6 +68,8 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             get(c, "vmax", cfg.camera.vmax);
             get(c, "buffers", cfg.camera.buffers);
             get(c, "realtime", cfg.camera.realtime);
+            get(c, "exposure_us", cfg.camera.exposure_us);
+            get(c, "gain_db10", cfg.camera.gain_db10);
         }
         if (j.contains("locate")) {
             const json &c = j["locate"];

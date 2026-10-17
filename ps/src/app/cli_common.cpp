@@ -97,14 +97,16 @@ void go_realtime()
 int open_camera(CameraRig &cam, const AppConfig &cfg, const Args &a)
 {
     int vmax = a.vmax >= 0 ? a.vmax : cfg.camera.vmax;
-    int exp = a.exp_us >= 0 ? a.exp_us : 0;
-    int gain = a.gain >= 0 ? a.gain : 0;
+    int exp = a.exp_us >= 0 ? a.exp_us : cfg.camera.exposure_us;
+    int gain = a.gain >= 0 ? a.gain : cfg.camera.gain_db10;
     std::string err = cam.open(cfg.camera.buffers, vmax, exp, gain);
     if (!err.empty()) {
         fprintf(stderr, "camera: %s\n", err.c_str());
         return -1;
     }
-    printf("camera open: VMAX %d, %d buffers\n", cam.sensor_vmax(), cfg.camera.buffers);
+    if (exp > 0) printf("camera open: VMAX %d, %d buffers, exposure %d us\n", cam.sensor_vmax(), cfg.camera.buffers, exp);
+    else printf("camera open: VMAX %d, %d buffers, exposure driver default (~1 frame)\n", cam.sensor_vmax(),
+                cfg.camera.buffers);
     return 0;
 }
 

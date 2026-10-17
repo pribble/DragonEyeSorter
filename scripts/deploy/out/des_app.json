@@ -1,7 +1,8 @@
 {
   "comment": "des_app 配置。所有带 TODO 的值必须在实物上标定（camera homography / belt mm_per_step / arm 几何与零位 / 料盒姿态）。label_list 相对本文件所在目录；部署时把 models/label_list.json 一起拷到 /root/des/。",
 
-  "camera": { "vmax": 2276, "buffers": 4, "realtime": true },
+  "camera_comment": "exposure_us：驱动默认几乎整帧（约 16.6ms），50mm/s 时拖影约 0.8mm、白色零件过曝 → 定 3000（50mm/s 拖影 0.15mm，<1 像素）。画面暗就把光源调亮，不加长曝光。gain_db10 单位 0.1dB，0 = 驱动默认。命令行 --exp / --gain 优先",
+  "camera": { "vmax": 2276, "buffers": 4, "realtime": true, "exposure_us": 3000, "gain_db10": 0 },
 
   "locate": { "scale": 4, "thresh": 0, "min_thresh": 60, "open_iter": 1, "border_px": 2,
               "min_area_mm2": 40, "max_area_mm2": 3000 },
