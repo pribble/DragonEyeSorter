@@ -4,7 +4,8 @@
 # Checks: des_regs ID / VERSION, sensor frame rate seen by the PL (FRAME_CNT over 1 s, FRAME_PERIOD), des_vision (v6+):
 # register read-back, statistics advancing, pixel clock = CYCLES x fps, display modes 1..5 accepted; des_pwm (v7+):
 # width / enable read-back (v10: no lamp bit) and period counter; command response latencies (servo bus, stepper); v9+: stepper
-# target rewrite (TARGET = POS while moving stops there, a target behind ramps down). Prints PASS /
+# target rewrite (TARGET = POS while moving stops there, a target behind ramps down); v11+: des_io ID, e-stop not latched,
+# encoder count steady with the belt standing. Prints PASS /
 # FAIL per item and a summary; exit code = failures. Uses the camera (des_tool probe in the background).
 SELF=$(readlink -f -- "$0" 2>/dev/null || echo "$0")
 DES_HOME=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd)   # 以脚本自己所在目录为准，不吃继承来的 DES_HOME
@@ -73,6 +74,18 @@ if [ "$VER" -ge 7 ]; then
     awk -v n=$((N1 - N0)) 'BEGIN { exit !(n >= 48 && n <= 52) }' && pass "PWM periods $((N1 - N0)) / s (50 Hz)" \
         || fail "PWM periods $((N1 - N0)) / s"
     $R pwm off > /dev/null
+fi
+
+# --- des_io (v11): e-stop latch, IR1 / LIMIT1, belt encoder
+if [ "$VER" -ge 11 ]; then
+    IID=$($R r 0x534)
+    [ "$IID" = "0x494f3031" ] && pass "des_io ID $IID" || fail "des_io ID $IID"
+    ST=$(hex "$($R r 0x500)")
+    [ $((ST & 1)) = 0 ] && pass "e-stop not latched (STATUS $ST)" \
+        || fail "e-stop latched (STATUS $ST): release the button, then desreg io estop-clr"
+    E0=$(hex "$($R r 0x520)"); sleep 0.5; E1=$(hex "$($R r 0x520)"); ERR=$(hex "$($R r 0x524)")
+    [ "$E0" = "$E1" ] && pass "encoder count steady while the belt stands ($E1, A$(((ST >> 4) & 1)) B$(((ST >> 5) & 1)), err $ERR)" \
+        || fail "encoder count drifts with the belt standing ($E0 -> $E1): noise on ENC_A/B?"
 fi
 
 # --- command response

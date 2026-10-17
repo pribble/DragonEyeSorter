@@ -521,6 +521,8 @@ static std::string still_position(CameraRig &cam, Locator &loc, const AppConfig 
 
 static std::string belt_move(des_hw_t &hw, int32_t steps, double vmax, double acc)
 {
+    if (des_estop_latched(&hw) == 1)   // v11: the PL holds the stepper until the latch is cleared
+        return "e-stop latched: release the button, then desreg io estop-clr";
     const int32_t target = des_step_pos(&hw) + steps;
     des_step_move(&hw, target, vmax, acc);
     const double t0 = now_s(), tmax = std::abs(steps) / vmax + 2 * vmax / acc + 3;

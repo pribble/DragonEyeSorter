@@ -118,6 +118,8 @@ uint8_t Runner::command(uint8_t cmd, const char *who)
         else return CANP_ACK_REJECTED;
         return CANP_ACK_OK;
     case CANP_CMD_RESET_ALARM:
+        // v11: the PL keeps the e-stop latched (stepper held) until cleared; it refuses while the button is pressed
+        if (hw_->version >= DES_VERSION_IO && des_estop_clear(hw_) == 1) return CANP_ACK_REJECTED;
         alarm_ = 0;
         if (st == CANP_ST_ESTOP || st == CANP_ST_FAULT) set_state(CANP_ST_IDLE, "alarm reset");
         return CANP_ACK_OK;
@@ -192,11 +194,15 @@ void Runner::cycle(Tracker &tr, Picker &pk)
     const double now = now_s();
     handle_can(now);
 
-    // e-stop: PL halts the stepper on ESTOP_IN and latches HALTED; react to the rising edge only
+    // e-stop. v11: des_io latches it (debounced) and holds the stepper until RESET_ALARM clears it -> seen in any
+    // state. Older bitstreams: only the stepper's HALTED edge while running (missed when idle or stopped).
     const uint32_t st = des_step_status(hw_);
-    if ((st & DES_ST_STATUS_HALTED) && !(prev_status_ & DES_ST_STATUS_HALTED) && state_ == CANP_ST_RUN) {
+    const bool estop = hw_->version >= DES_VERSION_IO
+                           ? des_estop_latched(hw_) == 1
+                           : (st & DES_ST_STATUS_HALTED) && !(prev_status_ & DES_ST_STATUS_HALTED) && state_ == CANP_ST_RUN;
+    if (estop && state_ != CANP_ST_ESTOP) {
         alarm_ = 1;
-        set_state(CANP_ST_ESTOP, "e-stop: stepper halted");
+        set_state(CANP_ST_ESTOP, hw_->version >= DES_VERSION_IO ? "e-stop latched (PL)" : "e-stop: stepper halted");
         send(canp_alarm(1, 2, 0));
     }
     prev_status_ = st;

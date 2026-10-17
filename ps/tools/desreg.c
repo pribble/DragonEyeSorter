@@ -14,6 +14,7 @@
  *   desreg step status | vel <steps/s> [acc] | move <target> [vmax] [acc] | stop | halt | off | zero
  *   desreg vis                     PL vision statistics (v6)
  *   desreg pwm <ch> <us> | pwm off             flap servo pulse width (v7)
+ *   desreg io | io estop-clr | io enc-zero | io ir1-clr | io watch [sec]   e-stop latch, IR1 / LIMIT1, encoder (v11)
  *   desreg vis <mode> [thr] [edge_thr] [full|x0 y0 x1 y1]   mode 0 camera 1 gray 2 gauss 3 binary 4 sobel 5 edges
  * Do not use the write commands while des_app is running (single-master servo bus / stepper).
  */
@@ -270,6 +271,36 @@ int main(int argc, char **argv)
             if (!rc) rc = des_pwm_enable(&hw, (rd(DES_PWM_CTRL) & 3u) | (1u << ch)) ? 2 : 0;
         }
         if (rc) fprintf(stderr, "bitstream before v7: no des_pwm\n");
+    } else if (!strcmp(cmd, "io")) {
+        des_io_t io;
+        if (des_io_read(&hw, &io) != DES_OK) {
+            fprintf(stderr, "bitstream before v11: no des_io\n");
+            rc = 2;
+        } else if (argc >= 3 && !strcmp(argv[2], "estop-clr")) {
+            int still = des_estop_clear(&hw);
+            printf("e-stop %s\n", still ? "still latched (button still pressed?)" : "cleared");
+            rc = still ? 1 : 0;
+        } else if (argc >= 3 && !strcmp(argv[2], "enc-zero")) {
+            des_enc_zero(&hw);
+        } else if (argc >= 3 && !strcmp(argv[2], "ir1-clr")) {
+            des_wr(&hw, DES_IO_CTRL, 4u);
+        } else {
+            double sec = (argc >= 4 && !strcmp(argv[2], "watch")) ? atof(argv[3]) : 0;
+            uint32_t last = 0xFFFFFFFFu;
+            for (int k = 0;; k++) {
+                des_io_read(&hw, &io);
+                const uint32_t s = io.status;
+                if (k == 0 || s != last || sec > 0)
+                    printf("estop %s%s  IR1 %s (%u edges, last pos %d enc %d)  LIMIT1 %s  enc %d (%+d /10ms, err %u, Z %u @ %d)  A%u B%u Z%u\n",
+                           s & DES_IO_ST_ESTOP_LATCHED ? "LATCHED" : "ok", s & DES_IO_ST_ESTOP_NOW ? " (pressed)" : "",
+                           s & DES_IO_ST_IR1_BLOCKED ? "blocked" : "clear", io.ir1_cnt, io.ir1_pos, (int)io.ir1_enc,
+                           s & DES_IO_ST_LIMIT1 ? "active" : "off", io.enc, io.enc_speed, io.enc_err, io.enc_zcnt,
+                           io.enc_zpos, (s >> 4) & 1, (s >> 5) & 1, (s >> 6) & 1);
+                last = s;
+                if (sec <= 0 || k >= (int)(sec * 5)) break;
+                usleep(200000);
+            }
+        }
     } else if (!strcmp(cmd, "vis")) {
         if (argc >= 3) {
             int mode = atoi(argv[2]), thr = argc > 3 ? atoi(argv[3]) : 128, ethr = argc > 4 ? atoi(argv[4]) : 200;

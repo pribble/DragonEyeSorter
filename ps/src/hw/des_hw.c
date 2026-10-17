@@ -150,6 +150,46 @@ int des_pwm_enable(des_hw_t *h, unsigned ch_mask)
     return DES_OK;
 }
 
+/* ---------------- field inputs (des_io) ---------------- */
+
+int des_io_read(const des_hw_t *h, des_io_t *io)
+{
+    if (h->version < DES_VERSION_IO) return DES_E_ARG;
+    io->status = des_rd(h, DES_IO_STATUS);
+    io->estop_ts = des_rd(h, DES_IO_ESTOP_TS);
+    io->estop_cnt = des_rd(h, DES_IO_ESTOP_CNT);
+    io->ir1_cnt = des_rd(h, DES_IO_IR1_CNT);
+    io->ir1_ts = des_rd(h, DES_IO_IR1_TS);
+    io->ir1_pos = (int32_t)des_rd(h, DES_IO_IR1_POS);
+    io->ir1_enc = des_rd(h, DES_IO_IR1_ENC);
+    io->enc = (int32_t)des_rd(h, DES_IO_ENC_CNT);
+    io->enc_err = des_rd(h, DES_IO_ENC_ERR);
+    io->enc_zpos = (int32_t)des_rd(h, DES_IO_ENC_ZPOS);
+    io->enc_speed = (int32_t)des_rd(h, DES_IO_ENC_SPEED);
+    io->enc_zcnt = des_rd(h, DES_IO_ENC_ZCNT);
+    return DES_OK;
+}
+
+int des_estop_latched(const des_hw_t *h)
+{
+    if (h->version < DES_VERSION_IO) return DES_E_ARG;
+    return (des_rd(h, DES_IO_STATUS) & DES_IO_ST_ESTOP_LATCHED) ? 1 : 0;
+}
+
+int des_estop_clear(des_hw_t *h)
+{
+    if (h->version < DES_VERSION_IO) return DES_E_ARG;
+    des_wr(h, DES_IO_CTRL, 1u);
+    return des_estop_latched(h);
+}
+
+int des_enc_zero(des_hw_t *h)
+{
+    if (h->version < DES_VERSION_IO) return DES_E_ARG;
+    des_wr(h, DES_IO_CTRL, 2u);
+    return DES_OK;
+}
+
 /* ---------------- servo bus ---------------- */
 
 static uint8_t rx_byte(const des_hw_t *h, int i)

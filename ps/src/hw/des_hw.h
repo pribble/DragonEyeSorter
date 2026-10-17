@@ -83,6 +83,22 @@ int des_vis_read(const des_hw_t *h, des_vis_t *v);
 int des_pwm_set(des_hw_t *h, int ch, int us);       /* pulse width in us (0 = no pulses), next period */
 int des_pwm_enable(des_hw_t *h, unsigned ch_mask);  /* bit 0 = flap 1, bit 1 = flap 2 */
 
+/* ---- field inputs (des_io, VERSION >= 11): e-stop latch, IR1 / LIMIT1, belt encoder ---- */
+#define DES_VERSION_IO 11u
+typedef struct {
+    uint32_t status;       /* DES_IO_ST_* bits */
+    uint32_t estop_ts, estop_cnt;
+    uint32_t ir1_cnt, ir1_ts, ir1_enc;
+    int32_t  ir1_pos;
+    int32_t  enc, enc_zpos, enc_speed;   /* counts; speed per 10 ms */
+    uint32_t enc_err, enc_zcnt;
+} des_io_t;
+int des_io_read(const des_hw_t *h, des_io_t *io);   /* DES_E_ARG before v11 */
+int des_estop_latched(const des_hw_t *h);          /* 1 latched, 0 not, DES_E_ARG before v11 */
+int des_estop_clear(des_hw_t *h);                  /* clears the latch unless the button is still pressed;
+                                                      returns 1 if it is still latched afterwards */
+int des_enc_zero(des_hw_t *h);
+
 /* ---- servo bus (Desheng protocol v4.01; PL adds FF FF header and checksum) ---- */
 typedef struct {
     int rc;                /* DES_OK / DES_E_* */

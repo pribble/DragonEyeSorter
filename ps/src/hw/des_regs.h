@@ -79,6 +79,28 @@
 #define DES_PWM_ID           0x414u    /* R  0x50574D31 */
 #define DES_PWM_ID_VALUE     0x50574D31u
 
+/* des_io, PL_BASE + 0x500 (v11): e-stop latch, IR1 / LIMIT1 capture, belt encoder (pl/soc_base/src/des/des_io.v) */
+#define DES_IO_STATUS        0x500u    /* R  b0 estop latched b1 estop pressed b2 IR1 blocked b3 LIMIT1 b4..6 enc A/B/Z */
+#define DES_IO_CTRL          0x504u    /* W  b0 estop clear (ignored while pressed) b1 encoder zero b2 IR1 count clear */
+#define DES_IO_ESTOP_TS      0x508u    /* R  FREE_CNT at the last latch */
+#define DES_IO_ESTOP_CNT     0x50Cu    /* R  latch events */
+#define DES_IO_IR1_CNT       0x510u    /* R  IR1 blocked edges */
+#define DES_IO_IR1_TS        0x514u    /* R  FREE_CNT at the last blocked edge */
+#define DES_IO_IR1_POS       0x518u    /* R  stepper POS at that edge */
+#define DES_IO_IR1_ENC       0x51Cu    /* R  encoder count at that edge */
+#define DES_IO_ENC_CNT       0x520u    /* R  signed x4 count */
+#define DES_IO_ENC_ERR       0x524u    /* R  illegal transitions */
+#define DES_IO_ENC_ZPOS      0x528u    /* R  count at the last index edge */
+#define DES_IO_ENC_SPEED     0x52Cu    /* R  signed counts per 10 ms */
+#define DES_IO_ENC_ZCNT      0x530u    /* R  index edges */
+#define DES_IO_ID            0x534u    /* R  0x494F3031 */
+#define DES_IO_CFG           0x538u    /* RW b0 IR1 polarity (0: low = blocked) b1 LIMIT1 polarity (0: low = active) */
+#define DES_IO_ID_VALUE      0x494F3031u
+#define DES_IO_ST_ESTOP_LATCHED 0x01u
+#define DES_IO_ST_ESTOP_NOW     0x02u
+#define DES_IO_ST_IR1_BLOCKED   0x04u
+#define DES_IO_ST_LIMIT1        0x08u
+
 #define DES_ID_VALUE     0x44455301u
 #define DES_FREE_CNT_HZ  75000000u
 
