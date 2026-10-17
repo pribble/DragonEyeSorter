@@ -253,7 +253,7 @@ std::string save_calib(const std::string &path, const CalibResult &r, const Boar
     char date[32];
     time_t now = time(nullptr);
     strftime(date, sizeof date, "%Y-%m-%d %H:%M", localtime(&now));
-    j["comment"] = "des_app calib-cam 生成，勿手改（重新标定会覆盖）。load_config 读完 des_app.json 后合并本文件。";
+    j["comment"] = "des_tool calib-cam 生成，勿手改（重新标定会覆盖）。load_config 读完 des_app.json 后合并本文件。";
     j["date"] = date;
     j["board"] = {{"cols", board.cols}, {"rows", board.rows}, {"square_mm", board.square_mm}};
     j["travel"] = to_str(travel);

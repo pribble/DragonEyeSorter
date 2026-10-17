@@ -30,7 +30,7 @@ struct LocateConfig {
 };
 
 struct BeltConfig {
-    double mm_per_step = 0.0207; // ruler, 10-16: 4 turns (12800 steps) = ~265 mm (effective roller ~21 mm); des_app calib-belt
+    double mm_per_step = 0.0207; // ruler, 10-16: 4 turns (12800 steps) = ~265 mm (effective roller ~21 mm); des_tool calib-belt
     int dir = 1;                 // +1: stepper POS increasing moves parts toward +x
     double run_speed = 50;       // mm/s
     double accel = 400;          // mm/s^2
@@ -55,7 +55,7 @@ struct StorageConfig {
 struct AppConfig {
     CameraConfig camera;
     LocateConfig locate;
-    Homography px_to_table;      // image px -> table mm ⚠ calibrate (des_app calib-cam)
+    Homography px_to_table;      // image px -> table mm ⚠ calibrate (des_tool calib-cam)
     BeltConfig belt;
     TrackerConfig tracker;
     PickerConfig picker;
@@ -65,12 +65,12 @@ struct AppConfig {
     NpuConfig npu;
     FlapConfig flaps;            // belt-end flaps (des_pwm, v7)
     std::string label_list = "models/label_list.json";
-    std::string calib_file = "calib.json";     // written by des_app calib-cam, merged over this file if present
+    std::string calib_file = "calib.json";     // written by des_tool calib-cam, merged over this file if present
     std::string calib_loaded;                  // path actually merged (empty = none)
     float pick_after_fov = 0;                  // > 0: picker.pick_x = calibrated fov_x1 + this (mm)
     bool belt_calibrated = false;
     bool arm_home_taught = false;              // arm_home.json (HMI arm page) replaced arm.home_deg
-    bool arm_calibrated = false;               // calib file had an "arm" section (des_app calib-arm)
+    bool arm_calibrated = false;               // calib file had an "arm" section (des_tool calib-arm)
     std::string config_dir = ".";             // folder of the loaded des_app.json (ui_params.json lives there)
     std::vector<std::string> bins = {"gear_box", "rack_box"};          // pick destinations (arm drop poses)
     std::vector<std::string> outlets = {"recheck", "scrap", "rework"};  // flap outlets, index 0 = recheck

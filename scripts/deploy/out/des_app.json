@@ -6,11 +6,11 @@
   "locate": { "scale": 4, "thresh": 0, "min_thresh": 60, "open_iter": 1, "border_px": 2,
               "min_area_mm2": 40, "max_area_mm2": 3000 },
 
-  "px_to_table_comment": "未标定时的占位：视野宽 300mm / 1920px，x 沿图像向右（皮带前进方向），y 沿图像向上（右手系，z 朝上），原点 = 左边缘中点。用 des_app calib-cam 标定后由 calib.json 覆盖",
+  "px_to_table_comment": "未标定时的占位：视野宽 300mm / 1920px，x 沿图像向右（皮带前进方向），y 沿图像向上（右手系，z 朝上），原点 = 左边缘中点。用 des_tool calib-cam 标定后由 calib.json 覆盖",
   "px_to_table": [0.15625, 0, 0,  0, -0.15625, 84.375,  0, 0, 1],
   "calib_file": "calib.json",
 
-  "belt_comment": "mm_per_step = 10-16 尺量：主动轴 4 圈（12800 步）皮带走约 265mm → 0.0207（有效辊径约 21mm）；dir = -1（前进 = 步进位置递减，10-16 实测）。des_app calib-belt 用相机实测后写进 calib.json 覆盖这里",
+  "belt_comment": "mm_per_step = 10-16 尺量：主动轴 4 圈（12800 步）皮带走约 265mm → 0.0207（有效辊径约 21mm）；dir = -1（前进 = 步进位置递减，10-16 实测）。des_tool calib-belt 用相机实测后写进 calib.json 覆盖这里",
   "belt": { "mm_per_step": 0.0207, "dir": -1, "run_speed": 50, "accel": 400 },
 
   "tracker": { "fov_x0": 0, "fov_x1": 300, "edge_margin": 10, "decide_x": 270, "tail_x": 600,

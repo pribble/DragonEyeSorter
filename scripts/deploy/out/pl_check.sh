@@ -5,12 +5,14 @@
 # register read-back, statistics advancing, pixel clock = CYCLES x fps, display modes 1..5 accepted; des_pwm (v7+):
 # width / enable read-back (v10: no lamp bit) and period counter; command response latencies (servo bus, stepper); v9+: stepper
 # target rewrite (TARGET = POS while moving stops there, a target behind ramps down). Prints PASS /
-# FAIL per item and a summary; exit code = failures. Uses the camera (des_app probe in the background).
+# FAIL per item and a summary; exit code = failures. Uses the camera (des_tool probe in the background).
 SELF=$(readlink -f -- "$0" 2>/dev/null || echo "$0")
 DES_HOME=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd)   # 以脚本自己所在目录为准，不吃继承来的 DES_HOME
 [ -f "$DES_HOME/des.env" ] || { echo "pl_check: 缺 $DES_HOME/des.env（路径都从它取，源文件见 scripts/deploy/out/des.env）" >&2; exit 1; }
 . "$DES_HOME/des.env"
 cd "$DES_HOME" || exit 1
+[ -x "$DES_TOOLS/desreg" ] || { echo "pl_check: 缺 $DES_TOOLS/desreg（scp ps/build/desreg \$BOARD_HOST:/root/bin/）" >&2; exit 1; }
+[ -x ./des_tool.sh ] || { echo "pl_check: 缺 ./des_tool.sh（scp scripts/deploy/out/des_tool.sh \$BOARD_HOST:/root/des/）" >&2; exit 1; }
 # the autostart service (des_service.sh) owns the camera / buses: pause it for this run, resume at the end
 SVC_PAUSED=0
 if [ -x ./des_service.sh ] && ./des_service.sh status | grep -q "^des_service: running"; then
@@ -26,7 +28,7 @@ ID=$($R r 0x000); VER=$(hex "$($R r 0x004)")
 [ "$ID" = "0x44455301" ] && pass "des_regs ID $ID" || fail "des_regs ID $ID"
 echo "     VERSION $VER"
 
-./des_app.sh probe -n 12 > /tmp/pl_check_probe.log 2>&1 &
+./des_tool.sh probe -n 12 > /tmp/pl_check_probe.log 2>&1 &
 sleep 4
 
 # --- frames seen by the PL (ISP tuser edges in the pixel clock domain)

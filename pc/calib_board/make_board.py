@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""make_board.py — printable chessboard for `des_app calib-cam` (A4 landscape, exact millimetres, vector PDF).
+"""make_board.py — printable chessboard for `des_tool calib-cam` (A4 landscape, exact millimetres, vector PDF).
 
     python pc/calib_board/make_board.py                       # 10 x 7 squares of 25 mm -> --board 9x6
     python pc/calib_board/make_board.py --cols 12 --rows 8 --square 20

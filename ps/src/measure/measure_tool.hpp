@@ -1,4 +1,4 @@
-// measure_tool.hpp — measuring every part in one frame (des_app measure): locate blobs -> ROI per blob -> gear / rack
+// measure_tool.hpp — measuring every part in one frame (des_tool measure): locate blobs -> ROI per blob -> gear / rack
 // by shape -> measure_gear / measure_rack; printing, repeatability over frames of still parts, report image.
 // Bring-up / accuracy work with real parts (docs/视觉与检测.md "几何测量"): compare with the caliper values, measure the
 // repeatability, keep the raw frame (--out) to re-run offline (--image).

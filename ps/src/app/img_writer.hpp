@@ -1,4 +1,4 @@
-// img_writer.hpp — background file writer for images / small text files (des_app collect), so the worker thread
+// img_writer.hpp — background file writer for images / small text files (des_tool collect), so the worker thread
 // never waits for JPEG encoding or the SD card. Never blocks: when the queue is full the item is dropped and counted.
 #pragma once
 

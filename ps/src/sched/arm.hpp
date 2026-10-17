@@ -90,7 +90,7 @@ JointAngles arm_from_counts(const ArmConfig &c, const std::array<uint16_t, 6> &p
 const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, float open_mm, float part_wid,
                       int bin, const std::array<uint16_t, 6> &prev, std::vector<ServoFrame> &out);
 
-// Hand-eye calibration (des_app calib-arm): the grasp point of taught poses (forward kinematics, arm frame) and the
+// Hand-eye calibration (des_tool calib-arm): the grasp point of taught poses (forward kinematics, arm frame) and the
 // same marker positions seen by the camera (table frame). Least-squares 2D rigid fit table = base + R(yaw) * arm
 // (the convention of table_to_arm), belt height from the touched marker tops. Needs >= 3 points spread >= 40 mm.
 struct ArmBaseFit {

@@ -215,12 +215,12 @@ std::string load_config(const std::string &path, AppConfig &cfg)
                 get(c["tracker"], "fov_x0", cfg.tracker.fov_x0);
                 get(c["tracker"], "fov_x1", cfg.tracker.fov_x1);
             }
-            if (c.contains("belt")) {   // des_app calib-belt
+            if (c.contains("belt")) {   // des_tool calib-belt
                 get(c["belt"], "mm_per_step", cfg.belt.mm_per_step);
                 get(c["belt"], "dir", cfg.belt.dir);
                 cfg.belt_calibrated = true;
             }
-            if (c.contains("arm")) {    // des_app calib-arm (overrides arm.base_xy / base_yaw_deg / belt_z)
+            if (c.contains("arm")) {    // des_tool calib-arm (overrides arm.base_xy / base_yaw_deg / belt_z)
                 const json &a = c["arm"];
                 get_vec2(a, "base_xy", cfg.arm.base_xy);
                 if (a.contains("base_yaw_deg")) cfg.arm.base_yaw = a["base_yaw_deg"].get<float>() * kPi / 180.f;

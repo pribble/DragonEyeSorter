@@ -18,7 +18,7 @@ struct LiveOptions {
     std::string dump;          // save the displayed image (PNG) once, 3 s in, for checking the overlay remotely
     bool run = false;          // production: belt + arm + CAN through Runner (else dry tracking only)
     RunOptions run_opt;
-    CollectOptions collect;    // label set: also save training crops (des_app collect)
+    CollectOptions collect;    // label set: also save training crops (des_tool collect)
 };
 
 // cam must already be open. Returns 0 on success.

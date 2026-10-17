@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Merge `des_app collect` sessions into a training set: <out>/{train,val}/<id>_<label>/.
+"""Merge `des_tool collect` sessions into a training set: <out>/{train,val}/<id>_<label>/.
 
 Crops of the same physical part are near-duplicates, so the split is by PART, never by image: otherwise validation
 accuracy is inflated. Two ways:

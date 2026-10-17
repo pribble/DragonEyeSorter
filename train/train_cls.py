@@ -3,7 +3,7 @@
 
 Dataset = ImageFolder: <data>/train/<id>_<label>/*.png|jpg and <data>/val/... (folder names sort in class-id order,
 so the model's output index = models/label_list.json id). Made by synth_crops.py (smoke test) or
-prepare_dataset.py (real crops from `des_app collect`).
+prepare_dataset.py (real crops from `des_tool collect`).
 
 Augmentation is deliberately mild: the defects are small (1~2 mm = 4~8 px), so no random erasing and almost no
 random-resized-crop (both can remove the defect and teach the model wrong labels). Flips are free: the crop is

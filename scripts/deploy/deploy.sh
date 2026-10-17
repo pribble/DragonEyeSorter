@@ -135,7 +135,7 @@ REMOTE
 # 新增板端脚本要么进 manifest.tsv（产品件），要么加进这一行（测试件），否则刷新时会被清掉。
 # 用**全量**清单（$tmpd/raw）而不是 --only 过滤后的，免得不带参数的过滤把暂存刷成残缺的一份。
 # 平铺是因为"哪个文件去哪"在清单与 MD5SUMS.txt 里已经写清楚了，再按板端目录分层只是多层嵌套。
-manual_files="pl_check.sh soak.sh display_check.sh"
+manual_files="pl_check.sh soak.sh display_check.sh des_tool.sh"
 stage_payload() {
     dup=$(awk -F'\t' '{n=$1; sub(/.*\//,"",n); print n}' "$tmpd/raw" | sort | uniq -d)
     [ -z "$dup" ] || { echo "manifest 里重名文件，平铺暂存会互相覆盖：$dup" >&2; exit 1; }
@@ -355,7 +355,7 @@ fi
 
 if [ -n "$DEST" ] && [ "$bad" -eq 0 ]; then
     echo
-    echo "测试目录跑法：ssh \$BOARD_HOST $DEST/des_app.sh probe       # 启动器 cd 到自己目录、-c 取自它自己的 des.env"
+    echo "测试目录跑法：ssh \$BOARD_HOST $DEST/des_app.sh live -n 20    # 启动器 cd 到自己目录、-c 取自它自己的 des.env"
     echo "              ⚠ 别裸跑 $DEST/des_app（不带 -c）：缺省是**当前目录**的 des_app.json（环境 DES_CONFIG 优先），"
     echo "                换了工作目录就会用错配置 —— 一律用 ./des_app.sh"
     echo "              相机 / 舵机总线 / 步进只有一个主人：自启服务在跑就先 $DEST/des_service.sh stop，跑完 start"

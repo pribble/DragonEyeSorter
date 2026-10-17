@@ -1,4 +1,4 @@
-// collector.hpp — training-data collection (`des_app collect --cls <label>`, 总计划 §3-②「标注用自动框」).
+// collector.hpp — training-data collection (`des_tool collect --cls <label>`, 总计划 §3-②「标注用自动框」).
 //
 // Put parts of ONE class on the belt and run it: every tracked part (fully in view, not merged) gets a crop
 // (roi_crop.hpp, exactly the NPU input) every `every` processed frames, at most `max_per_part`, written to
