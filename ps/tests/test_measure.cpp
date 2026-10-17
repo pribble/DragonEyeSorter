@@ -1,12 +1,19 @@
 // test_measure: gear / rack measurement on synthetic images with a known ground truth (4x supersampled polygons,
 // anti-aliased, blurred, noisy; optional parallax: union of the slices from the bottom face to the top face magnified
 // about the optical axis, or the top face only).  ./test_measure     exit code = failed checks
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
 #include <vector>
+
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <poll.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
@@ -429,10 +436,42 @@ int main()
     {   // K: local storage — 3 decided parts, images for the NG / recheck ones only, read back
         StorageConfig sc;
         sc.dir = "/tmp/des_logtest";
+        sc.feed_port = 19501;   // live upload (net_feed): a loopback client receives the same records + images
         if (system("rm -rf /tmp/des_logtest") != 0) {}
         PartLog log;
         std::string e = log.open(sc);
         CHECK(e.empty() && log.is_open(), "open: %s", e.c_str());
+        int cfd = socket(AF_INET, SOCK_STREAM, 0);
+        sockaddr_in sa{};
+        sa.sin_family = AF_INET;
+        sa.sin_port = htons(19501);
+        sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        const bool conn = connect(cfd, reinterpret_cast<sockaddr *>(&sa), sizeof sa) == 0;
+        CHECK(conn, "feed: connect to port 19501");
+        auto read_exact = [&](std::string &out, size_t n) {   // 2 s timeout overall per call
+            out.clear();
+            while (out.size() < n) {
+                pollfd p{cfd, POLLIN, 0};
+                if (poll(&p, 1, 2000) <= 0) return false;
+                char b[4096];
+                ssize_t r = recv(cfd, b, std::min(sizeof b, n - out.size()), 0);
+                if (r <= 0) return false;
+                out.append(b, size_t(r));
+            }
+            return true;
+        };
+        struct Frame { char type; std::string name, payload; };
+        auto read_frame = [&](Frame &f) {
+            std::string h;
+            if (!read_exact(h, 10) || h[0] != 'D' || h[1] != 'F') return false;
+            const size_t nl = (uint8_t(h[4]) << 8) | uint8_t(h[5]);
+            const size_t pl = (size_t(uint8_t(h[6])) << 24) | (uint8_t(h[7]) << 16) | (uint8_t(h[8]) << 8) | uint8_t(h[9]);
+            f.type = h[2];
+            return read_exact(f.name, nl) && read_exact(f.payload, pl);
+        };
+        Frame hello;
+        CHECK(conn && read_frame(hello) && hello.type == 'H' && hello.payload == csv_header() && hello.name == log.session,
+              "feed: hello carries the session and the CSV header");
         cv::Mat crop(224, 224, CV_8UC3, cv::Scalar(30, 200, 30));
         const char *disp[] = {"pick", "flap", "recheck"};
         for (int i = 0; i < 3; i++) {
@@ -466,6 +505,28 @@ int main()
                (unsigned long long)log.errors.load());
         CHECK(lines == 4 && fields_ok == 3, "csv lines %d, rows with 43 columns %d", lines, fields_ok);
         CHECK(with_img == 2 && log.images == 2, "images only for flap / recheck (%d)", with_img);
+        int nr = 0, ni = 0, jpg_ok = 0;
+        Frame fr;
+        std::string first_line;
+        while (read_frame(fr)) {   // the log closed: the feed flushed and hung up
+            if (fr.type == 'R' && nr++ == 0) first_line = fr.payload;
+            if (fr.type == 'I') {
+                ni++;
+                jpg_ok += fr.payload.size() > 100 && uint8_t(fr.payload[0]) == 0xFF && uint8_t(fr.payload[1]) == 0xD8 &&
+                          fr.name.rfind("img/", 0) == 0;
+            }
+        }
+        close(cfd);
+        FILE *f2 = fopen(log.csv_path.c_str(), "r");
+        char l1[2048] = "", l2[2048] = "";
+        if (f2) {
+            if (!fgets(l1, sizeof l1, f2) || !fgets(l2, sizeof l2, f2)) l2[0] = 0;
+            fclose(f2);
+        }
+        l2[strcspn(l2, "\n")] = 0;
+        printf("[feed] %d records, %d images over TCP\n", nr, ni);
+        CHECK(nr == 3 && ni == 2 && jpg_ok == 2, "feed: 3 records + 2 JPEG images (%d / %d / %d)", nr, ni, jpg_ok);
+        CHECK(first_line == l2, "feed: record identical to the CSV line");
     }
     {   // part colour from a crop: dark belt, a bright disc; white vs yellow vs blue vs red, and the classes
         std::vector<ColorClass> cl = {{"white", 0, 360, 0, 45}, {"yellow", 35, 75, 60, 255},

@@ -20,6 +20,7 @@
 #include <opencv2/core.hpp>
 
 #include "config.hpp"
+#include "net_feed.hpp"
 #include "tracker.hpp"
 
 namespace des {
@@ -57,6 +58,7 @@ public:
     std::string session;                          // YYYYMMDD-HHMMSS of open()
     std::string csv_path;
     std::atomic<uint64_t> written{0}, images{0}, dropped{0}, errors{0};
+    const NetFeed &feed() const { return feed_; }
 
 private:
     struct Item {
@@ -75,6 +77,7 @@ private:
     std::condition_variable cv_;
     std::deque<Item> q_;
     bool quit_ = false;
+    NetFeed feed_;
 };
 
 const char *csv_header();

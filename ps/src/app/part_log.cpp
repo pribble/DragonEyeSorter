@@ -85,6 +85,10 @@ std::string PartLog::open(const StorageConfig &cfg)
     if (!csv_) return "cannot open " + csv_path + ": " + strerror(errno);
     fprintf(csv_, "%s\n", csv_header());
     fflush(csv_);
+    if (cfg.feed_port > 0) {   // live upload to a PC client (net_feed.hpp); a busy port only costs the feed
+        const std::string e = feed_.start(cfg.feed_port, session, csv_header());
+        if (!e.empty()) fprintf(stderr, "net feed: %s (records still go to the SD card)\n", e.c_str());
+    }
     t0_ = 0;
     t0_ = now_s();
     quit_ = false;
@@ -115,6 +119,7 @@ void PartLog::close()
         cv_.notify_one();
         th_.join();
     }
+    feed_.stop();
     if (csv_) {
         fclose(csv_);
         csv_ = nullptr;
@@ -140,17 +145,27 @@ void PartLog::write(const Item &it)
 {
     const PartRecord &r = it.r;
     std::string img;
+    std::vector<uint8_t> jpeg;
     if (!it.crop.empty()) {
         img = "img/" + session + "_" + std::to_string(r.track_id) + "_" + csv_text(r.label) + ".jpg";
         std::vector<int> prm = {cv::IMWRITE_JPEG_QUALITY, cfg_.jpeg_quality};
-        if (cv::imwrite(day_dir_ + "/" + img, it.crop, prm)) images++;
-        else { errors++; img.clear(); }
+        FILE *f = nullptr;
+        if (cv::imencode(".jpg", it.crop, jpeg, prm) && (f = fopen((day_dir_ + "/" + img).c_str(), "wb")) &&
+            fwrite(jpeg.data(), 1, jpeg.size(), f) == jpeg.size()) {
+            images++;
+        } else {
+            errors++;
+            img.clear();
+            jpeg.clear();
+        }
+        if (f) fclose(f);
     }
     const PartMeasure &m = r.meas;
-    int n = fprintf(csv_,
+    char line[2048];
+    int n = snprintf(line, sizeof line,
                     "%lld,%.3f,%d,%u,%u,%d,%s,%.3f,%s,%s,%s,"
                     "%d,%c,%.3f,%.3f,%.3f,%.4f,%d,%d,%d,%d,%d,%.2f,"
-                    "%.1f,%u,%d,%.2f,%.2f,%.1f,%.1f,%.1f,%u,%.2f,%.2f,%.2f,%s,%d,%.2f,%.1f,%d,%.0f,%.0f,%d\n",
+                    "%.1f,%u,%d,%.2f,%.2f,%.1f,%.1f,%.1f,%u,%.2f,%.2f,%.2f,%s,%d,%.2f,%.1f,%d,%.0f,%.0f,%d",
                     (long long)r.wall_ms, r.t_s, r.track_id, r.frame_first, r.frame_last, r.cls,
                     csv_text(r.label).c_str(), r.conf, csv_text(r.disp).c_str(), csv_text(r.dest).c_str(),
                     csv_text(r.why).c_str(), int(m.valid), m.kind ? m.kind : '-', m.size, m.bore, m.ecc, m.pitch,
@@ -158,8 +173,13 @@ void PartLog::write(const Item &it)
                     m.axis_dist < 1e8f ? m.axis_dist : -1.f, m.frame, m.count, r.s, r.y, r.axis * 57.29578f, r.len,
                     r.wid, r.pl_area, r.pl_d_mm, r.pl_w_mm, r.pl_h_mm, img.c_str(), r.votes, r.npu_ms, r.lat_ms, r.recipe,
                     m.hue, m.sat, m.color);
-    if (n < 0 || fflush(csv_) != 0) errors++;
-    else written++;
+    if (n < 0 || size_t(n) >= sizeof line || fprintf(csv_, "%s\n", line) < 0 || fflush(csv_) != 0) {
+        errors++;
+        return;
+    }
+    written++;
+    if (!jpeg.empty()) feed_.image(img, jpeg);   // image first: the record names it
+    feed_.record(line);
 }
 
 }  // namespace des

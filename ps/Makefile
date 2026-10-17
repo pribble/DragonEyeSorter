@@ -65,7 +65,7 @@ VISION_SRC := src/vision/mipi_camera.cpp src/vision/logger_forward.cpp src/visio
 # 产品运行时与运维工具共用的源码（不含两个入口 main.cpp / tool_main.cpp）：编译一次成 build/obj 下的 .o
 APP_SRC := src/app/camera_rig.cpp src/app/locate.cpp src/app/config.cpp \
            src/app/live.cpp src/app/runner.cpp src/app/belt_ctl.cpp src/app/arm_exec.cpp \
-           src/app/part_log.cpp src/app/img_writer.cpp src/app/collector.cpp \
+           src/app/part_log.cpp src/app/net_feed.cpp src/app/img_writer.cpp src/app/collector.cpp \
            src/app/npu_cls.cpp src/app/npu_async.cpp src/app/arm_manual.cpp \
            src/measure/measure.cpp src/measure/track_measure.cpp src/measure/roi_crop.cpp \
            src/ui/hdmi_out.cpp src/ui/scale34.cpp src/ui/text_ft.cpp src/ui/ui_input.cpp src/ui/hmi.cpp
@@ -119,10 +119,10 @@ $(BUILD)/test_scheduler: tests/test_scheduler.cpp $(SCHED_SRC) $(wildcard src/sc
 	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_scheduler.cpp $(SCHED_SRC)
 
 $(BUILD)/test_measure: tests/test_measure.cpp src/measure/measure.cpp src/measure/track_measure.cpp \
-    src/measure/roi_crop.cpp src/app/part_log.cpp $(SCHED_SRC) \
+    src/measure/roi_crop.cpp src/app/part_log.cpp src/app/net_feed.cpp $(SCHED_SRC) \
     $(wildcard src/measure/*measure*.hpp src/measure/roi_crop.hpp src/app/part_log.hpp src/sched/*.hpp) | check-sdk $(BUILD)
 	$(CXX) $(CXXFLAGS) $(INC) -I$(OPENCV)/include/opencv4 -o $@ tests/test_measure.cpp src/measure/measure.cpp \
-	    src/measure/track_measure.cpp src/measure/roi_crop.cpp src/app/part_log.cpp $(SCHED_SRC) \
+	    src/measure/track_measure.cpp src/measure/roi_crop.cpp src/app/part_log.cpp src/app/net_feed.cpp $(SCHED_SRC) \
 	    -L$(OPENCV)/lib -Wl,-rpath-link,$(OPENCV)/lib $(RPATH) -lopencv_imgcodecs -lopencv_imgproc -lopencv_core -lpthread
 
 $(BUILD)/canplc: tools/canplc.c src/hw/can_link.c src/hw/can_link.h src/hw/can_proto.h | $(BUILD)

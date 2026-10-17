@@ -52,6 +52,7 @@ struct StorageConfig {
     std::string images = "ng";   // none | ng (flap + recheck) | all
     int jpeg_quality = 92;
     int max_queue = 256;
+    int feed_port = 0;           // > 0: live upload of records + images to a PC client (app/net_feed)
 };
 
 struct AppConfig {
