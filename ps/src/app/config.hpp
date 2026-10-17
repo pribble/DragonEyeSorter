@@ -57,6 +57,11 @@ struct StorageConfig {
     int feed_port = 0;           // > 0: live upload of records + images to a PC client (app/net_feed)
 };
 
+// line PLC over Ethernet (hw/modbus_tcp.hpp, register map hw/modbus_map.h); CAN is chosen with `run --can`
+struct PlcConfig {
+    int modbus_port = 0;         // > 0: Modbus-TCP slave on this port in `des_app run` (502 = standard)
+};
+
 struct AppConfig {
     CameraConfig camera;
     LocateConfig locate;
@@ -68,7 +73,8 @@ struct AppConfig {
     TrackMeasureConfig measure;
     StorageConfig storage;
     NpuConfig npu;
-    FlapConfig flaps;            // belt-end flaps (des_pwm, v7)
+    FlapConfig flaps;            // side diverter gates (des_pwm, v7)
+    PlcConfig plc;
     std::string label_list = "models/label_list.json";
     std::string calib_file = "calib.json";     // written by des_tool calib-cam, merged over this file if present
     std::string calib_loaded;                  // path actually merged (empty = none)

@@ -4,9 +4,11 @@
 #include <time.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 
 #include "can_link.h"
+#include "modbus_map.h"
 #include "part_log.hpp"
 
 namespace des {
@@ -52,6 +54,17 @@ std::string Runner::start()
     if (!opt_.can_if.empty()) {
         can_fd_ = can_open(opt_.can_if.c_str());
         if (can_fd_ < 0) return "cannot open CAN " + opt_.can_if + " (bring it up with scripts/deploy/out/can_up.sh)";
+    }
+    active_recipe_ = cfg_.recipe;
+    if (cfg_.plc.modbus_port > 0) {   // a busy port costs only the Modbus link, not the line
+        mb_.reset(new ModbusTcp(MB_N_HR, MB_N_IR));
+        const std::string e = mb_->start(cfg_.plc.modbus_port);
+        if (!e.empty()) {
+            fprintf(stderr, "[run] Modbus-TCP off: %s\n", e.c_str());
+            mb_.reset();
+        } else {
+            printf("[run] Modbus-TCP slave on port %d\n", mb_->port());
+        }
     }
     prev_status_ = des_step_status(hw_);
     belt_.enable(true);
@@ -189,10 +202,86 @@ void Runner::handle_can(double now)
     }
 }
 
+// Modbus-TCP writes (hw/modbus_map.h): the server thread only queues them; executed here with the CAN rules
+void Runner::handle_modbus(double now)
+{
+    if (!mb_) return;
+    const uint64_t n = mb_->requests();
+    if (n != mb_requests_) {
+        mb_requests_ = n;
+        last_mb_ = now;
+    }
+    for (const ModbusTcp::Write &w : mb_->take_writes()) {
+        uint8_t r;
+        switch (w.addr) {
+        case MB_HR_CMD: r = w.value <= 0xFF ? command(uint8_t(w.value), "Modbus") : uint8_t(CANP_ACK_UNKNOWN); break;
+        case MB_HR_SPEED: r = set_speed(w.value / 10.0, "Modbus"); break;
+        case MB_HR_RECIPE: r = select_recipe(w.value, "Modbus"); break;
+        case MB_HR_TIME_HI: mb_time_hi_ = w.value; continue;   // applied with the low word
+        case MB_HR_TIME_LO: {
+            const int64_t unix_s = (int64_t(mb_time_hi_) << 16) | w.value;
+            if (unix_s < 1700000000) {   // before 2023: not a clock
+                r = CANP_ACK_BAD_VALUE;
+                break;
+            }
+            timespec ts;
+            clock_gettime(CLOCK_REALTIME, &ts);
+            const bool first = !wall_synced();
+            set_wall_offset_ms(unix_s * 1000 - (int64_t(ts.tv_sec) * 1000 + ts.tv_nsec / 1000000));
+            if (first) last_event_ = "clock synced from Modbus";
+            r = CANP_ACK_OK;
+            break;
+        }
+        default: r = CANP_ACK_REJECTED; break;   // RESULT / SEQ / spare: read only
+        }
+        mb_->set_holding(MB_HR_RESULT, r);
+        mb_->set_holding(MB_HR_SEQ, ++mb_seq_);
+    }
+}
+
+// read-back values (holding) and status (input registers), every cycle
+void Runner::update_modbus(double now)
+{
+    if (!mb_) return;
+    const double set = speed_mm_s_ > 0 ? speed_mm_s_ : cfg_.belt.run_speed;
+    mb_->set_holding(MB_HR_CMD, 0);
+    mb_->set_holding(MB_HR_SPEED, uint16_t(std::lround(set * 10)));
+    mb_->set_holding(MB_HR_RECIPE, uint16_t(active_recipe_));
+    auto hi = [](uint32_t v) { return uint16_t(v >> 16); };
+    auto lo = [](uint32_t v) { return uint16_t(v & 0xFFFF); };
+    const uint8_t flags = uint8_t((belt_.stopped() ? 0 : CANP_FLAG_BELT_MOVING) | (arm_busy_ ? CANP_FLAG_ARM_BUSY : 0) |
+                                  (alarm_ ? CANP_FLAG_ALARM : 0) |
+                                  (now - last_plc_hb_ < 1.0 || now - last_mb_ < 1.0 ? CANP_FLAG_PLC_LINK : 0) |
+                                  (cfg_.calib_loaded.empty() ? 0 : CANP_FLAG_CALIBRATED));
+    std::vector<uint16_t> ir(MB_N_IR, 0);
+    ir[MB_IR_STATE] = state_.load();
+    ir[MB_IR_FLAGS] = flags;
+    const uint32_t cnt[4] = {counts_.total, counts_.ok, counts_.ng, counts_.recheck};
+    for (int k = 0; k < 4; k++) {
+        ir[MB_IR_TOTAL + 2 * k] = hi(cnt[k]);
+        ir[MB_IR_TOTAL + 2 * k + 1] = lo(cnt[k]);
+    }
+    ir[MB_IR_PART_SEQ] = part_seq_;
+    ir[MB_IR_PART_ID] = last_part_.id;
+    ir[MB_IR_PART_CLS] = last_part_.cls == 0xFF ? 0xFFFF : last_part_.cls;
+    ir[MB_IR_PART_DISP] = last_part_.disp;
+    ir[MB_IR_PART_DEST] = last_part_.dest;
+    ir[MB_IR_PART_SIZE] = uint16_t(std::lround(std::min(600.0, std::max(0.0, last_part_.size_mm)) * 100));
+    ir[MB_IR_PART_CONF] = last_part_.conf_pct;
+    ir[MB_IR_SPEED] = uint16_t(std::lround(belt_.speed_mm_s() * 10));
+    ir[MB_IR_HB] = mb_hb_++;
+    ir[MB_IR_UPTIME] = uint16_t(uint32_t(now - t0_));
+    ir[MB_IR_ALARM] = alarm_;
+    ir[MB_IR_RECIPE] = uint16_t(active_recipe_);
+    ir[MB_IR_VERSION] = MB_MAP_VERSION;
+    mb_->set_inputs(0, ir);
+}
+
 void Runner::cycle(Tracker &tr, Picker &pk)
 {
     const double now = now_s();
     handle_can(now);
+    handle_modbus(now);
 
     // e-stop. v11: des_io latches it (debounced) and holds the stepper until RESET_ALARM clears it -> seen in any
     // state. Older bitstreams: only the stepper's HALTED edge while running (missed when idle or stopped).
@@ -290,6 +379,8 @@ void Runner::cycle(Tracker &tr, Picker &pk)
         p.conf_pct = uint8_t(std::min(100.f, t.cls_conf * 100));
         p.size_mm = t.meas.valid ? t.meas.size : 0;   // gear OD / rack length; 0 = not measured (can_proto.h)
         send(canp_part(&p));
+        last_part_ = p;
+        part_seq_++;
     }
     while (reported_.size() > 2000) reported_.erase(reported_.begin());
 
@@ -297,7 +388,8 @@ void Runner::cycle(Tracker &tr, Picker &pk)
         canp_status_t s;
         s.state = state_;
         s.flags = uint8_t((belt_.stopped() ? 0 : CANP_FLAG_BELT_MOVING) | (arm_busy_ ? CANP_FLAG_ARM_BUSY : 0) |
-                          (alarm_ ? CANP_FLAG_ALARM : 0) | (now - last_plc_hb_ < 1.0 ? CANP_FLAG_PLC_LINK : 0) |
+                          (alarm_ ? CANP_FLAG_ALARM : 0) |
+                          (now - last_plc_hb_ < 1.0 || now - last_mb_ < 1.0 ? CANP_FLAG_PLC_LINK : 0) |
                           (cfg_.calib_loaded.empty() ? 0 : CANP_FLAG_CALIBRATED));
         s.speed_mm_s = belt_.speed_mm_s();
         s.alarm = alarm_;
@@ -311,16 +403,19 @@ void Runner::cycle(Tracker &tr, Picker &pk)
         last_counts_ = now;
     }
     flush_tx();
+    update_modbus(now);
 }
 
 std::string Runner::status_line() const
 {
-    char b[240], q[48] = "";
+    char b[260], q[48] = "";
     if (txq_.size() > 4 || tx_dropped_)
         snprintf(q, sizeof q, "CAN txq %zu dropped %llu  ", txq_.size(), (unsigned long long)tx_dropped_);
-    snprintf(b, sizeof b, "%s  belt %.1f mm/s  arm %s  total %u ok %u ng %u recheck %u  %s%s%s", state_name(state_),
+    const double t = now_s();
+    snprintf(b, sizeof b, "%s  belt %.1f mm/s  arm %s  total %u ok %u ng %u recheck %u  %s%s%s%s", state_name(state_),
              belt_.speed_mm_s(), arm_busy_ ? "busy" : "idle", counts_.total, counts_.ok, counts_.ng, counts_.recheck,
-             can_fd_ >= 0 ? (now_s() - last_plc_hb_ < 1.0 ? "PLC ok  " : "PLC --  ") : "", q, last_event_.c_str());
+             can_fd_ >= 0 ? (t - last_plc_hb_ < 1.0 ? "PLC ok  " : "PLC --  ") : "",
+             mb_ ? (t - last_mb_ < 1.0 ? "Modbus ok  " : "Modbus --  ") : "", q, last_event_.c_str());
     return b;
 }
 

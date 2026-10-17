@@ -1,5 +1,6 @@
 // runner.hpp — production control for `des_app run`: line state machine, belt (BeltDriver), arm (ArmExec on its own
-// thread), CAN link to the "PLC" (hw/can_proto.h). Driven from the live worker thread once per processed frame.
+// thread), CAN link to the "PLC" (hw/can_proto.h), Modbus-TCP slave (hw/modbus_map.h, same rules). Driven from the
+// live worker thread once per processed frame.
 //
 // States: IDLE (belt stopped, nothing dispatched) / RUN / PAUSED (PLC interlock or operator; current pick finishes) /
 // ESTOP (PL e-stop latched the stepper; needs RESET_ALARM then START). Without CAN the line starts in RUN.
@@ -8,6 +9,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <deque>
+#include <memory>
 #include <mutex>
 #include <set>
 #include <string>
@@ -19,6 +21,7 @@
 #include "can_proto.h"
 #include "config.hpp"
 #include "flap.hpp"
+#include "modbus_tcp.hpp"
 #include "picker.hpp"
 #include "tracker.hpp"
 
@@ -49,10 +52,13 @@ public:
     // new ready pose (HMI arm page 「设为初始姿态」): every following pick starts and ends there
     void set_home(const std::array<int, 6> &counts);
     double speed_mm_s() const { return speed_mm_s_; }
+    void set_active_recipe(int id) { active_recipe_ = id; }   // for the Modbus read-back (the worker applies recipes)
 
 private:
     void arm_loop();
     void handle_can(double now);
+    void handle_modbus(double now);
+    void update_modbus(double now);
     void set_state(uint8_t s, const char *why);
     void send(const canp_frame_t &f);        // queued: at most one frame per cycle (see flush_tx)
     void send_now(const canp_frame_t &f);    // ACKs: right away
@@ -77,6 +83,12 @@ private:
     std::string last_event_;
     double speed_mm_s_ = 0;      // last set belt speed (0 = config run_speed)
     int pending_recipe_ = -1;    // accepted by select_recipe, not yet applied by the worker
+    std::unique_ptr<ModbusTcp> mb_;  // Modbus-TCP slave (cfg.plc.modbus_port > 0)
+    uint64_t mb_requests_ = 0;
+    double last_mb_ = -1e9;          // last Modbus request seen (PLC_LINK)
+    uint16_t mb_seq_ = 0, mb_time_hi_ = 0, mb_hb_ = 0, part_seq_ = 0;
+    canp_part_t last_part_{0, 0xFF, 0, 0, 0, 0};
+    int active_recipe_ = 0;
     FlapSequencer flaps_;
     int flap_us_[2] = {-1, -1};  // last written pulse widths
     bool pwm_enabled_ = false;

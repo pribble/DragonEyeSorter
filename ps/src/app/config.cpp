@@ -172,6 +172,7 @@ std::string load_config(const std::string &path, AppConfig &cfg)
                 if (f.gates.size() > 2) return path + ": flaps.gates: at most 2 (des_pwm has 2 channels)";
             }
         }
+        if (j.contains("plc")) get(j["plc"], "modbus_port", cfg.plc.modbus_port);
         if (j.contains("npu")) {
             const json &c = j["npu"];
             get(c, "enabled", cfg.npu.enabled); get(c, "model", cfg.npu.model); get(c, "core", cfg.npu.core);

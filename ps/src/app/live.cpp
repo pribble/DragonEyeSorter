@@ -449,6 +449,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
             if (runner) {   // recipe accepted from the PLC (CAN RECIPE) or the HMI under the run rules
                 const int rc = runner->take_recipe();
                 if (rc > 0 && hmi.set_recipe(rc)) apply_params(hmi.params());
+                runner->set_active_recipe(hmi.params().recipe);
             }
             if (now_s() - last_hmi >= 0.12) {
                 hmi_panel = hmi.render(now_s());

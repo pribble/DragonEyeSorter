@@ -21,7 +21,7 @@
 #       **头文件平铺**（全仓库无跨目录 include），靠下面的 INC 解析 —— 各目录 basename 必须唯一。
 #
 # Targets: desreg (C, no deps), test_scheduler (C++, no deps), test_calib / test_measure / test_npu (C++, need SDK),
-#          test_belt_hil (board, PL v5+), test_can / canplc (SocketCAN), des_app / des_tool (C++, need SDK), all, clean.
+#          test_belt_hil (board, PL v5+), test_can / canplc (SocketCAN), test_modbus (loopback TCP), des_app / des_tool (C++, need SDK), all, clean.
 #          注意：test_npu / test_servo_gap 不在 all 里（要显式点名，见 ps/README.md）。
 # Deploy:  ../scripts/deploy/ 里是上板清单与部署器（对比 / 部署 / 暂存）：make -C ps all 结束会顺手刷一份
 #          ../scripts/deploy/out/（要上板的那一份：主程序与配置刷进去，脚本与 des.env 就地不动；
@@ -65,7 +65,7 @@ VISION_SRC := src/vision/mipi_camera.cpp src/vision/logger_forward.cpp src/visio
 # 产品运行时与运维工具共用的源码（不含两个入口 main.cpp / tool_main.cpp）：编译一次成 build/obj 下的 .o
 APP_SRC := src/app/camera_rig.cpp src/app/locate.cpp src/app/config.cpp \
            src/app/live.cpp src/app/runner.cpp src/app/belt_ctl.cpp src/app/arm_exec.cpp \
-           src/app/part_log.cpp src/app/net_feed.cpp src/app/img_writer.cpp src/app/collector.cpp \
+           src/app/part_log.cpp src/app/net_feed.cpp src/app/img_writer.cpp src/app/collector.cpp src/hw/modbus_tcp.cpp \
            src/app/npu_cls.cpp src/app/npu_async.cpp src/app/arm_manual.cpp \
            src/measure/measure.cpp src/measure/track_measure.cpp src/measure/roi_crop.cpp \
            src/ui/hdmi_out.cpp src/ui/scale34.cpp src/ui/text_ft.cpp src/ui/ui_input.cpp src/ui/hmi.cpp
@@ -94,7 +94,7 @@ check-board:
 	@$(if $(wildcard $(FREETYPE_INC)),echo FREETYPE_INC ok,$(error FREETYPE_INC 未设置或目录不存在：$(FREETYPE_INC)。$(ENV_HINT)))
 	@$(if $(wildcard $(BOARD_LIBS)),echo BOARD_LIBS ok,$(error BOARD_LIBS 未设置或目录不存在：$(BOARD_LIBS)。$(ENV_HINT)))
 
-all: $(BUILD)/desreg $(BUILD)/test_scheduler $(BUILD)/test_calib $(BUILD)/test_measure $(BUILD)/test_belt_hil $(BUILD)/test_can $(BUILD)/canplc $(BUILD)/des_app $(BUILD)/des_tool
+all: $(BUILD)/desreg $(BUILD)/test_scheduler $(BUILD)/test_modbus $(BUILD)/test_calib $(BUILD)/test_measure $(BUILD)/test_belt_hil $(BUILD)/test_can $(BUILD)/canplc $(BUILD)/des_app $(BUILD)/des_tool
 	-@powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/deploy/deploy.ps1 -Stage
 
 $(BUILD):
@@ -106,7 +106,7 @@ $(OBJ):
 	-@mkdir $(BUILD)
 	-@mkdir $(subst /,\,$(OBJ))
 
-vpath %.cpp src/app src/sched src/measure src/ui src/vision
+vpath %.cpp src/app src/sched src/measure src/ui src/vision src/hw
 $(OBJ)/%.o: %.cpp | $(OBJ)
 	$(CXX) $(CXXFLAGS) $(INC) $(SDK_INC) -MMD -MP -c -o $@ $<
 
@@ -124,6 +124,10 @@ $(BUILD)/test_measure: tests/test_measure.cpp src/measure/measure.cpp src/measur
 	$(CXX) $(CXXFLAGS) $(INC) -I$(OPENCV)/include/opencv4 -o $@ tests/test_measure.cpp src/measure/measure.cpp \
 	    src/measure/track_measure.cpp src/measure/roi_crop.cpp src/app/part_log.cpp src/app/net_feed.cpp $(SCHED_SRC) \
 	    -L$(OPENCV)/lib -Wl,-rpath-link,$(OPENCV)/lib $(RPATH) -lopencv_imgcodecs -lopencv_imgproc -lopencv_core -lpthread
+
+# Modbus-TCP slave over loopback (no SDK; also builds with WSL g++)
+$(BUILD)/test_modbus: tests/test_modbus.cpp src/hw/modbus_tcp.cpp src/hw/modbus_tcp.hpp src/hw/modbus_map.h | $(BUILD)
+	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_modbus.cpp src/hw/modbus_tcp.cpp -lpthread
 
 $(BUILD)/canplc: tools/canplc.c src/hw/can_link.c src/hw/can_link.h src/hw/can_proto.h | $(BUILD)
 	$(CC) $(CFLAGS) $(INC) -o $@ tools/canplc.c src/hw/can_link.c
