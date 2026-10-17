@@ -9,6 +9,7 @@
 #include "geom.hpp"
 #include "flap.hpp"
 #include "picker.hpp"
+#include "speed_adapt.hpp"
 #include "tracker.hpp"
 
 using namespace des;
@@ -257,6 +258,22 @@ static void test_votes()
 }
 
 // two-stage flaps follow the picker's flap events: set prepare_mm ahead, held until clear_mm past, rest = recheck
+// belt speed adaptation (sched/speed_adapt.hpp): slow down so the next OK part arrives when the arm is ready
+static void test_speed_adapt()
+{
+    SpeedAdaptConfig c;
+    c.enabled = true;
+    c.min_mm_s = 15;
+    CHECK(adapt_speed(c, 50, -1, 5) == 50, "no pick part ahead: base speed");
+    CHECK(adapt_speed(c, 50, 100, 0) == 50, "arm idle: base speed");
+    CHECK(std::fabs(adapt_speed(c, 50, 100, 4) - 25) < 1e-9, "100 mm, arm ready in 4 s: 25 mm/s");
+    CHECK(adapt_speed(c, 50, 100, 1) == 50, "arm ready before the part could arrive: base (never faster)");
+    CHECK(adapt_speed(c, 50, 30, 10) == 15, "would need 3 mm/s: floor at min_mm_s");
+    CHECK(adapt_speed(c, 10, 30, 10) == 10, "base below the floor: base");
+    c.enabled = false;
+    CHECK(adapt_speed(c, 50, 100, 4) == 50, "disabled: base");
+}
+
 static void test_flaps()
 {
     FlapConfig fc;   // prepare 110, clear 190
@@ -564,6 +581,7 @@ int main()
     test_recipes();
     test_votes();
     test_flaps();
+    test_speed_adapt();
     test_gate_events();
     test_picker();
     test_picker_tangential();

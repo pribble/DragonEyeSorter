@@ -9,6 +9,7 @@
 #include "geom.hpp"
 #include "measure_config.hpp"
 #include "picker.hpp"
+#include "speed_adapt.hpp"
 #include "tracker.hpp"
 
 namespace des {
@@ -36,6 +37,7 @@ struct BeltConfig {
     int dir = 1;                 // +1: stepper POS increasing moves parts toward +x
     double run_speed = 50;       // mm/s
     double accel = 400;          // mm/s^2
+    SpeedAdaptConfig adapt;      // slow down instead of stopping while the arm is busy (sched/speed_adapt.hpp)
 };
 
 // NPU part classifier (npu_cls.hpp / train/export_npu.py)

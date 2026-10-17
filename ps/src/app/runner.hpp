@@ -90,6 +90,9 @@ private:
     struct Done { int id; bool ok; std::string why; };
     std::vector<Done> done_;
     std::atomic<bool> arm_busy_{false}, arm_clear_{true};
+    std::atomic<double> arm_eta_{0};   // monotonic s when the running pick will be back at the ready pose (speed adaptation)
+    double adapt_v_ = 0;               // last cruise speed set by the adaptation
+    uint64_t adapt_changes_ = 0;
     std::array<uint16_t, 6> arm_counts_{};   // last commanded pose (arm thread only)
 };
 

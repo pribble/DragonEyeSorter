@@ -87,6 +87,10 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             const json &c = j["belt"];
             get(c, "mm_per_step", cfg.belt.mm_per_step); get(c, "dir", cfg.belt.dir);
             get(c, "run_speed", cfg.belt.run_speed); get(c, "accel", cfg.belt.accel);
+            if (c.contains("adapt")) {
+                get(c["adapt"], "enabled", cfg.belt.adapt.enabled); get(c["adapt"], "min_mm_s", cfg.belt.adapt.min_mm_s);
+                get(c["adapt"], "change_frac", cfg.belt.adapt.change_frac);
+            }
         }
         if (j.contains("tracker")) {
             const json &c = j["tracker"];

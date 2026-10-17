@@ -230,6 +230,24 @@ void Runner::cycle(Tracker &tr, Picker &pk)
         in.arm_idle = !arm_busy_;
         in.arm_clear = arm_clear_;
         Picker::Output out = pk.tick(tr, in);
+        // speed adaptation: arm still busy -> slow down so the next OK part reaches the pick line about when the arm
+        // is ready (fewer full stops); the stop itself still comes from the picker's StopAt
+        if (cfg_.belt.adapt.enabled) {
+            const double base = speed_mm_s_ > 0 ? speed_mm_s_ : cfg_.belt.run_speed;
+            double d = -1;
+            for (const Track &t : tr.tracks())
+                if (t.state == TrackState::Decided && t.disp == Disposition::Pick) {
+                    const double dd = pk.config().pick_x - t.x_at(in.belt_mm);
+                    if (dd > 0 && (d < 0 || dd < d)) d = dd;
+                }
+            const double eta = arm_eta_.load();
+            const double v = adapt_speed(cfg_.belt.adapt, base, d, arm_busy_ && eta > now ? eta - now : 0);
+            if (std::fabs(v - adapt_v_) > cfg_.belt.adapt.change_frac * base) {
+                belt_.set_speed(v);
+                adapt_v_ = v;
+                adapt_changes_++;
+            }
+        }
         belt_.apply(out.belt);
         // side diverter gates follow the picker's flap events (des_pwm channel = gate; no-op before v7 or when disabled)
         if (cfg_.flaps.enabled && !cfg_.flaps.gates.empty()) {
@@ -332,6 +350,11 @@ void Runner::arm_loop()
         std::vector<ServoFrame> wp;
         Done d{j.track_id, false, ""};
         const char *why = plan_pick(ac, j.p, j.close_axis, j.open_mm, j.part_wid, j.bin, arm_counts_, wp);
+        if (!why) {   // whole pick incl. the way back to the ready pose (speed adaptation)
+            double ms = 0;
+            for (const ServoFrame &f : wp) ms += f.ms;
+            arm_eta_ = now_s() + ms / 1000.0;
+        }
         if (why) {
             d.why = why;
         } else {
@@ -346,6 +369,7 @@ void Runner::arm_loop()
             done_.push_back(d);
         }
         arm_clear_ = true;
+        arm_eta_ = 0;
         arm_busy_ = false;
     }
 }
