@@ -559,6 +559,11 @@ void Hmi::page_records(cv::Mat &img)
                             : std::string("齿未判（离光轴过远）"),
              m.teeth_judged ? WHITE : ORANGE);
         line(fmt("测于离光轴 %.0f mm", m.axis_dist), DIM);
+        if (m.sat >= 0) {
+            const auto &cl = cfg_.measure.colors;
+            const std::string cn = m.color >= 0 && size_t(m.color) < cl.size() ? cl[m.color].name : std::string("未归类");
+            line("颜色 " + cn + fmt("（色调 %.0f°", m.hue) + fmt(" 饱和度 %.0f）", m.sat), WHITE);
+        }
     } else {
         line("未测量", DIM);
     }

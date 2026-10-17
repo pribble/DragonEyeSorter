@@ -196,6 +196,15 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             get(c, "camera_h_mm", m.camera_h_mm); get(c, "gear_h_mm", m.gear_h_mm); get(c, "rack_h_mm", m.rack_h_mm);
             get(c, "walls_visible", m.walls_visible); get(c, "max_smear_mm", m.max_smear_mm);
             get(c, "short_tooth_mm", m.short_tooth_mm); get(c, "flash_mm", m.flash_mm);
+            if (c.contains("colors")) {
+                t.colors.clear();
+                for (const json &cj : c["colors"]) {
+                    ColorClass k;
+                    get(cj, "name", k.name); get(cj, "hue_lo", k.hue_lo); get(cj, "hue_hi", k.hue_hi);
+                    get(cj, "sat_lo", k.sat_lo); get(cj, "sat_hi", k.sat_hi);
+                    t.colors.push_back(k);
+                }
+            }
             if (c.contains("rule")) {
                 const json &r = c["rule"];
                 auto &s = cfg.tracker.size;

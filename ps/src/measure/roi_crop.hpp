@@ -12,6 +12,7 @@
 #include <opencv2/core.hpp>
 
 #include "geom.hpp"
+#include "measure_config.hpp"
 
 namespace des {
 
@@ -22,5 +23,15 @@ struct CropSpec {
 
 // src: BGRA (camera buffer, may be uncached: only the bounding box is read, once) or BGR; returns BGR out_px x out_px
 cv::Mat crop_part(const cv::Mat &src, const Homography &px_to_table, Vec2 center, float axis, const CropSpec &spec);
+
+// Colour of the part in a crop (BGR, part centred, belt dark): pixels inside the centre disc (radius 0.42 of the side)
+// brighter than the Otsu level of V; hue = saturation-weighted circular mean (deg), sat / val = means (0..255).
+struct PartColor {
+    float hue = -1, sat = -1, val = -1;
+    int pixels = 0;
+};
+PartColor part_color(const cv::Mat &crop_bgr);
+// first class in the list that matches, -1 if none (or no part pixels)
+int classify_color(const std::vector<ColorClass> &classes, const PartColor &c);
 
 }  // namespace des

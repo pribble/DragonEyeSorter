@@ -2,6 +2,9 @@
 // OpenCV, so config.hpp can hold them (des_app.json "measure", docs/视觉与检测.md "几何测量").
 #pragma once
 
+#include <string>
+#include <vector>
+
 #include "geom.hpp"
 
 namespace des {
@@ -22,6 +25,15 @@ struct MeasureConfig {
     float row0 = 0;              // in the coordinates of the image passed to measure_*()
 };
 
+// Part colour classes (roi_crop part_color / classify_color): first match wins; hue in degrees (hue_lo > hue_hi wraps
+// through 0, e.g. red 340..10), sat = mean saturation of the part pixels on OpenCV's 0..255 scale. White / natural
+// parts have a low saturation whatever their hue. ⚠ thresholds from real parts under the final light
+struct ColorClass {
+    std::string name;
+    float hue_lo = 0, hue_hi = 360;
+    float sat_lo = 0, sat_hi = 255;
+};
+
 // Measuring tracked parts from the live worker (track_measure.hpp)
 struct TrackMeasureConfig {
     bool enabled = true;
@@ -32,6 +44,7 @@ struct TrackMeasureConfig {
     bool axis_from_image = true; // optical axis = image center mapped to the table (else m.axis_table as given)
     float crop_side_mm = 56;     // part crop taken with every successful measurement (roi_crop.hpp: NPU input,
     int crop_px = 224;           // NG images, training set); 0 = no crop
+    std::vector<ColorClass> colors;   // colour from every crop; empty = not classified (hue / sat still logged)
     MeasureConfig m;
 };
 

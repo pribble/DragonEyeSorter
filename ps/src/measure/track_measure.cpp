@@ -114,6 +114,10 @@ std::vector<MeasureResult> TrackMeasurer::measure(const Tracker &tr, const uint8
             cs.side_mm = cfg_.crop_side_mm;
             cs.out_px = cfg_.crop_px;
             res.crop = crop_part(src, h_, center, axis, cs);
+            const PartColor pc = part_color(res.crop);   // ~0.5 ms on the A35
+            pm.hue = pc.hue;
+            pm.sat = pc.sat;
+            pm.color = classify_color(cfg_.colors, pc);
         }
         res.m = pm;
         out.push_back(std::move(res));

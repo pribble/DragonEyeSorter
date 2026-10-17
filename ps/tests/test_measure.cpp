@@ -13,6 +13,7 @@
 
 #include "measure.hpp"
 #include "part_log.hpp"
+#include "roi_crop.hpp"
 #include "track_measure.hpp"
 #include "tracker.hpp"
 
@@ -455,7 +456,7 @@ int main()
             if (lines == 1) continue;
             int commas = 0;
             for (char *c = buf; *c; c++) commas += *c == ',';
-            fields_ok += commas == 39;   // 40 columns, the comma in "why" was replaced
+            fields_ok += commas == 42;   // 43 columns, the comma in "why" was replaced
             if (strstr(buf, ".jpg")) with_img++;
         }
         if (f) fclose(f);
@@ -463,8 +464,25 @@ int main()
                log.csv_path.c_str(), lines, with_img, (unsigned long long)log.written.load(),
                (unsigned long long)log.images.load(), (unsigned long long)log.dropped.load(),
                (unsigned long long)log.errors.load());
-        CHECK(lines == 4 && fields_ok == 3, "csv lines %d, rows with 40 columns %d", lines, fields_ok);
+        CHECK(lines == 4 && fields_ok == 3, "csv lines %d, rows with 43 columns %d", lines, fields_ok);
         CHECK(with_img == 2 && log.images == 2, "images only for flap / recheck (%d)", with_img);
+    }
+    {   // part colour from a crop: dark belt, a bright disc; white vs yellow vs blue vs red, and the classes
+        std::vector<ColorClass> cl = {{"white", 0, 360, 0, 45}, {"yellow", 35, 75, 60, 255},
+                                      {"blue", 180, 260, 50, 255}, {"red", 340, 10, 60, 255}};
+        struct { cv::Scalar bgr; const char *want; } cases[] = {{cv::Scalar(225, 222, 230), "white"},
+                                                                {cv::Scalar(40, 200, 220), "yellow"},
+                                                                {cv::Scalar(220, 120, 40), "blue"},
+                                                                {cv::Scalar(50, 40, 210), "red"}};
+        for (auto &k : cases) {
+            cv::Mat crop(224, 224, CV_8UC3, cv::Scalar(22, 24, 20));
+            cv::circle(crop, cv::Point(112, 112), 70, k.bgr, cv::FILLED);
+            cv::circle(crop, cv::Point(112, 112), 12, cv::Scalar(22, 24, 20), cv::FILLED);   // bore
+            const PartColor pc = part_color(crop);
+            const int ci = classify_color(cl, pc);
+            CHECK(ci >= 0 && !strcmp(cl[ci].name.c_str(), k.want), "colour %s: hue %.0f sat %.0f -> %s", k.want, pc.hue,
+                  pc.sat, ci >= 0 ? cl[ci].name.c_str() : "none");
+        }
     }
     printf("%d passed, %d failed\n", g_pass, g_fail);
     return g_fail;

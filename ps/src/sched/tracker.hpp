@@ -57,6 +57,8 @@ struct PartMeasure {
     float pitch = 0;            // rack: mean pitch
     int teeth = 0;              // gear: spec count from the pitch; rack: tooth slots
     int short_teeth = 0, missing_teeth = 0, flash_gaps = 0;
+    float hue = -1, sat = -1;   // part colour from its crop (deg, 0..255); -1 = no crop
+    int color = -1;             // index into measure.colors, -1 = none matched / not classified
 };
 
 // Size / spec NG from the measurement (docs/视觉与检测.md 类别表: 尺寸类 NG 不进 NPU 类别, 由测量判 → 报废). Applied only to parts
