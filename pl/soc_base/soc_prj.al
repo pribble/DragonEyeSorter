@@ -59,6 +59,14 @@
                     <Attr Name="CompileOrder" Val="70"/>
                 </FileInfo>
             </File>
+            <File Path="src/des/des_io.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="72"/>
+                </FileInfo>
+            </File>
             <File Path="src/des/awb_seq_div.v">
                 <FileInfo>
                     <Attr Name="UsedInSyn" Val="true"/>

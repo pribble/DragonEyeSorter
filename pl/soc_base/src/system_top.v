@@ -20,6 +20,11 @@ module system_top(
     output         STEP_DIR,     // CEP PIN4  Y13
     output         STEP_ENA,     // CEP PIN5  T9, TB6600 ENA+ (common cathode: low = energised)
     input          ESTOP_IN,     // CEP PIN15 V11, low = emergency stop (pull-up)
+    input          ENC_A,        // CEP PIN6  U10, belt encoder (NPN open collector, pull-up)
+    input          ENC_B,        // CEP PIN7  T5
+    input          ENC_Z,        // CEP PIN8  U5
+    input          IR1_IN,       // CEP PIN9  V6, through-beam receiver (NPN, pull-up)
+    input          LIMIT1_IN,    // CEP PIN12 V7, limit switch (pull-up, low = active)
     inout          SERVO_BUS,    // CEP PIN19 Y9, via BSS138, open-drain
     output         FLAP1_PWM,    // CEP PIN18 Y6 (#16 FORK_PWM), belt-end flap stage 1 (MG996R)
     output         FLAP2_PWM,    // CEP PIN20 Y8 (#18), flap stage 2
@@ -474,19 +479,19 @@ wire pwm_out_unused;
  
 
     // ---------------- DragonEyeSorter PL blocks on the 0x8030_1000 register bus ----------------
-    wire [31:0] des_ts, regs_rdata, sb_rdata, st_rdata, vis_rdata, pwm_rdata;
+    wire [31:0] des_ts, regs_rdata, sb_rdata, st_rdata, vis_rdata, pwm_rdata, io_rdata;
     wire        sb_drive_low, st_pul_n, st_dir_n, st_ena;
     assign des_rdata = (des_raddr[11:8] == 4'h1) ? sb_rdata :
                        (des_raddr[11:8] == 4'h2) ? st_rdata :
                        (des_raddr[11:8] == 4'h3) ? vis_rdata :
-                       (des_raddr[11:8] == 4'h4) ? pwm_rdata : regs_rdata;
+                       (des_raddr[11:8] == 4'h4) ? pwm_rdata :
+                       (des_raddr[11:8] == 4'h5) ? io_rdata : regs_rdata;
 
-    reg [2:0] des_estop_sync = 3'b111;
-    always @(posedge des_clk) des_estop_sync <= {des_estop_sync[1:0], ESTOP_IN};
-    wire des_estop = ~des_estop_sync[2];
+    // e-stop: debounced + latched in des_io (v11); the latch holds the stepper until the PS clears it
+    wire des_estop;
 
     wire [31:0] st_pos;
-    des_regs #(.VERSION(32'd10)) des_regs_inst (
+    des_regs #(.VERSION(32'd11)) des_regs_inst (
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h0), .waddr(des_waddr), .wdata(des_wdata),
         .raddr(des_raddr), .rdata(regs_rdata), .sof_toggle(des_sof_toggle), .ts(des_ts),
         .cap_start_toggle(cap_start_tgl), .cap_done_toggle(cap_done_tgl), .pos(st_pos),
@@ -509,6 +514,13 @@ wire pwm_out_unused;
         .raddr(des_raddr[7:0]), .rdata(vis_rdata),
         .pclk(S_hs_rx_clk), .s_tdata(S_ISP_O_tdata), .s_tvalid(S_ISP_O_tvalid), .s_tuser(S_ISP_O_tuser),
         .s_tlast(S_ISP_O_tlast), .m_tdata(vis_tdata), .m_tvalid(vis_tvalid), .m_tuser(vis_tuser), .m_tlast(vis_tlast)
+    );
+
+    des_io io_inst (
+        .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h5), .waddr(des_waddr[7:0]), .wdata(des_wdata),
+        .raddr(des_raddr[7:0]), .rdata(io_rdata), .ts(des_ts), .pos(st_pos),
+        .estop_n(ESTOP_IN), .ir1_in(IR1_IN), .limit1_in(LIMIT1_IN), .enc_a(ENC_A), .enc_b(ENC_B), .enc_z(ENC_Z),
+        .estop_out(des_estop)
     );
 
     des_pwm pwm_inst (

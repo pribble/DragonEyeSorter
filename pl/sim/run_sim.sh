@@ -16,6 +16,9 @@ case "${1:-des_axi}" in
   stepper)
     iverilog -g2005 -o "$T/sim" tb_stepper_ctrl.v $D/stepper_ctrl.v
     ;;
+  io)
+    iverilog -g2005 -o "$T/sim" tb_des_io.v $D/des_io.v
+    ;;
   pwm)
     iverilog -g2005 -o "$T/sim" tb_des_pwm.v $D/des_pwm.v
     ;;
