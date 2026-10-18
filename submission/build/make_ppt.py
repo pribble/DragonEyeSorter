@@ -9,6 +9,8 @@
 * 数字：``docs/技术文档.md`` §1.3 与 ``docs/测试与验证.md``
   「已实测数据汇总」；**未实测的一律写「待测 ⚠」**，不估、不编。
 * 插图：``docs/figures/*.png``（由 ``docs/figures/make_figures.py`` 生成，不手工画）。
+* 放大区：``docs/figures/fig_meta.json``（由 ``docs/figures/figkit.py`` 每次保存插图时写，
+  figkit 已把 pt 画布坐标换算成「源 PNG 像素、左上原点」矩形）。
 
 用法
 ----
@@ -30,14 +32,18 @@
 
 密集插图页（第 4/5/6/8/9 页）
 ---------------------------
-``docs/figures`` 的图是 3200px 宽、图内文字只有 7~9pt（SVG 口径），整图缩到 7.4in 宽后
-图内文字等效只有 3~4pt——投影距离不可读。因此这几页改成「全貌缩略 + 局部放大面板」：
+``docs/figures`` 的图是 3200px 宽，但图按报告落版尺寸 **1:1 用 pt 作图**（画布宽 447.92pt
+= 15.8cm，图内字号 7.5~9.5pt 即纸面字号）；整图塞进 PPT 左列 4.35in 后只剩 0.7 倍，
+图内文字等效只有 5~7pt——投影距离不可读。因此这几页改成「全貌缩略 + 局部放大面板」：
 
 * 缩略图（左列，4.35in 宽）保留全貌，并用青框标出放大区；
-* 放大面板（右列，7.41in）由 Pillow 从源 PNG 裁出关键区（``zoom.rect``，源图像素坐标），
-  只写到 ``submission/out/zoom/``（不入库，每次重建）；
-* ``zoom.rect`` 的依据写在每页 ``zoom["why"]`` 里；等效字号 = 7.5pt(SVG) × 源图缩放 ×
-  面板宽/裁切宽，脚本按 ≥ 11pt 门禁；实测值打印在度量表里。
+* 放大面板（右列，7.41in）由 Pillow 从源 PNG 裁出关键区。**裁切矩形不写死在本脚本里**，
+  按每页 ``zoom["region"]`` 去 ``docs/figures/fig_meta.json`` 取（键名固定：架构页
+  pl_modules / ps_threads、时间基准 latency / formula、寄存器 regs / modules、
+  抓取时序 good / ng、布局 view / pick）；meta 缺图或缺 region 直接报错退出，不静默裁错；
+* 放大倍数 mag = 面板显示宽(pt) ÷ 裁切区宽(pt)。图按 15.8cm 1:1 落版，所以**图内 pt 即
+  纸面 pt**，等效字号 = 图内最小字号（7.5pt，meta 的 ``min_fs_pt``）× mag，门禁 ≥ 11pt；
+  实测值打印在度量表里。裁切区为什么这么选写在各页 ``zoom["why"]``。
 
 规矩
 ----
@@ -82,6 +88,7 @@ except ImportError:  # pragma: no cover
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIGURES_DIR = REPO_ROOT / "docs" / "figures"
+FIG_META_PATH = FIGURES_DIR / "fig_meta.json"   # figkit 写的插图元数据（画布 pt / px_per_pt / 放大区矩形）
 OUT_DIR = REPO_ROOT / "submission" / "out"
 ZOOM_DIR = OUT_DIR / "zoom"
 OUT_PPTX = OUT_DIR / "龙瞳分拣_答辩.pptx"
@@ -160,8 +167,10 @@ FILL_MIN, FILL_MAX = 0.65, 0.85
 TABLE_W_MIN_RATIO = 0.98
 FIG_DPI_MIN = 300
 ZOOM_TEXT_PT_MIN = 11.0
-SVG_PT_TO_PX = 200 / 72.0                  # docs/figures 的 PNG 由 dpi=200 导出：1pt(SVG) = 2.78px
-FIG_BODY_PT = 7.5                          # 图内正文的最小字号（SVG 口径，见 make_figures.py）
+# 图内最小字号（pt）。新插图按报告落版尺寸 1:1 作图（画布宽 447.92pt = 15.8cm），
+# 字号即纸面字号，全图最小 7.5pt（figkit.FS_MIN；fig_meta.json 每图还记了实测 min_fs_pt）。
+# 旧版这里写 7.5pt(SVG 口径) 再乘 200/72 换成 PNG 像素；换坐标体系后直接是纸面 pt。
+FIG_BODY_PT = 7.5
 LATIN_EM = 0.75                            # 拉丁 / 数字字符相对中文字宽的估算系数（实渲校准）
 FIG_ROLES = {}                             # {(页,x,y): 插图清单条目}，见 verify()
 ZOOM_NOTES = {}                            # {页: [锚点核对结果]}，打印原始证据用
@@ -186,10 +195,13 @@ class Page:
         self.rects.append((float(x), float(y), float(w), float(h)))
         return (x, y, w, h)
 
-    def note_figure(self, *, role, src, x, y, w, h, px_w, px_h, pdf_scale=1.0):
-        self.figures.append(dict(
+    def note_figure(self, *, role, src, x, y, w, h, px_w, px_h, pdf_scale=1.0, extra=None):
+        item = dict(
             role=role, src=src, rect_in=[round(float(v), 4) for v in (x, y, w, h)],
-            px=[int(px_w), int(px_h)], pdf_scale=float(pdf_scale)))
+            px=[int(px_w), int(px_h)], pdf_scale=float(pdf_scale))
+        if extra:
+            item.update(extra)          # 放大面板的 region / px_per_pt / mag 等，供 verify() 复算
+        self.figures.append(item)
         self.note(x, y, w, h)
 
     # -- 度量 ------------------------------------------------------------- #
@@ -357,17 +369,122 @@ def _rel(path):
         return p.name
 
 
+# --------------------------------------------------------------------------- #
+# 插图元数据（docs/figures/fig_meta.json）：放大区一律按 region 键取，不再手写像素矩形
+# --------------------------------------------------------------------------- #
+
+def load_fig_meta(path=None):
+    """读 docs/figures/fig_meta.json（由 docs/figures/figkit.py 每次保存插图时写）。
+
+    格式（figkit.write_meta）::
+
+        {"figure_width_pt": 447.92, "png_width": 3200,
+         "figures": {"fig_architecture": {"w_pt": 447.92, "h_pt": 300.0, "png_w": 3200,
+                                          "png_h": 2143, "px_per_pt": 7.1441,
+                                          "min_fs_pt": 7.5,
+                                          "regions": {"pl_modules": [x0, y0, x1, y1], ...}}}}
+
+    regions 的值是 **源 PNG 像素矩形、左上原点**（figkit 已从 pt 画布坐标换算好），
+    所以本脚本不再需要任何 pt→px 的手工比例。
+    """
+    path = Path(FIG_META_PATH if path is None else path)
+    if not path.is_file():
+        raise SystemExit("缺少 %s（应由 docs/figures/figkit.py 写）。先跑："
+                         "python docs/figures/make_figures.py" % _rel(path))
+    try:
+        meta = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise SystemExit("%s 读取失败：%s" % (_rel(path), exc))
+    if not isinstance(meta.get("figures"), dict):
+        raise SystemExit("%s 格式不对（缺 figures 字典），重跑 python docs/figures/make_figures.py"
+                         % _rel(path))
+    return meta
+
+
+_FIG_META = None
+
+
+def fig_meta():
+    """本次生成共用的 fig_meta.json（只读一次）。"""
+    global _FIG_META
+    if _FIG_META is None:
+        _FIG_META = load_fig_meta()
+    return _FIG_META
+
+
+def figure_meta(name):
+    """按插图文件名取该图的元数据（w_pt / h_pt / png_w / png_h / px_per_pt / regions）。"""
+    stem = Path(name).stem
+    figs = fig_meta()["figures"]
+    fig = figs.get(stem)
+    if fig is None:
+        raise SystemExit("%s 里没有插图 %s（现有：%s）。先画完这张图并跑 "
+                         "python docs/figures/make_figures.py"
+                         % (_rel(FIG_META_PATH), stem, "、".join(sorted(figs)) or "无"))
+    return fig
+
+
+def region_crop(name, region):
+    """按 region 键取放大区，返回 ((x0, y0, x1, y1), fig, px_per_pt)。
+
+    矩形是**源 PNG 像素、左上原点**（fig_meta.json 的 regions 原值）。缺整张图、缺 region
+    键、矩形越界都直接报错退出——绝不回退到旧像素坐标或默认矩形，避免又裁到空块。
+    """
+    fig = figure_meta(name)
+    regions = fig.get("regions") or {}
+    if region not in regions:
+        raise SystemExit("%s 缺放大区 region=%r（现有：%s）。在 docs/figures/%s.py 的 REGIONS "
+                         "里加这个键、重跑 make_figures.py 后再生成 PPT"
+                         % (_rel(FIG_META_PATH), region, "、".join(sorted(regions)) or "无",
+                            Path(name).stem))
+    rect = regions[region]
+    try:
+        x0, y0, x1, y1 = (int(v) for v in rect)
+    except (TypeError, ValueError):
+        raise SystemExit("%s 的 region=%r 不是 4 个像素坐标：%r"
+                         % (_rel(FIG_META_PATH), region, rect))
+    png_w, png_h = int(fig["png_w"]), int(fig["png_h"])
+    if not (0 <= x0 < x1 <= png_w and 0 <= y0 < y1 <= png_h):
+        raise SystemExit("%s 的 region=%r 矩形 %r 超出源 PNG %dx%d"
+                         % (_rel(FIG_META_PATH), region, (x0, y0, x1, y1), png_w, png_h))
+    px_per_pt = float(fig.get("px_per_pt") or (png_w / float(fig["w_pt"])))
+    return (x0, y0, x1, y1), fig, px_per_pt
+
+
+def check_fig_meta(specs):
+    """生成前先核对 meta：所有插图页的 region 都在，缺哪个一次报全（不半路裁错）。"""
+    missing = []
+    for spec in specs:
+        if spec.get("kind") != "figure" or not spec.get("zoom"):
+            continue
+        name, region = spec["figure"], spec["zoom"]["region"]
+        fig = fig_meta()["figures"].get(Path(name).stem)
+        if fig is None:
+            missing.append("%s（fig_meta.json 里没有这张图，需要 region=%r）" % (name, region))
+        elif region not in (fig.get("regions") or {}):
+            missing.append("%s（缺 region=%r，现有：%s）"
+                           % (name, region,
+                              "、".join(sorted(fig.get("regions") or {})) or "无"))
+    if missing:
+        raise SystemExit("fig_meta.json 还没画全，以下插图页无法裁切放大区：\n  - %s\n"
+                         "等插图重画完、跑 python docs/figures/make_figures.py 后再生成 PPT"
+                         % "\n  - ".join(missing))
+
+
 _SVG_TEXT_RE = re.compile(r"<text\b([^>]*)>(.*?)</text>", re.S)
 _SVG_TAG_RE = re.compile(r"<[^>]+>")
 _SVG_TR_RE = re.compile(r'transform="translate\(([-0-9.eE]+)[ ,]+([-0-9.eE]+)\)"')
 
 
-def svg_labels(stem):
-    """读 docs/figures/<stem>.svg 的文字坐标（源图像素）。
+def svg_labels(stem, px_per_pt):
+    """读 docs/figures/<stem>.svg 的文字坐标，换算成**源 PNG 像素、左上原点**。
 
     matplotlib 导出的 SVG 里文字是真的 ``<text>``：① ``transform="translate(x y)"``
-    或 ② ``x=``/``y=`` 属性（轴标签那种）。SVG 坐标空间 = figure 英寸 × 72，
-    源 PNG 由 dpi=200 导出 → 像素 = 坐标 × 200/72。
+    或 ② ``x=``/``y=`` 属性（轴标签那种）。新插图由 figkit 按报告落版尺寸 1:1 作画：
+    SVG 画布宽 447.92pt（= 15.8cm），源 PNG 宽 3200px → **px = pt × px_per_pt**，
+    px_per_pt ≈ 7.144 由 figkit 写进 fig_meta.json（旧版写死 200/72 对应 dpi=200 的 16in 画布，
+    换坐标体系后必须用 meta 值）。SVG 的 y 轴向下，与 meta regions 的「左上原点」同向，
+    所以直接乘比例即可，不需要翻转。
     """
     path = FIGURES_DIR / (stem + ".svg")
     if not path.is_file():
@@ -386,38 +503,47 @@ def svg_labels(stem):
             if not (xa and ya):
                 continue
             x, y = float(xa.group(1)), float(ya.group(1))
-        out.append((x * SVG_PT_TO_PX, y * SVG_PT_TO_PX, t))
+        out.append((x * px_per_pt, y * px_per_pt, t))
     return out
 
 
-def check_zoom_anchors(name, zoom):
-    """核对「裁切区里确实含关键标签」——防呆：目测估坐标很容易裁错地方。"""
-    x0, y0, x1, y1 = zoom["rect"]
-    labels = svg_labels(Path(name).stem)
+def check_zoom_anchors(name, zoom, rect, px_per_pt):
+    """核对「裁切区里确实含关键标签」——防呆：坐标估错 / 插图改版时第一时间报错。
+
+    rect 是 fig_meta.json 里的源 PNG 像素矩形（左上原点），标签坐标由 svg_labels 用同一
+    张图的 px_per_pt 换算到同一像素系，两边直接比，不再过 200/72 那套旧口径。
+    """
+    x0, y0, x1, y1 = rect
+    labels = svg_labels(Path(name).stem, px_per_pt)
     if not labels:
         return ["（%s 没有 SVG，跳过锚点核对）" % name]
     notes = []
     for anchor in zoom.get("anchors", []):
         hits = [(x, y, t) for x, y, t in labels if anchor in t]
         if not hits:
-            raise ValueError("放大区锚点核对失败：%s 的 SVG 里找不到标签「%s」" % (name, anchor))
-        x, y, t = hits[0]
-        if not (x0 <= x <= x1 and y0 <= y <= y1):
-            raise ValueError(
-                "放大区锚点核对失败：%s 的「%s」在 px(%.0f,%.0f)，不在裁切区 %r 内"
-                % (name, anchor, x, y, zoom["rect"]))
+            raise SystemExit("放大区锚点核对失败：%s 的 SVG 里找不到标签「%s」" % (name, anchor))
+        inside = [h for h in hits if x0 <= h[0] <= x1 and y0 <= h[1] <= y1]
+        if not inside:
+            raise SystemExit(
+                "放大区锚点核对失败：%s 的「%s」有 %d 处但都不在裁切区 %r 内（%s）"
+                % (name, anchor, len(hits), rect,
+                   "、".join("px(%.0f,%.0f)" % (x, y) for x, y, _t in hits[:3])))
+        x, y, _t = inside[0]
         notes.append("%s@px(%.0f,%.0f)" % (anchor, x, y))
     return notes
 
 
 def make_zoom(name, rect):
-    """从 docs/figures/<name> 裁出 rect=(x0,y0,x1,y1)（源图像素），写到 submission/out/zoom/。    只写 out/（不入库），每次重跑重建；白底合成，避免 RGBA 在 PDF 里需要 SMask。
+    """从 docs/figures/<name> 裁出 rect=(x0,y0,x1,y1)（源 PNG 像素、左上原点，来自
+    fig_meta.json），写到 submission/out/zoom/。只写 out/（不入库），每次重跑重建；
+    白底合成，避免 RGBA 在 PDF 里需要 SMask。裁切框按 PNG 实际像素钳位（meta 记的 png_h
+    可能与实际差 1px，见 build_figure_page 的说明）。
     """
     x0, y0, x1, y1 = rect
     src = FIGURES_DIR / name
     with Image.open(src) as im:
         im = im.convert("RGBA")
-        box = (int(x0), int(y0), int(x1), int(y1))
+        box = (int(x0), int(y0), min(int(x1), im.width), min(int(y1), im.height))
         crop = im.crop(box)
         bg = Image.new("RGB", crop.size, (255, 255, 255))
         bg.paste(crop, mask=crop.split()[3])
@@ -505,29 +631,31 @@ SRC_HMI = "数字出处：docs/log/2026-10-16-HDMI周期性黑屏.md"
 SRC_CAN = "数字出处：docs/log/2026-10-11-软件闭环_NPU_界面_PL视觉.md（板上回环）"
 SRC_SOAK = "数字出处：docs/log/2026-10-11-软件闭环_NPU_界面_PL视觉.md（soak.sh 7200）"
 
-# 局部放大区（源图像素坐标 x0,y0,x1,y1）+ 锚点标签（必须落在裁切区内，生成时核对）。
+# 局部放大区：不写像素矩形，一律按 region 键从 docs/figures/fig_meta.json 取。
 #
-# 坐标怎么来的（可复跑，不是目测）：
-#   ① docs/figures/*.svg 是 matplotlib 导出的**真文字**，每条文字都有 SVG 坐标
-#      （1152x720pt 空间）；源 PNG 由 dpi=200 导出 → PNG 像素 = SVG 坐标 × 200/72 = ×2.7778；
-#   ② 方框边界用「从锚点向外扩、遇连续白像素即出框」量出来（submission/out/_probe_box.py 的做法）；
-#   ③ 裁切区按「面板 7.41in 宽 ÷ 裁切宽 px」定放大倍数：图内 7.5pt 文字放到面板上
-#      等效 = 7.5 × 2.7778 × 7.41 ÷ 裁切宽px × 72，要 ≥11pt（门禁 ZOOM_TEXT_PT_MIN）。
-#      这就是裁切宽上限 ≈ 970px、且裁切宽高比要 ≥ 面板宽高比 1.55（不然会被高度限制，
-#      等效字号反而变小）的原因。
-#   ④ 裁完还要看**墨迹密度**：整图里有些圆角矩形是空的（如架构图右侧那块橙色 NPU 块），
-#      裁进来就是一个大空块。所以裁切区要选文字成片的地方，且避开空块（第 4 页的裁切区
-#      右边界卡在橙色块左边界 1038 之前，就是为此）。
-ZOOM_ARCH = dict(rect=(470, 1080, 1030, 1560),       # servo_bus + stepper_ctrl 两个自研模块段的寄存器窗口
-                 anchors=["servo_bus 德晟协议主机", "stepper_ctrl"])
-ZOOM_TIMEBASE = dict(rect=(40, 265, 1010, 600),      # 两次锁存刻度 + 卷帘读出/行插值公式框
-                     anchors=["PL 锁存 帧号", "PL 锁存 POS1", "卷帘读出"])
-ZOOM_PL_REGS = dict(rect=(1478, 366, 2460, 893),     # 0x1xx servo_bus / 0x2xx stepper_ctrl 两行窗口
-                    anchors=["0x1xx servo_bus", "0x2xx stepper_ctrl"])
-ZOOM_PICK = dict(rect=(1390, 770, 2380, 1400),       # 良品判定 → 停带目标 → 抓取线 → 机械臂动作
-                 anchors=["良品过判定线", "停在抓取线", "下探"])
-ZOOM_LAYOUT = dict(rect=(1650, 740, 2560, 1160),     # 相机视野参数 + 定位/测量/判定文字
-                   anchors=["相机视野", "定位 · 亚像素测量"])
+# 新插图（docs/figures/figkit.py）按报告落版尺寸 **1:1 用 pt 作图**：画布宽 447.92pt（=15.8cm），
+# 导出 PNG 宽 3200px → 1pt = 3200/447.92 ≈ 7.144 源像素（figkit 把实测 px_per_pt 写进 meta）。
+# 每张图保存时还把它自己的放大区从 pt 画布坐标换算成「源 PNG 像素、左上原点」矩形存进
+# meta 的 regions；键名固定：
+#
+#   fig_architecture → pl_modules / ps_threads      fig_timebase     → latency / formula
+#   fig_pl_regs      → regs / modules               fig_pick_sequence → good / ng
+#   fig_layout       → view / pick
+#
+#   {"figure_width_pt": 447.92, "png_width": 3200,
+#    "figures": {"fig_architecture": {"w_pt": 447.92, "h_pt": 300.0, "png_w": 3200,
+#                                     "png_h": 2143, "px_per_pt": 7.1441, "min_fs_pt": 7.5,
+#                                     "regions": {"pl_modules": [x0, y0, x1, y1], ...}}}}
+#
+# 本脚本只按 zoom["region"] 取矩形；**meta 缺图 / 缺 region 直接报错退出**，绝不回退到
+# 旧像素坐标（旧版按 16in 画布 + 200/72 换算，换坐标体系后全部失效）。
+#
+# 防裁错的口径（都在新 pt 坐标系下推导）：
+#   ① 锚点：zoom["anchors"] 里的标签必须落在裁切区内 —— svg_labels 把 SVG 文字坐标(pt)
+#      乘该图的 px_per_pt 换算成源 PNG 像素，与 regions 同一坐标系直接核对；
+#   ② 放大倍数 mag = 面板显示宽(pt) ÷ 裁切区宽(pt)；图 1:1 落版，故图内 pt = 纸面 pt；
+#   ③ 等效字号 = 图内最小字号（figkit.FS_MIN = 7.5pt，meta 的 min_fs_pt）× mag，
+#      门禁 ZOOM_TEXT_PT_MIN = 11pt（面板再小就投影不可读）。
 
 
 def slide_specs():
@@ -603,14 +731,18 @@ def slide_specs():
                 "AXI-Lite 寄存器窗口双向交换",
             ],
             figure="fig_architecture.png",
-            zoom=dict(**ZOOM_ARCH,
-                      label="局部放大：servo_bus / stepper_ctrl 自研模块段",
-                      why="取 PL 列的自研模块段：servo_bus 段（补帧头 / 校验、SYNC WRITE、应答解析、"
-                          "超时、时间戳）与 stepper_ctrl 段（梯形加减速、位置 / 速度模式、刹车距离、"
-                          "首脉冲 10.6µs）——本页「时序关键放 PL」的举证区。右边界卡在橙色 NPU 块"
-                          "（x≥1038）左边：那块是空框，裁进来只会是个大空块；左中部的 des_regs "
-                          "长条（AXI-Lite 寄存器窗口）文字横跨到 x≈1363，含它就必须带上橙色空块，"
-                          "所以在全貌缩略图里看它、不放大。裁 560×480px，图内 7.5pt 文字 → ≈14.9pt。"),
+            zoom=dict(region="pl_modules",
+                      label="局部放大：PL 自研模块段（servo_bus / stepper_ctrl / NPU）",
+                      why="取 PL 列的自研模块区（region=pl_modules，裁切矩形由 fig_meta.json 给出，"
+                          "本脚本不再手估像素）：舵机总线主机（补帧头 / 校验、SYNC WRITE、应答解析、"
+                          "超时、时间戳）、步进控制（梯形加减速、位置 / 速度模式、刹车距离、"
+                          "首脉冲 10.6µs）、帧写入 + 拍摄锁存（帧号 / FREE_CNT / 带位置 POS）、"
+                          "NPU（硬核 512 MAC + 软核算子 + ArmNN / Alnpu）、挡板 PWM des_pwm"
+                          "——本页「时序关键放 PL、卷积放 NPU、挡板分流」的举证区；"
+                          "裁切区避开 PS 列文字与整块空白，放大后图内 7.5pt 文字等效 ≈19.5pt。",
+                      anchors=["舵机总线 servo_bus", "步进控制 stepper_ctrl",
+                               "帧写入 + 拍摄锁存", "硬核 512 MAC",
+                               "ArmNN / Alnpu", "挡板 PWM des_pwm"]),
             caption="图 2-1 系统架构（左：全貌，青框＝右图；右：局部放大）",
             notes=[
                 "主线一句话：把「必须确定延迟」的事情交给 PL，把「必须能改」的事情交给 PS，把卷积交给 NPU。",
@@ -618,7 +750,7 @@ def slide_specs():
                 "PS 侧：取帧显示线程（实时优先级）、工作线程（定位 / 测量 / 跟踪 / 调度 / 存储）、NPU 异步线程。",
                 "分工的理由逐条对着赛题评分口径讲：全部功能仅 PS 实现要扣分，所以脉冲、总线帧、IO 采样都在 PL。",
                 "内容出处：docs/技术文档.md §2.2、§4.1；评分口径见 docs/ref/安路赛道选题指南_2026.pdf p31~33。",
-                "图源：docs/figures/fig_architecture.png（PPT 按源图原生 3200px 嵌入；右侧放大区由 make_ppt.py 的 zoom.rect 裁切，可调）。",
+                "图源：docs/figures/fig_architecture.png（PPT 按源图原生 3200px 嵌入；右侧放大区按 docs/figures/fig_meta.json 的 region=pl_modules 裁切）。",
             ],
         ),
         # ---------------------------------------------------------------- 5
@@ -632,11 +764,13 @@ def slide_specs():
                 "结果晚到多少毫秒都不产生位置误差",
             ],
             figure="fig_timebase.png",
-            zoom=dict(**ZOOM_TIMEBASE,
+            zoom=dict(region="latency",
                       label="局部放大：两次锁存刻度 + 卷帘读出 16ms 行插值",
-                      why="取时间轴左段：帧写开始 / 帧写完两处 PL 锁存刻度，以及「卷帘读出 ≈16ms、"
-                          "第 r 行带位置 = POS0 + (POS1 − POS0)·r / H」公式框 —— 本页创新的机制区；"
-                          "裁 970×335px，图内 7.5pt 文字 → 面板上 ≈11.5pt。"),
+                      why="取时间轴左段：帧写入开始 / 帧写完两处 PL 锁存刻度与锁存延迟，以及"
+                          "「卷帘读出 ≈16ms、第 r 行带位置 = POS0 + (POS1 − POS0)·r / H」"
+                          "公式框（region=latency，裁切矩形由 fig_meta.json 给出）——本页创新的"
+                          "机制区；等效字号按该图 min_fs_pt × 放大倍数算，门禁 ≥11pt。",
+                      anchors=["PL 锁存 POS0", "PL 锁存 POS1", "卷帘读出", "该行带位置"]),
             caption="图 2-2 拍摄瞬间锁存带位置（左：全貌，青框＝右图；右：局部放大）",
             notes=[
                 "这一页是全系统最关键的设计：位置基准不跟着处理延迟走。",
@@ -659,12 +793,16 @@ def slide_specs():
                 "脉宽 5µs、换向 10µs、会刹车",
             ],
             figure="fig_pl_regs.png",
-            zoom=dict(**ZOOM_PL_REGS,
-                      label="局部放大：0x1xx servo_bus / 0x2xx stepper_ctrl 寄存器窗口",
-                      why="整图缩到 7.41in 宽时图内文字等效只有 3.4pt（源图 3200px、SVG 字号 7.4pt），"
-                          "投影距离不可读。裁 0x1xx servo_bus 与 0x2xx stepper_ctrl 两行寄存器窗口"
-                          "（982×527px）——本页要点「补帧头与校验 / SYNC WRITE / FF F5 应答 / "
-                          "Q0.32 梯形加减速」全在这两行里；放大后 7.4pt → 面板上 ≈11.2pt。"),
+            zoom=dict(region="modules",
+                      label="局部放大：0x100 servo_bus / 0x200 stepper_ctrl 模块与管脚",
+                      why="取右栏「PL 自研模块与管脚」里的 0x100 servo_bus 与 0x200 stepper_ctrl "
+                          "两行（region=modules，裁切矩形由 fig_meta.json 给出）——本页要点「补帧头与"
+                          "校验 / SYNC WRITE / FF F5 应答 / Q0.32 梯形加减速」的证据都在这两行及其"
+                          "管脚框里；右栏另有 0x000 des_regs / 0x300 des_vision / 0x400 des_pwm / "
+                          "0x500 des_io（v11）各段，看左侧全貌（整图缩到 7.41in 宽时图内 7.5pt 文字"
+                          "等效只有 ≈8.9pt，投影距离读不了，所以单独放大）。",
+                      anchors=["0x100 servo_bus", "0x200 stepper_ctrl",
+                               "德晟协议主机", "TB6600"]),
             caption="图 3-1 自研模块与寄存器窗口（左：全貌，青框＝右图；右：局部放大）",
             notes=[
                 "硬性①的主场：PS 只写帧主体，帧头与校验和由 PL 现算，应答与超时也在 PL 判。",
@@ -672,9 +810,9 @@ def slide_specs():
                 "SYNC WRITE 一帧时长实测 3298.9µs（理论 3298.6µs），PING 520.9µs（理论 520.8µs）；协议文档 SYNC 示例校验值印作 0x8B，按公式应为 0xBA，硬件按公式实现并实测正确。",
                 "步进：速度用 Q0.32 定点表示，无累积误差；move 3200 后 POS 与累计步数都精确为 3200。",
                 "多舵机动作起点差（同步误差）用逻辑分析仪测，尚未实测 → 标「待测 ⚠」，不猜。",
-                "讲图：先指左边全貌定位「寄存器窗口在 PL 哪一段」，再指右边放大行逐条念寄存器。",
+                "讲图：先指左边全貌定位「0x100 / 0x200 两段在右栏哪一行」，再指右边放大行逐条念寄存器与管脚。",
                 SRC_SERVO + "；" + SRC_TECH + " §3.1、§3.2。",
-                "图源：docs/figures/fig_pl_regs.png（右侧放大区 = 0x1xx / 0x2xx 两行寄存器窗口，裁切参数见 make_ppt.py 的 ZOOM_PL_REGS）。",
+                "图源：docs/figures/fig_pl_regs.png（右侧放大区 = 0x100 servo_bus / 0x200 stepper_ctrl 两行模块与管脚，裁切参数见 docs/figures/fig_meta.json 的 region=modules）。",
             ],
         ),
         # ---------------------------------------------------------------- 7
@@ -710,12 +848,13 @@ def slide_specs():
                 "不良品不停带，侧边导流挡板分流",
             ],
             figure="fig_pick_sequence.png",
-            zoom=dict(**ZOOM_PICK,
+            zoom=dict(region="good",
                       label="局部放大：良品判定 → 停带目标 → 抓取线 → 机械臂动作",
-                      why="取时序图中段：良品过判定线、写停带目标（PL 梯形减速，正好停准）、"
-                          "停在抓取线（只为良品停）、下探 / 合爪 / 抬起动作块（990×630px）——"
-                          "「停带抓取」这条要点的举证区；翻板分流不在这块里，看左侧全貌。"
-                          "放大后 7.5pt 文字 → 面板上 ≈11.2pt。"),
+                      why="取时序图的良品路径：良品过判定线 → 写停带目标（PL 梯形减速，正好停准）"
+                          "→ 停在抓取线（只为良品停）→ 下探 / 合爪 / 抬起动作块（region=good，"
+                          "裁切矩形由 fig_meta.json 给出）——「停带抓取」这条要点的举证区；"
+                          "挡板分流不在这块里，看左侧全貌。",
+                      anchors=["良品 → 停带抓取", "写停带目标", "停在抓取线", "下探 400ms"]),
             caption="图 4-1 停带抓取与挡板分流时序（左：全貌，青框＝右图；右：局部放大）",
             notes=[
                 "这是演示视频的主镜头（V7），也是创新点 2：只为良品停一次带。",
@@ -738,12 +877,13 @@ def slide_specs():
                 "与 NPU 双判定互校，冲突复检",
             ],
             figure="fig_layout.png",
-            zoom=dict(**ZOOM_LAYOUT,
+            zoom=dict(region="view",
                       label="局部放大：相机视野参数 + 定位 / 测量 / 判定区",
-                      why="取布局图相机视野区：视野 398×224mm（4.2mm 镜头、离带面约 300mm、"
+                      why="取布局图的相机视野区：视野 398×224mm（4.2mm 镜头、离带面约 300mm、"
                           "0.21mm/像素）与「定位 · 亚像素测量（离光轴最近那帧）」「NPU 分类 3~6 次"
-                          "软投票 → 判定」文字 —— 测量精度口径的举证区；裁 910×420px，"
-                          "图内 7.5pt 文字 → 面板上 ≈12.4pt。"),
+                          "软投票 → 判定」文字（region=view，裁切矩形由 fig_meta.json 给出）——"
+                          "测量精度口径的举证区。",
+                      anchors=["相机视野", "定位亚像素测量", "NPU 分类"]),
             caption="图 7-1 工位布局（左：全貌，青框＝右图；右：局部放大）",
             notes=[
                 "测量解决的是 NPU 解决不了的问题：尺寸超差与规格混料（30 齿缺 2 齿 vs 28 齿）。",
@@ -993,34 +1133,58 @@ def build_table_page(page, spec):
 
 
 def build_figure_page(page, spec):
-    """插图页：左列 = 要点 + 全貌缩略（青框标出放大区），右列 = 局部放大面板。"""
+    """插图页：左列 = 要点 + 全貌缩略（青框标出放大区），右列 = 局部放大面板。
+
+    放大区按 ``zoom["region"]`` 从 docs/figures/fig_meta.json 取（源 PNG 像素、左上原点）；
+    放大倍数 mag = 面板显示宽(pt) ÷ 裁切区宽(pt)——图按 15.8cm 1:1 落版，所以图内 pt 就是
+    纸面 pt，等效字号 = 图内最小字号 × mag。
+    """
     name = spec["figure"]
     bullets = spec["bullets"]
     zoom = spec.get("zoom")
     px_w, px_h = image_size(name)
     ratio = px_w / px_h
+    rect = None
 
     # ---- 右列：局部放大 -------------------------------------------------- #
     if zoom:
-        zoom_notes = check_zoom_anchors(name, zoom)
+        rect, fig, px_per_pt = region_crop(name, zoom["region"])
+        # 宽度必须与 meta 一致（regions 的 x 与 px_per_pt 都按 3200px 宽算的）；高度允许 1px
+        # 差：figkit 记 int(round(h_pt × px_per_pt))，matplotlib 实际落盘按 figsize×dpi 取整，
+        # 个别图会差 1px（如 fig_pick_sequence 实际 1514 / meta 记 1515），裁切时按实际钳位。
+        if px_w != int(fig["png_w"]) or abs(px_h - int(fig["png_h"])) > 1:
+            raise SystemExit("%s 实际 PNG %dx%d 与 fig_meta.json 记录 %dx%d 不符（宽度必须相等、"
+                             "高度差 ≤1px）：meta 过期，重跑 python docs/figures/make_figures.py"
+                             % (name, px_w, px_h, int(fig["png_w"]), int(fig["png_h"])))
+        min_fs_pt = float(fig.get("min_fs_pt") or FIG_BODY_PT)
+        zoom_notes = check_zoom_anchors(name, zoom, rect, px_per_pt)
+        zoom_notes.insert(0, "region=%s → px(%d,%d,%d,%d)；画布 %.1f×%.1fpt、PNG %d×%d、"
+                             "px_per_pt=%.4f、图内最小字号 %.1fpt"
+                          % (zoom["region"], rect[0], rect[1], rect[2], rect[3],
+                             fig["w_pt"], fig["h_pt"], px_w, px_h, px_per_pt, min_fs_pt))
         page.zoom_notes = zoom_notes
-        crop_path, cw, ch = make_zoom(name, zoom["rect"])
+        crop_path, cw, ch = make_zoom(name, rect)
         rx, rw = PANEL_LEFT, PANEL_W
+        zy = BODY_TOP + 0.34
+        zh = PANEL_BOTTOM - zy
+        crop_w_pt = cw / px_per_pt
+        fit_w = min(rw, zh * (cw / float(ch)))      # _add_figure_path 的等比适配宽
+        mag = fit_w * 72.0 / crop_w_pt
         label = zoom["label"]
-        mag = px_w / cw
         box, tf = _add_textbox(page.slide, x=rx, y=BODY_TOP, w=rw, h=0.34,
                                anchor=MSO_ANCHOR.MIDDLE)
         run = tf.paragraphs[0].add_run()
         run.text = "%s ｜ 放大 ×%.1f" % (label, mag)
         _style_run(run, size=SIZE_ZOOM_LABEL, color=C_ACCENT, bold=True)
         page.note(rx, BODY_TOP, rw, 0.34)
-        zy = BODY_TOP + 0.34
-        zh = PANEL_BOTTOM - zy
         # PDF 兜底件要求 ≥300dpi：裁切图按 1:1 像素给出，替换时按需 LANCZOS 上采样
         # （信息量不变，只是让 PDF 里的采样密度够，避免阅读器放大时硬像素块）
         pdf_scale = max(1.0, float(int((FIG_DPI_MIN * 1.07) * rw / cw) + 1))
         _add_figure_path(page, crop_path, x=rx, y=zy, w=rw, h=zh, role="zoom",
-                         px_w=cw, px_h=ch, pdf_scale=pdf_scale)
+                         px_w=cw, px_h=ch, pdf_scale=pdf_scale,
+                         extra=dict(region=zoom["region"], px_per_pt=px_per_pt,
+                                    crop_w_pt=round(crop_w_pt, 3), mag=round(mag, 3),
+                                    min_fs_pt=min_fs_pt, fig_w_pt=fig["w_pt"]))
         page.note(rx, zy, rw, zh)                     # 放大面板占位（含留白）
 
     # ---- 左列：要点 + 全貌缩略 ------------------------------------------- #
@@ -1043,7 +1207,7 @@ def build_figure_page(page, spec):
     ty = y + b_h + 0.20
     _add_figure_path(page, FIGURES_DIR / name, x=TITLE_X, y=ty, w=thumb_w, h=thumb_h,
                      role="overview", px_w=px_w, px_h=px_h,
-                     highlight=zoom["rect"] if zoom else None)
+                     highlight=rect)
     box, tf = _add_textbox(page.slide, x=TITLE_X, y=ty + thumb_h + 0.04, w=CAPTION_LEFT_W,
                            h=label_h, anchor=MSO_ANCHOR.MIDDLE)
     p = tf.paragraphs[0]
@@ -1057,8 +1221,8 @@ def build_figure_page(page, spec):
 
 
 def _add_figure_path(page, path, *, x, y, w, h, role, px_w, px_h, pdf_scale=1.0,
-                     highlight=None):
-    """同 add_figure，但源是任意路径（裁切图在 out/ 下）。"""
+                     highlight=None, extra=None):
+    """同 add_figure，但源是任意路径（裁切图在 out/ 下）。extra 进插图清单供 verify() 复算。"""
     ratio = px_w / px_h
     if w / h > ratio:
         fh = h
@@ -1081,7 +1245,7 @@ def _add_figure_path(page, path, *, x, y, w, h, role, px_w, px_h, pdf_scale=1.0,
                   w=(gx1 - gx0) / px_w * fw, h=(gy1 - gy0) / px_h * fh,
                   fill=None, line=C_ACCENT, line_w=Pt(2.25))
     page.note_figure(role=role, src=_rel(path), x=fx, y=fy, w=fw, h=fh,
-                     px_w=px_w, px_h=px_h, pdf_scale=pdf_scale)
+                     px_w=px_w, px_h=px_h, pdf_scale=pdf_scale, extra=extra)
     return fx, fy, fw, fh
 
 
@@ -1115,6 +1279,7 @@ def build_slide(prs, spec, page_no, total):
 def build(out_path=OUT_PPTX):
     specs = slide_specs()
     total = len(specs)
+    check_fig_meta(specs)                  # 插图页的 region 必须齐（缺哪张 / 缺哪个键一次报全）
 
     prs = Presentation()
     prs.slide_width = Inches(SLIDE_W_IN)
@@ -1339,26 +1504,38 @@ def verify(path, metrics):
                  ("%.2f" % m["head_gap"]) if m["head_gap"] is not None else "-",
                  m["bottom_gap"], m["fill_h"] * 100, m["fill_area"] * 100, verdict))
 
-    # ---- 放大面板等效字号（图内 7.5pt(SVG) 文字放到面板上的实际磅值） --- #
+    # ---- 放大面板等效字号（新 pt 体系：图 1:1 落版，图内 pt 即纸面 pt） ------- #
     print("-" * 100)
-    print("密集插图页放大面板：等效字号 = 图内 %.1fpt(SVG) × %.2fpx/pt × 面板宽in ÷ 裁切宽px × 72"
-          % (FIG_BODY_PT, SVG_PT_TO_PX))
+    print("密集插图页放大面板：图按落版宽 %.2fpt（15.8cm）1:1 作图 → 图内 pt 即纸面 pt；"
+          % fig_meta().get("figure_width_pt", 447.92))
+    print("            放大倍数 = 面板显示宽pt ÷ 裁切区宽pt；等效字号 = 图内最小字号（每图 "
+          "min_fs_pt，默认 %.1fpt）× 放大倍数，门禁 ≥ %.0fpt"
+          % (FIG_BODY_PT, ZOOM_TEXT_PT_MIN))
     for item in _manifest_figures():
         if item["role"] != "zoom":
             continue
+        px_per_pt = float(item.get("px_per_pt") or 0.0)   # figkit 写进 meta：源 PNG 像素 / pt
+        if px_per_pt <= 0 or not item.get("fig_w_pt"):
+            problems.append("第 %d 页放大面板清单缺 px_per_pt / fig_w_pt"
+                            "（submission/out/_ppt_images.json 过期，重跑 make_ppt.py）"
+                            % item["slide"])
+            continue
+        min_fs_pt = float(item.get("min_fs_pt") or FIG_BODY_PT)
         w_in = item["rect_in"][2]
         px = item["px"][0]
-        eff = FIG_BODY_PT * SVG_PT_TO_PX * w_in / px * 72.0
-        full_px = item.get("full_px")
-        base = (FIG_BODY_PT * SVG_PT_TO_PX * PANEL_W / full_px[0] * 72.0
-                if full_px else float("nan"))
+        crop_w_pt = px / px_per_pt
+        mag = w_in * 72.0 / crop_w_pt
+        eff = min_fs_pt * mag
+        # 整图口径：整张图铺满面板宽时的等效字号（对照用，不参与门禁）
+        base = min_fs_pt * PANEL_W * 72.0 / item["fig_w_pt"]
         ok = eff >= ZOOM_TEXT_PT_MIN
         if not ok:
             problems.append("第 %d 页放大面板等效字号 %.1fpt < %.1fpt"
                             % (item["slide"], eff, ZOOM_TEXT_PT_MIN))
-        print("第 %02d 页  %-52s 面板 %4.2fin / 裁 %4dpx → 等效 %4.1fpt（整图口径 %4.1fpt）  %s"
-              % (item["slide"], Path(item["src"]).name, w_in, px, eff, base,
-                 "PASS" if ok else "FAIL"))
+        print("第 %02d 页  %-30s region=%-11s 面板 %4.2fin / 裁 %4dpx(%.1fpt) → 放大 ×%.2f → "
+              "等效 %4.1fpt（整图口径 %4.1fpt）  %s"
+              % (item["slide"], Path(item["src"]).name, item.get("region", "-"),
+                 w_in, px, crop_w_pt, mag, eff, base, "PASS" if ok else "FAIL"))
         for note in ZOOM_NOTES.get(item["slide"], []):
             print("          锚点核对：%s" % note)
 
@@ -1383,15 +1560,7 @@ def verify(path, metrics):
 def _manifest_figures():
     if not OUT_MANIFEST.is_file():
         return []
-    data = json.loads(OUT_MANIFEST.read_text(encoding="utf-8"))
-    figs = data.get("figures", [])
-    full = {}
-    for f in figs:
-        if f["role"] == "overview":
-            full[f["slide"]] = f["px"]
-    for f in figs:
-        f["full_px"] = full.get(f["slide"])
-    return figs
+    return json.loads(OUT_MANIFEST.read_text(encoding="utf-8")).get("figures", [])
 
 
 def main(argv=None):

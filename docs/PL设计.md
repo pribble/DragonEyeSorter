@@ -166,7 +166,7 @@
 [pl/soc_base/src/des/des_pwm.v](../pl/soc_base/src/des/des_pwm.v)：2 路 50Hz 舵机 PWM（两个侧边导流挡板，MG996R；通道 = 挡板序号）。脉宽单位 µs，新值在下一周期开头生效（不出半截脉冲），钳位 2550µs；周期计数供 PS 确认已生效。对应领域 3 中级「NG 不良品输出 IO 控制；不良品实时分拣触发」。仿真 [pl/sim/tb_des_pwm.v](../pl/sim/tb_des_pwm.v) 11 项过。
 
 - 管脚：#16 `FORK_PWM` = PIN18 Y6、#18 `FLAP2_PWM` = PIN20 Y8。
-- PS 侧 `src/sched/flap`：零件到达前 40mm 打到位、过去 60mm 释放。
+- PS 侧 `src/sched/flap`：零件到拦截点前 110mm 合上、滑出后 190mm 打开（`des_app.json` 的 `flaps.prepare_mm` / `clear_mm`，见 [技术文档](技术文档.md) §3.5 与 §4.4）。
 - 光源为**人工手动**开关 / 调光，不接 PL：v10 源码删掉 `CTRL` b8、`lamp` 端口与 `LAMP_EN` 管脚（PIN17 Y7 释放为空闲，见 [log/2026-10-17-des_pwm去掉光源](log/2026-10-17-des_pwm去掉光源.md)）；板端 v9 仍带 b8。
 
 | 偏移 | R/W | 说明 |

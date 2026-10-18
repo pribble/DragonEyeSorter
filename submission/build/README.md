@@ -17,7 +17,7 @@ pwsh -File submission/build/build.ps1        # 报告：md → docx → pdf（�
 | [word_to_pdf.ps1](word_to_pdf.ps1) | 报告链 | DOCX → PDF（Word COM），导出前更新页脚与目录域，回报页数 | 由 `build.ps1` 调用；也可单独跑 |
 | [pdf_images_hires.py](pdf_images_hires.py) | 报告链 | **插图高清化**：按出现顺序把 PDF 里每张插图的图像对象换回源图（图框不变），等效 dpi 96 → 514~515；`--report` 只测量体检 | 由 `build.ps1` 第 ③ 步调用；`python submission/build/pdf_images_hires.py --pdf <pdf> --report` |
 | [pack_code.ps1](pack_code.ps1) | 报告链 | `git archive` 打「作品重要代码」zip，超 100MB 报警并非零退出 | `pwsh -File submission/build/pack_code.ps1` |
-| [verify_report.py](verify_report.py) | 报告链 | **验收自检**：48 项逐条核对 docx / PDF（结构、字体、行距、宽度、页眉页脚、禁项、TOC、**插图等效 dpi ≥ 300**、**逐页留白分析**、PDF 逐页重叠检测），结果写 `out/_verify_report.txt` | `python submission/build/verify_report.py` |
+| [verify_report.py](verify_report.py) | 报告链 | **验收自检**：49 项逐条核对 docx / PDF（结构、字体、行距、宽度、页眉页脚、禁项、TOC、**插图等效 dpi ≥ 300**、**插图落版字号 ≥ 7pt**、**逐页留白分析**、PDF 逐页重叠检测），结果写 `out/_verify_report.txt` | `python submission/build/verify_report.py` |
 | [make_ppt.py](make_ppt.py) | PPT 链（同事 B 维护） | 答辩 PPT 骨架：`docs/参赛材料骨架.md` §4 → `out/龙瞳分拣_答辩.pptx`；含版面度量与门禁（顶/头/底档、填充率、表格满版心、放大面板字号）、密集图放大裁切 | `python submission/build/make_ppt.py` |
 | [export_ppt_preview.ps1](export_ppt_preview.ps1) | PPT 链（同事 B 维护） | PowerPoint COM 把 pptx 导成 `out/龙瞳分拣_答辩.pdf` + `out/ppt_preview/slide_XX.png`（现场兜底件 + 排版自查），随后调 `ppt_pdf_hires.py` | `pwsh -File submission/build/export_ppt_preview.ps1` |
 | [ppt_pdf_hires.py](ppt_pdf_hires.py) | PPT 链（同事 B 维护） | **PPT 兜底 PDF 插图高清化**：PowerPoint 只导 200 dpi，这里按源图原生像素回填到 736~810 dpi；兼做 dpi 体检与逐页版面墨迹度量（`--report` / `--json`） | 由 `export_ppt_preview.ps1` 调用；`python submission/build/ppt_pdf_hires.py --pdf <pdf> --report` |
@@ -171,7 +171,9 @@ A4、上下左右页边距 2.6cm（版心 15.8cm），封面 / 目录 / 正文�
   **加图/删图后第 ③ 步会自动跟上**：插图顺序来自 `_md2docx.json` 的 `figures`，
   数量与 PDF 对不上就报错退出（不会错位替换、也不会静默跳过）。
   新图建议也是 ≥ 3200px 宽的 PNG（满版心 15.8cm 时 3200px ≈ 514 dpi；源图小于 1900px
-  就会跌破 300 dpi 门槛，第 ③ 步会失败并告诉你差多少）。
+  就会跌破 300 dpi 门槛，第 ③ 步会失败并告诉你差多少）。**新图必须按落版尺寸 1:1 作图**：
+  画布宽 447.9pt = 15.8cm、最小字号 ≥ 7.5pt（见 [figures/README.md](../../docs/figures/README.md)），
+  否则会出现"清晰度够但字太小"——`verify_report.py` 的第 12 项会按 `fig_meta.json` 拦下来。
 - 源里出现本脚本不支持的写法（代码块、引用块、四级标题、图文混排的段落）会**报错退出并指出行号**，
   不会静默丢内容。真要用就先在 `md2docx.py` 里加对应分支。
 - 表格宽度由内容估算列宽，整表固定 15.6cm；列很多时脚本会自动往等分靠。
@@ -195,7 +197,7 @@ pwsh -File submission/build/pack_code.ps1
 
 ```powershell
 pwsh -File submission/build/build.ps1                 # 出 docx + pdf + 高清插图（含生成侧自检）
-python submission/build/verify_report.py             # 48 项验收自检 → out/_verify_report.txt
+python submission/build/verify_report.py             # 49 项验收自检 → out/_verify_report.txt
 python submission/build/verify_report.py --fill --pdf <PDF>   # 只跑逐页留白分析（可对比旧 PDF）
 python submission/build/pdf_images_hires.py --pdf <PDF> --report   # 只看插图 dpi
 ```
@@ -236,9 +238,9 @@ python submission/build/pdf_images_hires.py --pdf <PDF> --report   # 只看插�
 1. **`### 3.6` 出现两次**：源里曾有 `3.6 现场输入 des_io` 与 `3.6 资源`，报告按原样渲染，
    目录里会出现两个 3.6——**交件前需由文档负责人定夺**。当前源已是 3.6 / 3.7。
 2. §10「总结与展望」正文仍是「待补。」，多处指标标「待测」——属内容侧，等实测数据。
-3. **满版心插图前的结构性留白**（3 页，改版后仍在）：正文第 2 页底部空白 22.3%、
-   第 4 页 39.1%、第 9 页 21.5%（末页 31.2% 属正常收尾）。成因是**下一页首块 =
-   章/节标题 + 满版心插图 + 图注**这一整块（约 280~360pt，图片不可分割），本页剩下的
+3. **满版心插图前的结构性留白**（正文第 2 页 22.3%、第 4 页 32.4%、第 9 页 21.5%；
+   末页 31.2% 属正常收尾）。成因是**下一页首块 =
+   章/节标题 + 满版心插图 + 图注**这一整块（约 300~360pt，图片不可分割），本页剩下的
    空间放不下它，只能整块挪走。要填满这几页得把插图缩到 6~11cm 宽（比满版心小
    30%~60%，图内小字反而更小），或往源里补一段正文（内容侧定）。
 4. **孤行 / 寡行控制的代价**（A/B 实测）：打开后正文中段 5 页的页尾余量从 1~2% 变成
@@ -250,3 +252,9 @@ python submission/build/pdf_images_hires.py --pdf <PDF> --report   # 只看插�
    正文 16 页不变；末页填充 24.6% → 66.8%，正文第 13 页 25.5% → 5.0%；
    正文空白合计 1264pt → 1278pt（分布变了，量几乎没变——中段页尾余量增加是孤行控制的代价，
    见上一条）。
+7. **插图重画（2026-10-18，写字号太小那次）**：5 张图从「16in 画布 → 缩到 15.8cm」改成
+   「按 15.8cm 落版 1:1 作图」，图内字号 3.1pt → 7.5pt（[figures/README](../../docs/figures/README.md)）。
+   连带影响：① 插图高宽比变了（图 2-1 9.9 → 10.6cm 高），逐页留白分布随之变化
+   （正文第 4 页 39.1% → 32.4%，第 2/9 页基本不变）；② PDF 从 2.96MB 涨到 4.50MB
+   （新图线条更细、抗锯齿像素更多，仍远低于 50MB 上限）；③ 第 12 项自检按
+   `docs/figures/fig_meta.json` 核对「落版字号 ≥7pt」，改图后必须重跑 `make_figures.py`。

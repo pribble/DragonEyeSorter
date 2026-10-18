@@ -1,0 +1,116 @@
+{
+ "figure_width_pt": 447.92,
+ "png_width": 3200,
+ "figures": {
+  "fig_layout": {
+   "w_pt": 447.92,
+   "h_pt": 280.0,
+   "png_w": 3200,
+   "png_h": 2000,
+   "px_per_pt": 7.1441,
+   "min_fs_pt": 7.5,
+   "regions": {
+    "view": [
+     1536,
+     586,
+     3129,
+     1415
+    ],
+    "pick": [
+     986,
+     29,
+     2086,
+     1114
+    ]
+   }
+  },
+  "fig_architecture": {
+   "w_pt": 447.92,
+   "h_pt": 300.0,
+   "png_w": 3200,
+   "png_h": 2143,
+   "px_per_pt": 7.1441,
+   "min_fs_pt": 7.5,
+   "regions": {
+    "pl_modules": [
+     457,
+     700,
+     1772,
+     1643
+    ],
+    "ps_threads": [
+     1843,
+     429,
+     2815,
+     1400
+    ]
+   }
+  },
+  "fig_timebase": {
+   "w_pt": 447.92,
+   "h_pt": 195.0,
+   "png_w": 3200,
+   "png_h": 1393,
+   "px_per_pt": 7.1441,
+   "min_fs_pt": 7.5,
+   "regions": {
+    "latency": [
+     29,
+     36,
+     1757,
+     722
+    ],
+    "formula": [
+     29,
+     714,
+     3172,
+     1386
+    ]
+   }
+  },
+  "fig_pl_regs": {
+   "w_pt": 447.92,
+   "h_pt": 280.0,
+   "png_w": 3200,
+   "png_h": 2000,
+   "px_per_pt": 7.1441,
+   "min_fs_pt": 7.5,
+   "regions": {
+    "regs": [
+     14,
+     157,
+     1429,
+     1686
+    ],
+    "modules": [
+     1429,
+     450,
+     3186,
+     1086
+    ]
+   }
+  },
+  "fig_pick_sequence": {
+   "w_pt": 447.92,
+   "h_pt": 212.0,
+   "png_w": 3200,
+   "png_h": 1515,
+   "px_per_pt": 7.1441,
+   "min_fs_pt": 7.5,
+   "regions": {
+    "good": [
+     400,
+     36,
+     2693,
+     1415
+    ],
+    "ng": [
+     2658,
+     614,
+     3186,
+     1086
+    ]
+   }
+  }
+ }
+}

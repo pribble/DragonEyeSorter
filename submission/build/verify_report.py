@@ -13,7 +13,8 @@
   9 TOC 域与 updateFields
  10 疑似行框重叠（PyMuPDF 逐页两两求交）
  11 **插图清晰度：每张插图等效 dpi ≥ 300**（Word 导出只有 96，靠 pdf_images_hires.py 提上来）
- 12 **逐页底部空白分析**（信息项：每页数值 + >20% 的页及原因）+ 正文页不被撑空（填充 ≥ 50%）
+ 12 **插图可读性：每张插图落版最小字号 ≥ 7pt**（figkit 按 15.8cm 落版 1:1 作图，读 fig_meta.json）
+ 13 **逐页底部空白分析**（信息项：每页数值 + >20% 的页及原因）+ 正文页不被撑空（填充 ≥ 50%）
 
 用法：
     python submission/build/verify_report.py [-Out <报告路径>]
@@ -24,6 +25,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 import zipfile
@@ -47,6 +49,9 @@ TEXT_H_PT = TEXT_BOT_PT - TEXT_TOP_PT
 FILL_WARN = 20.0          # 底部空白 > 20% 的页在报告里逐页列出原因（信息项）
 FILL_FAIL = 50.0          # 正文页填充 < 50% 判 FAIL（一页只剩一两行）
 MIN_IMG_DPI = 300.0       # 插图等效 dpi 硬门槛
+MIN_FIG_PT = 7.0          # 插图落版最小字号硬门槛（pt）：低于这个数在纸上/屏幕上都读不动
+PLACED_CM = 15.8          # 报告里插图的显示宽度（满版心）；figkit 按同一宽度 1:1 作图
+FIG_NAMES = ("fig_architecture", "fig_timebase", "fig_pl_regs", "fig_pick_sequence", "fig_layout")
 
 FORBIDDEN = ("大学", "学院", "学校", "指导老师", "指导教师", "导师", "校徽", "班级")
 ALLOWED = ("2026 全国大学生嵌入式芯片与系统设计竞赛",
@@ -440,7 +445,33 @@ def main(argv=None) -> int:
                    % (dpi_txt, imgs[0]["disp_cm"] if imgs else 0))
         check("插图数量 = 源里 5 张（无图标混入）", len(imgs) == 5, "%d 张" % len(imgs))
 
-        # ---- 12 逐页留白（信息项 + 一条硬门槛）----
+        # ---- 12 插图字号：落版 1:1 作图，图内字号就是纸面字号 ----
+        # 教训（本版重画的起因）：旧插图按 16in（1152pt）画布作图、再缩到 15.8cm 落版，
+        # 缩放 0.389 → 图内 8pt 落到纸面只剩 3.1pt，报告里整片文字读不动。
+        # 现在 docs/figures/figkit.py 强制「画布宽 = 落版宽、字号 = 纸面字号」，
+        # 这里拿 fig_meta.json 的原始记录独立复核一遍等效字号。
+        meta_p = REPO / "docs" / "figures" / "fig_meta.json"
+        figs_meta = {}
+        if meta_p.is_file():
+            figs_meta = json.loads(meta_p.read_text(encoding="utf-8")).get("figures", {})
+        placed_pt = PLACED_CM / 2.54 * 72.0
+        missing = [k for k in FIG_NAMES if k not in figs_meta]
+        eff = [(k, figs_meta[k]["min_fs_pt"] * placed_pt / figs_meta[k]["w_pt"])
+               for k in FIG_NAMES if k in figs_meta]
+        low = ["%s %.1fpt" % (k, e) for k, e in eff if e < MIN_FIG_PT - 1e-6]
+        if missing:
+            fs_txt = "fig_meta.json 缺条目：" + ", ".join(missing) + "（先跑 docs/figures/make_figures.py）"
+        elif low:
+            fs_txt = "低于阈值：" + "; ".join(low)
+        else:
+            k_min = min(eff, key=lambda t: t[1])
+            fs_txt = ("最低 %.1fpt（%s）；画布 %.1fpt = 落版 %.1fcm，缩放 %.3f"
+                      % (k_min[1], k_min[0], figs_meta[k_min[0]]["w_pt"], PLACED_CM,
+                         placed_pt / figs_meta[k_min[0]]["w_pt"]))
+        check("插图落版字号 ≥ %.1fpt（%d 张）" % (MIN_FIG_PT, len(FIG_NAMES)),
+              not missing and not low, fs_txt)
+
+        # ---- 13 逐页留白（信息项 + 一条硬门槛）----
         emit("")
         fill_rows = emit_fill_table(PDF, emit)
         body = [r for r in fill_rows if r["role"] == "正文"]
