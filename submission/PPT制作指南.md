@@ -90,14 +90,14 @@ pwsh -File submission/build/export_ppt_preview.ps1
 |---|---|---|
 | 画幅 | 16:9，13.333 × 7.5 in（960 × 540 pt） | `make_ppt.py` 的 `SLIDE_W_IN` / `SLIDE_H_IN` |
 | 页数 | 16 页（页纲 15 页 + 把「架构」拆出「数据流与时间基准」一页） | `slide_specs()` |
-| 版心 | 左右边距 0.62 in，正文区 y = 1.30~7.00 in，页脚 7.08 in | `HEADER_*` / `BODY_*` |
+| 版心 | 左右边距 0.62 in；内容块按 ink bbox 垂直分配（目标：顶档 ≤1.20 in、头档 ≤0.60 in、底档 ≤1.20 in、面积填充 65%~85%），页脚 7.08 in | `make_ppt.py` 的 `HEADER_*` / `BODY_*` / 版面度量门禁 |
 | 母版 | 骨架页用空白版式（`slide_layouts[6]`）自绘，避免主题占位符在不同 Office 版本上漂移 | `build_slide()` |
 
 ### 4.2 字体
 
 | 用途 | 字体 | 字号 |
 |---|---|---|
-| 中文正文 / 标题 | **微软雅黑**（`msyh.ttc` / `msyhbd.ttc`，本机已装） | 正文 18pt（**下限**），标题 28pt，封面主标题 54pt |
+| 中文正文 / 标题 | **微软雅黑**（`msyh.ttc` / `msyhbd.ttc`，本机已装） | 纯文字页要点 24pt、图页要点与表格正文 16~18pt（均为下限），标题 28pt，封面主标题 54pt |
 | 等宽（寄存器名、命令、文件名） | Consolas | 与所在层级一致，不单独缩小 |
 | 加粗 | 标题、表头、关键数字 | 正文不整段加粗（投影上会糊） |
 
@@ -125,15 +125,17 @@ pwsh -File submission/build/export_ppt_preview.ps1
 |---|---|---|
 | 要点 | ≤ 5 条，每条 **≤ 20 字，且单行不折行** | 折行后要点块会顶到页脚；脚本按列宽做了字宽估算自检 |
 | 每页指标数 | ≤ 4 行表格（或 4 个数字） | 一页讲 25~40 秒，念不了更多 |
-| 插图 | 1 张 / 页 | 多张图会缩到看不清 |
+| 表格 | 拉满版心（≥98%），字号 ≥14pt（现为 16pt） | 表格窄 + 小字在投影上读不出，且右半边留空 |
+| 插图 | 1 张 / 页；密集图必须配「局部放大面板」（放大后等效字号 ≥11pt） | 整图口径只有约 3.5pt，投到幕布不可读 |
 | 备注 | 3~5 句，含数字出处 | 讲稿要点，不是逐字稿 |
 
 ### 4.5 图表
 
 - 一律用 [docs/figures/](../docs/figures/) 下的 PNG（由 `make_figures.py` 生成，**不手工画**）。本版用到 `fig_architecture.png`、`fig_timebase.png`、`fig_pl_regs.png`、`fig_pick_sequence.png`、`fig_layout.png`。
 - 图按原始宽高比缩放（脚本读像素尺寸算），不拉伸变形；PNG 3200px 宽，1600×900 导出下清晰。
+- **密集图必须配局部放大面板**：整图在幻灯片上只有约 3.5pt 等效字号，投影不可读。`make_ppt.py` 从源 SVG 的真实文字坐标算出裁切框（PNG 坐标 = SVG × 200/72），生成「左：全貌缩略 + 青框标出放大区 / 右：放大面板」，等效字号 11~15pt；裁切框写入 `zoom.anchors` 并在生成时核对锚点确实落在框内，裁错即报错退出。目前 4/5/6/8/9 五页各有一个放大面板。
 - SVG 版在 `docs/figures/*.svg`，在 PowerPoint 里可「插入 → 图片」后右键转形状做二次编辑；脚本默认用 PNG 以保证跨机器一致。
-- 每张图配一行图注，写明「图 X-Y 名称（来源路径）」。
+- 每张图配一行图注，只写「图 X-Y 名称（左：全貌；右：局部放大）」这类画面说明；**不要在幻灯片上写仓库路径**，图源与裁切参数写进 speaker notes。
 
 ### 4.6 动画
 
@@ -144,7 +146,7 @@ pwsh -File submission/build/export_ppt_preview.ps1
 | 件 | 规格 | 命令 |
 |---|---|---|
 | PPTX | 16:9，文件名 `DragonEyeSorter_龙瞳分拣_答辩.pptx`（上传时按 [提交材料清单](提交材料清单.md) §5 改名） | `python submission/build/make_ppt.py` |
-| PDF | 同页数，字体已嵌入 | `pwsh -File submission/build/export_ppt_preview.ps1`（COM `SaveAs($pdf, 32)`） |
+| PDF | 同页数，字体已嵌入，插图 ≥300 dpi（PowerPoint 只导 200 dpi，由 `ppt_pdf_hires.py` 按源图原生像素回填到 736~810 dpi） | `pwsh -File submission/build/export_ppt_preview.ps1`（COM `SaveAs($pdf, 32)` + 高清化） |
 | PNG | 1600×900 / 页，用于自查 | 同上（COM `Slides.Item(i).Export(...)`） |
 
 **现场用 PDF 兜底**：自带笔记本 + U 盘双份（PDF + PPTX），并确认 PDF 用浏览器也能全屏播放。若现场只能用自己的机器，提前在相同投影比例下过一遍配色。
@@ -178,8 +180,12 @@ pwsh -File submission/build/export_ppt_preview.ps1
 | 越界 | 任何形状不得超出页面 |
 | 要点折行 | 按中文字宽估算，超过要点列宽即报警（改短要点或调版心） |
 | 表格折行 | 表格单元格文字超过列宽即报警 |
+| 版面配比 | 顶档 ≤1.20 in、头档 ≤0.60 in、底档 ≤1.20 in、面积填充 65%~85%（封面豁免） |
+| 表格 | 宽度 ≥98% 版心、字号 ≥14pt |
+| 插图 | 原生像素 dpi ≥300；放大面板等效字号 ≥11pt 且锚点落在裁切框内 |
 
-有报警时脚本返回非 0，**当作失败处理**。剩余人工检查项：用 `read_image` 看 `out/ppt_preview/` 里至少 4 页（封面、一页图页、一页表页、结尾页），确认文字不溢出、图不糊、封面无校名、配色在投影上可读。
+有报警时脚本返回非 0，**当作失败处理**。`export_ppt_preview.ps1` 导完再跑一遍「渲染口径」墨迹度量（从 1600×900 预览 PNG 数上下空档与填充率，地板：底档 ≤1.35 in、填充 ≥60%），证据写 `out/_ppt_pdf_hires.json`。
+剩余人工检查项：用 `read_image` 看 `out/ppt_preview/` 全部 16 页（至少覆盖封面、7 个纯文字页、3 个表页、5 个图页），确认文字不溢出、放大面板内容不是空块、图不糊、封面无校名、配色在投影上可读。
 
 ## 6 冻结前 TODO
 

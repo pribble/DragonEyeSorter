@@ -26,13 +26,14 @@
 ## 生成链怎么跑
 
 ```powershell
-# 报告：docs/技术文档.md → out/龙瞳分拣_作品报告.docx → out/龙瞳分拣_作品报告.pdf（需本机 Microsoft Word）
+# 报告：docs/技术文档.md → out/龙瞳分拣_作品报告.docx → .pdf → 插图高清化（Word 只导 96dpi，换回源图 ~514dpi）
+#   需本机 Microsoft Word；高清化需一个带 PyMuPDF 的 Python（缺了会打印提示并非 0 退出）
 pwsh -File submission/build/build.ps1
 
-# 报告验收自检（45 项：产物、版式、禁项、页码、源码一致性）→ out/_verify_report.txt
+# 报告验收自检（48 项：产物、版式、禁项、页码、插图 dpi≥300、逐页留白）→ out/_verify_report.txt
 python submission/build/verify_report.py
 
-# PPT 骨架：docs/参赛材料骨架.md §4 → out/龙瞳分拣_答辩.pptx（+ 导 PDF / 逐页 PNG 预览）
+# PPT 骨架 + 兜底 PDF + 逐页预览（导出后自动做插图高清化与版面度量）
 python submission/build/make_ppt.py
 pwsh -File submission/build/export_ppt_preview.ps1
 
@@ -40,7 +41,7 @@ pwsh -File submission/build/export_ppt_preview.ps1
 pwsh -File submission/build/pack_code.ps1
 ```
 
-细节与依赖见 [build/README.md](build/README.md)（脚本清单、排版口径、怎么加章节与插图）。
+细节与依赖见 [build/README.md](build/README.md)（脚本清单、排版口径、怎么加章节与插图、已知权衡）。
 
 ## 规矩
 

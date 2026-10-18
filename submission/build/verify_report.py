@@ -2,18 +2,23 @@
 """作品报告验收自检（独立复核用；不改任何产物）。
 
 逐项核对提交前的硬要求，把原始结果写进 submission/out/_verify_report.txt：
-  1 产物存在 / PDF 文件头 / 页数
+  1 产物存在 / PDF 文件头 / 页数 / **PDF ≤ 50MB（打印现值）**
   2 仓库内脚本不含主机绝对路径（AGENTS.md 硬性约定第 9 条）
   3 docx 结构：段落 / 表格 / 插图 / 标题层级 / 节数
   4 正文字体与字号、标题字体与字号
   5 行距：全篇不得有 fixed / exact
-  6 页面与版心、表格宽度、插图宽度
+  6 页面与版心、表格宽度、插图宽度（满版心 15.8cm）
   7 封面 / 正文的页眉页脚、页码域
   8 竞赛禁项扫描（含页眉页脚与表格）
   9 TOC 域与 updateFields
  10 疑似行框重叠（PyMuPDF 逐页两两求交）
+ 11 **插图清晰度：每张插图等效 dpi ≥ 300**（Word 导出只有 96，靠 pdf_images_hires.py 提上来）
+ 12 **逐页底部空白分析**（信息项：每页数值 + >20% 的页及原因）+ 正文页不被撑空（填充 ≥ 50%）
 
-用法：python submission/build/verify_report.py [-Out <报告路径>]
+用法：
+    python submission/build/verify_report.py [-Out <报告路径>]
+    python submission/build/verify_report.py --fill [--pdf <任意 PDF>] [--warn 20]
+        —— 只跑留白分析，用来做改版前后对比（可指向旧 PDF，比如 out/_baseline_96dpi.pdf）
 退出码：0 全部通过 / 1 有 FAIL
 """
 from __future__ import annotations
@@ -33,6 +38,16 @@ DOCX = OUT / "龙瞳分拣_作品报告.docx"
 PDF = OUT / "龙瞳分拣_作品报告.pdf"
 SOURCE = REPO / "docs" / "技术文档.md"
 
+# 版心上下边界（pt，A4 高 841.89pt / 上下页边距 2.6cm = 73.7pt）。
+# 页眉在页边距里（header_distance 1.5cm ≈ 42.5pt）、页脚同理，都在这个区间之外，
+# 所以按 y 过滤就能把页眉页脚排除，只留正文内容块（文字 + 图片）。
+TEXT_TOP_PT = 73.7
+TEXT_BOT_PT = 841.89 - 73.7
+TEXT_H_PT = TEXT_BOT_PT - TEXT_TOP_PT
+FILL_WARN = 20.0          # 底部空白 > 20% 的页在报告里逐页列出原因（信息项）
+FILL_FAIL = 50.0          # 正文页填充 < 50% 判 FAIL（一页只剩一两行）
+MIN_IMG_DPI = 300.0       # 插图等效 dpi 硬门槛
+
 FORBIDDEN = ("大学", "学院", "学校", "指导老师", "指导教师", "导师", "校徽", "班级")
 ALLOWED = ("2026 全国大学生嵌入式芯片与系统设计竞赛",
            "全国大学生嵌入式芯片与系统设计竞赛")
@@ -45,16 +60,130 @@ def check(name: str, ok, detail: str = "") -> None:
     results.append((name, ok, detail))
 
 
+# ---------------------------------------------------------------- 留白分析
+# 复跑方式（改版前后对比用同一个函数，口径才可比）：
+#   python submission/build/verify_report.py --fill --pdf <PDF>
+# 口径：fill% = 正文内容高度 / 版心高度（24.5cm）；底部空白 = 版心底 − 内容最低点。
+
+def content_blocks(page):
+    """一页的正文内容块（文字 + 图片），已排除页眉页脚，按纵向位置排序。"""
+    out = []
+    for b in page.get_text("dict")["blocks"]:
+        if b["type"] not in (0, 1):        # 0 = 文字块，1 = 图片块
+            continue
+        y0, y1 = b["bbox"][1], b["bbox"][3]
+        if y1 < TEXT_TOP_PT or y0 > TEXT_BOT_PT:
+            continue                       # 整块在页边距里 → 页眉 / 页脚
+        out.append(b)
+    return sorted(out, key=lambda b: b["bbox"][1])
+
+
+def block_label(b):
+    """一句话说明这个块是什么：插图（带高度）或文字（首行截断）。"""
+    if b["type"] == 1:
+        h_cm = (b["bbox"][3] - b["bbox"][1]) / 28.3465
+        return "插图(高%.1fcm)" % h_cm
+    for line in b.get("lines", []):
+        txt = "".join(s["text"] for s in line["spans"]).strip()
+        if txt:
+            return "文字:%s" % txt[:26]
+    return "文字"
+
+
+def page_fill_rows(pdf, warn=FILL_WARN):
+    """逐页量底部空白，返回 [{page, printed, role, fill, gap, gap_pt, first, image}]。
+
+    printed = 页脚「第 X 页」里的页码（None = 封面 / 目录，不编号）
+    role    = 封面 / 目录 / 正文 —— 正文以「有页脚页码」判定，不靠页序猜
+    image   = 该页第一张插图的说明（没有插图则 None）；用来说明**下一页**为什么
+              会把上一页顶出空白：满版心插图是整块不可分割，放不下就整页留白
+    """
+    rows = []
+    for pno, page in enumerate(pdf, 1):
+        blocks = content_blocks(page)
+        text = page.get_text()
+        m = re.search(r"第\s*(\d+)\s*页", text)
+        printed = int(m.group(1)) if m else None
+        head_line = next((ln.strip() for ln in text.split("\n") if ln.strip()), "")
+        role = "正文" if m else ("目录" if head_line.startswith("目录") else "封面")
+        imgs = [b for b in blocks if b["type"] == 1]
+        row = {"page": pno, "printed": printed, "role": role,
+               "image": block_label(imgs[0]) if imgs else None,
+               "first": block_label(blocks[0]) if blocks else "(无内容)"}
+        if not blocks:
+            row.update(fill=0.0, gap=100.0, gap_pt=TEXT_H_PT)
+            rows.append(row)
+            continue
+        ymin = min(b["bbox"][1] for b in blocks)
+        ymax = max(b["bbox"][3] for b in blocks)
+        gap_pt = TEXT_BOT_PT - ymax
+        row.update(
+            fill=(ymax - max(ymin, TEXT_TOP_PT)) / TEXT_H_PT * 100.0,
+            gap=gap_pt / TEXT_H_PT * 100.0, gap_pt=gap_pt)
+        rows.append(row)
+    return rows
+
+
+
+def emit_fill_table(pdf_path, emit, warn=FILL_WARN) -> list[dict]:
+    """打印逐页留白表（并返回数据行）。--fill 模式与正式自检共用同一份口径。"""
+    import pymupdf
+    with pymupdf.open(str(pdf_path)) as pdf:
+        rows = page_fill_rows(pdf, warn)
+    emit("逐页留白分析 —— %s（%d 页）" % (pdf_path.name, len(rows)))
+    emit("口径：内容 = 正文文字块 + 图片块（排除页眉页脚）；"
+         "fill% = 内容高度 / 版心高度(24.5cm)；底部空白 = 版心底 − 内容最低点")
+    emit("")
+    emit("%-6s %-5s %-5s %-8s %-10s %-8s %s"
+         % ("PDF页", "角色", "页码", "fill%", "底部空白%", "空白pt", "本页首块"))
+    for r in rows:
+        emit("%-6d %-6s %-6s %-8.1f %-10.1f %-8.1f %s"
+             % (r["page"], r["role"], r["printed"] if r["printed"] else "-",
+                r["fill"], r["gap"], r["gap_pt"], r["first"]))
+    over = [(i, r) for i, r in enumerate(rows) if r["gap"] > warn]
+    emit("")
+    emit("底部空白 > %.0f%% 的页：%d 页（序号为 PDF 页）" % (warn, len(over)))
+    for i, r in over:
+        nxt = rows[i + 1] if i + 1 < len(rows) else None
+        why = "（末页，内容到此结束）" if nxt is None else "下一页首块：%s%s" % (
+            nxt["first"], ("；该页有%s，整块不可分割" % nxt["image"]) if nxt["image"] else "")
+        emit("  p%02d %s 页码 %s：底部空白 %.1f%%（%.0fpt 中空 %.0fpt）← %s"
+             % (r["page"], r["role"], r["printed"] or "-", r["gap"], TEXT_H_PT,
+                r["gap_pt"], why))
+    return rows
+
+
+def run_fill(pdf_path: Path, warn: float, out_path, emit, lines) -> int:
+    """--fill：只做留白分析（可指向任意 PDF，用于改版前后对比）。"""
+    if not pdf_path.is_file():
+        emit("[error] 找不到 PDF：%s" % pdf_path)
+        return 1
+    emit_fill_table(pdf_path, emit, warn)
+    if out_path:
+        flush(out_path, lines)
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("-Out", "--out", default=str(OUT / "_verify_report.txt"))
+    ap.add_argument("-Out", "--out", default=None,
+                    help="报告写到这里（默认 out/_verify_report.txt；--fill 时不写文件）")
+    ap.add_argument("--pdf", default=str(PDF), help="要核对的 PDF（留白分析可用任意 PDF）")
+    ap.add_argument("--fill", action="store_true",
+                    help="只跑逐页留白分析（配合 --pdf 可对比改版前的 PDF）")
+    ap.add_argument("--warn", type=float, default=FILL_WARN,
+                    help="底部空白告警阈值 %%，默认 %(default)s")
     args = ap.parse_args(argv)
+    out_path = args.out or str(OUT / "_verify_report.txt")
 
     lines: list[str] = []
 
     def emit(s: str = "") -> None:
         lines.append(s)
         print(s)
+
+    if args.fill:
+        return run_fill(Path(args.pdf).resolve(), args.warn, args.out, emit, lines)
 
     emit("作品报告验收自检 —— 生成自 submission/build/verify_report.py")
     emit("=" * 78)
@@ -63,11 +192,11 @@ def main(argv=None) -> int:
     check("docx 存在", DOCX.is_file(), DOCX.name)
     check("pdf 存在", PDF.is_file(), PDF.name)
     if not (DOCX.is_file() and PDF.is_file()):
-        return flush(args.out, lines)
+        return flush(out_path, lines)
     head = PDF.read_bytes()[:5]
     check("PDF 文件头 %PDF-", head == b"%PDF-", repr(head))
     check("PDF ≤ 50MB", PDF.stat().st_size <= 50 * 1024 * 1024,
-          "%.2f MB" % (PDF.stat().st_size / 1e6))
+          "现值 %.2f MB（%.0f 字节）" % (PDF.stat().st_size / 1e6, PDF.stat().st_size))
 
     # ---- 2 脚本不含主机绝对路径 ----
     # 只认「盘符 + 至少两段 + 该路径真实存在」：脚本里写盘符模式串（自查用）、注释里
@@ -79,7 +208,7 @@ def main(argv=None) -> int:
     candidates = re.compile("(" + drive + "[^\\s\"'`,;)]*|" + unc + "[^\\s\"'`,;)]*)")
     # 本任务写入范围内的文件；其余（同事的 PPT 链）扫到只记 SKIP，不算我这条线的失败
     mine = {"md2docx.py", "word_to_pdf.ps1", "build.ps1", "pack_code.ps1",
-            "verify_report.py", "README.md"}
+            "verify_report.py", "pdf_images_hires.py", "README.md"}
     offenders, others = [], []
     for f in sorted(BUILD.glob("*")):
         if not (f.is_file() and f.suffix in (".py", ".ps1", ".md")):
@@ -225,7 +354,8 @@ def main(argv=None) -> int:
         t.rows[0]._tr.find(qn("w:trPr")).find(qn("w:tblHeader")) is not None
         for t in doc.tables))
     img_w = [round(s.width.cm, 2) for s in doc.inline_shapes]
-    check("插图宽 ≤ 14.5cm", all(w <= 14.5 + 1e-6 for w in img_w), str(img_w))
+    check("插图宽 ≤ 15.8cm 版心（满版心 15.8）",
+          all(w <= 15.8 + 1e-6 for w in img_w), str(img_w))
 
     # ---- 7 页眉页脚 ----
     cover_hdr = "".join(p.text for p in doc.sections[0].header.paragraphs).strip()
@@ -292,10 +422,44 @@ def main(argv=None) -> int:
         check("PDF 页面尺寸 = A4", all(
             abs(p.rect.width - 595.28) < 1.5 and abs(p.rect.height - 841.89) < 1.5
             for p in pdf))
-    except ImportError:
-        check("PyMuPDF 可用（PDF 逐页核对）", False, "未安装 pymupdf，跳过重叠检测")
 
-    # ---- 11 代码包与 README 登记 ----
+        # ---- 11 插图清晰度：等效 dpi ≥ 300 ----
+        # Word 导出把插图压到 96 dpi（3200px 原图只剩 547~597px）。build.ps1 第 3 步
+        # pdf_images_hires.py 把像素换回源图，这里独立量一遍：dpi = 像素宽 /（显示宽 inch）。
+        # 量法与那个脚本共用同一份代码（import 进来用），避免两套口径。
+        sys.path.insert(0, str(BUILD))
+        import pdf_images_hires as hires
+        imgs = hires.distinct(hires.page_images(pdf))
+        dpi_bad = ["#%d p%02d %.0f dpi" % (i, it["page"], it["dpi"])
+                   for i, it in enumerate(imgs, 1) if it["dpi"] < MIN_IMG_DPI]
+        dpi_txt = " ".join("%d" % round(it["dpi"]) for it in imgs)
+        check("PDF 插图等效 dpi ≥ %.0f（%d 张）" % (MIN_IMG_DPI, len(imgs)),
+              not dpi_bad and len(imgs) == 5,
+              ("低于阈值：" + "; ".join(dpi_bad)) if dpi_bad
+              else "%s dpi（源图 3200px / 显示宽 %.2fcm）"
+                   % (dpi_txt, imgs[0]["disp_cm"] if imgs else 0))
+        check("插图数量 = 源里 5 张（无图标混入）", len(imgs) == 5, "%d 张" % len(imgs))
+
+        # ---- 12 逐页留白（信息项 + 一条硬门槛）----
+        emit("")
+        fill_rows = emit_fill_table(PDF, emit)
+        body = [r for r in fill_rows if r["role"] == "正文"]
+        thin = [r for r in body if r["fill"] < FILL_FAIL]
+        if thin:
+            thin_txt = "以下页填充不足：" + "; ".join(
+                "p%d %.1f%%" % (r["page"], r["fill"]) for r in thin)
+        elif body:
+            worst = min(body, key=lambda r: r["fill"])
+            thin_txt = ("正文 %d 页最低填充 %.1f%%（p%d）；底部空白 > %.0f%% 的正文页见上表"
+                        % (len(body), worst["fill"], worst["page"], FILL_WARN))
+        else:
+            thin_txt = "无正文页"
+        check("无正文页被撑空（填充 ≥ %.0f%%）" % FILL_FAIL, not thin, thin_txt)
+    except ImportError as exc:
+        check("PyMuPDF 可用（PDF 逐页核对 / dpi / 留白）", False,
+              "未安装 pymupdf 或 pdf_images_hires.py 导入失败：%s" % exc)
+
+    # ---- 13 代码包与 README 登记 ----
     zip_path = OUT / "DragonEyeSorter_代码_v1.0.zip"
     if zip_path.is_file():
         check("代码包 zip 存在且 ≤ 100MB",
@@ -305,12 +469,13 @@ def main(argv=None) -> int:
         check("代码包 zip（pack_code.ps1 产出，可选）", None,
               "未生成：跑 pwsh -File submission/build/pack_code.ps1")
     readme = (BUILD / "README.md").read_text(encoding="utf-8")
-    missing = [n for n in ("md2docx.py", "word_to_pdf.ps1", "build.ps1",
-                           "pack_code.ps1", "verify_report.py",
-                           "export_ppt_preview.ps1", "make_ppt.py")
-               if n not in readme]
+    scripts = ("md2docx.py", "word_to_pdf.ps1", "build.ps1", "pack_code.ps1",
+               "verify_report.py", "pdf_images_hires.py",
+               "export_ppt_preview.ps1", "make_ppt.py", "ppt_pdf_hires.py")
+    missing = [n for n in scripts if n not in readme]
     check("README 登记全部 build/ 脚本", not missing,
-          ("缺：" + ",".join(missing)) if missing else "7 个脚本全部登记")
+          ("缺：" + ",".join(missing)) if missing else "%d 个脚本全部登记" % len(scripts))
+
 
     # ---- 汇总 ----
     emit("")
@@ -329,7 +494,7 @@ def main(argv=None) -> int:
         emit("  SKIP  %s —— %s" % (n, d))
     emit("结论：%s" % ("全部通过（无失败项）" if not failed else
                        "有不通过项：" + "; ".join(n for n, _, _ in failed)))
-    return flush(args.out, lines, failed)
+    return flush(out_path, lines, failed)
 
 
 def flush(out_path, lines, failed=()) -> int:
