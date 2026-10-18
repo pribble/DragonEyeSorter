@@ -56,6 +56,9 @@ scripts/bootbin/parts/*
 __pycache__/
 *.pyc
 **/build/
+# 白名单：submission/build/ 是提交材料的生成脚本（文本，要入库），不是编译产物目录；
+# 它被上面的 **/build/ 命中，必须在其后重新放行（gitignore 最后匹配生效）
+!submission/build/
 ps/tools/desreg
 # 部署暂存（scripts/deploy/out/）：平铺着要上板的那些文件。脚本与配置**入库**（它们就是发到板子上的
 # 那一份，都是文本，改一次提交一次）；不入库的是**能由源码编出来的二进制**（des_app，换机器重新 make）
@@ -88,3 +91,6 @@ System Volume Information/
 
 # ---------- 9. 脚本运行期日志 ----------
 scripts/sd_image/flash_log.txt
+
+# ---------- 10. 提交材料生成物（submission/out/：可由 submission/build/ 重建，不入库） ----------
+submission/out/
