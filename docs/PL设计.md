@@ -8,6 +8,8 @@
 
 **板端运行 v11**（10-18 上板，BOOT md5 `89fb03c8…`，`BOOT.bin.prev` = v9 `e3a9d500…`；v10 = des_pwm 去光源输出，未单独编译；v11 = v10 + `des_io`）。布局布线 25 分钟；自研时钟域时序：75MHz +0.137ns、像素时钟 +0.103ns，HDMI 串行器 742.9MHz −0.066ns（v8 −0.338ns 目视无问题、v9 +0.120ns，厂家路径随布局浮动），其余违例在厂家 NPU / 150M 域、与厂家原版相同。`pl_check.sh` 21 项全过（des_io ID、急停未锁存、编码器静止不跳 + 原有各项，60.02fps 0 跳帧，步进首脉冲 10.6µs）。
 
+**⚠ CAN / RS485 还没接到管脚（10-19 查出，v12 必做）**：底板 CAN 收发器接 PL 管脚 F20（TX）/ F19（RX），RS485 接 L17 / N16 / N15（硬件手册 p21）。官方 NPU demo 块设计没开 PS CAN（`design_0/Design.xml` CAN0_Available=0；`ARM_Processor_System_*.v` 里 `can0_rx_in` 接 `1'b0`、`can0_tx_out` 悬空），io.adc 也没约束这几脚 → Linux `can0` 只能内部回环，接 USB-CAN 实物不会通；「开机拒绝经典模式、回环只能 FD 模式」很可能就是 RX 恒为 0（总线一直显性）造成的。v12：把 PS 硬核 `can0_tx_out` / `can0_rx_in`（TD `arch/dr1_macro.v`）经 `Dr1_Processor_System_*` → `ARM_Processor_System_*` → `design_0` → `system_top` 引到 F20 / F19（LVCMOS33），RS485 三线一起引出。
+
 ### 官方源码可复用性（`soc_prj/src/` 清点）
 
 - **明文可改（在用的）**：`ui_isp/` 整套 ISP（含 `image_cut`、`bilinear_interpolation.v`、白平衡 `awb.v`）、`write_fdma/uiFDMA.v` + `uidbuf_write.v`（帧写 DDR）、`MIPI_V2/src/csi_unpacket.v` + `design_top_wrapper.v`、`MIPI_V2/mipi_rx/`（`rx_clk_gen.v`、`hs_rx_wrapper.sv`、D-PHY 包装）、`hdmi_tx/`（`uihdmi_tx.v`、`hdmi_phy_warpper.v`、`lane_lvds_10_1.v`）、`pwm.v`（厂家 AXI PWM，块设计里 3 个实例，输出只驱动 `vtg_lock` / `axis_to_video_lock` 状态位）、`design_0` 里的 AXI4-Lite 从机寄存器模板（`fvdma_ctrl`，即我们改过的寄存器桥）。
