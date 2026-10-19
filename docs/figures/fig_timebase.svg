@@ -6,7 +6,7 @@
   <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2026-10-18T18:38:52.218033</dc:date>
+    <dc:date>2026-10-20T02:51:12.601279</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
@@ -30,176 +30,214 @@ z
   </g>
   <g id="axes_1">
    <g id="patch_2">
-    <path d="M 40 79 
-L 134 79 
-L 134 51 
-L 40 51 
+    <path d="M 9.5 192 
+L 216.5 192 
+Q 220 192 220 188.5 
+L 220 97.5 
+Q 220 94 216.5 94 
+L 9.5 94 
+Q 6 94 6 97.5 
+L 6 188.5 
+Q 6 192 9.5 192 
 z
-" clip-path="url(#p6368940139)" style="fill: #dbe9f7; stroke: #2f6db3; stroke-width: 0.9; stroke-linejoin: miter"/>
-   </g>
-   <g id="line2d_1">
-    <path d="M 40 51 
-L 40 43 
-" clip-path="url(#p6368940139)" style="fill: none; stroke-dasharray: 1.2,1.2; stroke-dashoffset: 0; stroke: #2f6db3; stroke-width: 0.6"/>
-   </g>
-   <g id="line2d_2">
-    <path d="M 134 51 
-L 134 43 
-" clip-path="url(#p6368940139)" style="fill: none; stroke-dasharray: 1.2,1.2; stroke-dashoffset: 0; stroke: #2f6db3; stroke-width: 0.6"/>
+" clip-path="url(#pf48c7b3c7a)" style="fill: #f7f9fb"/>
    </g>
    <g id="patch_3">
-    <path d="M 10 192 
-L 216 192 
-Q 220 192 220 188 
-L 220 106 
-Q 220 102 216 102 
-L 10 102 
-Q 6 102 6 106 
-L 6 188 
-Q 6 192 10 192 
-L 10 192 
+    <path d="M 231.5 192 
+L 438.5 192 
+Q 442 192 442 188.5 
+L 442 97.5 
+Q 442 94 438.5 94 
+L 231.5 94 
+Q 228 94 228 97.5 
+L 228 188.5 
+Q 228 192 231.5 192 
 z
-" clip-path="url(#p6368940139)" style="fill: none; stroke-dasharray: 5.6,3.5; stroke-dashoffset: 0; stroke: #2f6db3; stroke-width: 1.4; stroke-linejoin: miter"/>
+" clip-path="url(#pf48c7b3c7a)" style="fill: #f7f9fb"/>
+   </g>
+   <g id="line2d_1">
+    <path d="M 14 115 
+L 212 115 
+" clip-path="url(#pf48c7b3c7a)" style="fill: none; stroke: #dce3ea; stroke-width: 0.7; stroke-linecap: square"/>
+   </g>
+   <g id="line2d_2">
+    <path d="M 236 115 
+L 434 115 
+" clip-path="url(#pf48c7b3c7a)" style="fill: none; stroke: #dce3ea; stroke-width: 0.7; stroke-linecap: square"/>
    </g>
    <g id="patch_4">
-    <path d="M 232 192 
-L 437 192 
-Q 441 192 441 188 
-L 441 106 
-Q 441 102 437 102 
-L 232 102 
-Q 228 102 228 106 
-L 228 188 
-Q 228 192 232 192 
-L 232 192 
+    <path d="M 10 37 
+Q 223 37 434.993769 37 
+" clip-path="url(#pf48c7b3c7a)" style="fill: none; stroke: #8a99a8; stroke-width: 0.9; stroke-linecap: round"/>
+    <path d="M 432.593769 35.8 
+L 434.993769 37 
+L 432.593769 38.2 
 z
-" clip-path="url(#p6368940139)" style="fill: none; stroke-dasharray: 5.6,3.5; stroke-dashoffset: 0; stroke: #2e8b57; stroke-width: 1.4; stroke-linejoin: miter"/>
-   </g>
-   <g id="patch_5">
-    <path d="M 8 39 
-Q 219 39 428.881966 39 
-" clip-path="url(#p6368940139)" style="fill: none; stroke: #555555; stroke-linecap: round"/>
-    <path d="M 426.481966 37.8 
-L 428.881966 39 
-L 426.481966 40.2 
-z
-" clip-path="url(#p6368940139)" style="fill: #555555; stroke: #555555; stroke-linecap: round"/>
+" clip-path="url(#pf48c7b3c7a)" style="fill: #8a99a8; stroke: #8a99a8; stroke-width: 0.9; stroke-linecap: round"/>
    </g>
    <g id="line2d_3">
-    <path d="M 40 43 
-L 40 35 
-" clip-path="url(#p6368940139)" style="fill: none; stroke: #2f6db3; stroke-width: 2; stroke-linecap: square"/>
+    <path d="M 44 41 
+L 44 33 
+" clip-path="url(#pf48c7b3c7a)" style="fill: none; stroke: #0d9488; stroke-width: 1.3"/>
    </g>
    <g id="line2d_4">
-    <path d="M 134 43 
-L 134 35 
-" clip-path="url(#p6368940139)" style="fill: none; stroke: #2f6db3; stroke-width: 2; stroke-linecap: square"/>
+    <path d="M 140 41 
+L 140 33 
+" clip-path="url(#pf48c7b3c7a)" style="fill: none; stroke: #0d9488; stroke-width: 1.3"/>
    </g>
    <g id="line2d_5">
-    <path d="M 214 43 
-L 214 35 
-" clip-path="url(#p6368940139)" style="fill: none; stroke: #2e8b57; stroke-width: 2; stroke-linecap: square"/>
+    <path d="M 216 41 
+L 216 33 
+" clip-path="url(#pf48c7b3c7a)" style="fill: none; stroke: #2563eb; stroke-width: 1.3"/>
    </g>
    <g id="line2d_6">
-    <path d="M 292 43 
-L 292 35 
-" clip-path="url(#p6368940139)" style="fill: none; stroke: #d9822b; stroke-width: 2; stroke-linecap: square"/>
+    <path d="M 294 41 
+L 294 33 
+" clip-path="url(#pf48c7b3c7a)" style="fill: none; stroke: #b45309; stroke-width: 1.3"/>
    </g>
    <g id="line2d_7">
-    <path d="M 378 43 
-L 378 35 
-" clip-path="url(#p6368940139)" style="fill: none; stroke: #c0392b; stroke-width: 2; stroke-linecap: square"/>
+    <path d="M 380 41 
+L 380 33 
+" clip-path="url(#pf48c7b3c7a)" style="fill: none; stroke: #b91c1c; stroke-width: 1.3"/>
    </g>
-   <g id="text_1">
-    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: end; fill: #555555" x="430" y="50.631836" transform="rotate(-0 430 50.631836)">时间（示意）</text>
-   </g>
-   <g id="text_2">
-    <text style="font-weight: 700; font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #2f6db3" transform="translate(21.25 20.283398)">帧写入开始</text>
-    <text style="font-weight: 700; font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #2f6db3" transform="translate(15.649023 30.508008)">PL 锁存 POS0</text>
-   </g>
-   <g id="text_3">
-    <text style="font-weight: 700; font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #2f6db3" transform="translate(122.75 20.272852)">帧写完</text>
-    <text style="font-weight: 700; font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #2f6db3" transform="translate(109.649023 30.508008)">PL 锁存 POS1</text>
-   </g>
-   <g id="text_4">
-    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #2e8b57" transform="translate(197.18125 20.235938)">PS 取到帧</text>
-    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #2e8b57" transform="translate(184.537305 30.504492)">定位 · 测量 ~6ms</text>
-   </g>
-   <g id="text_5">
-    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #d9822b" transform="translate(275.247461 20.30918)">NPU 结果</text>
-    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #d9822b" transform="translate(270.826563 30.485742)">7.8ms · 异步</text>
-   </g>
-   <g id="text_6">
-    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #c0392b" transform="translate(345.708984 20.294531)">判定 → 停带 / 挡板</text>
-    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #c0392b" transform="translate(348.999023 30.449414)">数十~数百 ms 后</text>
-   </g>
-   <g id="text_7">
-    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(57.347461 62.500977)">卷帘读出 ≈ 16ms</text>
-    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; fill: #1a1a1a" transform="translate(56.444531 72.74375)">第 r 行按 r/H 插值</text>
-   </g>
-   <g id="text_8">
-    <text style="font-size: 8.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #1a1a1a" x="40" y="93.828242" transform="rotate(-0 40 93.828242)">该行带位置 B = POS0 + (POS1 − POS0) · r / H</text>
-   </g>
-   <g id="text_9">
-    <text style="font-weight: 700; font-size: 9.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #2f6db3" x="11" y="113.945859" transform="rotate(-0 11 113.945859)">零件带坐标（只算一次）</text>
-   </g>
-   <g id="text_10">
-    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #1a1a1a" x="12" y="129.514258" transform="rotate(-0 12 129.514258)">x = 单应(像素)：拍摄时台面坐标</text>
-   </g>
-   <g id="text_11">
-    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #1a1a1a" x="12" y="144.495508" transform="rotate(-0 12 144.495508)">B = 该行曝光时的带位置（插值）</text>
-   </g>
-   <g id="text_12">
-    <text style="font-weight: 700; font-size: 8.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #1a1a1a" x="12" y="159.955078" transform="rotate(-0 12 159.955078)">s = x − B：零件带坐标，之后不变</text>
-   </g>
-   <g id="text_13">
-    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #1a1a1a" x="12" y="175.204883" transform="rotate(-0 12 175.204883)">任意时刻位置 = s + B_now（读步进计数）</text>
-   </g>
-   <g id="text_14">
-    <text style="font-weight: 700; font-size: 9.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #2e8b57" x="233" y="113.945859" transform="rotate(-0 233 113.945859)">带来的好处</text>
-   </g>
-   <g id="text_15">
-    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #1a1a1a" x="234" y="131.618555" transform="rotate(-0 234 131.618555)">• 推理 / 测量晚到也不影响位置</text>
-   </g>
-   <g id="text_16">
-    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #1a1a1a" x="234" y="145.618555" transform="rotate(-0 234 145.618555)">• 停带、变速、反转都无需处理</text>
-   </g>
-   <g id="text_17">
-    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #1a1a1a" x="234" y="159.618555" transform="rotate(-0 234 159.618555)">• 停带：步进目标改为「s 到抓取线」</text>
-   </g>
-   <g id="text_18">
-    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #1a1a1a" x="234" y="173.521289" transform="rotate(-0 234 173.521289)">• 硬件在环停带误差 ≤ 0.04mm（1~2 步）</text>
+   <g id="patch_5">
+    <path d="M 46.2 70 
+L 137.8 70 
+Q 140 70 140 67.8 
+L 140 46.2 
+Q 140 44 137.8 44 
+L 46.2 44 
+Q 44 44 44 46.2 
+L 44 67.8 
+Q 44 70 46.2 70 
+z
+" clip-path="url(#pf48c7b3c7a)" style="fill: #effaf7; stroke: #d5dde5; stroke-width: 0.7; stroke-linejoin: miter"/>
    </g>
    <g id="patch_6">
-    <path d="M 40 40.7 
-C 40.450845 40.7 40.883286 40.520877 41.202082 40.202082 
-C 41.520877 39.883286 41.7 39.450845 41.7 39 
-C 41.7 38.549155 41.520877 38.116714 41.202082 37.797918 
-C 40.883286 37.479123 40.450845 37.3 40 37.3 
-C 39.549155 37.3 39.116714 37.479123 38.797918 37.797918 
-C 38.479123 38.116714 38.3 38.549155 38.3 39 
-C 38.3 39.450845 38.479123 39.883286 38.797918 40.202082 
-C 39.116714 40.520877 39.549155 40.7 40 40.7 
+    <path d="M 44 68 
+L 46 68 
+L 46 46 
+L 44 46 
 z
-" clip-path="url(#p6368940139)" style="fill: #2f6db3; stroke: #2f6db3; stroke-linejoin: miter"/>
+" clip-path="url(#pf48c7b3c7a)" style="fill: #0d9488"/>
+   </g>
+   <g id="text_1">
+    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: end; fill: #5f7285" x="436" y="49.517773" transform="rotate(-0 436 49.517773)">时间（示意）</text>
+   </g>
+   <g id="text_2">
+    <text style="font-weight: 700; font-size: 8.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #0e1b2b" x="44" y="15.975664" transform="rotate(-0 44 15.975664)">帧写入开始</text>
+   </g>
+   <g id="text_3">
+    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #5f7285" x="44" y="28.096289" transform="rotate(-0 44 28.096289)">PL 锁存 POS0</text>
+   </g>
+   <g id="text_4">
+    <text style="font-weight: 700; font-size: 8.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #0e1b2b" x="140" y="15.963711" transform="rotate(-0 140 15.963711)">帧写完</text>
+   </g>
+   <g id="text_5">
+    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #5f7285" x="140" y="28.096289" transform="rotate(-0 140 28.096289)">PL 锁存 POS1</text>
+   </g>
+   <g id="text_6">
+    <text style="font-weight: 700; font-size: 8.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #0e1b2b" x="216" y="15.963047" transform="rotate(-0 216 15.963047)">PS 取到帧</text>
+   </g>
+   <g id="text_7">
+    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #5f7285" x="216" y="28.118555" transform="rotate(-0 216 28.118555)">定位 · 测量 ~6ms</text>
+   </g>
+   <g id="text_8">
+    <text style="font-weight: 700; font-size: 8.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #0e1b2b" x="294" y="16.004883" transform="rotate(-0 294 16.004883)">NPU 结果</text>
+   </g>
+   <g id="text_9">
+    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #5f7285" x="294" y="28.099805" transform="rotate(-0 294 28.099805)">7.8ms · 异步</text>
+   </g>
+   <g id="text_10">
+    <text style="font-weight: 700; font-size: 8.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #0e1b2b" x="380" y="15.97168" transform="rotate(-0 380 15.97168)">判定 → 停带 / 挡板</text>
+   </g>
+   <g id="text_11">
+    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #5f7285" x="380" y="28.063477" transform="rotate(-0 380 28.063477)">数十~数百 ms 后</text>
+   </g>
+   <g id="text_12">
+    <text style="font-weight: 700; font-size: 8.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #0e1b2b" x="92" y="55.084062" transform="rotate(-0 92 55.084062)">卷帘读出 ≈ 16ms</text>
+   </g>
+   <g id="text_13">
+    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #5f7285" x="92" y="65.154687" transform="rotate(-0 92 65.154687)">第 r 行按 r / H 插值</text>
+   </g>
+   <g id="text_14">
+    <text style="font-size: 8.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #0e1b2b" x="44" y="84.828242" transform="rotate(-0 44 84.828242)">该行带位置 B = POS0 + (POS1 − POS0) · r / H</text>
+   </g>
+   <g id="text_15">
+    <text style="font-weight: 700; font-size: 9.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #0d9488" x="14" y="110.775273" transform="rotate(-0 14 110.775273)">零件的带坐标</text>
+   </g>
+   <g id="text_16">
+    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: end; fill: #6b7a8b" x="212" y="110.115039" transform="rotate(-0 212 110.115039)">只算一次</text>
+   </g>
+   <g id="text_17">
+    <text style="font-size: 8.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #334155" x="14" y="133.849492" transform="rotate(-0 14 133.849492)">x = 单应(像素)：拍摄时台面坐标</text>
+   </g>
+   <g id="text_18">
+    <text style="font-size: 8.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #334155" x="14" y="147.828242" transform="rotate(-0 14 147.828242)">B = 该行曝光时的带位置（插值）</text>
+   </g>
+   <g id="text_19">
+    <text style="font-weight: 700; font-size: 8.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #0e1b2b" x="14" y="161.955078" transform="rotate(-0 14 161.955078)">s = x − B：零件带坐标，之后不变</text>
+   </g>
+   <g id="text_20">
+    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #5f7285" x="14" y="176.204883" transform="rotate(-0 14 176.204883)">任意时刻位置 = s + B_now（读步进计数）</text>
+   </g>
+   <g id="text_21">
+    <text style="font-weight: 700; font-size: 9.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #2563eb" x="236" y="110.825742" transform="rotate(-0 236 110.825742)">带来的好处</text>
+   </g>
+   <g id="text_22">
+    <text style="font-weight: 700; font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #2563eb" x="234" y="133.435156" transform="rotate(-0 234 133.435156)">·</text>
+   </g>
+   <g id="text_23">
+    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #5f7285" x="241" y="133.618555" transform="rotate(-0 241 133.618555)">推理 / 测量晚到也不影响位置</text>
+   </g>
+   <g id="text_24">
+    <text style="font-weight: 700; font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #2563eb" x="234" y="147.435156" transform="rotate(-0 234 147.435156)">·</text>
+   </g>
+   <g id="text_25">
+    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #5f7285" x="241" y="147.618555" transform="rotate(-0 241 147.618555)">停带、变速、反转都无需处理</text>
+   </g>
+   <g id="text_26">
+    <text style="font-weight: 700; font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #2563eb" x="234" y="161.435156" transform="rotate(-0 234 161.435156)">·</text>
+   </g>
+   <g id="text_27">
+    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #5f7285" x="241" y="161.618555" transform="rotate(-0 241 161.618555)">停带：步进目标改为「s 到抓取线」</text>
+   </g>
+   <g id="text_28">
+    <text style="font-weight: 700; font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #2563eb" x="234" y="176.435156" transform="rotate(-0 234 176.435156)">·</text>
+   </g>
+   <g id="text_29">
+    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #5f7285" x="241" y="176.521289" transform="rotate(-0 241 176.521289)">硬件在环停带误差 ≤ 0.04mm（1~2 步）</text>
    </g>
    <g id="patch_7">
-    <path d="M 134 40.7 
-C 134.450845 40.7 134.883286 40.520877 135.202082 40.202082 
-C 135.520877 39.883286 135.7 39.450845 135.7 39 
-C 135.7 38.549155 135.520877 38.116714 135.202082 37.797918 
-C 134.883286 37.479123 134.450845 37.3 134 37.3 
-C 133.549155 37.3 133.116714 37.479123 132.797918 37.797918 
-C 132.479123 38.116714 132.3 38.549155 132.3 39 
-C 132.3 39.450845 132.479123 39.883286 132.797918 40.202082 
-C 133.116714 40.520877 133.549155 40.7 134 40.7 
+    <path d="M 44 38.7 
+C 44.450845 38.7 44.883286 38.520877 45.202082 38.202082 
+C 45.520877 37.883286 45.7 37.450845 45.7 37 
+C 45.7 36.549155 45.520877 36.116714 45.202082 35.797918 
+C 44.883286 35.479123 44.450845 35.3 44 35.3 
+C 43.549155 35.3 43.116714 35.479123 42.797918 35.797918 
+C 42.479123 36.116714 42.3 36.549155 42.3 37 
+C 42.3 37.450845 42.479123 37.883286 42.797918 38.202082 
+C 43.116714 38.520877 43.549155 38.7 44 38.7 
 z
-" clip-path="url(#p6368940139)" style="fill: #2f6db3; stroke: #2f6db3; stroke-linejoin: miter"/>
+" clip-path="url(#pf48c7b3c7a)" style="fill: #0d9488; stroke: #0d9488; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_8">
+    <path d="M 140 38.7 
+C 140.450845 38.7 140.883286 38.520877 141.202082 38.202082 
+C 141.520877 37.883286 141.7 37.450845 141.7 37 
+C 141.7 36.549155 141.520877 36.116714 141.202082 35.797918 
+C 140.883286 35.479123 140.450845 35.3 140 35.3 
+C 139.549155 35.3 139.116714 35.479123 138.797918 35.797918 
+C 138.479123 36.116714 138.3 36.549155 138.3 37 
+C 138.3 37.450845 138.479123 37.883286 138.797918 38.202082 
+C 139.116714 38.520877 139.549155 38.7 140 38.7 
+z
+" clip-path="url(#pf48c7b3c7a)" style="fill: #0d9488; stroke: #0d9488; stroke-linejoin: miter"/>
    </g>
   </g>
  </g>
  <defs>
-  <clipPath id="p6368940139">
+  <clipPath id="pf48c7b3c7a">
    <rect x="0" y="0" width="447.92" height="195"/>
   </clipPath>
  </defs>

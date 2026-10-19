@@ -29,73 +29,73 @@ BOX1, BOX2 = (96.0, 28.0, 56.0, 22.0), (36.0, 28.0, 56.0, 22.0)   # 侧边料盒
 def draw():
     fig, ax = fk.new_fig(H)
     S, B = fk.FS['sub'], fk.FS['box']
+    teal, blue = fk.C['pl'][1], fk.C['ps'][1]
+    red, amber = fk.C['acc'][1], fk.C['npu'][1]
 
     # ---------------- 皮带（俯视，按比例） ----------------
-    belt = fk.rect(ax, BX0, BY0, BW, BH, fc='#f4f4f4', ec='#555555', lw=1.2)
+    belt = fk.rect(ax, BX0, BY0, BW, BH, fc='#F3F6F9', ec='#C9D4DE', lw=1.0)
+    belt.set_zorder(1.0)
     for x in range(int(BX0) + 22, int(BX0 + BW), 20):
-        ln, = ax.plot([x, x - 16], [BY0 + 2, BY0 + BH - 2], color='#ededed', lw=0.7, zorder=0.5)
-        ln.set_clip_path(belt)          # 斜纹不许越出皮带边（首个斜纹曾甩到皮带左外侧）
-    fk.text(ax, 48, 196, '皮带 800 × 300mm', fs=S, color=fk.MUTED)
+        ln, = ax.plot([x, x - 16], [BY0 + 2, BY0 + BH - 2], color='#E8EDF2', lw=0.6, zorder=1.2)
+        ln.set_clip_path(belt)          # 斜纹不许越出皮带边
+    fk.text(ax, BX0 + 4, BY0 + BH + 6, '皮带 800 × 300mm', fs=S, color=fk.MUTED)
 
     # ---------------- 相机视野 + 定位 / 测量 ----------------
-    fk.rect(ax, FOV_L, FOV_B, FOV_W, FOV_H, fc=fk.C['pl'][0], ec=fk.C['pl'][1], lw=1.4)
+    fk.rect(ax, FOV_L, FOV_B, FOV_W, FOV_H, fc=fk.C['pl'][0], ec=teal, lw=0.9, alpha=1.0)
     cx = (FOV_L + FOV_R) / 2.0
-    fk.text(ax, cx, CY + 19, '相机视野 398 × 224mm', fs=B, color=fk.C['pl'][1], weight='bold',
-            ha='center')
-    fk.text(ax, cx, CY + 7, '4.2mm 镜头 · 离带面约 300mm', fs=S, ha='center')
-    fk.text(ax, cx, CY - 4, '0.21mm/像素 · 定位亚像素测量', fs=S, ha='center')
-    fk.text(ax, cx, CY - 15, 'NPU 分类 3~6 次软投票 → 判定', fs=S, ha='center')
+    fk.text(ax, cx, CY + 20, '相机视野 398 × 224mm', fs=B, color=teal, weight='bold', ha='center')
+    fk.text(ax, cx, CY + 8, '4.2mm 镜头 · 离带面约 300mm', fs=S, ha='center', color=fk.BODY)
+    fk.text(ax, cx, CY - 3, '0.21mm/像素 · 定位亚像素测量', fs=S, ha='center', color=fk.BODY)
+    fk.text(ax, cx, CY - 14, 'NPU 分类 3~6 次软投票 → 判定', fs=S, ha='center', color=fk.BODY)
     # 台面原点在视野上游边中点，+x = 走料方向（向左），+y = 机械臂的另一侧
-    fk.circle(ax, FOV_R, CY, 1.3, fk.C['pl'][1])
-    fk.arrow(ax, (FOV_R, CY), (FOV_R - 17, CY), color=fk.C['pl'][1], lw=1.3, ms=6.0)
-    fk.arrow(ax, (FOV_R, CY), (FOV_R, CY - 17), color=fk.C['pl'][1], lw=1.3, ms=6.0)
-    fk.text(ax, FOV_R - 10, CY - 8, '+x', fs=S, ha='right', color=fk.C['pl'][1])
-    fk.text(ax, FOV_R + 4, CY - 19, '+y', fs=S, color=fk.C['pl'][1])
-    fk.text(ax, FOV_R + 4, CY + 8, '原点', fs=S, color=fk.C['pl'][1])
-    fk.text(ax, BX0 + BW - 18, BY0 + BH + 12, '上料', fs=B, ha='center', color=fk.MUTED,
+    fk.circle(ax, FOV_R, CY, 1.3, teal)
+    fk.arrow(ax, (FOV_R, CY), (FOV_R - 17, CY), color=teal, lw=1.0, ms=6.0)
+    fk.arrow(ax, (FOV_R, CY), (FOV_R, CY - 17), color=teal, lw=1.0, ms=6.0)
+    fk.text(ax, FOV_R - 10, CY - 8, '+x', fs=S, ha='right', color=teal)
+    fk.text(ax, FOV_R + 4, CY - 19, '+y', fs=S, color=teal)
+    fk.text(ax, FOV_R + 4, CY + 8, '原点', fs=S, color=teal)
+    fk.text(ax, BX0 + BW - 16, BY0 + BH + 6, '上料', fs=B, ha='center', color=fk.MUTED,
             weight='bold')
-    fk.arrow(ax, (BX0 + BW, FOV_T + 4), (FOV_R, FOV_T + 4), both=True, color=fk.MUTED, ms=4.5)
-    fk.text(ax, (BX0 + BW + FOV_R) / 2.0, FOV_T + 11, '60mm', fs=S, ha='center', color=fk.MUTED)
+    fk.arrow(ax, (BX0 + BW, FOV_T + 4), (FOV_R, FOV_T + 4), both=True, color=fk.MUTED, ms=5.0)
+    fk.text(ax, (BX0 + BW + FOV_R) / 2.0, FOV_T + 12, '60mm', fs=S, ha='center', color=fk.MUTED)
 
     # ---------------- 抓取线 + 机械臂 ----------------
-    ax.plot([PICK, PICK], [BY0, BY0 + BH], color=fk.C['ps'][1], lw=1.6, ls=(0, (4, 2.5)),
-            zorder=1.5)
-    fk.text(ax, PICK + 4, FOV_T + 13, '抓取线 = 视野下游边 + 80mm', fs=S, color=fk.C['ps'][1])
+    ax.plot([PICK, PICK], [BY0, BY0 + BH], color=blue, lw=1.2, ls=(0, (4, 2.5)), zorder=1.5)
+    fk.text(ax, PICK + 4, FOV_T + 13, '抓取线 = 视野下游边 + 80mm', fs=S, color=blue)
     fk.box(ax, ARM_X0, 234, ARM_W, 36, '6 轴机械臂（侧装）\n不入镜 · 工作半径 ~300mm\n'
-           'SYNC WRITE 一帧下发 6 轴', 'ps', fs=S)
-    fk.arrow(ax, (PICK, 234), (PICK, BY0 + BH), color=fk.C['ps'][1], lw=1.4, ms=6.0)
-    fk.text(ax, PICK + 5, 224, '良品停带抓取', fs=S, color=fk.C['ps'][1])
-    fk.box(ax, BIN_X0, 234, BIN_W, 36, '料盒：齿轮 / 齿条\n按规格 · 颜色分选', 'ps', fs=S)
+           'SYNC WRITE 一帧下发 6 轴', 'ps')
+    fk.arrow(ax, (PICK, 234), (PICK, BY0 + BH), color=blue, lw=1.0, ms=6.5)
+    fk.text(ax, PICK + 5, 224, '良品停带抓取', fs=S, color=blue)
+    fk.box(ax, BIN_X0, 234, BIN_W, 36, '料盒：齿轮 / 齿条\n按规格 · 颜色分选', 'ps')
 
     # ---------------- 挡板分流（抓取线下游）+ 带尾复检 ----------------
     for x, name in ((FLAP1, '挡板 1'), (FLAP2, '挡板 2')):
-        ax.plot([x - 8, x + 8], [BY0 + 20, BY0 + 106], color=fk.C['acc'][1], lw=2.0, zorder=1.5)
-        fk.text(ax, x, BY0 + 116, name, fs=S, ha='center', color=fk.C['acc'][1])
-        fk.arrow(ax, (x, BY0 + 14), (x, 52), color=fk.C['acc'][1], lw=1.2, ms=5.5)
-    fk.box(ax, *BOX1, '料盒：报废', 'acc', fs=S)
-    fk.box(ax, *BOX2, '料盒：返修', 'acc', fs=S)
-    fk.arrow(ax, (300, BY0 + 11), (56, BY0 + 11), color=fk.C['acc'][1], lw=1.4, ms=6.0,
-             ls=(0, (5, 3)))
-    fk.text(ax, 250, BY0 + 11, 'NG 不停带分流', fs=S, ha='center', color=fk.C['acc'][1], bg=True)
-    fk.box(ax, 2, 92, 40, 36, '带尾\n复检箱\n失效安全', 'ext', fs=S)
+        ax.plot([x - 8, x + 8], [BY0 + 20, BY0 + 106], color=red, lw=1.6, zorder=1.5)
+        fk.text(ax, x, BY0 + 116, name, fs=S, ha='center', color=red)
+        fk.arrow(ax, (x, BY0 + 14), (x, 52), color=red, lw=0.9, ms=5.5)
+    fk.box(ax, *BOX1, '料盒：报废', 'acc')
+    fk.box(ax, *BOX2, '料盒：返修', 'acc')
+    ax.plot([300, 56], [BY0 + 11, BY0 + 11], color=red, lw=1.0, ls=(0, (5, 3)), zorder=1.2)
+    fk.arrow(ax, (120, BY0 + 11), (56, BY0 + 11), color=red, lw=1.0, ls=(0, (5, 3)), ms=6.0)
+    fk.text(ax, 250, BY0 + 11, 'NG 不停带分流', fs=S, ha='center', color=red, bg=True)
+    fk.box(ax, 2, 92, 40, 34, '带尾\n复检箱', 'ext')
+    fk.arrow(ax, (56, 109), (43, 109), ms=5.0)
 
     # ---------------- 灯、龙门、走料方向 ----------------
     for y in (FOV_T + 2, BY0 - 6):
-        fk.rect(ax, FOV_L, y, FOV_W, 4, fc='#fff3b0', ec='#b59b00', lw=0.8)
-    fk.text(ax, 240, 226, '条形光 ×2（两侧 · 离带面 80~120mm）', fs=S, color='#8a7400')
-    fk.box(ax, 186, 8, 160, 36, '龙门支架：板卡 + 相机\n（机械臂的另一侧）', 'ext', fs=S)
-    fk.arrow(ax, (436, 26), (356, 26), color=fk.C['acc'][1], lw=1.8, ms=7.0)
-    fk.text(ax, 396, 34, '走料方向', fs=S, ha='center', color=fk.C['acc'][1])
+        fk.rect(ax, FOV_L, y, FOV_W, 3.5, fc='#FDF6E3', ec='#D9B45B', lw=0.7)
+    fk.text(ax, 240, 226, '条形光 ×2（两侧 · 离带面 80~120mm）', fs=S, color=amber)
+    fk.box(ax, 186, 8, 160, 34, '龙门支架：板卡 + 相机\n（机械臂的另一侧）', 'ext')
+    fk.arrow(ax, (436, 26), (356, 26), color=fk.MUTED, lw=1.2, ms=6.5)
+    fk.text(ax, 396, 34, '走料方向', fs=S, ha='center', color=fk.MUTED)
 
     return fig, ax
 
 
 REGIONS = {
-    # PPT 放大区（pt，左下原点）
-    'view': (215, 82, 438, 198),           # 相机视野框（FOV 215~414 / 81~193）+ 原点标注；
-                                           # 收紧到这四边，避开顶部「下游边 + 80mm」半行、
-                                           # 右侧 60mm 标注与底部红字（放 PPT 面板时不带碎片）
-    'pick': (138, 124, 292, 276),          # 抓取线 + 机械臂
+    # PPT 重点框（pt，左下原点）
+    'view': (213, 80, 436, 200),           # 相机视野框 + 原点标注
+    'pick': (138, 122, 292, 272),          # 抓取线 + 机械臂
 }
 
 
