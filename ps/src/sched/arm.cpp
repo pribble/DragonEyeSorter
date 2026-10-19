@@ -10,21 +10,33 @@ static constexpr float kDeg = 180.f / kPi;
 
 const char *arm_ik(const ArmConfig &c, Vec3 p, float close_axis, JointAngles &out, float tilt)
 {
-    float q1 = std::atan2(p.y, p.x);
-    float r = std::hypot(p.x, p.y);
-    if (tilt != 0 && std::fabs(wrap_axis(close_axis - q1 - kPi / 2)) > 10.f / kDeg)
+    const float az = std::atan2(p.y, p.x), R = std::hypot(p.x, p.y);
+    if (tilt != 0 && std::fabs(wrap_axis(close_axis - az - kPi / 2)) > 10.f / kDeg)
         return "tilted grasp needs a tangential closing axis";
-    const float lt = c.l_wrist + c.l_tool;
-    float zw = p.z + lt * std::cos(tilt);            // wrist pitch axis above the grasp point (behind it when tilted)
-    float dx = r - lt * std::sin(tilt), dz = zw - c.base_h;
+    const float lt = c.l_wrist + c.l_tool, D = c.tool_offset, a3 = -kPi / 2 + tilt;
+    const bool beside = std::fabs(std::fabs(c.servo_side) - kPi / 2) < 0.1f;   // servo beside the finger plane
+    // the offset's tangential part moves the grasp point out of the arm plane: q1 aims the plane so that the
+    // grasp point lands on p; q5 (from the closing axis) and q1 depend on each other -> a few fixed-point passes
+    float q1 = az, q5 = 0, phi = 0, rho = R;
+    for (int it = 0; it < 8; it++) {
+        q5 = wrap_axis(close_axis - q1 - c.grip_axis_at_zero);
+        if (tilt != 0 && beside) q5 = wrap_pi(-c.grip_axis_at_zero - c.servo_side);   // servo on the upper side
+        phi = q5 + c.grip_axis_at_zero + c.servo_side;
+        const float tau = D * std::sin(phi);
+        if (R <= std::fabs(tau)) return "too close to the base axis";
+        rho = std::sqrt(R * R - tau * tau);
+        q1 = az - std::atan2(tau, rho);
+    }
+    // wrist pitch axis: back along the tool and the offset (arm plane: radial, up)
+    float dx = rho - lt * std::cos(a3) + D * std::cos(phi) * std::sin(a3);
+    float dz = p.z - lt * std::sin(a3) - D * std::cos(phi) * std::cos(a3) - c.base_h;
     if (dx < 20) return "too close for this tilt";
     float L1 = c.l_upper, L2 = c.l_fore;
     float c3 = (dx * dx + dz * dz - L1 * L1 - L2 * L2) / (2 * L1 * L2);
     if (c3 > 1.f || c3 < -1.f) return "out of reach";
     float q3 = -std::acos(c3);                        // elbow up
     float q2 = std::atan2(dz, dx) - std::atan2(L2 * std::sin(q3), L1 + L2 * std::cos(q3));
-    float q4 = -kPi / 2 + tilt - (q2 + q3);
-    float q5 = wrap_axis(close_axis - q1 - c.grip_axis_at_zero);
+    float q4 = a3 - (q2 + q3);
 
     out.q = {q1 * kDeg, q2 * kDeg, q3 * kDeg, q4 * kDeg, q5 * kDeg};
     static const char *lim[5] = {"joint 1 limit", "joint 2 limit", "joint 3 limit", "joint 4 limit", "joint 5 limit"};
@@ -36,10 +48,13 @@ const char *arm_ik(const ArmConfig &c, Vec3 p, float close_axis, JointAngles &ou
 Vec3 arm_fk(const ArmConfig &c, const JointAngles &j)
 {
     float q1 = j.q[0] / kDeg, a1 = j.q[1] / kDeg, a2 = a1 + j.q[2] / kDeg, a3 = a2 + j.q[3] / kDeg;
-    float lt = c.l_wrist + c.l_tool;
-    float r = c.l_upper * std::cos(a1) + c.l_fore * std::cos(a2) + lt * std::cos(a3);
-    float z = c.base_h + c.l_upper * std::sin(a1) + c.l_fore * std::sin(a2) + lt * std::sin(a3);
-    return {r * std::cos(q1), r * std::sin(q1), z};
+    float lt = c.l_wrist + c.l_tool, D = c.tool_offset;
+    float phi = j.q[4] / kDeg + c.grip_axis_at_zero + c.servo_side;
+    float r = c.l_upper * std::cos(a1) + c.l_fore * std::cos(a2) + lt * std::cos(a3) - D * std::cos(phi) * std::sin(a3);
+    float t = D * std::sin(phi);
+    float z = c.base_h + c.l_upper * std::sin(a1) + c.l_fore * std::sin(a2) + lt * std::sin(a3) +
+              D * std::cos(phi) * std::cos(a3);
+    return {r * std::cos(q1) - t * std::sin(q1), r * std::sin(q1) + t * std::cos(q1), z};
 }
 
 Vec3 table_to_arm(const ArmConfig &c, Vec2 p, float z_above_belt)

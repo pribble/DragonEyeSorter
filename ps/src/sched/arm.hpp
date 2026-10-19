@@ -12,6 +12,14 @@
 // upper arm (0 = straight, negative = bent down); q4 relative to forearm; q5 0 = fingers close along the
 // radial direction (rotated by grip_axis_at_zero, see ArmConfig).
 // Servo count = zero_count + counts_per_deg * angle. All geometry marked ⚠ must be measured on the arm.
+//
+// Gripper offset: the finger plane does not contain the wrist-rotate (#5) axis. The grasp point sits tool_offset
+// from that axis along s, the direction from the axis to the #6 servo side, which is the closing direction turned
+// by servo_side about the tool axis (measured 2026-10-20: 9 mm, servo perpendicular to the closing direction).
+// In the arm plane frame (e_r radial, e_t tangential, e_z up) with the tool pointing along a3 = q2 + q3 + q4:
+//   s = cos(phi) * (-sin a3, 0, cos a3) + sin(phi) * e_t,   phi = q5 + grip_axis_at_zero + servo_side
+// (vertical tool: phi = 0 puts the servo side radially outward). Tilted grasps keep phi = 0: the servo then sits
+// on the outer side, which the lean lifts, instead of the inner side that it would push down toward the belt.
 #pragma once
 
 #include <array>
@@ -46,6 +54,9 @@ struct ArmConfig {
     float base_yaw = kPi / 2;    // direction of arm +x in the table frame (rad)
     float belt_z = 0.f;          // belt surface height above the arm base plate (mm) ⚠
     float grip_axis_at_zero = 0; // closing direction at q5 = 0 relative to the radial direction (rad)
+    float tool_offset = 0;       // grasp point from the #5 axis toward the #6 servo side (mm) ⚠ measure
+    float servo_side = 0;        // direction of that side: the closing direction turned about the tool axis
+                                 // (rad, +-pi/2 when the servo sits beside the finger plane) ⚠ check sign
     float max_tilt_deg = 0;      // tilted grasp: lean the tool away from the base up to this (0 = vertical only)
     float tilt_step_deg = 5;     // tilts tried: 0, step, 2 step, ... (the smallest that reaches wins)
 

@@ -504,6 +504,47 @@ static void test_arm()
         CHECK(plan_pick(t, tp, arm_tangential_axis(t, tp), 40, 32, 0, h, wt) != nullptr,
               "max_tilt_deg 0: vertical only");
     }
+
+    // gripper offset from the #5 axis (measured 9 mm toward the #6 servo, servo beside the finger plane)
+    {
+        ArmConfig o = arm_cfg();
+        o.l_tool = 27;
+        o.tool_offset = 9;
+        for (float side : {kPi / 2, -kPi / 2}) {
+            o.servo_side = side;
+            JointAngles j;
+            for (float ax : {0.f, 0.6f, -1.2f, 1.5f}) {   // vertical grasps, any closing axis
+                const Vec3 p{130, -25, 3};
+                const char *w = arm_ik(o, p, ax, j);
+                Vec3 q = arm_fk(o, j);
+                CHECK(!w && std::hypot(std::hypot(q.x - p.x, q.y - p.y), q.z - p.z) < 0.02f,
+                      "offset vertical ik/fk (side %+.0f, axis %.1f): %s err %.3f", side * 180 / kPi, ax,
+                      w ? w : "ok", std::hypot(std::hypot(q.x - p.x, q.y - p.y), q.z - p.z));
+                const float closing = j.q[0] / 180 * kPi + j.q[4] / 180 * kPi + o.grip_axis_at_zero;
+                CHECK(std::fabs(wrap_axis(closing - ax)) < 1e-3f, "offset: fingers still close along %.2f", ax);
+            }
+            JointAngles z0 = j;   // the offset is real: ignoring it misses by ~9 mm
+            ArmConfig n = o;
+            n.tool_offset = 0;
+            Vec3 a = arm_fk(o, z0), b = arm_fk(n, z0);
+            CHECK(std::fabs(std::hypot(a.x - b.x, a.y - b.y) - 9) < 0.05f, "offset size %.2f",
+                  std::hypot(a.x - b.x, a.y - b.y));
+            const Vec3 far{200, 0, 3};   // tilted: servo on the outer (upper) side, round trip exact
+            const float tilt = 30.f * kPi / 180;
+            const char *w = arm_ik(o, far, kPi / 2, j, tilt);
+            CHECK(!w, "offset tilted: %s", w ? w : "ok");
+            if (!w) {
+                Vec3 q = arm_fk(o, j);
+                CHECK(std::hypot(std::hypot(q.x - far.x, q.y - far.y), q.z - far.z) < 0.02f,
+                      "offset tilted ik/fk (%.3f, %.3f, %.3f)", q.x, q.y, q.z);
+                const float phi = j.q[4] / 180 * kPi + o.grip_axis_at_zero + o.servo_side;
+                CHECK(std::fabs(wrap_pi(phi)) < 1e-4f, "tilted: servo side outward (phi %.3f)", phi);
+                ArmConfig lo = o;   // the servo side 9 mm along s: outward + up when leaning away
+                lo.tool_offset = 9 + 40;
+                CHECK(arm_fk(lo, j).z > q.z + 40 * std::sin(tilt) - 0.01f, "tilted: servo side is the upper side");
+            }
+        }
+    }
 }
 
 // round parts: with tilted grasps enabled the picker tries the closing axis tangential to the arm base first

@@ -119,9 +119,12 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             get(c, "l_wrist", a.l_wrist); get(c, "l_tool", a.l_tool);
             get_vec2(c, "base_xy", a.base_xy);
             float yaw_deg = a.base_yaw * 180.f / kPi, g0_deg = a.grip_axis_at_zero * 180.f / kPi;
+            float side_deg = a.servo_side * 180.f / kPi;
             get(c, "base_yaw_deg", yaw_deg); get(c, "grip_axis_at_zero_deg", g0_deg);
+            get(c, "tool_offset_mm", a.tool_offset); get(c, "servo_side_deg", side_deg);
             a.base_yaw = yaw_deg * kPi / 180.f;
             a.grip_axis_at_zero = g0_deg * kPi / 180.f;
+            a.servo_side = side_deg * kPi / 180.f;
             get(c, "belt_z", a.belt_z);
             get(c, "max_tilt_deg", a.max_tilt_deg); get(c, "tilt_step_deg", a.tilt_step_deg);
             get(c, "grip_open_count", a.grip_open_count); get(c, "grip_closed_count", a.grip_closed_count);
