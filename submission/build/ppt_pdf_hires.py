@@ -7,9 +7,11 @@
 PowerPoint COM 导 PDF 会把插图降采样：实测源图 3200px、放到 7.42in 的图在 PDF 里只剩
 1483px（= 200dpi）。PPTX 里嵌的仍是全分辨率，问题只在 PDF 兜底件。本脚本按
 ``submission/out/_ppt_images.json``（``make_ppt.py`` 每次生成时写出的插图清单：
-页号 + 放置矩形 + 源图路径 + 原生像素 + 放大面板的 PDF 上采样倍数）逐张对位，
-把源图按**原生像素**回填进 PDF 的图片 XObject，并把放大面板按需 LANCZOS 上采样
-（信息量不变，只为采样密度达标）；随后量一遍每张插图的等效 dpi。
+页号 + 放置矩形 + 源图路径 + 原生像素）逐张对位，把源图按**原生像素**回填进 PDF
+的图片 XObject（信息量不变，只为采样密度达标）；随后量一遍每张插图的等效 dpi。
+
+版面度量读同一份 manifest 的 ``theme``（页面底色 / 标题分隔线下沿 / 页脚位置），
+换主题后不必改本脚本——只在 ``DEFAULT_THEME`` 里留一份旧版兜底。
 
 用法
 ----
@@ -17,7 +19,7 @@ PowerPoint COM 导 PDF 会把插图降采样：实测源图 3200px、放到 7.42
     python submission/build/ppt_pdf_hires.py --pdf submission/out/龙瞳分拣_答辩.pdf \
         --manifest submission/out/_ppt_images.json --inplace --min-dpi 300
 
-    # 只体检，不改文件；同时量逐页版面墨迹（顶档 / 头档 / 底档 / 填充率）
+    # 只体检，不改文件；同时量逐页版面墨迹（头档 / 底档 / 填充率）
     python submission/build/ppt_pdf_hires.py --pdf <pdf> --report \
         --preview submission/out/ppt_preview --json submission/out/_ppt_pdf_hires.json
 
@@ -60,16 +62,23 @@ from PIL import Image
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 SLIDE_W, SLIDE_H = 13.3333, 7.5
-RULE_BOTTOM = 1.195          # 标题分隔线下沿（in）
-FOOTER_Y = 7.05              # 页脚带起点（in）：量版面时排除
-BG = (0x0B, 0x25, 0x45)      # 内页底色
-COVER_BG = (0x07, 0x1B, 0x33)
-TOP_SKIP = 0.12              # 页顶装饰线：量版面时排除
+# 默认主题（旧版深色底；新版浅色主题由 make_ppt.py 写进 _ppt_images.json 的 theme，
+# 这里读不到 manifest 时才用默认值）。版面度量依赖「页面底色」判墨迹，所以底色必须
+# 与 pptx 一致，否则整页都会被当成墨迹。
+DEFAULT_THEME = dict(
+    bg=[0x0B, 0x25, 0x45],
+    cover_bg=[0x07, 0x1B, 0x33],
+    rule_bottom=1.195,           # 标题分隔线下沿（in）：量头档的起点
+    footer_y=7.05,               # 页脚带起点（in）：量版面时排除
+)
+TOP_SKIP = 0.12                  # 页顶装饰紫：量版面时排除
 X_SKIP = 0.20
-FIG_MIN_W_IN = 3.0           # 放置宽 < 3in 的当图标 / 项目符号，不算插图
-GAP_TOP_MAX, GAP_HEAD_MAX, GAP_BOTTOM_MAX = 1.20, 0.60, 1.20
-FILL_MIN, FILL_MAX = 0.65, 0.85
-GAP_FLOOR, FILL_FLOOR = 1.35, 0.60         # 硬门禁（比目标略松，抓回归用）
+FIG_MIN_W_IN = 3.0               # 放置宽 < 3in 的当图标 / 项目符号，不算插图
+# 新版浅色编辑风的目标区间（内容块少而精，填充率天然低于旧版密排）：
+# 底档 ≤0.90in、头档 ≤0.80in、面积填充 45%~75%；硬门禁再放宽一点抓回归。
+GAP_BOTTOM_MAX, GAP_HEAD_MAX = 0.98, 0.80
+FILL_MIN, FILL_MAX = 0.55, 0.82
+GAP_FLOOR, FILL_FLOOR = 1.10, 0.45
 
 
 # --------------------------------------------------------------------------- #
@@ -216,20 +225,21 @@ def hires_pdf(pdf, jobs, min_dpi):
 # --------------------------------------------------------------------------- #
 
 
-def measure_png(path):
+def measure_png(path, theme=None, is_cover=False):
+    theme = dict(DEFAULT_THEME, **(theme or {}))
     im = Image.open(path).convert("RGB")
     w, h = im.size
     px = im.load()
     ppi_x, ppi_y = w / SLIDE_W, h / SLIDE_H
-    y0, y1 = int(TOP_SKIP * ppi_y), int(FOOTER_Y * ppi_y)
+    y0, y1 = int(TOP_SKIP * ppi_y), int(theme["footer_y"] * ppi_y)
     x0 = int(X_SKIP * ppi_x)
+    bg = tuple(theme["cover_bg"] if is_cover else theme["bg"])
 
-    def ink(c, bg):
-        return max(abs(c[0] - bg[0]), abs(c[1] - bg[1]), abs(c[2] - bg[2])) > 12
+    def ink(c, base):
+        return max(abs(c[0] - base[0]), abs(c[1] - base[1]), abs(c[2] - base[2])) > 12
 
     rows = []
     for y in range(y0, y1):
-        bg = COVER_BG if y < 0.5 * ppi_y else BG
         n = 0
         for x in range(x0, w):
             if ink(px[x, y], bg):
@@ -240,13 +250,13 @@ def measure_png(path):
     bot = next((y for y, n in reversed(rows) if n > thr), None)
     if top is None or bot is None:
         return None
-    below = [y for y, n in rows if n > thr and y / ppi_y > RULE_BOTTOM]
-    head = (min(below) / ppi_y - RULE_BOTTOM) if below else None
+    below = [y for y, n in rows if n > thr and y / ppi_y > theme["rule_bottom"]]
+    head = (min(below) / ppi_y - theme["rule_bottom"]) if below else None
     cols = []
     for x in range(x0, w):
         n = 0
         for y in range(top, bot + 1):
-            if ink(px[x, y], BG):
+            if ink(px[x, y], bg):
                 n += 1
         if n > 3:
             cols.append(x)
@@ -288,13 +298,16 @@ def main(argv=None):
     if not pdf.is_file():
         raise SystemExit("找不到 PDF：%s" % pdf)
 
-    # ---- 组装替换清单 ---------------------------------------------------- #
+    # ---- 组装替换清单 + 主题（版面度量的底色来自 pptx 主题） ---------------- #
     jobs = []
+    theme = dict(DEFAULT_THEME)
     if args.manifest:
         manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
         for fig in manifest["figures"]:
             jobs.append((fig["slide"], fig["rect_in"], fig["src"],
                          float(fig.get("pdf_scale", 1.0))))
+        theme.update({k: v for k, v in (manifest.get("theme") or {}).items()
+                      if k in DEFAULT_THEME})
     elif args.order:
         figs = scan_pdf(pdf)
         if len(figs) != len(args.order):
@@ -340,20 +353,21 @@ def main(argv=None):
     for m in missed:
         print("  ! 未替换：%s" % m)
     if replaced:
-        print("共替换 %d 张（其中放大面板按 pdf_scale 上采样，信息量不变）。" % len(replaced))
+        print("共替换 %d 张（按源图原生像素回填，信息量不变）。" % len(replaced))
 
     # ---- 版面度量 -------------------------------------------------------- #
     layout, layout_fail = {}, []
     if args.preview and Path(args.preview).is_dir():
         print("-" * 100)
-        print("版面墨迹度量（%.0fx%.0f 预览；排除页脚与页顶装饰。目标：顶档≤%.2f 头档≤%.2f 底档≤%.2f，填充率 %.0f%%~%.0f%%）"
-              % (1600, 900, GAP_TOP_MAX, GAP_HEAD_MAX, GAP_BOTTOM_MAX,
+        print("版面墨迹度量（%.0fx%.0f 预览；底色取自 pptx 主题，排除页脚与页顶装饰。"
+              "目标：头档≤%.2f 底档≤%.2f，面积填充 %.0f%%~%.0f%%）"
+              % (1600, 900, GAP_HEAD_MAX, GAP_BOTTOM_MAX,
                  FILL_MIN * 100, FILL_MAX * 100))
         print("%-16s %7s %7s %7s %7s %7s  %s"
               % ("页", "顶档in", "头档in", "底档in", "填充h", "填充A", "判定"))
         for p in sorted(Path(args.preview).glob("slide_*.png")):
             n = int(p.stem.split("_")[1])
-            m = measure_png(p)
+            m = measure_png(p, theme, is_cover=(n == 1))
             layout[p.name] = m
             if not m:
                 print("%-16s  空白页" % p.name)
@@ -382,8 +396,9 @@ def main(argv=None):
 
     if args.json:
         Path(args.json).write_text(json.dumps(
-            dict(min_dpi=args.min_dpi, replaced=replaced, missed=missed,
-                 pdf_images=after, layout=layout), ensure_ascii=False, indent=1),
+            dict(min_dpi=args.min_dpi, theme=theme, replaced=replaced,
+                 missed=missed, pdf_images=after, layout=layout),
+            ensure_ascii=False, indent=1),
             encoding="utf-8")
         print("证据 json → %s" % args.json)
 

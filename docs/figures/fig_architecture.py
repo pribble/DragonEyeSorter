@@ -38,7 +38,8 @@ def draw():
 
     # ---------------- PL ----------------
     fk.box(ax, I0, y1, I1 - I0, h1, '相机通路：MIPI 接收 + ISP + 图像预处理\n'
-           '4 lane · 去马赛克 / 白平衡 · 灰度 / Sobel / 二值 · ROI', 'pl', fs=S)
+           '4 lane · 去马赛克 / 白平衡 · 灰度\n'
+           'Sobel / 二值 · ROI', 'pl', fs=S)
     fk.box(ax, I0, y2, 66, h2, '显示输出\nHDMI TX', 'pl', fs=B)
     fk.box(ax, 140, y2, I1 - 140, h2, '寄存器窗口 0x8030_1000\nAXI-Lite · 单次读 188ns', 'pl', fs=S)
     fk.box(ax, I0, y3, MIDX - I0, h3, '舵机总线 servo_bus\n6 轴 SYNC WRITE\n时间戳 · 超时', 'pl', fs=S)

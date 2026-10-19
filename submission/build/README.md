@@ -18,9 +18,9 @@ pwsh -File submission/build/build.ps1        # 报告：md → docx → pdf（�
 | [pdf_images_hires.py](pdf_images_hires.py) | 报告链 | **插图高清化**：按出现顺序把 PDF 里每张插图的图像对象换回源图（图框不变），等效 dpi 96 → 514~515；`--report` 只测量体检 | 由 `build.ps1` 第 ③ 步调用；`python submission/build/pdf_images_hires.py --pdf <pdf> --report` |
 | [pack_code.ps1](pack_code.ps1) | 报告链 | `git archive` 打「作品重要代码」zip，超 100MB 报警并非零退出 | `pwsh -File submission/build/pack_code.ps1` |
 | [verify_report.py](verify_report.py) | 报告链 | **验收自检**：49 项逐条核对 docx / PDF（结构、字体、行距、宽度、页眉页脚、禁项、TOC、**插图等效 dpi ≥ 300**、**插图落版字号 ≥ 7pt**、**逐页留白分析**、PDF 逐页重叠检测），结果写 `out/_verify_report.txt` | `python submission/build/verify_report.py` |
-| [make_ppt.py](make_ppt.py) | PPT 链（同事 B 维护） | 答辩 PPT 骨架：`docs/参赛材料骨架.md` §4 → `out/龙瞳分拣_答辩.pptx`；含版面度量与门禁（顶/头/底档、填充率、表格满版心、放大面板字号）、密集图放大裁切 | `python submission/build/make_ppt.py` |
-| [export_ppt_preview.ps1](export_ppt_preview.ps1) | PPT 链（同事 B 维护） | PowerPoint COM 把 pptx 导成 `out/龙瞳分拣_答辩.pdf` + `out/ppt_preview/slide_XX.png`（现场兜底件 + 排版自查），随后调 `ppt_pdf_hires.py` | `pwsh -File submission/build/export_ppt_preview.ps1` |
-| [ppt_pdf_hires.py](ppt_pdf_hires.py) | PPT 链（同事 B 维护） | **PPT 兜底 PDF 插图高清化**：PowerPoint 只导 200 dpi，这里按源图原生像素回填到 736~810 dpi；兼做 dpi 体检与逐页版面墨迹度量（`--report` / `--json`） | 由 `export_ppt_preview.ps1` 调用；`python submission/build/ppt_pdf_hires.py --pdf <pdf> --report` |
+| [make_ppt.py](make_ppt.py) | PPT 链（同事 B 维护） | 答辩 PPT 生成器：`docs/参赛材料骨架.md` §4 → `out/龙瞳分拣_答辩.pptx`（16:9、16 页浅色编辑风、13 种版式；设计令牌在 `C_*` / `SIZE_*`；插图整图原生像素嵌入，重点框取 `fig_meta.json` 的 `regions`）。生成后读回自检（尺寸 / 页数 / 备注 / 禁项 / 主机路径 / 越界 / 文本溢出估算 / 插图 dpi / 页脚安全区），并写 `out/_ppt_images.json`（插图清单 + theme）供导出链用 | `python submission/build/make_ppt.py` |
+| [export_ppt_preview.ps1](export_ppt_preview.ps1) | PPT 链（同事 B 维护） | PowerPoint COM 把 pptx 导成 `out/龙瞳分拣_答辩.pdf` + `out/ppt_preview/slide_XX.png`（现场兜底件 + 排版自查），随后调 `ppt_pdf_hires.py` 做插图回填与逐页版面度量；需要 Windows + 桌面版 PowerPoint | `pwsh -File submission/build/export_ppt_preview.ps1` |
+| [ppt_pdf_hires.py](ppt_pdf_hires.py) | PPT 链（同事 B 维护） | **PPT 兜底 PDF 插图回填 + 体检**：PowerPoint 导 PDF 只有约 200 dpi，这里按 `_ppt_images.json` 的「页号 + 放置矩形」回填源图原生像素（回填后 308~432 dpi，门禁 ≥300 dpi）；并从 `manifest.theme` 读底色量逐页版面（头档 / 底档 / 填充率，`--report` / `--json`） | 由 `export_ppt_preview.ps1` 调用；`python submission/build/ppt_pdf_hires.py --pdf <pdf> --report` |
 
 **改完报告内容要跑**：`build.ps1`（出 docx + pdf + 高清插图）→ `verify_report.py`（确认全 PASS）。
 只改 PPT 就跑 PPT 链那两个，与报告链互不影响（两条链写的是不同产物）。

@@ -29,9 +29,9 @@
 | `make_step_wiring.py` | `fig_step_wiring.png`（步进驱动器四根信号线在 J12 上的位置，叠加厂家位号图） |
 | `make_servo_lv_wiring.py` | `fig_servo_lv_wiring.png`（BSS138 低压侧接 J12 的三针，叠加厂家位号图） |
 
-单张调试：`python docs/figures/fig_timebase.py`（跑单张 + 打印该图门禁）。导出：SVG（矢量，文字可编辑，可进 PPT）+ PNG 宽 3200px（报告满版心 15.8cm 时 ≈514 dpi；PPT 放大面板按原像素裁切）。
+单张调试：`python docs/figures/fig_timebase.py`（跑单张 + 打印该图门禁）。导出：SVG（矢量，文字可编辑）+ PNG 宽 3200px（报告满版心 15.8cm 时 ≈514 dpi；PPT 按整图原生像素嵌入，7.40in 宽时约 432 dpi）。
 
-`fig_meta.json` 是生成物的副产物，也是下游的依据：画布尺寸、`px_per_pt`、每张图的最小字号、以及 **PPT 放大面板的裁切矩形**（`regions`，源 PNG 像素、左上原点）。`submission/build/make_ppt.py` 与 `submission/build/verify_report.py` 都读它——**改插图后重跑 `make_figures.py`，PPT 与自检会一起跟上**。
+`fig_meta.json` 是生成物的副产物，也是下游的依据：画布尺寸、`px_per_pt`、每张图的最小字号、以及 **PPT 重点框区域**（`regions`，源 PNG 像素、左上原点；`make_ppt.py` 用它在上画重点框，不裁切）。`submission/build/make_ppt.py`（`regions`）与 `submission/build/verify_report.py`（`min_fs_pt` 落版字号）都读它——**改插图后重跑 `make_figures.py`，PPT 与自检会一起跟上**。
 
 ## 接线图（厂家资料叠加）
 

@@ -8,8 +8,8 @@
 |---|---|---|
 | [提交材料清单.md](提交材料清单.md) | 官方要求 → 要交什么 → 内容来源 → 现状 → 倒排；唯一核对入口 | ✅ |
 | [视频拍摄指南.md](视频拍摄指南.md) | 怎么拍 / 录屏 / 收音 / 剪辑 / 导出 / 合规检查（**分镜与解说词在 [docs/演示视频脚本.md](../docs/演示视频脚本.md)**，本文件不重复） | ✅ |
-| [PPT制作指南.md](PPT制作指南.md) | 工具调研结论、推荐工作流、母版与导出规范；页纲见 [参赛材料骨架](../docs/参赛材料骨架.md) §4 | ✅ |
-| `build/` | 生成链脚本：技术文档 Markdown → DOCX → PDF、PPT 骨架、代码打包 | ✅ 脚本入库 |
+| [PPT制作指南.md](PPT制作指南.md) | 需要什么环境、生成链、设计规范（画幅 / 版式 / 配色 / 字体 / 内容 / 插图 / 动效）、自检与验收、讲稿节奏与排错；页纲见 [参赛材料骨架](../docs/参赛材料骨架.md) §4 | ✅ |
+| `build/` | 生成链脚本：技术文档 Markdown → DOCX → PDF、答辩 PPT 生成与导出、代码打包 | ✅ 脚本入库 |
 | `out/` | 生成物（`.docx` / `.pdf` / `.pptx` / 封面图等），可随时重建 | ❌ 已 gitignore |
 
 ## 内容源（不在本目录重复维护）
@@ -33,7 +33,7 @@ pwsh -File submission/build/build.ps1
 # 报告验收自检（49 项：产物、版式、禁项、页码、插图 dpi≥300、插图落版字号≥7pt、逐页留白）→ out/_verify_report.txt
 python submission/build/verify_report.py
 
-# PPT 骨架 + 兜底 PDF + 逐页预览（导出后自动做插图高清化与版面度量）
+# 答辩 PPT + 兜底 PDF + 逐页预览（导出后自动做插图回填与页面版面度量）
 python submission/build/make_ppt.py
 pwsh -File submission/build/export_ppt_preview.ps1
 

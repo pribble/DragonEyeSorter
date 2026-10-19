@@ -10,11 +10,12 @@
 # 三步：
 #   1) PowerPoint COM：pptx → pdf（SaveAs 32）+ 逐页 PNG（1600x900）
 #   2) PDF 插图高清化 + 清晰度体检：调 submission/build/ppt_pdf_hires.py
-#      （PowerPoint 导 PDF 会把插图降采样到 200dpi：实测源图 3200px / 7.42in 只剩 1483px；
-#        PPTX 本身嵌的是全分辨率，问题只在 PDF 兜底件 —— 该脚本按
-#        submission/out/_ppt_images.json 的「页号 + 放置矩形」逐张回填源图像素，门禁 ≥300dpi）
-#   3) 逐页版面度量：同一脚本从预览 PNG 量墨迹 bbox（顶档 / 头档 / 底档 / 填充率），
-#      与 make_ppt.py 的目标（顶档≤1.20in、头档≤0.60in、底档≤1.20in、填充率 65%~85%）对照
+#      （PowerPoint 导 PDF 会把插图降采样到 200dpi；PPTX 本身嵌的是全分辨率，问题只在
+#        PDF 兜底件 —— 该脚本按 submission/out/_ppt_images.json 的「页号 + 放置矩形」
+#        逐张回填源图像素，门禁 ≥300dpi）
+#   3) 逐页版面度量：同一脚本从预览 PNG 量墨迹 bbox（头档 / 底档 / 面积填充率），
+#      页面底色与门禁从 manifest 的 theme 读（浅色编辑风：头档≤0.80in、底档≤0.98in、
+#      面积填充 55%~82%），证据写 out/_ppt_pdf_hires.json
 #
 # 与同事工具的关系：报告链的 submission/build/pdf_images_hires.py 支持 --order 模式
 #   （按文档顺序一一对应）。PPT 链的插图顺序里夹着图标 / 项目符号，所以本脚本用
