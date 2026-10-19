@@ -180,8 +180,6 @@ def plan_toc_styles(n1, n2):
             return tuple(out)
     return TOC_STYLES
 TOC_LINE = 1.0                               # 目录条目单倍行距（不继承正文 1.5 倍）
-APPENDIX_RE = re.compile(r"^附录")
-# 章标题开头的编号 / 「附录 A」：青绿强调，标题正文墨色（目录里仍是完整文本）
 CH_LABEL_RE = re.compile(r"^(\d+(?:\.\d+)*|附录\s*[A-Za-z]?)(\s+)(.+)$")
 
 # ---------------------------------------------------------------- 图注净化
@@ -610,8 +608,6 @@ def parse_source(md_path: Path):
             flush()
             head = s[3:].strip()
             blocks.append(("h2", head))
-            if APPENDIX_RE.match(head):
-                blocks.append(("pagebreak", head))    # 附录另起一页
             i += 1
             continue
         if s.startswith("# "):
@@ -1359,16 +1355,6 @@ def set_update_fields(doc):
     doc.settings.element.append(el)
 
 
-def page_break_before(par):
-    """段前分页（附录另起一页用，比插空段更干净，不留多余空行）。"""
-    pPr = par._p.get_or_add_pPr()
-    el = pPr.find(qn("w:pageBreakBefore"))
-    if el is None:
-        el = OxmlElement("w:pageBreakBefore")
-        pPr.insert(0, el)
-    el.set(qn("w:val"), "1")
-
-
 def build(source: Path, out_path: Path, caption_clean=True, caption_rules=None,
           fig_width_cm=None):
     if not source.is_file():
@@ -1405,12 +1391,10 @@ def build(source: Path, out_path: Path, caption_clean=True, caption_rules=None,
         if kind == "h2":
             counts["h2"] += 1
             before, after = H_GAP["h1"]
-            # keepNext：章标题不单独留在页尾（孤行标题）；附录另起一页
+            # keepNext：章标题不单独留在页尾（孤行标题）
             par = fmt_par(doc.add_paragraph(style="Heading 1"), before=before,
                           after=after, multiple=HEAD_LINE, keep_next=True,
                           keep_lines=True, align=WD_ALIGN_PARAGRAPH.LEFT)
-            if APPENDIX_RE.match(payload):
-                page_break_before(par)
             add_chapter_runs(par, payload, size_pt=H1_PT)
         elif kind == "h3":
             counts["h3"] += 1

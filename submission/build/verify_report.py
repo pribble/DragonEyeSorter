@@ -623,17 +623,21 @@ def main(argv=None) -> int:
         emit("")
         fill_rows = emit_fill_table(PDF, emit)
         body = [r for r in fill_rows if r["role"] == "正文"]
-        thin = [r for r in body if r["fill"] < FILL_FAIL]
+        # 末页不设填充门槛：正文在末页自然收尾，尾部留白是文档结束，不是「撑空」。
+        last = body[-1] if body else None
+        thin = [r for r in body if r["fill"] < FILL_FAIL and r is not last]
         if thin:
             thin_txt = "以下页填充不足：" + "; ".join(
                 "p%d %.1f%%" % (r["page"], r["fill"]) for r in thin)
         elif body:
-            worst = min(body, key=lambda r: r["fill"])
-            thin_txt = ("正文 %d 页最低填充 %.1f%%（p%d）；底部空白 > %.0f%% 的正文页见上表"
+            worst = min([r for r in body if r is not last] or body,
+                        key=lambda r: r["fill"])
+            thin_txt = ("正文 %d 页最低填充 %.1f%%（p%d，末页除外）；"
+                        "底部空白 > %.0f%% 的正文页见上表"
                         % (len(body), worst["fill"], worst["page"], FILL_WARN))
         else:
             thin_txt = "无正文页"
-        check("无正文页被撑空（填充 ≥ %.0f%%）" % FILL_FAIL, not thin, thin_txt)
+        check("无正文页被撑空（填充 ≥ %.0f%%，末页除外）" % FILL_FAIL, not thin, thin_txt)
 
         # 分页卫生：封面 / 目录各 1 页，全文没有整页空白（改版前出现过目录后空白页）
         cover_rows = [r for r in fill_rows if r["role"] == "封面"]
