@@ -11,6 +11,7 @@
 //   des_tool calib-cam [--board 9x6] [--square mm] [--travel …] [--image f.png] [--out calib.json]
 //                                                                   checkerboard on the belt -> px_to_table (calib.json)
 //   des_tool calib-belt [--steps N] [--belt mm/s]                   one part on the belt -> mm_per_step, dir (calib.json)
+//   des_tool calib-enc [-n rounds] [--steps N] [--belt mm/s]        empty belt -> encoder mm_per_count, dir (calib.json)
 //   des_tool calib-arm [-n 4] [--marker-h mm]                       hand-eye: arm base_xy / yaw / belt_z (calib.json)
 //   des_tool arm scan|read|teach|torque-on|torque-off               servo bring-up (no motion)
 //   des_tool arm home|goto <x> <y> [z] [axis]|pick <x> <y> [axis_deg] [bin]    motion: dry run unless --go
@@ -18,7 +19,7 @@
 //   --version                                                       build date/time
 //
 // These are human-driven: they print measurements for a person to read, write calib.json / training crops, and
-// (with --go / calib-belt) can move hardware - so they are NOT part of the deployed product binary. The product
+// (with --go / calib-belt / calib-enc) can move hardware - so they are NOT part of the deployed product binary. The product
 // runtime (run / live) is main.cpp -> des_app. Automated pass/fail checks are the separate test_* binaries.
 #include <signal.h>
 #include <unistd.h>
@@ -54,12 +55,14 @@ using namespace des;
 static void usage_tool()
 {
     fprintf(stderr,
-            "usage: des_tool probe|locate|track|display|collect|measure|calib-cam|calib-belt|calib-arm|arm|ik [options]\n"
+            "usage: des_tool probe|locate|track|display|collect|measure|calib-cam|calib-belt|calib-enc|calib-arm|arm|ik [options]\n"
             "  -c cfg.json  -n N  --vmax N  --exp us  --gain dB*10  --dump file.png  --belt mm/s  --no-rt\n"
             "  calib-cam: --board <cols>x<rows> (inner corners)  --square <mm>  --travel right|left|down|up\n"
             "             --image <file> (instead of the camera)  --out <calib.json>  --exhaustive\n"
             "  calib-belt: ONE part on the belt near the upstream edge (camera calibrated first); the belt moves\n"
             "             forward and back. --steps <long move>  --belt <mm/s> (default 20)  --out <calib.json>\n"
+            "  calib-enc: EMPTY belt; moves --steps (default 300 mm) downstream and back, -n rounds, at --belt mm/s\n"
+            "             (default belt.run_speed): measuring-wheel encoder vs stepper -> calib.json \"encoder\"\n"
             "  calib-arm: interactive hand-eye calibration (camera calibrated, joint zeros right): -n <points, >= 3>\n"
             "             --marker-h <mm> (marker top above the belt; also fits arm.belt_z)  --out <calib.json>\n"
             "  arm: scan | read | teach | torque-on | torque-off | home | goto x y [z] [axis] | pick x y [axis] [bin]\n"
@@ -600,6 +603,106 @@ static int run_calib_belt(des_hw_t &hw, const AppConfig &cfg, const Args &a)
     return e.empty() ? 0 : 1;
 }
 
+// ---------------------------------------------------------------- calib-enc
+// Measuring-wheel encoder against the stepper: the (empty) belt moves --steps downstream and back, -n rounds, while
+// (time, POS, count) are sampled every 10 ms. No camera; mm come from belt.mm_per_step (calib-belt first).
+static std::string belt_move_sampled(des_hw_t &hw, int32_t steps, double vmax, double acc,
+                                     std::vector<EncSample> &out)
+{
+    out.clear();
+    auto sample = [&]() {
+        des_io_t io;
+        des_io_read(&hw, &io);
+        out.push_back({now_s(), des_step_pos(&hw), io.enc});
+    };
+    for (int i = 0; i < 5; i++) { sample(); usleep(10000); }
+    if (des_estop_latched(&hw) == 1) return "e-stop latched: release the button, then desreg io estop-clr";
+    const int32_t target = des_step_pos(&hw) + steps;
+    des_step_move(&hw, target, vmax, acc);
+    const double t0 = now_s(), tmax = std::abs(steps) / vmax + 2 * vmax / acc + 3;
+    usleep(10000);
+    while (des_step_status(&hw) & DES_ST_STATUS_MOVING) {
+        if (g_stop || now_s() - t0 > tmax) {
+            des_step_stop(&hw);
+            return g_stop ? "interrupted" : "move did not finish in time";
+        }
+        sample();
+        usleep(10000);
+    }
+    for (int i = 0; i < 30; i++) { sample(); usleep(10000); }   // 0.3 s: the belt / wheel settles
+    if (des_step_status(&hw) & DES_ST_STATUS_HALTED) return "stepper halted (e-stop input?)";
+    return des_step_pos(&hw) == target ? "" : "stepper stopped short of the target";
+}
+
+static int run_calib_enc(des_hw_t &hw, const AppConfig &cfg, const Args &a)
+{
+    if (hw.version < DES_VERSION_IO) {
+        fprintf(stderr, "calib-enc: bitstream VERSION %u has no encoder input (needs >= %u)\n", hw.version,
+                DES_VERSION_IO);
+        return 1;
+    }
+    if (!cfg.belt_calibrated)
+        printf("note: belt.mm_per_step %.5f is not from calib-belt: the encoder scale is only as good as it\n",
+               cfg.belt.mm_per_step);
+    const double mps = std::fabs(cfg.belt.mm_per_step), mm_s = a.belt > 0 ? a.belt : cfg.belt.run_speed;
+    const double vmax = mm_s / mps, acc = std::max(cfg.belt.accel, 1.0) / mps;
+    const int dir = cfg.belt.dir >= 0 ? 1 : -1;
+    const int32_t steps = a.steps ? a.steps : dir * int32_t(std::lround(300.0 / mps));   // default 300 mm downstream
+    const int rounds = a.n > 0 ? int(a.n) : 1;
+    const double nominal = cfg.belt.enc_wheel_mm / cfg.belt.enc_counts_per_rev;
+    des_io_t io0, io1;
+    des_io_read(&hw, &io0);
+    printf("calib-enc: %d round(s) of %d steps (%.0f mm) at %.0f mm/s, forward and back; nominal %.4f mm/count "
+           "(%.0f mm wheel, %d counts/rev)\n", rounds, steps, std::abs(steps) * mps, mm_s, nominal,
+           cfg.belt.enc_wheel_mm, cfg.belt.enc_counts_per_rev);
+    printf("encoder inputs now: A%u B%u Z%u (1 = high / not pulled low), count %d, errors %u\n",
+           (io0.status >> 4) & 1, (io0.status >> 5) & 1, (io0.status >> 6) & 1, io0.enc, io0.enc_err);
+    des_step_enable(&hw, 1);
+    usleep(100000);
+    std::vector<EncSample> fwd, back;
+    std::vector<double> mpc;
+    EncCalib last;
+    for (int r = 0; r < rounds && !g_stop; r++) {
+        std::string e = belt_move_sampled(hw, steps, vmax, acc, fwd);
+        if (e.empty()) e = belt_move_sampled(hw, -steps, vmax, acc, back);
+        if (!e.empty()) {
+            fprintf(stderr, "calib-enc: %s\n", e.c_str());
+            des_step_stop(&hw);
+            return 2;
+        }
+        EncCalib c = enc_from_samples(fwd, back, mps, dir, cfg.belt.enc_counts_per_rev, nominal);
+        if (!c.ok) {
+            fprintf(stderr, "calib-enc: %s\n", c.err.c_str());
+            return 2;
+        }
+        printf("[%d] %.6f mm/count (wheel %.2f mm), dir %+d, %.5f counts/step forward / %.5f back; return %+.3f mm; "
+               "lag max %.3f mm; cruise %.1f mm/s, encoder %.2f +- %.2f mm/s (%zu + %zu samples)\n",
+               r + 1, c.mm_per_count, c.wheel_circ_mm, c.dir, c.counts_per_step, c.back_counts_per_step,
+               c.return_err_mm, c.lag_max_mm, c.cruise_mm_s, c.enc_speed_mean_mm_s, c.enc_speed_sd_mm_s, fwd.size(),
+               back.size());
+        mpc.push_back(c.mm_per_count);
+        last = c;
+    }
+    if (mpc.empty()) return 2;
+    des_io_read(&hw, &io1);
+    double mean = 0, sd = 0;
+    for (double v : mpc) mean += v;
+    mean /= mpc.size();
+    for (double v : mpc) sd += (v - mean) * (v - mean);
+    sd = mpc.size() > 1 ? std::sqrt(sd / (mpc.size() - 1)) : 0;
+    last.mm_per_count = mean;
+    last.wheel_circ_mm = mean * cfg.belt.enc_counts_per_rev;
+    printf("== encoder: %.6f mm/count (sd %.6f over %zu rounds = %.3f %%), wheel %.2f mm (nominal %.0f, %+.2f %%), "
+           "dir %+d\n", mean, sd, mpc.size(), mean > 0 ? 100 * sd / mean : 0, last.wheel_circ_mm, cfg.belt.enc_wheel_mm,
+           (last.wheel_circ_mm / cfg.belt.enc_wheel_mm - 1) * 100, last.dir);
+    printf("   index pulses %u during the test, illegal A/B transitions %u (> 0: noise or too fast -> 4.7k pull-ups)\n",
+           io1.enc_zcnt - io0.enc_zcnt, io1.enc_err - io0.enc_err);
+    std::string out = a.out.empty() ? (cfg.calib_loaded.empty() ? cfg.calib_file : cfg.calib_loaded) : a.out;
+    std::string e = save_enc_calib(out, last, int(mpc.size()), sd);
+    printf("saved %s: %s\n", out.c_str(), e.empty() ? "ok" : e.c_str());
+    return e.empty() ? 0 : 1;
+}
+
 // ---------------------------------------------------------------- calib-arm
 // Hand-eye: where the arm stands on the table (base_xy, base_yaw) and how high the belt is in the arm frame, from
 // >= 3 marker positions that the camera sees and the gripper tip touches. Interactive (Enter between the steps).
@@ -791,6 +894,7 @@ int main(int argc, char **argv)
     else if (a.mode == "collect") rc = run_collect(hw, cfg, a);
     else if (a.mode == "calib-cam") rc = run_calib(&hw, cfg, a);
     else if (a.mode == "calib-belt") rc = run_calib_belt(hw, cfg, a);
+    else if (a.mode == "calib-enc") rc = run_calib_enc(hw, cfg, a);
     else if (a.mode == "calib-arm") rc = run_calib_arm(hw, cfg, a);
     else if (a.mode == "arm") rc = run_arm(hw, cfg, a);
     else if (a.mode == "measure") rc = run_measure(&hw, cfg, a);

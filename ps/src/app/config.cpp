@@ -87,6 +87,7 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             const json &c = j["belt"];
             get(c, "mm_per_step", cfg.belt.mm_per_step); get(c, "dir", cfg.belt.dir);
             get(c, "run_speed", cfg.belt.run_speed); get(c, "accel", cfg.belt.accel);
+            get(c, "enc_counts_per_rev", cfg.belt.enc_counts_per_rev); get(c, "enc_wheel_mm", cfg.belt.enc_wheel_mm);
             if (c.contains("adapt")) {
                 get(c["adapt"], "enabled", cfg.belt.adapt.enabled); get(c["adapt"], "min_mm_s", cfg.belt.adapt.min_mm_s);
                 get(c["adapt"], "change_frac", cfg.belt.adapt.change_frac);
@@ -248,6 +249,11 @@ std::string load_config(const std::string &path, AppConfig &cfg)
                 get(c["belt"], "mm_per_step", cfg.belt.mm_per_step);
                 get(c["belt"], "dir", cfg.belt.dir);
                 cfg.belt_calibrated = true;
+            }
+            if (c.contains("encoder")) {   // des_tool calib-enc
+                get(c["encoder"], "mm_per_count", cfg.belt.enc_mm_per_count);
+                get(c["encoder"], "dir", cfg.belt.enc_dir);
+                cfg.enc_calibrated = true;
             }
             if (c.contains("arm")) {    // des_tool calib-arm (overrides arm.base_xy / base_yaw_deg / belt_z)
                 const json &a = c["arm"];

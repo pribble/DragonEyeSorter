@@ -39,8 +39,8 @@ const ParamDef kParams[] = {
     {"带速", "mm/s（run 模式生效）", 5, 200, 5},
     {"齿轮外径 名义", "mm", 20, 60, 0.01},
     {"齿轮外径 公差 ±", "mm", 0.01, 1, 0.01},
-    {"齿条长度 名义", "mm", 20, 120, 0.1},
-    {"齿条长度 公差 ±", "mm", 0.05, 5, 0.05},
+    {"齿轮孔径 名义", "mm", 2, 20, 0.05},
+    {"齿轮孔径 公差 ±", "mm", 0.05, 2, 0.05},
     {"尺寸判废", "超差 / 规格混料 → 报废出口", 0, 1, 1},
     {"置信度门限", "低于它 → 复检", 0.3, 0.95, 0.05},
     {"存图", "零件裁切图存 SD 卡", 0, 2, 1},
@@ -80,8 +80,8 @@ Hmi::Hmi(const AppConfig &cfg, const std::string &params_path) : cfg_(cfg), para
     p_.size_rule = cfg.tracker.size.enabled;
     p_.gear_od = cfg.tracker.size.gear_od;
     p_.gear_od_tol = cfg.tracker.size.gear_od_tol;
-    p_.rack_len = cfg.tracker.size.rack_len;
-    p_.rack_len_tol = cfg.tracker.size.rack_len_tol;
+    p_.gear_bore = cfg.tracker.size.gear_bore;
+    p_.gear_bore_tol = cfg.tracker.size.gear_bore_tol;
     p_.min_conf = cfg.tracker.min_conf;
     p_.images = cfg.storage.images == "none" ? 0 : cfg.storage.images == "all" ? 2 : 1;
     p_.recipe = cfg.recipe;
@@ -118,8 +118,8 @@ void Hmi::load_params()
         p_.size_rule = j.value("size_rule", p_.size_rule);
         p_.gear_od = j.value("gear_od", p_.gear_od);
         p_.gear_od_tol = j.value("gear_od_tol", p_.gear_od_tol);
-        p_.rack_len = j.value("rack_len", p_.rack_len);
-        p_.rack_len_tol = j.value("rack_len_tol", p_.rack_len_tol);
+        p_.gear_bore = j.value("gear_bore", p_.gear_bore);
+        p_.gear_bore_tol = j.value("gear_bore_tol", p_.gear_bore_tol);
         p_.min_conf = j.value("min_conf", p_.min_conf);
         p_.images = std::clamp(j.value("images", p_.images), 0, 2);
         p_.pl_mode = std::clamp(j.value("pl_mode", p_.pl_mode), 0, 5);
@@ -133,7 +133,7 @@ void Hmi::load_params()
 void Hmi::save_params() const
 {
     nlohmann::json j = {{"belt_speed", p_.belt_speed}, {"size_rule", p_.size_rule}, {"gear_od", p_.gear_od},
-                        {"gear_od_tol", p_.gear_od_tol}, {"rack_len", p_.rack_len}, {"rack_len_tol", p_.rack_len_tol},
+                        {"gear_od_tol", p_.gear_od_tol}, {"gear_bore", p_.gear_bore}, {"gear_bore_tol", p_.gear_bore_tol},
                         {"min_conf", p_.min_conf}, {"images", p_.images}, {"pl_mode", p_.pl_mode},
                         {"pl_thr", p_.pl_thr}, {"recipe", p_.recipe}};
     std::ofstream f(params_path_);
@@ -147,8 +147,8 @@ bool Hmi::set_recipe(int id)
     p_.recipe = id;
     p_.gear_od = r->gear_od;
     p_.gear_od_tol = r->gear_od_tol;
-    p_.rack_len = r->rack_len;
-    p_.rack_len_tol = r->rack_len_tol;
+    p_.gear_bore = r->gear_bore;
+    p_.gear_bore_tol = r->gear_bore_tol;
     save_params();
     return true;
 }
@@ -164,10 +164,13 @@ void Hmi::add_part(const PartRecord &r, const cv::Mat &crop, double now)
     parts_.push_front({r, crop, now});
     if (parts_.size() > 40) parts_.pop_back();
     if (selected_ >= 0) selected_ = std::min(selected_ + 1, int(parts_.size()) - 1);   // keep the same part selected
-    if (r.meas.valid) {
-        auto &q = r.meas.kind == 'g' ? od_ : len_;
-        q.push_back({r.meas.size, r.disp != "pick"});
-        if (q.size() > 80) q.pop_front();
+    if (r.meas.valid && r.meas.kind == 'g') {
+        od_.push_back({r.meas.size, r.disp != "pick"});
+        if (od_.size() > 80) od_.pop_front();
+        if (r.meas.bore > 0) {
+            bore_.push_back({r.meas.bore, r.disp != "pick"});
+            if (bore_.size() > 80) bore_.pop_front();
+        }
     }
     part_times_.push_back(now);
     while (!part_times_.empty() && now - part_times_.front() > 60) part_times_.pop_front();
@@ -178,7 +181,7 @@ void Hmi::status(const HmiStatus &s, double now)
     st_ = s;
     if (now - last_sample_ >= 0.5) {
         last_sample_ = now;
-        samples_.push_back({s.worker_ms, s.npu_ms, float(s.belt_mm_s)});
+        samples_.push_back({s.worker_ms, s.npu_ms, float(s.belt_mm_s), s.enc_live ? float(s.belt_enc_mm_s) : -1.f});
         if (samples_.size() > 120) samples_.pop_front();
     }
     while (!part_times_.empty() && now - part_times_.front() > 60) part_times_.pop_front();
@@ -253,8 +256,8 @@ std::vector<HmiAction> Hmi::handle(const std::vector<UiEvent> &ev)
                 case 0: p_.belt_speed = step(p_.belt_speed); break;
                 case 1: p_.gear_od = float(step(p_.gear_od)); break;
                 case 2: p_.gear_od_tol = float(step(p_.gear_od_tol)); break;
-                case 3: p_.rack_len = float(step(p_.rack_len)); break;
-                case 4: p_.rack_len_tol = float(step(p_.rack_len_tol)); break;
+                case 3: p_.gear_bore = float(step(p_.gear_bore)); break;
+                case 4: p_.gear_bore_tol = float(step(p_.gear_bore_tol)); break;
                 case 5: p_.size_rule = dir > 0; break;
                 case 6: p_.min_conf = float(step(p_.min_conf)); break;
                 case 7: p_.images = std::clamp(p_.images + int(dir), 0, 2); break;
@@ -345,7 +348,10 @@ void Hmi::page_overview(cv::Mat &img, double)
     text(img, "最近零件", tx, 6, 18, DIM);
     const int sx = W - 260;
     cv::rectangle(img, {sx, 4, 250, 30}, state_color(st_.run_state), cv::FILLED);
-    text(img, std::string(state_name(st_.run_state)) + fmt("  带速 %.0f mm/s", st_.belt_mm_s), sx + 10, 8, 18, WHITE);
+    text(img, std::string(state_name(st_.run_state)) +
+                  (st_.enc_live ? fmt("  带速 %.0f", st_.belt_mm_s) + fmt(" 实测 %.0f", st_.belt_enc_mm_s)
+                                : fmt("  带速 %.0f mm/s", st_.belt_mm_s)),
+         sx + 10, 8, 18, WHITE);
     const int cx[] = {tx, tx + 80, tx + 260, tx + 380, tx + 520, tx + 620};
     const char *hd[] = {"件号", "类别", "去向", "出口 / 料盒", "尺寸", "置信度"};
     for (int c = 0; c < 6; c++) text(img, hd[c], cx[c], 42, 16, DIM);
@@ -403,7 +409,7 @@ void size_chart(cv::Mat &img, TextFT &t, const cv::Rect &r, const char *title,
 void Hmi::page_curves(cv::Mat &img)
 {
     size_chart(img, txt_, {165, 6, 570, 288}, "齿轮外径 mm（公差线 = 参数页）", od_, p_.gear_od, p_.gear_od_tol);
-    size_chart(img, txt_, {745, 6, 570, 288}, "齿条长度 mm", len_, p_.rack_len, p_.rack_len_tol);
+    size_chart(img, txt_, {745, 6, 570, 288}, "齿轮孔径 mm", bore_, p_.gear_bore, p_.gear_bore_tol);
     // timing and belt speed over the last 60 s
     const cv::Rect r(1325, 6, 588, 288);
     cv::rectangle(img, r, PANEL, cv::FILLED);
@@ -411,11 +417,14 @@ void Hmi::page_curves(cv::Mat &img)
     text(img, "工作线程 ms", r.x + 110, r.y + 8, 15, CYAN);
     text(img, "NPU ms", r.x + 220, r.y + 8, 15, YELLOW);
     text(img, "带速 mm/s", r.x + 300, r.y + 8, 15, WHITE);
+    bool any_enc = false;
+    for (const Sample &s : samples_) any_enc = any_enc || s.belt_enc >= 0;
+    if (any_enc) text(img, "编码器实测", r.x + 390, r.y + 8, 15, GREEN);
     const cv::Rect pl(r.x + 40, r.y + 40, r.width - 90, r.height - 60);
     float mt = 20, mb = 100;
     for (const Sample &s : samples_) {
         mt = std::max({mt, s.worker, s.npu});
-        mb = std::max(mb, s.belt);
+        mb = std::max({mb, s.belt, s.belt_enc});
     }
     for (int k = 0; k <= 4; k++) {
         const int y = pl.y + pl.height - k * pl.height / 4;
@@ -427,13 +436,18 @@ void Hmi::page_curves(cv::Mat &img)
         cv::Point prev(-1, -1);
         for (size_t i = 0; i < samples_.size(); i++) {
             const Sample &s = samples_[i];
-            const float v = which == 0 ? s.worker : which == 1 ? s.npu : s.belt;
+            const float v = which == 0 ? s.worker : which == 1 ? s.npu : which == 2 ? s.belt : s.belt_enc;
+            if (v < 0) {   // no encoder in this sample: gap
+                prev = {-1, -1};
+                continue;
+            }
             const cv::Point p(pl.x + int(i * (pl.width - 1) / 119), pl.y + pl.height - int(v / scale * pl.height));
             if (prev.x >= 0) cv::line(img, prev, p, c, 1, cv::LINE_AA);
             prev = p;
         }
     };
     plot(2, WHITE, mb);
+    if (any_enc) plot(3, GREEN, mb);
     plot(0, CYAN, mt);
     plot(1, YELLOW, mt);
 }
@@ -461,8 +475,8 @@ void Hmi::page_params(cv::Mat &img)
         case 0: val = fmt("%.0f", p_.belt_speed); break;
         case 1: val = fmt("%.2f", p_.gear_od); break;
         case 2: val = fmt("%.2f", p_.gear_od_tol); break;
-        case 3: val = fmt("%.1f", p_.rack_len); break;
-        case 4: val = fmt("%.2f", p_.rack_len_tol); break;
+        case 3: val = fmt("%.2f", p_.gear_bore); break;
+        case 4: val = fmt("%.2f", p_.gear_bore_tol); break;
         case 5: val = p_.size_rule ? "开" : "关"; break;
         case 6: val = fmt("%.2f", p_.min_conf); break;
         case 7: val = kImages[p_.images]; break;
@@ -499,7 +513,9 @@ void Hmi::page_params(cv::Mat &img)
         text(img, "急停：先旋开急停按钮，再点复位报警、启动", x0 + 10, 189, 18, WHITE);
     else
         text(img, std::string("状态 ") + state_name(st_.run_state) +
-                      (st_.jog > 0 ? "（正转点动）" : st_.jog < 0 ? "（反转点动）" : "") + fmt("  带速 %.1f mm/s", st_.belt_mm_s),
+                      (st_.jog > 0 ? "（正转点动）" : st_.jog < 0 ? "（反转点动）" : "") +
+                      (st_.enc_live ? fmt("  带速 %.1f", st_.belt_mm_s) + fmt(" / 实测 %.1f mm/s", st_.belt_enc_mm_s)
+                                    : fmt("  带速 %.1f mm/s", st_.belt_mm_s)),
              x0 + 10, 187, 20, WHITE);
     // PL image path (des_vision): what the camera stream shows, binary threshold
     text(img, "PL 显示", x0, 232, 20, WHITE);

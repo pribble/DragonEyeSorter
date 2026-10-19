@@ -28,7 +28,7 @@ namespace des {
 struct HmiParams {            // operator-editable, persisted in ui_params.json
     double belt_speed = 50;   // mm/s (run mode)
     bool size_rule = false;
-    float gear_od = 32, gear_od_tol = 0.15f, rack_len = 50, rack_len_tol = 0.5f;
+    float gear_od = 32, gear_od_tol = 0.15f, gear_bore = 6, gear_bore_tol = 0.3f;
     float min_conf = 0.5f;
     int images = 1;           // 0 none, 1 NG + recheck, 2 all
     int pl_mode = 0;          // des_vision display: 0 camera 1 gray 2 Gaussian 3 binary 4 Sobel 5 edges
@@ -39,7 +39,9 @@ struct HmiParams {            // operator-editable, persisted in ui_params.json
 struct HmiStatus {            // from the worker, every cycle
     std::string mode = "live";
     int run_state = -1;       // CANP_ST_* in run mode, -1 otherwise
-    double belt_mm_s = 0;
+    double belt_mm_s = 0;     // commanded (stepper)
+    double belt_enc_mm_s = 0; // measured by the measuring-wheel encoder (valid when enc_live)
+    bool enc_live = false;    // the encoder has counted since start (wired)
     float worker_ms = 0, npu_ms = 0;
     bool npu = false, clock_synced = false;
     bool pl_vision = false;   // bitstream has des_vision (v6)
@@ -98,10 +100,11 @@ private:
     int arm_step_ = 1, arm_ms_ = 1;   // indexes into the step / move-time choices of the arm page
     std::vector<Hit> hits_;
     std::deque<Part> parts_;                     // newest first, <= 40
-    std::deque<std::pair<float, bool>> od_, len_;   // measured sizes (value, NG) for the trends, <= 80
+    std::deque<std::pair<float, bool>> od_, bore_;  // measured gear OD / bore (value, NG) for the trends, <= 80
     std::deque<double> part_times_;              // for parts per minute
     struct Sample {
         float worker, npu, belt;
+        float belt_enc;   // encoder-measured belt speed, < 0 = no encoder
     };
     std::deque<Sample> samples_;                 // 2 Hz, 60 s
     double last_sample_ = 0;

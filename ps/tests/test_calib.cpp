@@ -207,6 +207,47 @@ int main(int argc, char **argv)
                   t.find("\"mm_per_step\"") != std::string::npos,
               "calib.json keeps arm + belt sections across calib-cam");
     }
+    {   // calib-enc: 0.02074 mm/step stepper, 0.05 mm/count wheel (1.0 % large), POS decreasing = downstream (dir -1)
+        // forward 300 mm at 50 mm/s with 0.5 s ramps; the belt lags 0.3 mm behind the roller while accelerating and
+        // creeps 0.1 mm over the round trip; count decreasing downstream
+        const double mps = 0.02074, mpc = 0.0505, v = 50, acc = 100;
+        auto make = [&](int32_t pos0, int32_t enc0, double sign, double creep, std::vector<EncSample> &s) {
+            s.clear();
+            const double L = 300, ta = v / acc, tc = (L - v * ta) / v, T = 2 * ta + tc;
+            for (int i = 0; i <= int((T + 0.5) / 0.01); i++) {
+                const double t = i * 0.01;
+                double x;   // downstream mm commanded
+                if (t < ta) x = 0.5 * acc * t * t;
+                else if (t < ta + tc) x = 0.5 * v * ta + v * (t - ta);
+                else if (t < T) x = L - 0.5 * acc * (T - t) * (T - t);
+                else x = L;
+                const double lag = t < ta ? 0.3 * t / ta : t < 2 * ta ? 0.3 * (2 * ta - t) / ta : 0;
+                const double xe = x - lag + creep * x / L;   // what the wheel sees
+                s.push_back({t, pos0 - int32_t(std::lround(sign * x / mps)), enc0 - int32_t(std::lround(sign * xe / mpc))});
+            }
+        };
+        std::vector<EncSample> f, bk;
+        make(1000, 50, 1, 0.1, f);                                           // downstream
+        make(f.back().pos, f.back().enc, -1, 0, bk);                       // back upstream
+        EncCalib ec = enc_from_samples(f, bk, mps, -1, 4000, 0.05);
+        CHECK(ec.ok && std::fabs(ec.mm_per_count - mpc * 300 / 300.1) < 2e-5 && ec.dir == -1,
+              "encoder scale %s %.6f dir %d", ec.err.c_str(), ec.mm_per_count, ec.dir);
+        CHECK(std::fabs(ec.wheel_circ_mm - 4000 * ec.mm_per_count) < 1e-9 && std::fabs(ec.return_err_mm - 0.1) < 0.06,
+              "wheel %.2f return %.3f", ec.wheel_circ_mm, ec.return_err_mm);
+        CHECK(ec.lag_max_mm > 0.25 && ec.lag_max_mm < 0.4, "lag max %.3f (0.3 expected)", ec.lag_max_mm);
+        CHECK(std::fabs(ec.cruise_mm_s - v) < 0.5 && std::fabs(ec.enc_speed_mean_mm_s - v) < 0.5 &&
+                  ec.enc_speed_sd_mm_s < 0.5, "cruise %.2f enc %.2f +- %.3f", ec.cruise_mm_s, ec.enc_speed_mean_mm_s,
+              ec.enc_speed_sd_mm_s);
+        std::vector<EncSample> dead = f;   // encoder not wired: the count never moves
+        for (EncSample &s : dead) s.enc = 7;
+        CHECK(!enc_from_samples(dead, bk, mps, -1, 4000, 0.05).ok, "an encoder that does not count must fail");
+        CHECK(save_enc_calib(path, ec, 1, 0).empty(), "save_enc_calib");
+        CHECK(save_calib(path, r0, b, Travel::Right).empty(), "save_calib after calib-enc");
+        std::ifstream g(path);
+        std::string t((std::istreambuf_iterator<char>(g)), std::istreambuf_iterator<char>());
+        CHECK(t.find("\"mm_per_count\"") != std::string::npos && t.find("\"mm_per_step\"") != std::string::npos,
+              "calib.json keeps the encoder section across calib-cam");
+    }
     printf("%d passed, %d failed\n", g_pass, g_fail);
     return g_fail;
 }

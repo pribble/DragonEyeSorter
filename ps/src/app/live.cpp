@@ -11,6 +11,7 @@
 #include <time.h>
 
 #include <atomic>
+#include <cmath>
 #include <condition_variable>
 #include <map>
 #include <memory>
@@ -224,8 +225,8 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
         r.enabled = p.size_rule;
         r.gear_od = p.gear_od;
         r.gear_od_tol = p.gear_od_tol;
-        r.rack_len = p.rack_len;
-        r.rack_len_tol = p.rack_len_tol;
+        r.gear_bore = p.gear_bore;
+        r.gear_bore_tol = p.gear_bore_tol;
         tr.config().min_conf = p.min_conf;
         plog.set_images(p.images == 0 ? "none" : p.images == 2 ? "all" : "ng");
         if (runner) runner->set_speed(p.belt_speed, "HMI");
@@ -251,6 +252,8 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
     apply_params(hmi.params());
     cv::Mat hmi_panel;
     double last_hmi = 0, prev_work_ms = 0;
+    // measuring-wheel encoder (des_io, v11): belt speed measured independently of the stepper, over 0.5 s
+    struct { bool live = false, have_ref = false; int32_t first = 0, ref = 0; double ref_t = 0, mm_s = 0; } enc;
     std::map<int, cv::Mat> crops;   // latest part crop per track (from its best measurement frame)
     std::set<int> logged;
     Picker pk(cfg.picker);
@@ -416,6 +419,22 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
             hs.mode = runner ? "run" : col ? "collect" : "live";
             hs.run_state = runner ? int(runner->state()) : -1;
             hs.belt_mm_s = des_step_speed(&hw) * cfg.belt.mm_per_step;
+            des_io_t io;
+            if (hw.version >= DES_VERSION_IO && des_io_read(&hw, &io) == DES_OK) {
+                const double t = now_s();
+                if (!enc.have_ref) {
+                    enc.have_ref = true;
+                    enc.first = enc.ref = io.enc;
+                    enc.ref_t = t;
+                } else if (t - enc.ref_t >= 0.5) {
+                    enc.mm_s = std::abs(double(io.enc) - enc.ref) * cfg.belt.enc_scale() / (t - enc.ref_t);
+                    enc.ref = io.enc;
+                    enc.ref_t = t;
+                }
+                if (std::abs(double(io.enc) - enc.first) > 20) enc.live = true;   // it has counted: wired
+                hs.enc_live = enc.live;
+                hs.belt_enc_mm_s = enc.mm_s;
+            }
             hs.worker_ms = float(prev_work_ms);
             hs.npu_ms = npu.last_npu_ms;
             hs.npu = npu.running();

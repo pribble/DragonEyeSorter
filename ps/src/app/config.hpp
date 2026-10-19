@@ -38,6 +38,13 @@ struct BeltConfig {
     double run_speed = 50;       // mm/s
     double accel = 400;          // mm/s^2
     SpeedAdaptConfig adapt;      // slow down instead of stopping while the arm is busy (sched/speed_adapt.hpp)
+    // measuring-wheel encoder on the belt (des_io, v11): E6B2-CWZ6C 1000 P/R decoded x4, 200 mm wheel (nominal);
+    // des_tool calib-enc measures the real scale against the stepper (calib.json "encoder")
+    int enc_counts_per_rev = 4000;
+    double enc_wheel_mm = 200;
+    double enc_mm_per_count = 0;  // 0 = not calibrated: enc_wheel_mm / enc_counts_per_rev
+    int enc_dir = 1;              // +1: the count increases while parts move downstream (+x)
+    double enc_scale() const { return enc_mm_per_count > 0 ? enc_mm_per_count : enc_wheel_mm / enc_counts_per_rev; }
 };
 
 // NPU part classifier (npu_cls.hpp / train/export_npu.py)
@@ -80,6 +87,7 @@ struct AppConfig {
     std::string calib_loaded;                  // path actually merged (empty = none)
     float pick_after_fov = 0;                  // > 0: picker.pick_x = calibrated fov_x1 + this (mm)
     bool belt_calibrated = false;
+    bool enc_calibrated = false;               // calib file had an "encoder" section (des_tool calib-enc)
     bool arm_home_taught = false;              // arm_home.json (HMI arm page) replaced arm.home_deg
     bool arm_calibrated = false;               // calib file had an "arm" section (des_tool calib-arm)
     std::string config_dir = ".";             // folder of the loaded des_app.json (ui_params.json lives there)

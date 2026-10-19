@@ -69,6 +69,36 @@ struct BeltCalib {
 BeltCalib belt_from_positions(Vec2 p0, Vec2 p1, Vec2 p2, Vec2 p3, int32_t s1, int32_t s2, int steps_per_rev = 3200);
 // Adds "belt": {mm_per_step, dir, ...} to the calib JSON (keeps the camera part). Empty string = ok.
 std::string save_belt_calib(const std::string &path, const BeltCalib &b);
+
+// Belt encoder (measuring wheel riding on the belt, des_io x4 counts) against the stepper (des_tool calib-enc): the
+// belt moves `steps` downstream and back while (time, stepper POS, encoder count) are sampled every ~10 ms. The
+// stepper scale (mm_per_step, from calib-belt) gives the encoder its mm; the encoder then shows what the stepper
+// cannot: slip / lag of the belt behind the roller and speed ripple.
+struct EncSample {
+    double t;      // s
+    int32_t pos;   // stepper POS
+    int32_t enc;   // encoder count
+};
+struct EncCalib {
+    bool ok = false;
+    std::string err;
+    double counts_per_step = 0;     // forward move, |counts| / |steps|
+    double back_counts_per_step = 0;
+    double mm_per_count = 0;        // > 0
+    int dir = 1;                    // +1: the count increases while parts move downstream (+x)
+    double travel_mm = 0;
+    double wheel_circ_mm = 0;       // counts_per_rev x mm_per_count (vs the wheel's nominal circumference)
+    double return_err_mm = 0;       // encoder after forward + back by the same steps (belt creep / backlash)
+    double cruise_mm_s = 0;         // stepper speed in the constant-speed part of the forward move
+    double enc_speed_mean_mm_s = 0, enc_speed_sd_mm_s = 0;   // encoder speed there, 0.2 s windows
+    double lag_max_mm = 0;          // max |encoder mm - stepper mm| during the forward move (ends fitted to 0)
+};
+// fwd / back: samples from just before each move starts until after it stopped. dir_steps: cfg belt dir (+1 = POS
+// increasing moves parts downstream). nominal_mm_per_count: wheel circumference / counts per rev (sanity check).
+EncCalib enc_from_samples(const std::vector<EncSample> &fwd, const std::vector<EncSample> &back, double mm_per_step,
+                          int dir_steps, int counts_per_rev, double nominal_mm_per_count);
+// Adds "encoder": {mm_per_count, dir, ...} to the calib JSON. Empty string = ok.
+std::string save_enc_calib(const std::string &path, const EncCalib &e, int rounds, double mm_per_count_sd);
 // Adds "arm": {base_xy, base_yaw_deg, belt_z (if with_belt_z), fit residuals} (des_tool calib-arm). Empty = ok.
 std::string save_arm_calib(const std::string &path, const ArmBaseFit &f, bool with_belt_z);
 // Draw detected corners, table axes at the origin and a 50 mm grid onto a BGR image.

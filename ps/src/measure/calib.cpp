@@ -7,11 +7,13 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <fstream>
+#include <utility>
 
 #include <opencv2/calib3d.hpp>
 #include <opencv2/core/utility.hpp>
@@ -267,13 +269,14 @@ std::string save_calib(const std::string &path, const CalibResult &r, const Boar
     nlohmann::json fc = nlohmann::json::array();
     for (const Vec2 &v : r.fov_corners) fc.push_back({v.x, v.y});
     j["fov_corners"] = fc;
-    {   // keep the belt scale of an earlier calib-belt run (it does not depend on the camera pose)
+    {   // keep the belt / encoder scales of earlier calib-belt / calib-enc runs (they do not depend on the camera pose)
         std::ifstream old(path);
         nlohmann::ordered_json o;
         if (old) {
             try {
                 old >> o;
                 if (o.contains("belt")) j["belt"] = o["belt"];
+                if (o.contains("encoder")) j["encoder"] = o["encoder"];
                 if (o.contains("arm")) j["arm"] = o["arm"];
             } catch (const std::exception &) {
             }
@@ -337,6 +340,96 @@ std::string save_belt_calib(const std::string &path, const BeltCalib &b)
     j["belt"] = {{"mm_per_step", b.mm_per_step}, {"dir", b.dir}, {"date", date}, {"travel_mm", b.travel_mm},
                  {"steps", b.steps}, {"return_err_mm", b.return_err_mm}, {"drift_mm_per_100", b.drift_mm_per_100},
                  {"roller_d_mm", b.roller_d_mm}};
+    std::ofstream f(path);
+    if (!f) return "cannot write " + path;
+    f << j.dump(2) << "\n";
+    return f ? "" : "write failed: " + path;
+}
+
+EncCalib enc_from_samples(const std::vector<EncSample> &fwd, const std::vector<EncSample> &back, double mm_per_step,
+                          int dir_steps, int counts_per_rev, double nominal_mm_per_count)
+{
+    EncCalib e;
+    if (fwd.size() < 10 || back.size() < 10) { e.err = "too few samples"; return e; }
+    if (mm_per_step <= 0 || nominal_mm_per_count <= 0) { e.err = "mm_per_step / nominal scale not set"; return e; }
+    const EncSample &f0 = fwd.front(), &f1 = fwd.back(), &b1 = back.back();
+    const int64_t ds = int64_t(f1.pos) - f0.pos, dc = int64_t(f1.enc) - f0.enc;
+    const int64_t dsb = int64_t(b1.pos) - back.front().pos, dcb = int64_t(b1.enc) - back.front().enc;
+    if (ds == 0) { e.err = "the stepper did not move"; return e; }
+    e.travel_mm = std::fabs(double(ds)) * mm_per_step;
+    const double expect = e.travel_mm / nominal_mm_per_count;   // counts with the nominal wheel
+    if (std::fabs(double(dc)) < 0.05 * expect) {
+        char b[200];
+        snprintf(b, sizeof b, "the encoder did not count (%lld counts, ~%.0f expected): powered, A/B wired, wheel "
+                 "pressed on the belt?", (long long)dc, expect);
+        e.err = b;
+        return e;
+    }
+    e.counts_per_step = std::fabs(double(dc) / double(ds));
+    e.back_counts_per_step = dsb ? std::fabs(double(dcb) / double(dsb)) : 0;
+    e.mm_per_count = mm_per_step / e.counts_per_step;
+    const int down = (ds > 0) == (dir_steps > 0) ? 1 : -1;   // +1: the forward move went downstream
+    e.dir = (dc > 0) == (down > 0) ? 1 : -1;
+    e.wheel_circ_mm = counts_per_rev * e.mm_per_count;
+    const double step_sign = dir_steps > 0 ? 1.0 : -1.0;
+    auto enc_mm = [&](const EncSample &a, const EncSample &b) {   // downstream mm seen by the encoder
+        return double(int64_t(b.enc) - a.enc) * e.mm_per_count * e.dir;
+    };
+    auto step_mm = [&](const EncSample &a, const EncSample &b) {   // downstream mm commanded by the stepper
+        return double(int64_t(b.pos) - a.pos) * mm_per_step * step_sign;
+    };
+    e.return_err_mm = enc_mm(f0, b1) - step_mm(f0, b1);
+    for (const EncSample &s : fwd) e.lag_max_mm = std::max(e.lag_max_mm, std::fabs(enc_mm(f0, s) - step_mm(f0, s)));
+    // constant-speed part of the forward move: non-overlapping 0.2 s windows at >= 97 % of the top stepper speed
+    std::vector<std::pair<double, double>> win;   // (stepper mm/s, encoder mm/s)
+    for (size_t i = 0, j = 0; i < fwd.size(); i = j) {
+        for (j = i + 1; j < fwd.size() && fwd[j].t - fwd[i].t < 0.2; j++) {}
+        if (j >= fwd.size()) break;
+        const double dt = fwd[j].t - fwd[i].t;
+        win.push_back({std::fabs(step_mm(fwd[i], fwd[j])) / dt, std::fabs(enc_mm(fwd[i], fwd[j])) / dt});
+    }
+    double vmax = 0;
+    for (auto &w : win) vmax = std::max(vmax, w.first);
+    double ss = 0, se = 0, se2 = 0;
+    int n = 0;
+    for (auto &w : win)
+        if (w.first >= 0.97 * vmax) {
+            ss += w.first;
+            se += w.second;
+            se2 += w.second * w.second;
+            n++;
+        }
+    if (n >= 3) {
+        e.cruise_mm_s = ss / n;
+        e.enc_speed_mean_mm_s = se / n;
+        e.enc_speed_sd_mm_s = std::sqrt(std::max(0.0, se2 / n - e.enc_speed_mean_mm_s * e.enc_speed_mean_mm_s));
+    }
+    e.ok = true;
+    return e;
+}
+
+std::string save_enc_calib(const std::string &path, const EncCalib &e, int rounds, double mm_per_count_sd)
+{
+    if (!e.ok) return "no encoder calibration to save";
+    nlohmann::ordered_json j;
+    {
+        std::ifstream old(path);
+        if (old) {
+            try {
+                old >> j;
+            } catch (const std::exception &x) {
+                return path + ": " + x.what() + " (fix or delete it, then run calib-cam again)";
+            }
+        }
+    }
+    char date[32];
+    time_t now = time(nullptr);
+    strftime(date, sizeof date, "%Y-%m-%d %H:%M", localtime(&now));
+    j["encoder"] = {{"mm_per_count", e.mm_per_count}, {"dir", e.dir}, {"date", date}, {"rounds", rounds},
+                    {"mm_per_count_sd", mm_per_count_sd}, {"counts_per_step", e.counts_per_step},
+                    {"travel_mm", e.travel_mm}, {"wheel_circ_mm", e.wheel_circ_mm},
+                    {"return_err_mm", e.return_err_mm}, {"lag_max_mm", e.lag_max_mm},
+                    {"cruise_mm_s", e.cruise_mm_s}, {"enc_speed_sd_mm_s", e.enc_speed_sd_mm_s}};
     std::ofstream f(path);
     if (!f) return "cannot write " + path;
     f << j.dump(2) << "\n";
