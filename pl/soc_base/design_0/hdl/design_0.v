@@ -50,6 +50,8 @@ module design_0 (
     output    wire       [31:0] des_wdata ,
     output    wire       [11:0] des_raddr ,
     input     wire       [31:0] des_rdata ,
+    output    wire              can0_tx ,
+    input     wire              can0_rx ,
     output    wire              vtg_lock ,
     output    wire              axis_to_video_lock ,
     output    wire              hp1_w_us1_arready ,
@@ -2920,6 +2922,8 @@ module design_0 (
                                                                           , .master_gp1_axi_wready(w_port__ARM_Processor_System_0__master_gp1_axi_wready)
                                                                           , .master_gp1_axi_wstrb(w_port__ARM_Processor_System_0__master_gp1_axi_wstrb)
                                                                           , .master_gp1_axi_wvalid(w_port__ARM_Processor_System_0__master_gp1_axi_wvalid)
+                                                                          , .can0_tx(can0_tx)
+                                                                          , .can0_rx(can0_rx)
                                                                           , .i2c0_scl_in(w_port__ARM_Processor_System_0__i2c0_scl_in)
                                                                           , .i2c0_scl_oe(w_port__ARM_Processor_System_0__i2c0_scl_oe)
                                                                           , .i2c0_sda_in(w_port__ARM_Processor_System_0__i2c0_sda_in)

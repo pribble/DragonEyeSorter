@@ -165,6 +165,9 @@ module ARM_Processor_System_9c4afc9a72e9
 
 	input     [15:0]              f2p_irq,
 
+	output                        can0_tx,   // DragonEyeSorter v12: PS CAN0 -> PL pin F20
+	input                         can0_rx,   // DragonEyeSorter v12: PL pin F19 -> PS CAN0
+
 	input                         i2c0_scl_in,
 	output                        i2c0_scl_oe,
 	input                         i2c0_sda_in,
@@ -513,7 +516,8 @@ DR1_PHY_PROCESSOR_SYSTEM DR1_PHY_PROCESSOR_SYSTEM_Inst (
 		.dma3_drtype(2'h3),
 		.dma3_drvalid(1'b0),
 
-		.can0_rx_in(1'b0),
+		.can0_rx_in(can0_rx),
+		.can0_tx_out(can0_tx),
 
 		.can1_rx_in(1'b0),
 

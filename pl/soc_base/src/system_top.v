@@ -28,6 +28,9 @@ module system_top(
     inout          SERVO_BUS,    // CEP PIN19 Y9, via BSS138, open-drain
     output         FLAP1_PWM,    // CEP PIN18 Y6 (#16 FORK_PWM), belt-end flap stage 1 (MG996R)
     output         FLAP2_PWM,    // CEP PIN20 Y8 (#18), flap stage 2
+    // board CAN transceiver SN65HVD232 (BANK33, terminal J11): PS CAN0 via the PL (v12)
+    output         CAN0_TXD,     // F20
+    input          CAN0_RXD,     // F19
     
 	input  wire		    I_clk_hs_p  ,
 	input  wire	[3:0]	I_data_hs_p , 
@@ -175,7 +178,9 @@ wire pwm_out_unused;
         .des_waddr(des_waddr),
         .des_wdata(des_wdata),
         .des_raddr(des_raddr),
-        .des_rdata(des_rdata)
+        .des_rdata(des_rdata),
+        .can0_tx(CAN0_TXD),
+        .can0_rx(CAN0_RXD)
 
     );
 
@@ -491,7 +496,7 @@ wire pwm_out_unused;
     wire des_estop;
 
     wire [31:0] st_pos;
-    des_regs #(.VERSION(32'd11)) des_regs_inst (
+    des_regs #(.VERSION(32'd12)) des_regs_inst (
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h0), .waddr(des_waddr), .wdata(des_wdata),
         .raddr(des_raddr), .rdata(regs_rdata), .sof_toggle(des_sof_toggle), .ts(des_ts),
         .cap_start_toggle(cap_start_tgl), .cap_done_toggle(cap_done_tgl), .pos(st_pos),
