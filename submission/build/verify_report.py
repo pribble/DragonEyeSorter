@@ -4,17 +4,24 @@
 逐项核对提交前的硬要求，把原始结果写进 submission/out/_verify_report.txt：
   1 产物存在 / PDF 文件头 / 页数 / **PDF ≤ 50MB（打印现值）**
   2 仓库内脚本不含主机绝对路径（AGENTS.md 硬性约定第 9 条）
-  3 docx 结构：段落 / 表格 / 插图 / 标题层级 / 节数
-  4 正文字体与字号、标题字体与字号
-  5 行距：全篇不得有 fixed / exact
-  6 页面与版心、表格宽度、插图宽度（满版心 15.8cm）
-  7 封面 / 正文的页眉页脚、页码域
+  3 docx 结构：段落 / 表格 / 插图 / 标题层级 / 节数（与 _md2docx.json 对账 + 源文件独立数）
+  4 版式设计口径：微软雅黑 10.5pt 正文、16/13pt 标题、1.3 倍行距（微软雅黑视觉等效 1.5）、
+    首行缩进 2 字符（420 twips）、行内代码 Consolas、墨色正文
+  5 设计令牌：章标题青绿左色块 + 下细线、表头浅青灰底 #E6F4F2 + 青绿分隔线、三线表无竖线、
+    图注编号加粗 / 说明灰字、页眉页脚小号浅灰
+  6 页面与版心、表格宽度、表格固定布局、表头重复、插图宽度（满版心 15.8cm）
+  7 封面 / 目录 / 正文的页眉页脚、页码域（PAGE / NUMPAGES）
   8 竞赛禁项扫描（含页眉页脚与表格）
   9 TOC 域与 updateFields
  10 疑似行框重叠（PyMuPDF 逐页两两求交）
  11 **插图清晰度：每张插图等效 dpi ≥ 300**（Word 导出只有 96，靠 pdf_images_hires.py 提上来）
  12 **插图可读性：每张插图落版最小字号 ≥ 7pt**（figkit 按 15.8cm 落版 1:1 作图，读 fig_meta.json）
  13 **逐页底部空白分析**（信息项：每页数值 + >20% 的页及原因）+ 正文页不被撑空（填充 ≥ 50%）
+ 14 代码包与 README 登记
+
+计数类检查不再写死数字（docs/技术文档.md 的内容在持续优化，章 / 表数量可能变）：
+一律从 out/_md2docx.json 读生成侧实际值，对 docx 结构对账，再给「下限」兜底；
+H1 / 表 / 图再与源 Markdown 独立数出来的数对比。
 
 用法：
     python submission/build/verify_report.py [-Out <报告路径>]
@@ -39,6 +46,28 @@ OUT = REPO / "submission" / "out"
 DOCX = OUT / "龙瞳分拣_作品报告.docx"
 PDF = OUT / "龙瞳分拣_作品报告.pdf"
 SOURCE = REPO / "docs" / "技术文档.md"
+STATS = OUT / "_md2docx.json"
+PDF_STATS = OUT / "_word_to_pdf.json"
+
+# ---- 版式设计令牌（与 md2docx.py 同口径；独立复核用，不 import 生成脚本）
+FONT_CN = "微软雅黑"
+FONT_CODE = "Consolas"
+C_INK = "0E1B2B"          # 墨：标题 / 正文
+C_TEAL = "0D9488"         # 青绿：章标题色块 / 表头分隔线
+C_GRAY = "5F7285"         # 次级灰：图注 / 页眉页脚
+C_LINE = "DCE3EA"         # 细线
+C_HEAD_FILL = "E6F4F2"    # 表头浅青灰底
+BODY_PT = 10.5
+BODY_LINE = 1.3           # 微软雅黑单倍行高 ≈ 字号 × 1.72，1.3 倍 ≈ 宋体 12pt 的 1.5 倍视觉行距
+H1_PT, H2_PT = 16.0, 13.0
+CAPTION_PT = 9.0
+SMALL_PT = 8.5
+CHAR_TWIPS = 420          # 2 字符 = 2 × 10.5pt × 20
+LIST_LEFT_TW = 840        # 列表正文左缩进 4 字符
+LIST_HANG_TW = 420        # 列表悬挂 2 字符
+HEADER_TEXT = "龙瞳分拣 · 塑胶传动件在线质检分拣系统"
+HEADER_TOC = "目录"
+HEADER_BODY = "作品报告"
 
 # 版心上下边界（pt，A4 高 841.89pt / 上下页边距 2.6cm = 73.7pt）。
 # 页眉在页边距里（header_distance 1.5cm ≈ 42.5pt）、页脚同理，都在这个区间之外，
@@ -109,8 +138,9 @@ def page_fill_rows(pdf, warn=FILL_WARN):
         text = page.get_text()
         m = re.search(r"第\s*(\d+)\s*页", text)
         printed = int(m.group(1)) if m else None
-        head_line = next((ln.strip() for ln in text.split("\n") if ln.strip()), "")
-        role = "正文" if m else ("目录" if head_line.startswith("目录") else "封面")
+        # 目录页现在也有页眉（「龙瞳分拣 · …」在最上面），不能再靠「第一行是不是目录」
+        # 判断角色——用目录页独有的 CONTENTS 小标签认（字距被拉开，去掉空格再匹配）。
+        role = "正文" if m else ("目录" if "CONTENTS" in text.replace(" ", "") else "封面")
         imgs = [b for b in blocks if b["type"] == 1]
         row = {"page": pno, "printed": printed, "role": role,
                "image": block_label(imgs[0]) if imgs else None,
@@ -231,6 +261,15 @@ def main(argv=None) -> int:
           None if others else True,
           ("非本任务文件，不改：" + "; ".join(others)) if others else "0 处")
 
+    # ---- 统计对账：生成侧 out/_md2docx.json（内容源在持续优化，计数不写死） ----
+    stats = {}
+    if STATS.is_file():
+        try:
+            stats = json.loads(STATS.read_text(encoding="utf-8"))
+        except ValueError:
+            stats = {}
+    check("out/_md2docx.json 存在且可读", bool(stats), STATS.name)
+
     # ---- docx 读回 ----
     from docx import Document
     from docx.oxml.ns import qn
@@ -243,13 +282,23 @@ def main(argv=None) -> int:
     h1 = sum(1 for p in doc.paragraphs if p.style.name == "Heading 1")
     h2 = sum(1 for p in doc.paragraphs if p.style.name == "Heading 2")
     h3 = sum(1 for p in doc.paragraphs if p.style.name == "Heading 3")
-    check("段落数 ≥ 150", n_par >= 150, str(n_par))
-    check("表格数 ≥ 8", n_tbl >= 8, str(n_tbl))
-    check("插图数 = 5（源里 5 张）", n_img == 5, str(n_img))
-    check("节数 = 3（封面/目录/正文）", len(doc.sections) == 3,
-          str(len(doc.sections)))
-    check("标题层级 H1 = 10 章 + 附录 = 11", h1 == 11, "H1=%d H2=%d H3=%d" % (h1, h2, h3))
-    check("H2 节数 = 源里 ### 数", h2 == 25, str(h2))
+
+    # ---- 3 结构：与生成侧统计对账 + 下限兜底 ----
+    s_h = stats.get("headings") or {}
+    check("段落数 = 生成侧统计（且 ≥ 150）",
+          n_par == stats.get("paragraphs") and n_par >= 150,
+          "docx %d / json %s" % (n_par, stats.get("paragraphs")))
+    check("表格数 = 生成侧统计（且 ≥ 8）",
+          n_tbl == stats.get("tables") and n_tbl >= 8,
+          "docx %d / json %s" % (n_tbl, stats.get("tables")))
+    check("插图数 = 生成侧统计 = 5（源里 5 张）",
+          n_img == stats.get("images") and n_img == 5,
+          "docx %d / json %s" % (n_img, stats.get("images")))
+    check("节数 = 3（封面/目录/正文）", len(doc.sections) == 3, str(len(doc.sections)))
+    check("标题数 = 生成侧统计（H1 ≥ 10 章、H2 ≥ 20 节）",
+          h1 == s_h.get("h1") and h1 >= 10 and h2 == s_h.get("h2") and h2 >= 20,
+          "H1=%d H2=%d H3=%d / json H1=%s H2=%s"
+          % (h1, h2, h3, s_h.get("h1"), s_h.get("h2")))
 
     # 源里的章 / 节数（独立数一遍源文件，别信脚本自己的统计）
     src = SOURCE.read_text(encoding="utf-8").splitlines()
@@ -262,12 +311,19 @@ def main(argv=None) -> int:
     check("源里插图数 = docx 插图数", src_img == n_img, "源 %d / docx %d" % (src_img, n_img))
     check("源里表格数 = docx 表格数", src_tbl == n_tbl, "源 %d / docx %d" % (src_tbl, n_tbl))
 
-    # ---- 4 字体字号 ----
+    # ---- 4 字体字号 / 行距 / 缩进（新版式口径：微软雅黑 10.5pt） ----
     def run_font(run):
-        rf = run._element.find(qn("w:rPr"))
-        rf = rf.find(qn("w:rFonts")) if rf is not None else None
-        return (rf.get(qn("w:eastAsia")) if rf is not None else None,
-                rf.get(qn("w:ascii")) if rf is not None else None)
+        rpr = run._element.find(qn("w:rPr"))
+        fonts = rpr.find(qn("w:rFonts")) if rpr is not None else None
+        color = rpr.find(qn("w:color")) if rpr is not None else None
+        return (fonts.get(qn("w:eastAsia")) if fonts is not None else None,
+                fonts.get(qn("w:ascii")) if fonts is not None else None,
+                color.get(qn("w:val")) if color is not None else None)
+
+    def par_ind(par, attr):
+        pPr = par._p.pPr
+        ind = pPr.find(qn("w:ind")) if pPr is not None else None
+        return None if ind is None else ind.get(qn("w:" + attr))
 
     # 正文按**样式名**取样：BodyCN = 源里的普通段落（首行缩进 2 字符），
     # ListCN = 列表项（悬挂缩进，不强求首行缩进）。封面 / 目录 / 图注 / 页眉页脚 /
@@ -275,61 +331,132 @@ def main(argv=None) -> int:
     body = [p for p in doc.paragraphs if p.style.name == "BodyCN" and p.text.strip()]
     lst = [p for p in doc.paragraphs if p.style.name == "ListCN" and p.text.strip()]
     body_runs = [r for p in body + lst for r in p.runs
-                 if r.text.strip() and run_font(r)[1] != "Consolas"]
+                 if r.text.strip() and run_font(r)[1] != FONT_CODE
+                 and run_font(r)[2] != C_TEAL]
     code_runs = [r for p in body + lst for r in p.runs
-                 if r.text.strip() and run_font(r)[1] == "Consolas"]
-    # 正文里两种字体都是对的：普通文字宋体，**加粗** 那几段按口径走黑体。
-    # 逐 run 判「该粗的用黑体、不该粗的用宋体」，而不是一刀切要求全宋体。
-    bad_font, n_song, n_hei = [], 0, 0
+                 if r.text.strip() and run_font(r)[1] == FONT_CODE]
+    # 全部文字 run 走微软雅黑（加粗靠字重，不再混第二种中文字体），字色墨 #0E1B2B；
+    # 行内代码单独走 Consolas（9.5pt 左右、青绿深）。
+    bad_font, n_plain, n_bold = [], 0, 0
     for r in body_runs:
-        ea, _ = run_font(r)
-        want = "黑体" if r.font.bold else "宋体"
-        if ea == want:
-            n_hei += want == "黑体"
-            n_song += want == "宋体"
+        ea, _, color = run_font(r)
+        if ea != FONT_CN:
+            bad_font.append("%r(期望%s 实为%s)" % (r.text[:10], FONT_CN, ea))
+        elif color != C_INK:
+            bad_font.append("%r(字色 %s 期望 %s)" % (r.text[:10], color, C_INK))
         else:
-            bad_font.append("%r(期望%s 实为%s)" % (r.text[:12], want, ea))
-    sz_ok = all(r.font.size is not None and r.font.size.pt == 12.0
-                for r in body_runs + code_runs)
-    check("正文 %d 段 + 列表 %d 段：%d 个文字 run 字体正确（宋体 %d / 加粗黑体 %d，"
-          "另 %d 个行内代码 run）"
-          % (len(body), len(lst), len(body_runs), n_song, n_hei, len(code_runs)),
+            n_bold += 1 if r.font.bold else 0
+            n_plain += 0 if r.font.bold else 1
+    sz_ok = all(r.font.size is not None and abs(r.font.size.pt - BODY_PT) < 1e-6
+                for r in body_runs)
+    code_ok = all(r.font.size is not None and 8.0 <= r.font.size.pt <= BODY_PT
+                  for r in code_runs)
+    check("正文 %d 段 + 列表 %d 段：%d 个文字 run 字体/字色正确"
+          "（微软雅黑 %d / 加粗 %d，另 %d 个行内代码 run）"
+          % (len(body), len(lst), len(body_runs), n_plain, n_bold, len(code_runs)),
           not bad_font, "; ".join(bad_font[:4]))
-    check("正文 / 列表 run 字号 = 12pt", sz_ok)
+    check("正文 / 列表字号 = 10.5pt（行内代码 8~10.5pt）", sz_ok and code_ok)
     h_ok, h_detail = True, []
-    for lvl, want in (("Heading 1", 16.0), ("Heading 2", 14.0)):
-        # 标题里的行内 `代码` 也走黑体（生成侧已统一），所以标题 run 应当只有黑体
+    for lvl, want in (("Heading 1", H1_PT), ("Heading 2", H2_PT)):
         runs = [r for p in doc.paragraphs if p.style.name == lvl
                 for r in p.runs if r.text.strip()]
-        got_sz = {r.font.size.pt for r in runs if r.font.size}
+        got_sz = {round(r.font.size.pt, 2) for r in runs if r.font.size}
         got_cn = {run_font(r)[0] for r in runs}
         h_detail.append("%s: %s %s" % (lvl, sorted(got_cn), sorted(got_sz)))
-        if got_cn != {"黑体"} or got_sz != {want}:
+        if got_cn != {FONT_CN} or got_sz != {want} or not all(r.font.bold for r in runs):
             h_ok = False
-    check("标题全 run 中文 = 黑体，字号 16/14pt", h_ok, "; ".join(h_detail))
+    check("标题全 run 中文 = 微软雅黑、加粗，字号 16 / 13pt", h_ok, "; ".join(h_detail))
 
-    # 首行缩进：BodyCN 必须是 480 twips（2 字符）；ListCN 用悬挂缩进，不要求首行缩进
-    ind_bad = [p.text[:24] for p in body
-               if p.paragraph_format.first_line_indent is None
-               or p.paragraph_format.first_line_indent.twips != 480]
-    check("正文首行缩进 = 480 twips（2 字符）", not ind_bad,
+    # 首行缩进：BodyCN 必须是 420 twips（2 字符 @10.5pt）；ListCN 用悬挂缩进
+    ind_bad = [p.text[:24] for p in body if par_ind(p, "firstLine") != str(CHAR_TWIPS)]
+    check("正文首行缩进 = 420 twips（2 字符）", not ind_bad,
           "; ".join(ind_bad[:3]) if ind_bad else "%d 段全部合规" % len(body))
     jc_bad = [p.text[:20] for p in body + lst if p.paragraph_format.alignment != 3]
     check("正文 / 列表两端对齐", not jc_bad, "; ".join(jc_bad[:3]) if jc_bad else "")
     line_bad = [p.text[:20] for p in body + lst
                 if p.paragraph_format.line_spacing is None
-                or abs(p.paragraph_format.line_spacing - 1.5) > 1e-6]
-    check("正文 / 列表 1.5 倍行距", not line_bad,
+                or abs(p.paragraph_format.line_spacing - BODY_LINE) > 1e-6]
+    check("正文 / 列表行距 = 1.3 倍（微软雅黑视觉等效 1.5 倍）", not line_bad,
           "; ".join(line_bad[:3]) if line_bad else "")
     check("正文段 ≥ 30 且列表段 ≥ 20（样本量够）",
           len(body) >= 30 and len(lst) >= 20, "正文 %d / 列表 %d" % (len(body), len(lst)))
     hang_bad = [p.text[:20] for p in lst
-                if p.paragraph_format.left_indent is None
-                or p.paragraph_format.left_indent.twips != 480]
-    check("列表项悬挂缩进 480 twips", not hang_bad,
+                if par_ind(p, "left") != str(LIST_LEFT_TW)
+                or par_ind(p, "hanging") != str(LIST_HANG_TW)]
+    check("列表项左缩进 840 + 悬挂 420 twips", not hang_bad,
           "; ".join(hang_bad[:3]) if hang_bad else "")
+    marker_bad = []
+    for p in lst:
+        runs = [r for r in p.runs if r.text.strip()]
+        if not runs or run_font(runs[0])[2] != C_TEAL or not runs[0].font.bold:
+            marker_bad.append(p.text[:16])
+    check("列表标记 = 青绿加粗（• / 1.）", not marker_bad, "; ".join(marker_bad[:3]))
 
-    # ---- 5 行距 ----
+    # ---- 5 设计令牌（与答辩 PPT 同一套语言） ----
+    def style_pPr(name):
+        for st in doc.styles:
+            if st.name.lower() == name.lower():
+                return st.element.find(qn("w:pPr"))
+        return None
+
+    def edge(bdr, name):
+        return None if bdr is None else bdr.find(qn("w:" + name))
+
+    bdr1 = None
+    ppr1 = style_pPr("Heading 1")
+    if ppr1 is not None:
+        bdr1 = ppr1.find(qn("w:pBdr"))
+    left, bottom = edge(bdr1, "left"), edge(bdr1, "bottom")
+    check("一级标题：青绿左色块 #0D9488 + 下细线 #DCE3EA",
+          left is not None and left.get(qn("w:color")) == C_TEAL
+          and left.get(qn("w:sz")) == "32"
+          and bottom is not None and bottom.get(qn("w:color")) == C_LINE,
+          "left=%s bottom=%s" % (
+              None if left is None else left.get(qn("w:color")),
+              None if bottom is None else bottom.get(qn("w:color"))))
+
+    head_bad, border_bad = [], []
+    for i, t in enumerate(doc.tables, 1):
+        cells = list(t.rows[0].cells)
+        if not cells or not all(
+                c._tc.tcPr is not None
+                and c._tc.tcPr.find(qn("w:shd")) is not None
+                and c._tc.tcPr.find(qn("w:shd")).get(qn("w:fill")) == C_HEAD_FILL
+                for c in cells):
+            head_bad.append("表%d" % i)
+        tblb = t._tbl.tblPr.find(qn("w:tblBorders"))
+        top, bot, iv = edge(tblb, "top"), edge(tblb, "bottom"), edge(tblb, "insideV")
+        if not (top is not None and top.get(qn("w:sz")) == "12"
+                and top.get(qn("w:color")) == C_INK
+                and bot is not None and bot.get(qn("w:color")) == C_INK
+                and iv is not None and iv.get(qn("w:val")) == "none"):
+            border_bad.append("表%d" % i)
+    check("表头浅青灰底 #E6F4F2（%d 张表）" % n_tbl, not head_bad, "; ".join(head_bad))
+    check("三线表：上粗下细墨线、无竖线", not border_bad, "; ".join(border_bad))
+
+    caps = [p for p in doc.paragraphs if p.style.name == "CaptionCN" and p.text.strip()]
+    cap_bad = []
+    for p in caps:
+        runs = [r for r in p.runs if r.text.strip()]
+        if not runs:
+            continue
+        if not (runs[0].font.bold and run_font(runs[0])[2] == C_INK):
+            cap_bad.append("%s（编号未加粗 / 非墨色）" % p.text[:14])
+        elif any(run_font(r)[2] != C_GRAY for r in runs[1:]):
+            cap_bad.append("%s（说明未用灰字）" % p.text[:14])
+    check("图注：编号加粗墨色 + 说明灰字（%d 条）" % len(caps), not cap_bad,
+          "; ".join(cap_bad[:3]))
+
+    toc_bad = []
+    for name in ("TOC 1", "TOC 2"):
+        pPr = style_pPr(name)
+        sp_el = pPr.find(qn("w:spacing")) if pPr is not None else None
+        if (sp_el is None or sp_el.get(qn("w:line")) != "240"
+                or sp_el.get(qn("w:lineRule")) != "auto"):
+            toc_bad.append(name)
+    check("目录条目 TOC 1/2 单倍行距（压回一页的关键）", not toc_bad, ",".join(toc_bad))
+
+    # ---- 5b 行距：全篇不得有 fixed / exact（标题压字的成因） ----
     xml_all = "".join(zf.read(n).decode("utf-8", "replace") for n in zf.namelist()
                       if n.startswith("word/") and n.endswith(".xml"))
     bad = sorted(set(re.findall(r'w:lineRule="(exact|atLeast|fixed)"', xml_all)))
@@ -367,12 +494,24 @@ def main(argv=None) -> int:
     cover_ftr = "".join(p.text for p in doc.sections[0].footer.paragraphs).strip()
     check("封面无页眉页脚文字", cover_hdr == "" and cover_ftr == "",
           "hdr=%r ftr=%r" % (cover_hdr, cover_ftr))
-    body_hdr = "".join(p.text for p in doc.sections[2].header.paragraphs)
-    check("正文页眉 = 作品名短版", body_hdr.strip() == "龙瞳分拣 · 塑胶传动件在线质检分拣系统",
-          repr(body_hdr.strip()))
-    ftr3 = zf.read("word/footer3.xml").decode("utf-8")
-    check("页脚含 PAGE 与 NUMPAGES 域", "PAGE" in ftr3 and "NUMPAGES" in ftr3)
-    check("页脚文字 = 第 X 页 / 共 Y 页", "第 " in ftr3 and " 页 / 共 " in ftr3)
+    hdr_par = doc.sections[2].header.paragraphs[0]
+    body_hdr = hdr_par.text.strip()
+    check("正文页眉 = 作品名短版 + 右标签「作品报告」",
+          body_hdr.startswith(HEADER_TEXT) and body_hdr.endswith(HEADER_BODY),
+          repr(body_hdr))
+    toc_hdr = "".join(p.text for p in doc.sections[1].header.paragraphs).strip()
+    check("目录页眉 = 作品名短版 + 右标签「目录」",
+          toc_hdr.startswith(HEADER_TEXT) and toc_hdr.endswith(HEADER_TOC),
+          repr(toc_hdr))
+    hdr_runs = [r for r in hdr_par.runs if r.text.strip()]
+    check("页眉字号 = 8.5pt（小号浅灰）", all(
+        r.font.size is not None and abs(r.font.size.pt - SMALL_PT) < 1e-6
+        for r in hdr_runs), "字号 %s" % sorted({r.font.size.pt for r in hdr_runs
+                                                if r.font.size}))
+    footer_xml = "".join(zf.read(n).decode("utf-8") for n in zf.namelist()
+                         if re.match(r"word/footer\d*\.xml$", n))
+    check("页脚含 PAGE 与 NUMPAGES 域", "PAGE" in footer_xml and "NUMPAGES" in footer_xml)
+    check("页脚文字 = 第 X 页 / 共 Y 页", "第 " in footer_xml and " 页 / 共 " in footer_xml)
     pnum = doc.sections[2]._sectPr.find(qn("w:pgNumType"))
     check("正文页码从 1 起（pgNumType start=1）",
           pnum is not None and pnum.get(qn("w:start")) == "1")
@@ -423,7 +562,15 @@ def main(argv=None) -> int:
                                                         spans[j][1][:14]))
         check("PDF 无行框重叠（横向>5pt 且纵向>3pt）", not overlaps,
               "; ".join(overlaps[:6]) if overlaps else "0 处")
-        check("PDF 页数 ≥ 15", pdf.page_count >= 15, "%d 页" % pdf.page_count)
+        pdf_stats = {}
+        if PDF_STATS.is_file():
+            try:
+                pdf_stats = json.loads(PDF_STATS.read_text(encoding="utf-8"))
+            except ValueError:
+                pdf_stats = {}
+        check("PDF 页数 = _word_to_pdf.json 记录（≥ 15）",
+              pdf.page_count >= 15 and pdf.page_count == pdf_stats.get("Pages"),
+              "pdf %d 页 / json %s 页" % (pdf.page_count, pdf_stats.get("Pages")))
         check("PDF 页面尺寸 = A4", all(
             abs(p.rect.width - 595.28) < 1.5 and abs(p.rect.height - 841.89) < 1.5
             for p in pdf))
@@ -439,11 +586,12 @@ def main(argv=None) -> int:
                    for i, it in enumerate(imgs, 1) if it["dpi"] < MIN_IMG_DPI]
         dpi_txt = " ".join("%d" % round(it["dpi"]) for it in imgs)
         check("PDF 插图等效 dpi ≥ %.0f（%d 张）" % (MIN_IMG_DPI, len(imgs)),
-              not dpi_bad and len(imgs) == 5,
+              not dpi_bad and len(imgs) == n_img,
               ("低于阈值：" + "; ".join(dpi_bad)) if dpi_bad
               else "%s dpi（源图 3200px / 显示宽 %.2fcm）"
                    % (dpi_txt, imgs[0]["disp_cm"] if imgs else 0))
-        check("插图数量 = 源里 5 张（无图标混入）", len(imgs) == 5, "%d 张" % len(imgs))
+        check("PDF 插图数量 = 源里 ![](...) 数（无图标混入）",
+              len(imgs) == src_img == n_img, "%d 张" % len(imgs))
 
         # ---- 12 插图字号：落版 1:1 作图，图内字号就是纸面字号 ----
         # 教训（本版重画的起因）：旧插图按 16in（1152pt）画布作图、再缩到 15.8cm 落版，
@@ -486,6 +634,15 @@ def main(argv=None) -> int:
         else:
             thin_txt = "无正文页"
         check("无正文页被撑空（填充 ≥ %.0f%%）" % FILL_FAIL, not thin, thin_txt)
+
+        # 分页卫生：封面 / 目录各 1 页，全文没有整页空白（改版前出现过目录后空白页）
+        cover_rows = [r for r in fill_rows if r["role"] == "封面"]
+        toc_rows = [r for r in fill_rows if r["role"] == "目录"]
+        blank_rows = [r["page"] for r in fill_rows if r["fill"] < 8.0]
+        check("封面 1 页 / 目录 1 页 / 无整页空白页",
+              len(cover_rows) == 1 and len(toc_rows) == 1 and not blank_rows,
+              "封面 %d 页 / 目录 %d 页 / 空白页 %s"
+              % (len(cover_rows), len(toc_rows), blank_rows or "无"))
     except ImportError as exc:
         check("PyMuPDF 可用（PDF 逐页核对 / dpi / 留白）", False,
               "未安装 pymupdf 或 pdf_images_hires.py 导入失败：%s" % exc)

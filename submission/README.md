@@ -30,7 +30,8 @@
 #   需本机 Microsoft Word；高清化需一个带 PyMuPDF 的 Python（缺了会打印提示并非 0 退出）
 pwsh -File submission/build/build.ps1
 
-# 报告验收自检（49 项：产物、版式、禁项、页码、插图 dpi≥300、插图落版字号≥7pt、逐页留白）→ out/_verify_report.txt
+# 报告验收自检（58 项：产物、版式（封面/目录/三级标题/三线表/图注/页眉页脚）、禁项、页码、
+#   插图 dpi≥300、插图落版字号≥7.5pt、逐页留白）→ out/_verify_report.txt
 python submission/build/verify_report.py
 
 # 答辩 PPT + 兜底 PDF + 逐页预览（导出后自动做插图回填与页面版面度量）

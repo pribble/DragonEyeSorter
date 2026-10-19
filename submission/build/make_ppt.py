@@ -102,7 +102,7 @@ C_LINE = RGBColor(0xE1, 0xE8, 0xF0)        # 分隔线 / 卡片描边
 C_INK = RGBColor(0x0E, 0x1B, 0x2B)         # 标题 / 主要文字
 C_BODY = RGBColor(0x3F, 0x52, 0x66)        # 正文
 C_MUTED = RGBColor(0x5F, 0x72, 0x85)       # 次要 / 页脚
-C_FAINT = RGBColor(0x7C, 0x8B, 0x9D)       # 更弱的注释（仅页脚 / 图注，仍保证可读）
+C_FAINT = RGBColor(0x6B, 0x7A, 0x8B)       # 更弱的注释（页脚 / 图注，对比度 ≥4:1）
 C_TEAL = RGBColor(0x0D, 0x94, 0x88)        # 强调（青绿）
 C_TEAL_DEEP = RGBColor(0x0B, 0x6E, 0x69)
 C_TEAL_TINT = RGBColor(0xE7, 0xF3, 0xF1)   # 青绿浅底
@@ -237,15 +237,23 @@ def _style(run, *, size, color, bold=False, italic=False, mono=False,
 
 
 def _para_runs(p, runs, *, size, color, bold, mono=False, spc=None, font=None):
+    """把 runs 写进段落；run 文本里的 ``\\n`` 转成真正的行内换行（<a:br/>），
+    避免中文词被自动断行拆开。"""
     for spec in runs:
         if isinstance(spec, str):
             spec = {"t": spec}
-        run = p.add_run()
-        run.text = spec["t"]
-        _style(run, size=spec.get("size", size), color=spec.get("color", color),
-               bold=spec.get("bold", bold), italic=spec.get("italic", False),
-               mono=spec.get("mono", mono), spc=spec.get("spc", spc),
-               font=spec.get("font", font))
+        parts = str(spec["t"]).split("\n")
+        for i, part in enumerate(parts):
+            if i:
+                p.add_line_break()
+            if not part:
+                continue
+            run = p.add_run()
+            run.text = part
+            _style(run, size=spec.get("size", size), color=spec.get("color", color),
+                   bold=spec.get("bold", bold), italic=spec.get("italic", False),
+                   mono=spec.get("mono", mono), spc=spec.get("spc", spc),
+                   font=spec.get("font", font))
 
 
 def _add_paras(slide, x, y, w, h, paras, *, anchor=MSO_ANCHOR.TOP,
@@ -611,7 +619,7 @@ def slide_specs():
             layers=[
                 ("PL · 硬实时", "脉冲、总线帧、IO 采样逐比特确定；帧头与校验由 PL 现算",
                  "6 轴 SYNC 3298.9µs · 首脉冲 10.6µs"),
-                ("PS · Linux", "定位 / 测量 / 跟踪 / 调度 / 界面与存储，实时线程分离",
+                ("PS · Linux", "定位 / 测量 / 跟踪 / 调度 / 界面与存储，\n实时线程分离",
                  "显示 60fps · 定位 5.9ms/帧 · 读 PL 188ns"),
                 ("NPU · 512 MAC", "硬核卷积 + 软核算子；ArmNN / Alnpu 部署 UINT8 模型",
                  "单次 7.8ms · 合成集 96.25%（实物待测）"),
@@ -774,7 +782,7 @@ def slide_specs():
             kind="ai",
             kicker="10 · AI 与 NPU",
             title="为板端 NPU 改造模型：ReLU 换掉 SiLU，7.8ms 一次",
-            steps=[("01", "合成数据", "480 张裁切图（4 类）"),
+            steps=[("01", "合成数据", "480 张裁切图（8 类）"),
                    ("02", "训练", "YOLOv8n-cls · 224×224"),
                    ("03", "量化", "UINT8 QDQ · per-tensor"),
                    ("04", "部署", "ArmNN + Alnpu 后端")],
@@ -788,7 +796,7 @@ def slide_specs():
             whys=[("为什么 ROI 分类", "整帧缩到 416 后约 0.95mm/像素；按件裁 224×224 后 0.25mm/像素，"
                                      "小缺陷约 4 倍像素，计算量约 1/7"),
                   ("为什么 per-tensor", "per-channel 在 PC 上更准，但板上 NPU 推理中止，只能 per-tensor"),
-                  ("为什么去 Softmax", "Softmax 放 PS 做；导出强制形状推断，否则 ArmNN 解析器段错误")],
+                  ("为什么去 Softmax", "Softmax 放 PS 做；导出强制形状推断，\n否则 ArmNN 解析器段错误")],
             warn="⚠ 96.25% 是合成集口径，不代表实物；实物验证集准确率待测",
             notes=[
                 "硬性④：模型、量化、部署三段都要说清，重点是「为什么这么改」。",
@@ -809,11 +817,11 @@ def slide_specs():
                   dict(label="显示链路", value="13.0~13.9", unit="ms", note="每帧（run 模式实测）"),
                   dict(label="定位耗时", value="5.9", unit="ms", note="每帧，2h 统计平均"),
                   dict(label="存储", value="43", unit="列 CSV", note="不良件另存裁切图")],
-            items=[("不用 Qt", "板上 Qt 只有独立镜像形式，会与视频链路抢资源；改 OpenCV 自绘 + FreeType",
+            items=[("不用 Qt", "板上 Qt 只有独立镜像形式，会与视频链路抢资源；\n改 OpenCV 自绘 + FreeType",
                     "5 页：总览 / 曲线 / 参数 / 记录 / 机械臂"),
                    ("写盘不阻塞", "后台线程写 CSV / 图片，工作线程不等 SD 卡",
                     "43 列 CSV + 不良件裁切图，按日期分目录"),
-                   ("可追溯", "测量值、带坐标与姿态、PL 粗测、NPU 投票与耗时全记录",
+                   ("可追溯", "测量值、带坐标与姿态、NPU 投票与耗时全记录",
                     "时间 = 本机时钟 + PLC 对时偏移")],
             takeaway="界面与存储都在 PS，仍保住 60fps 视频链路",
             notes=[
@@ -865,7 +873,7 @@ def slide_specs():
                  [("NPU 单次", "7.8ms"), ("合成集准确率", "96.25%"), ("实物准确率", "待测 ⚠")],
                  "224×224 UINT8；p95 7.84ms"),
                 ("总线稳定性",
-                 [("CAN 往返", "356µs"), ("Modbus 往返", "1.04ms"), ("实物测量误差", "待测 ⚠")],
+                 [("CAN 往返", "356µs"), ("Modbus 往返", "1.04ms"), ("实物收发", "待测 ⚠")],
                  "板上回环；最大 429µs"),
             ],
             note="⚠ 待测项（答辩主动说明）：实物分类准确率 / 对卡尺测量误差 / 多舵机同步误差 / "
@@ -889,7 +897,7 @@ def slide_specs():
                     "最后 50 分钟不增长；显示平均 9.29ms，无崩溃")],
             safety=[("急停双路", "常闭切动力电源；常开报 PL 锁存，软件进急停并 CAN 报警"),
                     ("1ms 去抖", "急停按下保持 1ms 才算，锁存后直接停住步进，需人工复位"),
-                    ("20µs 捕获", "对射 / 限位去抖 20µs；挡光边沿锁存时间、带位置与编码器"),
+                    ("20µs 捕获", "对射 / 限位去抖 20µs；挡光边沿\n锁存时间、带位置与编码器"),
                     ("失效安全", "漏检 / 跟丢 / 挡板故障 → 复检箱，不良品不会被放行")],
             takeaway="安全分两条：切断动力（硬件）与上报锁存（软件），互不依赖",
             warn="⚠ 该次 2h 是无零件软件浸泡；接实物 2h 与舵机总线长时间丢帧率待测",
@@ -1432,9 +1440,9 @@ def build_metrics(prs, spec, page_no, total):
                        CONTENT_W, row_h, fill=C_CARD, line=None)
     y = y0
     for i, (cat, metrics, cond) in enumerate(spec["rows"]):
-        _add_text(slide, x_cat, y + 0.20, col_cat - 0.2, 0.28, cat,
+        _add_text(slide, x_cat, y + 0.30, col_cat - 0.2, 0.28, cat,
                   size=15, color=C_INK, bold=True)
-        _add_shape(slide, MSO_SHAPE.RECTANGLE, x_cat, y + 0.58, 1.05, 0.032,
+        _add_shape(slide, MSO_SHAPE.RECTANGLE, x_cat, y + 0.68, 1.05, 0.032,
                    fill=C_TEAL)
         # 指标：名字 + 数值混排
         runs = []
@@ -1445,9 +1453,9 @@ def build_metrics(prs, spec, page_no, total):
             runs.append({"t": label + " ", "size": 12, "color": C_BODY})
             runs.append({"t": value, "size": 17, "bold": True,
                          "color": C_AMBER if pending else C_INK})
-        _add_text_shapes(slide, x_main, y + 0.22, col_main - 0.2, 0.62, runs,
+        _add_text_shapes(slide, x_main, y + 0.32, col_main - 0.2, 0.62, runs,
                          size=12, anchor=MSO_ANCHOR.TOP)
-        _add_text(slide, x_cond, y + 0.26, col_cond - 0.1, 0.56, cond,
+        _add_text(slide, x_cond, y + 0.36, col_cond - 0.1, 0.56, cond,
                   size=10, color=C_MUTED, line_spacing=1.0)
         y += row_h
     for i in range(len(spec["rows"]) + 1):

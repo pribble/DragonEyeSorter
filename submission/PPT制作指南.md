@@ -154,7 +154,7 @@ pwsh -File submission/build/export_ppt_preview.ps1
 
 - 正文与标题只用墨色系（`C_INK` / `C_BODY`）：对浅画布对比度约 7.5:1 ~ 17:1，远超 WCAG AA 的 4.5:1。
 - 青绿 `C_TEAL` 只做编号、短强调、色条与符号：对白底约 3.7:1，不够长正文；青绿浅底上的文字用 `C_TEAL_DEEP`（约 4.9:1）。
-- `C_MUTED` / `C_FAINT` 只做页脚、图注、来源行等辅助信息（对白底约 5.3:1 / 4.0:1），**不承载结论**；两者都比旧版更深，避免投影上「像禁用态」。
+- `C_MUTED` / `C_FAINT` 只做页脚、图注、来源行等辅助信息（对白底约 5.3:1 / 4.0:1），**不承载结论**；对比度要够，避免投影上「像禁用态」。
 - 警示只用琥珀（`C_AMBER` + `C_AMBER_TINT`），并固定搭配「待测 ⚠」文案；不用大红色（投影上易糊，语义也过强）。
 - 深色块按需少用（一页至多一处深色面板），避免投影时明暗反复适应。
 - 颜色全从 `C_*` 令牌取，不在 builder 里写死 hex；改配色只改令牌一处。
@@ -194,6 +194,7 @@ pwsh -File submission/build/export_ppt_preview.ps1
 | 项 | 规范 |
 |---|---|
 | 图源 | `docs/figures/*.png`，由 `python docs/figures/make_figures.py` 生成，不手工画；SVG 版仅作矢量备份 |
+| 版式语言 | 与 PPT 同一套浅色编辑风：浅灰分组面板（小标题 + 细线）、卡片白底 + 2pt 强调色条、中性灰细箭头；不用高饱和整块填充与粗虚线框；图内不画大标题（标题由页标题 / 图注承担），详见 [figures/README](../docs/figures/README.md) |
 | 本版用图 | 第 4 页 `fig_architecture.png`、第 5 页 `fig_timebase.png`、第 6 页 `fig_pl_regs.png`（重点框 `modules`）、第 8 页 `fig_pick_sequence.png`、第 9 页 `fig_layout.png` |
 | 嵌入方式 | **整图按源图原生像素嵌入**，等比缩放、居中，白底图加 `C_LINE` 细边框；不做局部放大、不做像素裁切 |
 | 清晰度 | 源图宽 3200px：左图右文页放在 7.40 in 宽 ≈ **432 dpi**；全幅页实际放置 10.27~10.38 in 宽 ≈ **308~312 dpi**；全篇门禁 **≥300 dpi** |
