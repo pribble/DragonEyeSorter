@@ -25,8 +25,9 @@ Homography shifted(const Homography &H, double ox, double oy)
 
 }  // namespace
 
-TrackMeasurer::TrackMeasurer(const TrackMeasureConfig &cfg, const Homography &px_to_table)
-    : cfg_(cfg), h_(px_to_table), hinv_(px_to_table.inverse())
+TrackMeasurer::TrackMeasurer(const TrackMeasureConfig &cfg, const Homography &px_to_table,
+                             const Homography &px_to_part)
+    : cfg_(cfg), h_(px_to_table), hp_(px_to_part), hpinv_(px_to_part.inverse())
 {
 }
 
@@ -51,7 +52,7 @@ std::vector<MeasureResult> TrackMeasurer::measure(const Tracker &tr, const uint8
         if (t.meas.count > 0 && !(d < cfg_.improve * t.meas.axis_dist - 1.f)) continue;
         float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
         for (const Vec2 &v : t.footprint(belt_mm, cfg_.margin_mm).corners()) {
-            Vec2 p = hinv_.map(v);
+            Vec2 p = hpinv_.map(v);
             x0 = std::min(x0, p.x); x1 = std::max(x1, p.x);
             y0 = std::min(y0, p.y); y1 = std::max(y1, p.y);
         }
@@ -113,7 +114,7 @@ std::vector<MeasureResult> TrackMeasurer::measure(const Tracker &tr, const uint8
             CropSpec cs;
             cs.side_mm = cfg_.crop_side_mm;
             cs.out_px = cfg_.crop_px;
-            res.crop = crop_part(src, h_, center, axis, cs);
+            res.crop = crop_part(src, hp_, center, axis, cs);   // centre = where the part stands
             const PartColor pc = part_color(res.crop);   // ~0.5 ms on the A35
             pm.hue = pc.hue;
             pm.sat = pc.sat;

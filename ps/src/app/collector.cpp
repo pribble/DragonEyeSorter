@@ -12,7 +12,7 @@
 namespace des {
 
 Collector::Collector(const CollectOptions &opt, const AppConfig &cfg)
-    : opt_(opt), cfg_(cfg), hinv_(cfg.px_to_table.inverse())
+    : opt_(opt), cfg_(cfg), hinv_(cfg.px_to_part.inverse())
 {
     // 相对的输出目录按 des_app.json 所在目录解析（与 storage.dir / label_list 同规矩）：
     // 生产配置 → /root/des/data/collect；测试目录部署的副本 → 写自己的，不混进生产数据
@@ -56,7 +56,7 @@ void Collector::prepare(const Tracker &tr, const uint8_t *bgra, int w, int h, in
         }
         if (!inside) continue;
         Pending p;
-        p.img = crop_part(src, cfg_.px_to_table, {t.x_at(belt_mm), t.y}, t.axis, spec_);
+        p.img = crop_part(src, cfg_.px_to_part, {t.x_at(belt_mm), t.y}, t.axis, spec_);
         p.path = class_dir_ + "/" + session_ + "_" + std::to_string(t.id) + "_" + std::to_string(c.saved) + ".jpg";
         pending_.push_back(std::move(p));
         pending_tracks_.push_back({t.id, c.saved});

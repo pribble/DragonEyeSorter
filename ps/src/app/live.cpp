@@ -187,7 +187,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
 
     Locator loc(cfg.locate);
     Tracker tr(cfg.tracker);
-    TrackMeasurer meas(cfg.measure, cfg.px_to_table);
+    TrackMeasurer meas(cfg.measure, cfg.px_to_table, cfg.px_to_part);
     PartLog plog;
     {
         std::string e = plog.open(cfg.storage);
@@ -248,7 +248,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
     int roi_track = -1;
     uint32_t roi_seq = 0;
     const bool pl_vision = hw.version >= DES_VERSION_VISION;
-    const Homography hinv = cfg.px_to_table.inverse();
+    const Homography hinv = cfg.px_to_part.inverse();   // track positions -> image (PL ROI)
     apply_params(hmi.params());
     cv::Mat hmi_panel;
     double last_hmi = 0, prev_work_ms = 0;
@@ -280,7 +280,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
         const double b0 = f.step_pos * mmps, b1 = f.step_pos_end * mmps;
         obs.belt_mm = 0.5 * (b0 + b1);
         LocateTiming tm;
-        obs.dets = loc.run(f.bgra, f.width, f.height, f.stride, cfg.px_to_table, &tm);
+        obs.dets = loc.run(f.bgra, f.width, f.height, f.stride, cfg.px_to_part, &tm);   // where parts stand
         // the DMA rewrites a buffer buffers-1 frames after it was handed out: drop results read from a reused one
         if (sh.cap_seq.load() - seq >= max_age) {
             stale++;
@@ -648,7 +648,7 @@ int run_live(des_hw_t &hw, const AppConfig &cfg, CameraRig &cam, const LiveOptio
         fprintf(stderr, "hdmi: %s\n", err.c_str());
         return 1;
     }
-    const Homography hinv = cfg.px_to_table.inverse();
+    const Homography hinv = cfg.px_to_part.inverse();   // overlay of track positions
     const double mmps = cfg.belt.mm_per_step * cfg.belt.dir;
     if (opt.belt_mm_s != 0 && !opt.run) {
         des_step_vel(&hw, opt.belt_mm_s / cfg.belt.mm_per_step * cfg.belt.dir, cfg.belt.accel / cfg.belt.mm_per_step);

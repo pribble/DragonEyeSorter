@@ -72,7 +72,9 @@ struct PlcConfig {
 struct AppConfig {
     CameraConfig camera;
     LocateConfig locate;
-    Homography px_to_table;      // image px -> table mm ⚠ calibrate (des_tool calib-cam)
+    Homography px_to_table;      // image px -> table mm on the belt plane ⚠ calibrate (des_tool calib-cam)
+    Homography px_to_part;       // image px -> where a part stands (parallax of its height; = px_to_table while
+                                 // measure.camera_h_mm = 0): locate / track / pick / overlay / crops (load_config)
     BeltConfig belt;
     TrackerConfig tracker;
     PickerConfig picker;

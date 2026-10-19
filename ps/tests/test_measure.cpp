@@ -386,7 +386,7 @@ int main()
             tr.update(o);
         }
         TrackMeasureConfig mc;   // axis from the image center = AXIS here
-        TrackMeasurer tm(mc, h);
+        TrackMeasurer tm(mc, h, h);   // camera_h_mm 0: parts stand where the belt plane says
         int calls = 0, results = 0;
         for (; calls < 4; calls++) {
             auto res = tm.measure(tr, bgra.data, bgra.cols, bgra.rows, int(bgra.step), 0.0, 0.0, 10 + calls);

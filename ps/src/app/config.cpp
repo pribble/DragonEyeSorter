@@ -322,6 +322,11 @@ std::string load_config(const std::string &path, AppConfig &cfg)
         r->apply(cfg.tracker.size);
     }
 
+    {   // parts stand gear_h_mm above the belt (measure_config.hpp part_homography); frames are 1920x1080
+        const MeasureConfig &m = cfg.measure.m;
+        const Vec2 axis = cfg.measure.axis_from_image ? cfg.px_to_table.map({960.f, 540.f}) : m.axis_table;
+        cfg.px_to_part = part_homography(cfg.px_to_table, m, axis);
+    }
     if (cfg.pick_after_fov > 0) cfg.picker.pick_x = cfg.tracker.fov_x1 + cfg.pick_after_fov;   // after calib.json
     cfg.picker.tail_x = cfg.tracker.tail_x;
     cfg.picker.recheck_outlet = 0;

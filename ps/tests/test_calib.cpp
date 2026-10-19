@@ -12,6 +12,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include "calib.hpp"
+#include "measure_config.hpp"
 
 using namespace des;
 
@@ -247,6 +248,27 @@ int main(int argc, char **argv)
         std::string t((std::istreambuf_iterator<char>(g)), std::istreambuf_iterator<char>());
         CHECK(t.find("\"mm_per_count\"") != std::string::npos && t.find("\"mm_per_step\"") != std::string::npos,
               "calib.json keeps the encoder section across calib-cam");
+    }
+    {   // part_homography: a part centre P seen through the belt-plane calibration lands outward from the axis O;
+        // px_to_part must bring the seen pixel back to P (top face only, and top face + bright walls)
+        const Homography &pt = r0.px_to_table;
+        const Homography inv = pt.inverse();
+        const Vec2 O = pt.map({960, 540}), P = O + Vec2{150, 40};
+        MeasureConfig m;
+        m.camera_h_mm = 280;
+        m.gear_h_mm = 11;
+        const double H = 280, h = 11;
+        for (int walls = 0; walls < 2; walls++) {
+            m.walls_visible = walls;
+            const double k = walls ? (2 * H - h) / (2 * (H - h)) : H / (H - h);
+            const Vec2 seen_px = inv.map(O + (P - O) * float(k));
+            const Vec2 back = part_homography(pt, m, O).map(seen_px);
+            CHECK(norm(back - P) < 0.01f && norm(pt.map(seen_px) - P) > 3,
+                  "parallax walls %d: back to (%.3f, %.3f), belt plane says %.2f mm off", walls, back.x, back.y,
+                  norm(pt.map(seen_px) - P));
+        }
+        m.camera_h_mm = 0;   // not measured yet: no correction
+        CHECK(norm(part_homography(pt, m, O).map({300, 200}) - pt.map({300, 200})) < 1e-4f, "camera_h 0: identity");
     }
     printf("%d passed, %d failed\n", g_pass, g_fail);
     return g_fail;

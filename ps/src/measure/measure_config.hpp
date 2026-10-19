@@ -25,6 +25,27 @@ struct MeasureConfig {
     float row0 = 0;              // in the coordinates of the image passed to measure_*()
 };
 
+// Parallax of the part position. The belt-plane calibration (px_to_table) puts a point h above the belt outward from
+// O (where the optical axis meets the belt) by k = H / (H - h). Locating, tracking and picking want where the part
+// stands on the belt, so they use px_to_part = (scale by 1/k about O) o px_to_table - still a homography, so every
+// image <-> table mapping of part positions (overlay, ROIs, crops) stays a plain map / inverse. The blob is the top
+// face (walls dark: k = H / (H - h)) or the top face swept down to the belt by bright walls (blob centre halfway
+// between the two: k = (2H - h) / (2(H - h))). The geometric measurement keeps px_to_table: it corrects each edge
+// point itself. camera_h_mm = 0 (not measured yet): no correction.
+inline Homography part_homography(const Homography &px_to_table, const MeasureConfig &m, Vec2 axis)
+{
+    const double H = m.camera_h_mm, h = m.gear_h_mm;
+    if (H <= 0 || h <= 0 || h >= H) return px_to_table;
+    const double f = m.walls_visible ? 2 * (H - h) / (2 * H - h) : (H - h) / H;   // 1 / k
+    const double S[9] = {f, 0, axis.x * (1 - f), 0, f, axis.y * (1 - f), 0, 0, 1};
+    Homography r;
+    for (int i = 0; i < 3; i++)
+        for (int j = 0; j < 3; j++)
+            r.h[3 * i + j] = S[3 * i] * px_to_table.h[j] + S[3 * i + 1] * px_to_table.h[3 + j] +
+                             S[3 * i + 2] * px_to_table.h[6 + j];
+    return r;
+}
+
 // Part colour classes (roi_crop part_color / classify_color): first match wins; hue in degrees (hue_lo > hue_hi wraps
 // through 0, e.g. red 340..10), sat = mean saturation of the part pixels on OpenCV's 0..255 scale. White / natural
 // parts have a low saturation whatever their hue. ⚠ thresholds from real parts under the final light

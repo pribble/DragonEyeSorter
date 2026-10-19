@@ -25,7 +25,9 @@ struct MeasureResult {
 
 class TrackMeasurer {
 public:
-    TrackMeasurer(const TrackMeasureConfig &cfg, const Homography &px_to_table);
+    // px_to_table: belt plane (the measurement corrects each edge point for the part height itself);
+    // px_to_part: where parts stand (config.hpp; track positions -> ROIs and crops)
+    TrackMeasurer(const TrackMeasureConfig &cfg, const Homography &px_to_table, const Homography &px_to_part);
 
     // bgra: the frame (4 bytes / px); belt_mm: belt travel at mid-exposure (the tracker's frame position);
     // belt_span_mm: belt travel during the frame readout (rolling shutter).
@@ -40,7 +42,7 @@ public:
 
 private:
     TrackMeasureConfig cfg_;
-    Homography h_, hinv_;
+    Homography h_, hp_, hpinv_;   // belt plane; part positions and their inverse
 };
 
 }  // namespace des
