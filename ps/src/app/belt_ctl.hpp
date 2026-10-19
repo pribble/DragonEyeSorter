@@ -23,6 +23,9 @@ public:
     void enable(bool on);
     void apply(const BeltPlan &plan);   // once per control cycle
     void set_speed(double mm_s);        // cruise speed used from the next move / retarget (CAN / UI)
+    // manual jog while the line is stopped (HMI): +1 = forward (parts toward the arm), -1 = reverse, at the cruise
+    // speed; 0 = ramp down. A change of direction ramps down first and starts on a later call. Call every cycle.
+    void jog(int dir);
 
     double belt_mm() const;
     double speed_mm_s() const;
@@ -45,6 +48,7 @@ private:
     double sps_, acc_;          // cruise steps/s, steps/s^2
     BeltPlan::Kind last_kind_ = BeltPlan::Hold;
     int32_t last_target_ = 0;
+    int jog_dir_ = 0;           // direction of the running jog move, 0 = none
 };
 
 }  // namespace des

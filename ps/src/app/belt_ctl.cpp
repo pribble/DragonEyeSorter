@@ -51,8 +51,26 @@ void BeltDriver::move_to(int32_t target)
     last_target_ = target;
 }
 
+void BeltDriver::jog(int dir)
+{
+    const int32_t pos = des_step_pos(hw_);
+    const bool moving = !stopped();
+    if (dir == 0 || (moving && dir != jog_dir_)) {   // stop, or still running the other way: ramp down first
+        if (moving) des_step_stop(hw_);
+        jog_dir_ = 0;
+    } else if (!moving) {
+        move_to(pos + dir * sign_ * kFar);
+        jog_dir_ = dir;
+    } else if (int64_t(last_target_ - pos) * dir * sign_ < kReextend) {
+        last_target_ = pos + dir * sign_ * kFar;
+        des_step_set_target(hw_, last_target_);
+    }
+    last_kind_ = BeltPlan::Hold;   // the next Run plan (re)targets from scratch
+}
+
 void BeltDriver::apply(const BeltPlan &plan)
 {
+    jog_dir_ = 0;
     const int32_t pos = des_step_pos(hw_);
     const bool moving = !stopped();
     switch (plan.kind) {

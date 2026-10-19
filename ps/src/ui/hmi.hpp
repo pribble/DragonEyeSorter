@@ -44,13 +44,14 @@ struct HmiStatus {            // from the worker, every cycle
     bool npu = false, clock_synced = false;
     bool pl_vision = false;   // bitstream has des_vision (v6)
     int inputs = 0, tracks = 0;
+    int jog = 0;              // manual belt jog: +1 forward, -1 reverse, 0 off
     uint64_t logged = 0, log_images = 0;
     ArmManualView arm;        // manual arm page
 };
 
 struct HmiAction {
-    enum Kind { Params, Command, Recipe, Arm } kind = Params;
-    int cmd = 0;              // CANP_CMD_* for Command, recipe id for Recipe (the worker applies the run rules first)
+    enum Kind { Params, Command, Recipe, Arm, Jog } kind = Params;
+    int cmd = 0;              // CANP_CMD_* for Command, recipe id for Recipe, +1 / -1 / 0 for Jog (the worker applies the run rules first)
     ArmRequest arm;           // Arm: request for the manual arm thread
 };
 

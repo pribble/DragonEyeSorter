@@ -43,6 +43,10 @@ public:
     // operator / PLC commands (same rules for both; worker thread). Return a CANP_ACK_* result.
     uint8_t command(uint8_t cmd, const char *who);
     uint8_t set_speed(double mm_s, const char *who);
+    // manual belt jog (HMI): +1 forward, -1 reverse, 0 stop; only while the line is stopped (IDLE) and the e-stop is
+    // not latched. START, STOP or an e-stop cancel it.
+    uint8_t jog(int dir, const char *who);
+    int jog_dir() const { return jog_dir_; }
     // recipe changeover: id must be in cfg.recipes and the line not running (stop first). The worker picks the
     // accepted id up with take_recipe() and applies it (tracker size rule + HMI).
     uint8_t select_recipe(int id, const char *who);
@@ -82,6 +86,7 @@ private:
     std::set<int> reported_;     // track ids already sent as PART
     std::string last_event_;
     double speed_mm_s_ = 0;      // last set belt speed (0 = config run_speed)
+    int jog_dir_ = 0;            // manual belt jog (IDLE only)
     int pending_recipe_ = -1;    // accepted by select_recipe, not yet applied by the worker
     std::unique_ptr<ModbusTcp> mb_;  // Modbus-TCP slave (cfg.plc.modbus_port > 0)
     uint64_t mb_requests_ = 0;

@@ -121,7 +121,10 @@ uint8_t Runner::command(uint8_t cmd, const char *who)
         if (st == CANP_ST_IDLE || st == CANP_ST_PAUSED) set_state(CANP_ST_RUN, (why + "start").c_str());
         else if (st != CANP_ST_RUN) return CANP_ACK_REJECTED;
         return CANP_ACK_OK;
-    case CANP_CMD_STOP: set_state(CANP_ST_IDLE, (why + "stop").c_str()); return CANP_ACK_OK;
+    case CANP_CMD_STOP:
+        jog_dir_ = 0;
+        set_state(CANP_ST_IDLE, (why + "stop").c_str());
+        return CANP_ACK_OK;
     case CANP_CMD_PAUSE:
         if (st == CANP_ST_RUN) set_state(CANP_ST_PAUSED, (why + "interlock pause").c_str());
         else if (st != CANP_ST_PAUSED) return CANP_ACK_REJECTED;
@@ -148,6 +151,19 @@ uint8_t Runner::set_speed(double mm_s, const char *who)
     char e[64];
     snprintf(e, sizeof e, "%s speed %.1f mm/s", who, mm_s);
     last_event_ = e;
+    return CANP_ACK_OK;
+}
+
+uint8_t Runner::jog(int dir, const char *who)
+{
+    if (dir == 0) {
+        jog_dir_ = 0;
+        return CANP_ACK_OK;
+    }
+    if (state_ != CANP_ST_IDLE) return CANP_ACK_REJECTED;   // running / paused / e-stop: no manual moves
+    if (hw_->version >= DES_VERSION_IO && des_estop_latched(hw_) == 1) return CANP_ACK_REJECTED;
+    jog_dir_ = dir > 0 ? 1 : -1;
+    last_event_ = std::string(who) + (jog_dir_ > 0 ? " belt jog forward" : " belt jog reverse");
     return CANP_ACK_OK;
 }
 
@@ -312,6 +328,7 @@ void Runner::cycle(Tracker &tr, Picker &pk)
     }
 
     if (state_ == CANP_ST_RUN) {
+        jog_dir_ = 0;
         Picker::Input in;
         in.belt_mm = belt_.belt_mm();
         in.brake_mm = belt_.brake_mm();
@@ -357,7 +374,10 @@ void Runner::cycle(Tracker &tr, Picker &pk)
             arm_clear_ = false;
             cv_.notify_one();
         }
+    } else if (state_ == CANP_ST_IDLE && jog_dir_ != 0) {
+        belt_.jog(jog_dir_);   // manual jog from the HMI (Runner::jog)
     } else {
+        if (state_ != CANP_ST_IDLE) jog_dir_ = 0;
         BeltPlan hold;   // not running: ramp the belt down if it moves; a pick in progress finishes on its own
         hold.kind = BeltPlan::Hold;
         belt_.apply(hold);

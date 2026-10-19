@@ -423,6 +423,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
             hs.clock_synced = wall_synced();
             hs.inputs = input ? input->devices() : 0;
             hs.tracks = int(tr.tracks().size());
+            hs.jog = runner ? runner->jog_dir() : 0;
             hs.logged = plog.written;
             hs.log_images = plog.images;
             {   // manual arm commands only while the line is not running and no pick is being executed
@@ -440,6 +441,8 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
                     else if (a.kind == HmiAction::Recipe) {
                         if (runner) runner->select_recipe(a.cmd, "HMI");   // applied below, same path as the PLC's
                         else if (hmi.set_recipe(a.cmd)) apply_params(hmi.params());
+                    } else if (a.kind == HmiAction::Jog) {
+                        if (runner) runner->jog(a.cmd, "HMI");
                     } else if (runner) runner->command(uint8_t(a.cmd), "HMI");
                 }
             {   // ready pose re-taught on the arm page: the production picks use it from the next one

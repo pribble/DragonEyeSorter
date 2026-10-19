@@ -17,7 +17,7 @@ namespace des {
 namespace {
 
 enum { A_TAB = 1, A_DEC, A_INC, A_TOGGLE, A_IMAGES, A_CMD, A_SELECT, A_PLMODE, A_PLTHR, A_RECIPE, A_ARM_LOCK,
-       A_ARM_TORQUE, A_ARM_JOG, A_ARM_STEP, A_ARM_MS, A_ARM_TEACH, A_ARM_SETHOME, A_ARM_RESET };
+       A_ARM_TORQUE, A_ARM_JOG, A_ARM_STEP, A_ARM_MS, A_ARM_TEACH, A_ARM_SETHOME, A_ARM_RESET, A_BELT_JOG };
 
 const cv::Scalar BG(34, 31, 29), PANEL(52, 48, 45), LINE(80, 76, 72), WHITE(235, 235, 235), DIM(150, 150, 150),
     GREEN(90, 200, 90), RED(80, 80, 235), ORANGE(40, 165, 255), CYAN(220, 200, 70), YELLOW(70, 215, 235),
@@ -208,6 +208,7 @@ std::vector<HmiAction> Hmi::handle(const std::vector<UiEvent> &ev)
             case A_TAB: page_ = h.arg; break;
             case A_SELECT: selected_ = h.arg; break;
             case A_CMD: out.push_back({HmiAction::Command, h.arg, {}}); break;
+            case A_BELT_JOG: out.push_back({HmiAction::Jog, h.arg, {}}); break;
             case A_ARM_STEP: arm_step_ = h.arg; break;
             case A_ARM_MS: arm_ms_ = h.arg; break;
             case A_ARM_LOCK:
@@ -489,9 +490,17 @@ void Hmi::page_params(cv::Mat &img)
              {"复位报警", CANP_CMD_RESET_ALARM}};
     for (int k = 0; k < 5; k++)
         button(img, {x0 + (k % 3) * 160, 42 + (k / 3) * 66, 148, 56}, b[k].t, false, run ? A_CMD : 0, b[k].cmd, 24);
+    // 6th cell: manual belt jog, only while the line is stopped; click the lit button again (or 停止) to stop
+    const bool can_jog = run && st_.run_state == CANP_ST_IDLE;
+    button(img, {x0 + 320, 108, 72, 56}, "正转", st_.jog > 0, can_jog ? A_BELT_JOG : 0, st_.jog > 0 ? 0 : 1, 22);
+    button(img, {x0 + 396, 108, 72, 56}, "反转", st_.jog < 0, can_jog ? A_BELT_JOG : 0, st_.jog < 0 ? 0 : -1, 22);
     cv::rectangle(img, {x0, 182, 470, 34}, state_color(st_.run_state), cv::FILLED);
-    text(img, std::string("状态 ") + state_name(st_.run_state) + fmt("    带速 %.1f mm/s", st_.belt_mm_s), x0 + 10, 187,
-         20, WHITE);
+    if (st_.run_state == CANP_ST_ESTOP)
+        text(img, "急停：先旋开急停按钮，再点复位报警、启动", x0 + 10, 189, 18, WHITE);
+    else
+        text(img, std::string("状态 ") + state_name(st_.run_state) +
+                      (st_.jog > 0 ? "（正转点动）" : st_.jog < 0 ? "（反转点动）" : "") + fmt("  带速 %.1f mm/s", st_.belt_mm_s),
+             x0 + 10, 187, 20, WHITE);
     // PL image path (des_vision): what the camera stream shows, binary threshold
     text(img, "PL 显示", x0, 232, 20, WHITE);
     button(img, {x0 + 90, 226, 200, 34}, st_.pl_vision ? kPlModes[p_.pl_mode] : "比特流无此功能", p_.pl_mode != 0,
