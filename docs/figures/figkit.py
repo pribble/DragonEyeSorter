@@ -42,6 +42,7 @@ plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'Noto Sans CJK SC', 'WenQu
                                    'SimHei', 'DejaVu Sans']
 plt.rcParams['axes.unicode_minus'] = False
 plt.rcParams['svg.fonttype'] = 'none'      # SVG 里的字保持可编辑文本（PPT 里能改）
+plt.rcParams['svg.hashsalt'] = 'dragoneye'  # 固定 clip-path id，重跑 SVG 逐字节一致（可复现）
 
 # 报告版心 15.8cm = 447.92pt；PPT 插图页按同一比例放大，两边同一套坐标
 FIG_W = 447.92
@@ -268,7 +269,8 @@ def save(fig, name, regions=None):
     dpi = PNG_W * 72.0 / w
     rep = _check(fig, name)
     _report_line(rep)
-    fig.savefig(os.path.join(HERE, name + '.svg'), facecolor='white')
+    fig.savefig(os.path.join(HERE, name + '.svg'), facecolor='white',
+                metadata={'Date': None})
     fig.savefig(os.path.join(HERE, name + '.png'), dpi=dpi, facecolor='white')
     plt.close(fig)
 
