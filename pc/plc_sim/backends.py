@@ -22,7 +22,7 @@ import can_proto as P
 class VirtualBoard:
     """Fake DES: answers like ps/src/app/runner.cpp (same accept / reject rules)."""
 
-    def __init__(self, n_classes=8):
+    def __init__(self, n_classes=4):   # models/label_list.json: gear ok / short / flash / dirty
         self.rx = queue.Queue()   # frames to the PLC
         self.state = 0
         self.speed = 50.0
@@ -96,11 +96,11 @@ class VirtualBoard:
                                      int(now - self.t0)))
             if self.state == 1 and now - last_part >= 50.0 / max(self.speed, 1):   # ~1 part per 50 mm of belt
                 last_part = now
-                cls = random.choices(range(self.n_classes), weights=[6, 1, 1, 1, 6, 1, 1, 1][: self.n_classes])[0]
-                ok = cls in (0, 4)
+                cls = random.choices(range(self.n_classes), weights=([6] + [1] * (self.n_classes - 1)))[0]
+                ok = cls == 0
                 disp = 0 if ok else random.choice([1, 1, 2])
-                size = (32.0 if cls < 4 else 50.0) + random.gauss(0, 0.05)
-                self.rx.put(P.part(self.next_part, cls, disp, (cls >= 4) if disp == 0 else (1 if disp == 1 else 0),
+                size = 32.0 + random.gauss(0, 0.05)
+                self.rx.put(P.part(self.next_part, cls, disp, 0 if disp == 0 else (1 if disp == 1 else 0),
                                    random.uniform(0.8, 0.99), size))
                 self.next_part += 1
                 self.counts[0] += 1

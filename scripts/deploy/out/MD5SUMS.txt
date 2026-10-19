@@ -11,9 +11,9 @@ f12e08c32d51edc12a0e5292852d9e7a  /root/des/des_service.sh
 f3d08cc06225aadb745b8958a51aa351  /root/des/des_app
 986b8deacd10f856113e62b0f9e9bd7c  /root/des/des_app.json
 34217fcaa714e9ca299a099e042cdf9e  /root/des/recipes.json
-8e75a65fdd96e353511cec9f6c965a02  /root/des/label_list.json
-7af895bd233b17200f579038b6ba113a  /root/des/part_cls.json
-182702d6653153904a1e48c738c968e4  /root/des/part_cls_uint8.onnx
+ca201b388abf331aad2d88cda8978142  /root/des/label_list.json
+ba7f5ae63eb5e6db407ee962f1d5c74e  /root/des/part_cls.json
+f053c8016d6f7c4323ff5ca7575bd330  /root/des/part_cls_uint8.onnx
 
 # ---- 手动上板：测试 / 回归脚本（**不进清单**，部署器不传；scp 到 /root/des/，用法见 README.md）----
 23550b2da157237e58de6e539aab9edc  /root/des/pl_check.sh

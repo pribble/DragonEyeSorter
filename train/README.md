@@ -1,6 +1,6 @@
 # train/ — 零件分类模型（NPU，赛题硬性项④）
 
-**路线**：PS 用 OpenCV 定位（已在 60fps 主循环里）→ 每件按自身方向转正裁 **56×56mm → 224×224**（`ps/src/measure/roi_crop`，约 0.25mm/像素）→ NPU 跑 **YOLOv8n-cls@224（激活换成 ReLU）** 分 8 类（`models/label_list.json`）→ 过视野时分类 3~6 次、概率软投票（`Tracker::vote`）→ 去向。
+**路线**：PS 用 OpenCV 定位（已在 60fps 主循环里）→ 每件按自身方向转正裁 **56×56mm → 224×224**（`ps/src/measure/roi_crop`，约 0.25mm/像素）→ NPU 跑 **YOLOv8n-cls@224（激活换成 ReLU）** 分齿轮 4 类（`models/label_list.json`：良品 / 缺料 / 飞边 / 黑点）→ 过视野时分类 3~6 次、概率软投票（`Tracker::vote`）→ 去向。
 
 为什么不用整帧检测：4.2mm 镜头、相机高约 300mm 时整帧约 0.21mm/像素，缩到 416 输入后约 0.95mm/像素，1mm 的黑点 / 缺料只剩 1 个像素；裁切后同样的缺陷有约 4 个像素。分类模型计算量约为整帧 YOLOv8n@416 的 1/7。
 
@@ -84,7 +84,7 @@ scp -r out/part_cls_refs $BOARD_HOST:/root/des/
 ssh $BOARD_HOST /root/bin/test_npu /root/des/part_cls.json /root/des/part_cls_refs 200
 ```
 
-**冒烟测试**（零件没到时验链路）：`synth_crops.py` 生成 8 类合成裁切图（齿轮 / 齿条 + 缺料 / 飞边 / 黑点），走完上面全部步骤。合成数据**只验证工具链与 NPU 耗时**，不代表真实精度。
+**冒烟测试**（零件没到时验链路）：`synth_crops.py` 按 `label_list.json` 生成合成裁切图（现为齿轮 4 类），走完上面全部步骤。2026-10-20 4 类：600 + 120 张 / 类、12 轮 → 4 类合成验证集（480 张）：NPU **95.42%**、OK/NG 96.0%，PC fp32 97.5% / uint8 95.6%，单次 7.80ms（2026-10-20 改 4 类后重训）。合成数据**只验证工具链与 NPU 耗时**，不代表真实精度。
 
 ## 采集建议（每类目标 ≥300 张、≥30 个零件）
 
