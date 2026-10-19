@@ -12,6 +12,12 @@
 
 **训练和推理用同一个裁切函数**（`roi_crop`），归一化一致（RGB、÷255、均值 0）——精度不掉的前提。
 
+**官方工具链（2026-10-19 答疑后核对）**：官方 SDK 仓库 [gitee.com/anlogic/dr1m90_npu](https://gitee.com/anlogic/dr1m90_npu)（release 分支，最后更新 2026-05-19；示例 npu_demo / face_detection / pose / obb，板上同样是 ArmNN + Alnpu）。PC 端量化脚本在 `npu_demo/scripts/`：`AL_onnx_pass.py` = onnxsim 化简 → 输入改 batch 1 并推断形状 → （YOLO 时去后处理）→ `split_convFC.py` 拆超限的 Conv / FC → 转 opset 19 → `check_onnx_model.py` 检查算子 → `run_quant.py`（ORT `quantize_static`，QDQ；**uint8 = per-tensor 非对称，int8 = per-channel 对称**）→ 清空并重新推断形状（与我们 10-11 踩到的段错误同一修法）。我们的 `export_npu.py` 与之等价，差别：没走 onnxsim / opset 19 / 拆分（我们的模型不需要拆）。
+- **官方算子限制**（`check_onnx_model.py`）：可加速 Conv（核 1/3/5/7、方形、步长 1/2 且步长 2 只能 3×3、pad = (k−1)/2、无空洞、**深度可分离卷积不加速**、输入 ≤1023×1023、通道 ≤4095）、Gemm（transB=1，输入 >2038 要拆）、MaxPool（核 2/5/9/13）、Relu、LeakyRelu（只认 alpha 0.1）、Mish、HardSwish、PRelu、Add（2 输入）、Concat（axis 1）、Resize（最近邻 2 倍）、Sigmoid、Mul、Split、Reshape、Clip、Flatten；硬核激活只有 ReLU / LeakyReLU / Mish / HardSwish（**没有 SiLU**，与我们实测 SiLU 掉点吻合）；InstanceNorm、Erf 不支持。
+- **用官方检查器查我们的模型**（2026-10-19，WSL `~/des-train` 装了 onnx_tool / onnxsim）：ReLU 版 `out/part_cls_relu_fp32.onnx` 共 Conv 26、Relu 26、Split 4、Add 6、Concat 4、GlobalAveragePool 1、Flatten 1、Gemm 1 → **只有 GlobalAveragePool 不能加速**（尾部 1280×7×7 求平均，回退 CPU，代价很小），软核用到 Concat、Add。SiLU 版多出 Sigmoid 26 + Mul 26（检查能过，但不在硬核激活里）。
+- ⬜ **int8 per-channel 对称量化**值得一试：10-11 板上中止的是 **uint8 per-channel**；官方 int8 路径是 per-channel + 对称（PC 上 per-channel 97.7% vs per-tensor 96.46%）。要先让 `ps/src/app/npu_cls.cpp` 支持 int8 输入（现在只认 uint8 / float32），等实物数据集训练后再做（P1）。
+- 可选：把 GlobalAveragePool 并进全连接层（权重摊到 7×7 后 Flatten + Gemm，交给 split_convFC 拆），让整网都在 NPU 上（P2，收益很小）。
+
 ## 流程
 
 ```
