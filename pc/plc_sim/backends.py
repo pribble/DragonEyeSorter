@@ -3,12 +3,11 @@
   virtual    : an in-process fake board that behaves like des_app run (state machine, ACKs, 10 Hz STATUS, 1 Hz
                COUNTS, random PART results while running) -- exercises the GUI with no hardware
   python-can : any python-can interface, e.g. --iface socketcan --channel can0 (Linux), --iface pcan ...
-  controlcan : USB-CAN adapters with the ZLG-compatible Windows library ControlCAN.dll (VCI_OpenDevice / VCI_InitCAN /
-               VCI_Transmit / VCI_Receive) -- what most domestic adapters ship. ⚠ Not yet tried with the
-               ZQWL-UCAN-101E (智嵌物联): when it arrives, put the seller's DLL next to this file (or pass --dll) and
-               check the device type number in their manual (--dev-type; ZLG USBCAN-2A / CANalyst-II = 4,
-               USBCAN-I = 3). If their SDK has another API, add a class like ControlCanBus.
-  zqwl       : alias of controlcan with the defaults above
+  zqwl       : 智嵌物联 ZQWL USB-CAN(FD) (our ZQWL-UCAN-101E): USB virtual COM port + the vendor's serial protocol,
+               no DLL / driver (zqwl.py; --port COMn, default = found by USB VID 0x3562)
+  controlcan : other USB-CAN adapters with the ZLG-compatible Windows library ControlCAN.dll (VCI_OpenDevice /
+               VCI_InitCAN / VCI_Transmit / VCI_Receive): put the DLL next to this file (or --dll) and give the device
+               type number from its manual (--dev-type; ZLG USBCAN-2A / CANalyst-II = 4, USBCAN-I = 3)
 """
 import ctypes
 import os
@@ -204,11 +203,14 @@ class ControlCanBus:
         self.lib.VCI_CloseDevice(self.t, self.d)
 
 
-def open_bus(kind, iface="socketcan", channel="can0", dll=None, dev_type=4, dev_index=0, can_index=0):
+def open_bus(kind, iface="socketcan", channel="can0", dll=None, dev_type=4, dev_index=0, can_index=0, port=None):
     if kind == "virtual":
         return VirtualBoard()
     if kind == "python-can":
         return PythonCanBus(iface, channel)
-    if kind in ("controlcan", "zqwl"):
+    if kind == "zqwl":
+        from zqwl import ZqwlSerialBus   # pip install pyserial
+        return ZqwlSerialBus(port, P.BITRATE, can_index)
+    if kind == "controlcan":
         return ControlCanBus(dll, dev_type, dev_index, can_index)
     raise SystemExit(f"unknown back end {kind}")

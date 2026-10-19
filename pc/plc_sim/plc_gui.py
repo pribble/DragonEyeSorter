@@ -7,7 +7,7 @@
 
     python plc_gui.py --backend virtual                     # 没有硬件：进程内模拟板子
     python plc_gui.py --backend python-can --iface socketcan --channel can0
-    python plc_gui.py --backend zqwl                        # ZQWL-UCAN-101E（SDK 到手后实现）
+    python plc_gui.py --backend zqwl [--port COM9]          # ZQWL-UCAN-101E（串口协议，免驱动 / DLL）
 """
 import argparse
 import json
@@ -30,7 +30,7 @@ def load_names():
     try:
         with open(os.path.join(HERE, "..", "..", "models", "label_list.json"), encoding="utf-8") as f:
             labels = [l.get("cn", l["label"]) for l in sorted(json.load(f)["labels"], key=lambda l: l["id"])]
-        with open(os.path.join(HERE, "..", "..", "ps", "app", "des_app.json"), encoding="utf-8") as f:
+        with open(os.path.join(HERE, "..", "..", "ps", "src", "des_app.json"), encoding="utf-8") as f:
             cfg = json.load(f)
             bins, outlets = cfg.get("bins", bins), cfg.get("outlets", outlets)
     except (OSError, ValueError, KeyError):
@@ -201,7 +201,8 @@ class App:
             f"发送 {self.link.tx}   接收 {self.link.rx}\n"
             f"ACK 往返 {len(r)} 次：平均 {sum(r) / len(r):.2f} ms  最大 {max(r):.2f} ms\n" if r else
             f"发送 {self.link.tx}   接收 {self.link.rx}\nACK 往返：—\n") +
-            f"STATUS 间隔 >150ms：{self.link.status_gaps} 次\n未应答命令：{len(self.link.pending)}")
+            f"STATUS 间隔 >150ms：{self.link.status_gaps} 次\n未应答命令：{len(self.link.pending)}" +
+            (f"\n适配器：{self.link.bus.status()}" if hasattr(self.link.bus, "status") else ""))
         self.root.after(50, self.poll)
 
     def on_status(self, v):
@@ -241,12 +242,13 @@ def main():
     ap.add_argument("--backend", default="virtual", choices=["virtual", "python-can", "controlcan", "zqwl"])
     ap.add_argument("--iface", default="socketcan")
     ap.add_argument("--channel", default="can0")
-    ap.add_argument("--dll", help="controlcan / zqwl: vendor ControlCAN.dll (default: next to this file)")
+    ap.add_argument("--port", help="zqwl: COM port (default: found by USB VID 0x3562)")
+    ap.add_argument("--dll", help="controlcan: vendor ControlCAN.dll (default: next to this file)")
     ap.add_argument("--dev-type", type=int, default=4, help="controlcan: VCI device type (ZLG USBCAN-2A = 4)")
     ap.add_argument("--dev-index", type=int, default=0)
-    ap.add_argument("--can-index", type=int, default=0, help="controlcan: channel on the adapter (0 = CAN1)")
+    ap.add_argument("--can-index", type=int, default=0, help="zqwl / controlcan: channel on the adapter (0 = first)")
     a = ap.parse_args()
-    bus = open_bus(a.backend, a.iface, a.channel, a.dll, a.dev_type, a.dev_index, a.can_index)
+    bus = open_bus(a.backend, a.iface, a.channel, a.dll, a.dev_type, a.dev_index, a.can_index, a.port)
     root = tk.Tk()
     link = Link(bus)
     App(root, link, load_names())
