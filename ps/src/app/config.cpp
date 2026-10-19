@@ -202,6 +202,7 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             get(c, "camera_h_mm", m.camera_h_mm); get(c, "gear_h_mm", m.gear_h_mm); get(c, "rack_h_mm", m.rack_h_mm);
             get(c, "walls_visible", m.walls_visible); get(c, "max_smear_mm", m.max_smear_mm);
             get(c, "short_tooth_mm", m.short_tooth_mm); get(c, "flash_mm", m.flash_mm);
+            get(c, "od_offset_mm", m.od_offset_mm); get(c, "bore_offset_mm", m.bore_offset_mm);
             if (c.contains("colors")) {
                 t.colors.clear();
                 for (const json &cj : c["colors"]) {

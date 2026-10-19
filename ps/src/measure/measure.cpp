@@ -370,7 +370,7 @@ GearMeasure measure_gear(const cv::Mat &gray, cv::Rect roi, const Homography &h,
     Vec2 ct, cr;
     if (!fit_circle(tip_pts, ct, rt, &g.fit_rms)) { g.err = "tip circle fit failed"; return g; }
     g.center = ct;
-    g.od = 2 * rt;
+    g.od = 2 * rt + cfg.od_offset_mm;
     if (fit_circle(root_pts, cr, rr)) g.root_d = 2 * rr;
 
     if (!hole.empty()) {
@@ -380,7 +380,7 @@ GearMeasure measure_gear(const cv::Mat &gray, cv::Rect roi, const Homography &h,
         Vec2 cb;
         float rb;
         if (fit_circle(hp, cb, rb)) {
-            g.bore_d = 2 * rb;
+            g.bore_d = 2 * rb + cfg.bore_offset_mm;
             g.ecc = norm(cb - ct);
             g.bore_center = cb;
         }

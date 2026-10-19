@@ -18,6 +18,12 @@ struct MeasureConfig {
     float max_smear_mm = 0.8;    // above this parallax smear, tooth / gap defects are not judged
     float short_tooth_mm = 0.4;  // tooth tip this far below the tip circle = short (缺料)
     float flash_mm = 0.5;        // valley floor this far above the root circle = filled (飞边)
+    // Master-part offsets, added to the reported OD / bore only (tooth judgments use the raw fit): a narrow, blurred
+    // tooth tip never reaches the full part gray level, so its 50 % edge sits inside the true tip and the tip circle
+    // reads small (the root circle and the bore do not). Set from a caliper-measured gear at the view centre
+    // (des_tool measure -n 20); redo after changing the exposure, the light or the camera.
+    float od_offset_mm = 0;
+    float bore_offset_mm = 0;
     // Rolling shutter: row r of the image is exposed later than row row0 by (r - row0) row times, during which the
     // belt moved belt_mm_per_row * (r - row0) along table +x. Edge points are moved back to the row0 instant.
     // Set per frame by the caller (track_measure); 0 = still belt / global shutter.

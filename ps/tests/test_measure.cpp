@@ -209,6 +209,13 @@ int main()
                g.ok, g.teeth, g.od, g.root_d, g.bore_d, g.ecc, g.fit_rms, g.short_teeth, g.missing_teeth, g.flash_gaps);
         CHECK(g.ok, "gear30 failed: %s", g.err.c_str());
         CHECK(g.teeth == 30, "teeth %d", g.teeth);
+        MeasureConfig oc = cfg;   // master-part offsets move only the reported OD / bore
+        oc.od_offset_mm = 0.41f;
+        oc.bore_offset_mm = -0.07f;
+        GearMeasure go = measure_gear(s.img, s.roi, h, oc);
+        CHECK(std::fabs(go.od - g.od - 0.41f) < 1e-4f && std::fabs(go.bore_d - g.bore_d + 0.07f) < 1e-4f &&
+                  go.teeth == g.teeth && std::fabs(go.root_d - g.root_d) < 1e-4f,
+              "offsets: OD %+.4f bore %+.4f", go.od - g.od, go.bore_d - g.bore_d);
         CHECK(std::fabs(g.od - 32 - GROW) < TOL, "OD %.3f", g.od);
         CHECK(std::fabs(g.root_d - 27.5f - GROW) < TOL, "root %.3f", g.root_d);
         CHECK(std::fabs(g.bore_d - 6 - GROW) < TOL, "bore %.3f", g.bore_d);
