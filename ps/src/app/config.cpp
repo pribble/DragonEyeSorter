@@ -111,6 +111,15 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             get(c, "reach_y0", p.reach_y0); get(c, "reach_y1", p.reach_y1); get(c, "brake_margin", p.brake_margin);
             get(c, "finger_w", p.finger_w); get(c, "finger_t", p.finger_t); get(c, "grip_clear", p.grip_clear);
             get(c, "max_open", p.max_open); get(c, "round_ratio", p.round_ratio); get(c, "neighbor_gap", p.neighbor_gap);
+            if (c.contains("flying")) {   // intercept picks (docs/运动控制与分拣.md 拦截式不停带夹取)
+                const json &f = c["flying"];
+                get(f, "enabled", p.flying); get(f, "r0", p.flying_r0); get(f, "r1", p.flying_r1);
+                float ax_deg = p.flying_axis * 180.f / kPi;
+                get(f, "axis_deg", ax_deg);
+                p.flying_axis = ax_deg * kPi / 180.f;
+                get(f, "ready_s", p.flying_ready_s); get(f, "window_mm", p.flying_window);
+                get(f, "gap_mm", p.flying_gap); get(f, "close_lead_s", p.flying_close_lead_s);
+            }
         }
         if (j.contains("arm")) {
             const json &c = j["arm"];

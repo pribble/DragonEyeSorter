@@ -62,11 +62,17 @@ int ArmExec::send(const std::array<uint16_t, 6> &pos, uint16_t ms)
     return des_servo_sync_pos(hw_, ids, pos.data(), t, 6);
 }
 
-ArmExec::Result ArmExec::simulate(const std::vector<ServoFrame> &wp, const std::function<void()> &on_belt_clear)
+ArmExec::Result ArmExec::simulate(const std::vector<ServoFrame> &wp, const std::function<void()> &on_belt_clear,
+                                  const WaitBelt &wait_belt)
 {
     Result res;
     const double t0 = now_ms();
     for (const ServoFrame &f : wp) {
+        if (f.wait_belt && wait_belt && !wait_belt(f.belt_mm)) {
+            res.why = "intercept: the part did not arrive";
+            res.ms = now_ms() - t0;
+            return res;
+        }
         sleep_ms(f.ms + 80);
         if (f.belt_clear && on_belt_clear) on_belt_clear();
     }
@@ -75,12 +81,23 @@ ArmExec::Result ArmExec::simulate(const std::vector<ServoFrame> &wp, const std::
     return res;
 }
 
-ArmExec::Result ArmExec::run(const std::vector<ServoFrame> &wp, bool dry, const std::function<void()> &on_belt_clear)
+ArmExec::Result ArmExec::run(const std::vector<ServoFrame> &wp, bool dry, const std::function<void()> &on_belt_clear,
+                             const WaitBelt &wait_belt)
 {
     Result res;
     const double t0 = now_ms();
     const double settle_ms = 80;   // after the commanded move time, before the next frame ⚠ tune on the arm
     for (const ServoFrame &f : wp) {
+        if (f.wait_belt && wait_belt && !wait_belt(f.belt_mm)) {   // intercept: the part never came between the fingers
+            if (!dry && !wp.empty()) {
+                send(wp.front().pos, 400);   // straight up (first frame = above the pick point, open)
+                sleep_ms(400 + settle_ms);
+                if (on_belt_clear) on_belt_clear();
+            }
+            res.why = "intercept: the part did not arrive";
+            res.ms = now_ms() - t0;
+            return res;
+        }
         if (dry) {
             printf("  %-8s %4u ms  counts %4u %4u %4u %4u %4u | grip %4u%s%s\n", f.what, f.ms, f.pos[0], f.pos[1],
                    f.pos[2], f.pos[3], f.pos[4], f.pos[5], f.check_grasp ? "  [grasp check]" : "",

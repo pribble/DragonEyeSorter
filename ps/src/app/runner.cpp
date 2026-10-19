@@ -2,10 +2,12 @@
 #include "runner.hpp"
 
 #include <time.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 
 #include "can_link.h"
 #include "modbus_map.h"
@@ -335,6 +337,7 @@ void Runner::cycle(Tracker &tr, Picker &pk)
         in.belt_stopped = belt_.stopped();
         in.arm_idle = !arm_busy_;
         in.arm_clear = arm_clear_;
+        in.speed_mm_s = belt_.speed_mm_s();
         Picker::Output out = pk.tick(tr, in);
         // speed adaptation: arm still busy -> slow down so the next OK part reaches the pick line about when the arm
         // is ready (fewer full stops); the stop itself still comes from the picker's StopAt
@@ -371,7 +374,7 @@ void Runner::cycle(Tracker &tr, Picker &pk)
             job_ = out.job;
             job_pending_ = true;
             arm_busy_ = true;
-            arm_clear_ = false;
+            arm_clear_ = out.job.flying;   // intercept: the belt keeps running while the gripper is down
             cv_.notify_one();
         }
     } else if (state_ == CANP_ST_IDLE && jog_dir_ != 0) {
@@ -464,7 +467,16 @@ void Runner::arm_loop()
         }
         std::vector<ServoFrame> wp;
         Done d{j.track_id, false, ""};
-        const char *why = plan_pick(ac, j.p, j.close_axis, j.open_mm, j.part_wid, j.bin, arm_counts_, wp);
+        float tilt = 0;
+        const char *why = plan_pick(ac, j.p, j.close_axis, j.open_mm, j.part_wid, j.bin, arm_counts_, wp, &tilt);
+        if (!why && j.flying) {   // intercept: vertical only; the close frame waits for the part
+            if (tilt != 0) why = "intercept point needs a tilted grasp";
+            for (ServoFrame &f : wp)
+                if (!strcmp(f.what, "close")) {
+                    f.wait_belt = true;
+                    f.belt_mm = j.arrive_belt_mm;
+                }
+        }
         if (!why) {   // whole pick incl. the way back to the ready pose (speed adaptation)
             double ms = 0;
             for (const ServoFrame &f : wp) ms += f.ms;
@@ -474,7 +486,20 @@ void Runner::arm_loop()
             d.why = why;
         } else {
             auto clear = [this] { arm_clear_ = true; };
-            ArmExec::Result r = opt_.arm_go ? arm_.run(wp, false, clear) : arm_.simulate(wp, clear);
+            // intercept close: wait until the part's centre is lead_s x speed short of the pick line; give up when
+            // the line leaves RUN / PAUSED or the part is overdue (belt stopped for good)
+            const double lead_s = cfg_.picker.flying_close_lead_s;
+            auto wait = [this, lead_s](double arrive) {
+                const double t_start = now_s();
+                for (;;) {
+                    if (belt_.belt_mm() >= arrive - belt_.speed_mm_s() * lead_s) return true;
+                    const uint8_t st = state_;
+                    if (st != CANP_ST_RUN && st != CANP_ST_PAUSED) return false;
+                    if (now_s() - t_start > 10.0) return false;
+                    usleep(2000);
+                }
+            };
+            ArmExec::Result r = opt_.arm_go ? arm_.run(wp, false, clear, wait) : arm_.simulate(wp, clear, wait);
             d.ok = r.ok && r.grasped;
             d.why = r.why;
             arm_counts_ = wp.back().pos;

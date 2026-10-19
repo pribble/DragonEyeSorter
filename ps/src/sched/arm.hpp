@@ -84,6 +84,8 @@ struct ServoFrame {
     uint16_t ms = 0;                 // move time
     bool belt_clear = false;         // after this frame the gripper is off the belt (belt may move)
     bool check_grasp = false;        // after this frame verify the part is held (P1)
+    bool wait_belt = false;          // intercept: send only once the belt travel reaches belt_mm
+    double belt_mm = 0;
     const char *what = "";
 };
 

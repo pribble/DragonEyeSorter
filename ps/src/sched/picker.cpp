@@ -39,23 +39,40 @@ const char *Picker::plan_grip(const Tracker &tr, const Track &t, double belt_mm,
         cand[n++] = t.axis + kPi / 2;
     }
 
-    float off = open_mm / 2 + cfg_.finger_t / 2;
-    for (int i = 0; i < n; i++) {
-        Vec2 u{std::cos(cand[i]), std::sin(cand[i])};
-        ORect f1{c + u * off, cfg_.finger_t / 2, cfg_.finger_w / 2, cand[i]};
-        ORect f2{c - u * off, cfg_.finger_t / 2, cfg_.finger_w / 2, cand[i]};
-        bool hit = false;
-        for (const Track &o : tr.tracks()) {
-            if (o.id == t.id || o.state == TrackState::Done || o.n_geom == 0) continue;
-            ORect fo = o.footprint(belt_mm, cfg_.neighbor_gap);
-            if (overlap(f1, fo) || overlap(f2, fo)) { hit = true; break; }
-        }
-        if (!hit) {
+    for (int i = 0; i < n; i++)
+        if (fingers_clear(tr, t, belt_mm, cand[i], open_mm)) {
             close_axis = wrap_axis(cand[i]);
             return nullptr;
         }
-    }
     return "crowded";
+}
+
+bool Picker::fingers_clear(const Tracker &tr, const Track &t, double belt_mm, float axis, float open_mm) const
+{
+    const Vec2 c{t.x_at(belt_mm), t.y}, u{std::cos(axis), std::sin(axis)};
+    const float off = open_mm / 2 + cfg_.finger_t / 2;
+    const ORect f1{c + u * off, cfg_.finger_t / 2, cfg_.finger_w / 2, axis};
+    const ORect f2{c - u * off, cfg_.finger_t / 2, cfg_.finger_w / 2, axis};
+    for (const Track &o : tr.tracks()) {
+        if (o.id == t.id || o.state == TrackState::Done || o.n_geom == 0) continue;
+        const ORect fo = o.footprint(belt_mm, cfg_.neighbor_gap);
+        if (overlap(f1, fo) || overlap(f2, fo)) return false;
+    }
+    return true;
+}
+
+bool Picker::flying_ok(const Tracker &tr, const Track &t, double belt_mm, float &open_mm) const
+{
+    if (!(t.wid > 0 && t.len / t.wid < cfg_.round_ratio)) return false;   // round parts only: any closing axis
+    open_mm = cfg_.max_open;                                              // widest: most lateral tolerance
+    if (t.len + 2 * cfg_.grip_clear > open_mm) return false;
+    const float r = norm(Vec2{cfg_.pick_x, t.y} - cfg_.arm_base);
+    if (r < cfg_.flying_r0 || r > cfg_.flying_r1) return false;
+    for (const Track &o : tr.tracks()) {   // the gripper stays down for a while: nobody may ride in after it
+        if (o.id == t.id || o.state == TrackState::Done || o.n_geom == 0) continue;
+        if (std::fabs(o.s - t.s) < cfg_.flying_gap) return false;
+    }
+    return fingers_clear(tr, t, belt_mm, cfg_.flying_axis, open_mm);
 }
 
 Picker::Output Picker::tick(Tracker &tr, const Input &in)
@@ -88,6 +105,34 @@ Picker::Output Picker::tick(Tracker &tr, const Input &in)
             continue;
         }
         if (!target || x > target->x_at(B)) { target = &t; grip_axis = ax; grip_open = op; }
+    }
+
+    // intercept: an early qualifying part keeps the belt running; dispatched once it is need .. need + window away
+    // (need = the arm's way down at the current speed). Too late or arm busy: stop and pick as below.
+    if (target && cfg_.flying && out.belt.kind != BeltPlan::Hold && committed_id_ != target->id) {
+        float fop;
+        if (flying_ok(tr, *target, B, fop)) {
+            const double arrive = cfg_.pick_x - target->s, dist = arrive - B;
+            const double need = std::max(in.speed_mm_s, 5.0) * cfg_.flying_ready_s;
+            if (dist > need + cfg_.flying_window) {
+                target = nullptr;   // still early: let it come
+            } else if (dist >= need && in.arm_idle) {
+                target->state = TrackState::Picking;
+                out.have_job = true;
+                out.job.track_id = target->id;
+                out.job.p = {cfg_.pick_x, target->y};
+                out.job.close_axis = wrap_axis(cfg_.flying_axis);
+                out.job.open_mm = fop;
+                out.job.part_wid = target->len;
+                out.job.bin = target->dest;
+                out.job.cls = target->cls;
+                out.job.flying = true;
+                out.job.arrive_belt_mm = arrive;
+                stats.jobs++;
+                stats.flying++;
+                target = nullptr;   // the belt keeps running
+            }
+        }
     }
 
     if (target && out.belt.kind != BeltPlan::Hold) {

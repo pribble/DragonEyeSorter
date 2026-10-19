@@ -303,6 +303,86 @@ static void test_flaps()
           (unsigned long long)fs.served);
 }
 
+// intercept ("flying") picks: belt at 50 mm/s (1 mm per tick), arm base 150 mm beside the belt centre at the pick line
+struct FlyRun {
+    bool job = false, flying = false, stopped_for = false, belt_held = false;
+    PickJob j{};
+    double dispatch_B = 0;
+};
+static FlyRun run_flying(const std::vector<SimPart> &parts, double arm_busy_until)
+{
+    std::mt19937 rng(11);
+    Tracker tr(tracker_cfg());
+    PickerConfig pc;
+    pc.pick_x = 400; pc.tail_x = 600; pc.reach_y0 = -80; pc.reach_y1 = 80;
+    pc.arm_base = {400, -150};
+    pc.flying = true;
+    pc.flying_r0 = 50; pc.flying_r1 = 150;
+    pc.flying_ready_s = 1.0f; pc.flying_window = 40; pc.flying_gap = 60;
+    Picker pk(pc);
+    FlyRun r;
+    double B = 0;
+    bool stopped = false;
+    for (uint32_t f = 0; f < 900 && B < 700; f++) {
+        tr.update(observe(parts, B, f, rng));
+        Picker::Input in;
+        in.belt_mm = B; in.brake_mm = 3; in.belt_stopped = stopped; in.speed_mm_s = stopped ? 0 : 50;
+        in.arm_idle = !r.job && B >= arm_busy_until;
+        in.arm_clear = true;   // intercept: the gripper being down never holds the belt
+        Picker::Output out = pk.tick(tr, in);
+        if (out.have_job && !r.job) {
+            r.job = true;
+            r.j = out.job;
+            r.flying = out.job.flying;
+            r.dispatch_B = B;
+            if (!out.job.flying) break;   // stop-and-pick path taken: enough for these checks
+        }
+        if (out.belt.kind == BeltPlan::StopAt && !r.job) r.stopped_for = true;
+        if (out.belt.kind == BeltPlan::Hold) r.belt_held = true;
+        if (r.job && r.flying && B >= r.j.arrive_belt_mm + 5) {
+            pk.job_done(tr, r.j.track_id, true);
+            break;
+        }
+        if (out.belt.kind == BeltPlan::StopAt && B + 1.0 >= out.belt.stop_belt_mm) {
+            B = out.belt.stop_belt_mm;
+            stopped = true;
+        } else {
+            B += 1.0;
+            stopped = false;
+        }
+        tr.retire(B);
+    }
+    return r;
+}
+
+static void test_picker_flying()
+{
+    // within the vertical reach (pick point 130 mm from the base axis), alone: intercepted, the belt never stops
+    FlyRun a = run_flying({{-30, -20, 32, 32, 0.f, 0}}, 0);
+    CHECK(a.job && a.flying && !a.stopped_for && !a.belt_held, "intercept: job %d flying %d stopped %d held %d", a.job,
+          a.flying, a.stopped_for, a.belt_held);
+    if (a.job && a.flying) {
+        const double dist = a.j.arrive_belt_mm - a.dispatch_B;
+        CHECK(dist >= 50 - 1e-6 && dist <= 90 + 1e-6, "dispatched %.1f mm ahead (need 50 + window 40)", dist);
+        CHECK(std::fabs(a.j.p.x - 400) < 1e-3 && std::fabs(a.j.p.y + 20) < 2 && std::fabs(a.j.open_mm - 60) < 1e-3 &&
+                  std::fabs(wrap_axis(a.j.close_axis - kPi / 2)) < 1e-4,
+              "intercept job: at (%.1f, %.1f), open %.0f, closing %.2f rad", a.j.p.x, a.j.p.y, a.j.open_mm,
+              a.j.close_axis);
+        CHECK(std::fabs(a.j.arrive_belt_mm - (400 - (-30))) < 2, "arrives at B %.1f (expected ~430)", a.j.arrive_belt_mm);
+    }
+    // out of the vertical reach (190 mm from the base axis): stop and pick as before
+    FlyRun b = run_flying({{-30, 40, 32, 32, 0.f, 0}}, 0);
+    CHECK(b.job && !b.flying && b.stopped_for, "far part: stop-and-pick (job %d flying %d stopped %d)", b.job, b.flying,
+          b.stopped_for);
+    // a second part 40 mm behind would ride under the open fingers: no intercept
+    FlyRun c = run_flying({{-30, -20, 32, 32, 0.f, 0}, {-70, 20, 32, 32, 0.f, 1}}, 0);
+    CHECK(c.job && !c.flying, "neighbour within the gap: stop-and-pick (flying %d)", c.flying);
+    // arm busy until the part is closer than the arm's way down: falls back to stopping on the line
+    FlyRun d = run_flying({{-30, -20, 32, 32, 0.f, 0}}, 395);
+    CHECK(d.job && !d.flying && d.stopped_for, "arm busy too long: stop-and-pick (flying %d stopped %d)", d.flying,
+          d.stopped_for);
+}
+
 // a lone NG part is routed to its gate; with no gates configured it rides to the belt end
 static void test_gate_events()
 {
@@ -625,6 +705,7 @@ int main()
     test_speed_adapt();
     test_gate_events();
     test_picker();
+    test_picker_flying();
     test_picker_tangential();
     test_arm();
     test_arm_base_fit();

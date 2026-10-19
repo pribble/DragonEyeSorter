@@ -39,9 +39,14 @@ public:
     };
     // Executes the waypoints in order (waits each move time + settle). on_belt_clear runs right after the frame
     // flagged belt_clear (the belt may move again). dry = print instead of sending.
-    Result run(const std::vector<ServoFrame> &wp, bool dry, const std::function<void()> &on_belt_clear = nullptr);
+    // Frames flagged wait_belt (intercept close) are sent only when wait_belt(belt_mm) returns true; false (the part
+    // did not arrive: timeout / line stopped) aborts: back to the first frame's pose, opened, result not ok.
+    using WaitBelt = std::function<bool(double)>;
+    Result run(const std::vector<ServoFrame> &wp, bool dry, const std::function<void()> &on_belt_clear = nullptr,
+               const WaitBelt &wait_belt = nullptr);
     // Same timing as run() without touching the bus (no servos / bring-up of the rest of the line). Always "grasped".
-    Result simulate(const std::vector<ServoFrame> &wp, const std::function<void()> &on_belt_clear = nullptr);
+    Result simulate(const std::vector<ServoFrame> &wp, const std::function<void()> &on_belt_clear = nullptr,
+                    const WaitBelt &wait_belt = nullptr);
 
     const ArmConfig &config() const { return cfg_; }
     uint8_t id(int joint) const { return cfg_.joint[joint].id; }
