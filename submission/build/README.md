@@ -180,7 +180,7 @@ python submission/build/verify_report.py --fill --pdf <任意 PDF>   # 只跑逐
 | `### 1.1 应用场景` | 二级标题（墨色 13pt 加粗） |
 | 普通段落（连续行自动合并成一段） | 正文（微软雅黑 10.5pt、首行缩进 2 字符） |
 | `**加粗**` · `` `行内代码` `` | 微软雅黑加粗 · Consolas + 极浅底纹 |
-| `![alt](figures/xxx.png)` 独占一行 | 插图，宽 = 满版心 15.8cm 居中 |
+| `![alt](figures/paper/xxx.png)` 独占一行 | 插图，宽 = 满版心 15.8cm 居中 |
 | 图下一行 `*图 2-1 说明*` | 图注（居中、9pt 灰字、编号加粗、跟图同页、过一遍净化规则） |
 | `\| … \| … \|` 表格 | 三线表（表头浅青灰底 + 粗体 + 青绿分隔线，无竖线，跨页重复表头） |
 | `- ` 列表 · `1. ` 列表 | 青绿标记 + 悬挂缩进列表（编号照抄，不自动重编号） |
@@ -188,15 +188,15 @@ python submission/build/verify_report.py --fill --pdf <任意 PDF>   # 只跑逐
 
 - **标题编号照抄源文本，脚本不自动重编号**：源里写 `### 3.6` 两次就会输出两个
   3.6（当前源确实如此，见「已知问题」）。要改编号改源。
-- **加插图**：图放 `docs/figures/`（生成脚本见 [figures/README.md](../../docs/figures/README.md)），
-  在技术文档里写一行 `![说明](figures/xxx.png)`，下一行写 `*图 X-Y 说明*`。
-  路径**相对 `docs/` 解析**，图不存在脚本直接报错退出（不会静默出个空框）。
+- **加插图**：脚本在 `docs/figures/`（生成方式见 [figures/README.md](../../docs/figures/README.md)），
+  报告用的是 `paper` 主题那一套：在技术文档里写一行 `![说明](figures/paper/xxx.png)`，下一行写
+  `*图 X-Y 说明*`。路径**相对 `docs/` 解析**，图不存在脚本直接报错退出（不会静默出个空框）。
   **加图/删图后第 ③ 步会自动跟上**：插图顺序来自 `_md2docx.json` 的 `figures`，
   数量与 PDF 对不上就报错退出（不会错位替换、也不会静默跳过）。
   新图建议也是 ≥ 3200px 宽的 PNG（满版心 15.8cm 时 3200px ≈ 514 dpi；源图小于 1900px
   就会跌破 300 dpi 门槛，第 ③ 步会失败并告诉你差多少）。**新图必须按落版尺寸 1:1 作图**：
   画布宽 447.9pt = 15.8cm、最小字号 ≥ 7.5pt（见 [figures/README.md](../../docs/figures/README.md)），
-  否则会出现"清晰度够但字太小"——`verify_report.py` 的第 12 项会按 `fig_meta.json` 拦下来。
+  否则会出现"清晰度够但字太小"——`verify_report.py` 的第 12 项会按 `paper/fig_meta.json` 拦下来。
 - 源里出现本脚本不支持的写法（代码块、引用块、四级标题、图文混排的段落）会**报错退出并指出行号**，
   不会静默丢内容。真要用就先在 `md2docx.py` 里加对应分支。
 - 表格宽度由内容估算列宽，整表固定 15.6cm；列很多时脚本会自动往等分靠。
@@ -281,6 +281,8 @@ python submission/build/pdf_images_hires.py --pdf <PDF> --report   # 只看插�
    设计令牌。当前产出 26 页 = 封面 1 + 目录 1 + 正文 24，无整页空白页；页数随内容源
    长度变化，以最终 build 为准。
 7. **插图**：5 张图按 15.8cm 落版 1:1 作图（图内最小字号 7.5pt），PNG 宽 3200px、
-   落版约 514dpi；报告与 PPT 共用同一批图，改图后必须重跑 `make_figures.py`，第 12 项
-   自检按 `docs/figures/fig_meta.json` 核对「落版字号 ≥7.5pt」。PDF 约 4.52MB（远低于
+   落版约 514dpi；报告用 `paper` 主题（期刊线稿）、PPT 用 `slide` 主题（浅色编辑），
+   两者同一份脚本、同一套坐标，**改图后必须两套都重跑**：
+   `python docs/figures/make_figures.py` 与 `python docs/figures/make_figures.py --paper`。
+   第 12 项自检按 `docs/figures/paper/fig_meta.json` 核对「落版字号 ≥7.5pt」。PDF 约 4.52MB（远低于
    50MB 上限）。

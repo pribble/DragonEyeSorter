@@ -52,7 +52,7 @@ def draw():
     fk.box(ax, 186, Y['judge'] - 9.5, 74, 19, '良品 → 停带抓取', 'ps')
 
     # 判定 → 写停带目标（PL 梯形减速，停在抓取线）
-    fk.arrow(ax, (223, Y['judge'] - 9.5), (223, RUN_Y + 2.0), color='#8A99A8', lw=0.9, ms=6.0)
+    fk.arrow(ax, (223, Y['judge'] - 9.5), (223, RUN_Y + 2.0), color=fk.ARROW, lw=0.9, ms=6.0)
     fk.text(ax, 228, 85, '写停带目标 · 梯形减速停准', fs=S, color=muted)
 
     # ---------------- 皮带：走带 → 停住（只为良品）→ 恢复走带 ----------------

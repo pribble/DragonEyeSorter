@@ -1,0 +1,337 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+  "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns:xlink="http://www.w3.org/1999/xlink" width="447.92pt" height="280pt" viewBox="0 0 447.92 280" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.11.2, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="figure_1">
+  <g id="patch_1">
+   <path d="M 0 280 
+L 447.92 280 
+L 447.92 0 
+L 0 0 
+z
+" style="fill: #ffffff"/>
+  </g>
+  <g id="axes_1">
+   <g id="patch_2">
+    <path d="M 7.5 274 
+L 182.5 274 
+Q 186 274 186 270.5 
+L 186 9.5 
+Q 186 6 182.5 6 
+L 7.5 6 
+Q 4 6 4 9.5 
+L 4 270.5 
+Q 4 274 7.5 274 
+L 7.5 274 
+z
+" clip-path="url(#pf56903056d)" style="fill: none; stroke-dasharray: 2.8,1.68; stroke-dashoffset: 0; stroke: #7f7f7f; stroke-width: 0.7; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_3">
+    <path d="M 193.5 274 
+L 440.5 274 
+Q 444 274 444 270.5 
+L 444 9.5 
+Q 444 6 440.5 6 
+L 193.5 6 
+Q 190 6 190 9.5 
+L 190 270.5 
+Q 190 274 193.5 274 
+L 193.5 274 
+z
+" clip-path="url(#pf56903056d)" style="fill: none; stroke-dasharray: 2.8,1.68; stroke-dashoffset: 0; stroke: #7f7f7f; stroke-width: 0.7; stroke-linejoin: miter"/>
+   </g>
+   <g id="line2d_1">
+    <path d="M 196 69.5 
+L 438 69.5 
+" clip-path="url(#pf56903056d)" style="fill: none; stroke: #c8c8c8; stroke-width: 0.4"/>
+   </g>
+   <g id="line2d_2">
+    <path d="M 196 108.5 
+L 438 108.5 
+" clip-path="url(#pf56903056d)" style="fill: none; stroke: #c8c8c8; stroke-width: 0.4"/>
+   </g>
+   <g id="line2d_3">
+    <path d="M 196 147.5 
+L 438 147.5 
+" clip-path="url(#pf56903056d)" style="fill: none; stroke: #c8c8c8; stroke-width: 0.4"/>
+   </g>
+   <g id="line2d_4">
+    <path d="M 196 186.5 
+L 438 186.5 
+" clip-path="url(#pf56903056d)" style="fill: none; stroke: #c8c8c8; stroke-width: 0.4"/>
+   </g>
+   <g id="line2d_5">
+    <path d="M 196 225.5 
+L 438 225.5 
+" clip-path="url(#pf56903056d)" style="fill: none; stroke: #c8c8c8; stroke-width: 0.4"/>
+   </g>
+   <g id="line2d_6">
+    <path d="M 196 29.5 
+L 438 29.5 
+" clip-path="url(#pf56903056d)" style="fill: none; stroke: #111111"/>
+   </g>
+   <g id="line2d_7">
+    <path d="M 196 265.5 
+L 438 265.5 
+" clip-path="url(#pf56903056d)" style="fill: none; stroke: #111111"/>
+   </g>
+   <g id="patch_4">
+    <path d="M 10 62 
+L 180 62 
+L 180 32 
+L 10 32 
+z
+" clip-path="url(#pf56903056d)" style="fill: #ffffff; stroke: #333333; stroke-width: 0.7; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_5">
+    <path d="M 10 110 
+L 180 110 
+L 180 68 
+L 10 68 
+z
+" clip-path="url(#pf56903056d)" style="fill: #ffffff; stroke: #333333; stroke-width: 0.7; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_6">
+    <path d="M 10 154 
+L 180 154 
+L 180 118 
+L 10 118 
+z
+" clip-path="url(#pf56903056d)" style="fill: #ffffff; stroke: #333333; stroke-width: 0.7; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_7">
+    <path d="M 10 196 
+L 180 196 
+L 180 162 
+L 10 162 
+z
+" clip-path="url(#pf56903056d)" style="fill: #ffffff; stroke: #333333; stroke-width: 0.7; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_8">
+    <path d="M 10 242 
+L 180 242 
+L 180 202 
+L 10 202 
+z
+" clip-path="url(#pf56903056d)" style="fill: #ffffff; stroke: #333333; stroke-width: 0.7; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_9">
+    <path d="M 95 62 
+Q 95 65 95 66.993769 
+" clip-path="url(#pf56903056d)" style="fill: none; stroke: #333333; stroke-width: 0.9; stroke-linecap: round"/>
+    <path d="M 96.2 64.593769 
+L 95 66.993769 
+L 93.8 64.593769 
+z
+" clip-path="url(#pf56903056d)" style="fill: #333333; stroke: #333333; stroke-width: 0.9; stroke-linecap: round"/>
+   </g>
+   <g id="patch_10">
+    <path d="M 95 110 
+Q 95 114 95 116.993769 
+" clip-path="url(#pf56903056d)" style="fill: none; stroke: #333333; stroke-width: 0.9; stroke-linecap: round"/>
+    <path d="M 96.2 114.593769 
+L 95 116.993769 
+L 93.8 114.593769 
+z
+" clip-path="url(#pf56903056d)" style="fill: #333333; stroke: #333333; stroke-width: 0.9; stroke-linecap: round"/>
+   </g>
+   <g id="patch_11">
+    <path d="M 95 154 
+Q 95 158 95 160.993769 
+" clip-path="url(#pf56903056d)" style="fill: none; stroke: #333333; stroke-width: 0.9; stroke-linecap: round"/>
+    <path d="M 96.2 158.593769 
+L 95 160.993769 
+L 93.8 158.593769 
+z
+" clip-path="url(#pf56903056d)" style="fill: #333333; stroke: #333333; stroke-width: 0.9; stroke-linecap: round"/>
+   </g>
+   <g id="patch_12">
+    <path d="M 95 196 
+Q 95 199 95 200.993769 
+" clip-path="url(#pf56903056d)" style="fill: none; stroke: #333333; stroke-width: 0.9; stroke-linecap: round"/>
+    <path d="M 96.2 198.593769 
+L 95 200.993769 
+L 93.8 198.593769 
+z
+" clip-path="url(#pf56903056d)" style="fill: #333333; stroke: #333333; stroke-width: 0.9; stroke-linecap: round"/>
+   </g>
+   <g id="text_1">
+    <text style="font-weight: 700; font-size: 9.5px; font-family: 'Times New Roman', 'SimHei'; text-anchor: start; fill: #111111" x="12" y="22.914062" transform="rotate(-0 12 22.914062)">寄存器通道</text>
+   </g>
+   <g id="text_2">
+    <text style="font-weight: 700; font-size: 9.5px; font-family: 'Times New Roman', 'SimHei'; text-anchor: start; fill: #111111" x="198" y="22.932617" transform="rotate(-0 198 22.932617)">PL 自研模块与管脚</text>
+   </g>
+   <g id="text_3">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: end; fill: #6a6a6a" x="436" y="21.990234" transform="rotate(-0 436 21.990234)">0x000 ~ 0x500</text>
+   </g>
+   <g id="text_4">
+    <text style="font-weight: 700; font-size: 8.5px; font-family: 'Times New Roman', 'SimHei'; text-anchor: middle; fill: #111111" x="95" y="45.129883" transform="rotate(-0 95 45.129883)">PS 侧驱动</text>
+   </g>
+   <g id="text_5">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: middle; fill: #4a4a4a" x="95" y="55.07207" transform="rotate(-0 95 55.07207)">/dev/mem → AXI GP0</text>
+   </g>
+   <g id="text_6">
+    <text style="font-weight: 700; font-size: 8.5px; font-family: 'Times New Roman', 'SimHei'; text-anchor: middle; fill: #111111" x="95" y="81.869063" transform="rotate(-0 95 81.869063)">官方 fvdma_ctrl（不动官方块）</text>
+   </g>
+   <g id="text_7">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: middle; fill: #4a4a4a" x="95" y="91.931641" transform="rotate(-0 95 91.931641)">64KB 窗口 0x8030_0000 · 地址线 4→16 位</text>
+   </g>
+   <g id="text_8">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: middle; fill: #4a4a4a" x="95" y="101.674023" transform="rotate(-0 95 101.674023)">厂家段 0x0000~0x0FFF（mipicam 驱动）</text>
+   </g>
+   <g id="text_9">
+    <text style="font-weight: 700; font-size: 8.5px; font-family: 'Times New Roman', 'SimHei'; text-anchor: middle; fill: #111111" x="95" y="134.129883" transform="rotate(-0 95 134.129883)">自研寄存器总线 0x1000~0x1FFF</text>
+   </g>
+   <g id="text_10">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: middle; fill: #4a4a4a" x="95" y="144.249609" transform="rotate(-0 95 144.249609)">75MHz · 单周期写</text>
+   </g>
+   <g id="text_11">
+    <text style="font-weight: 700; font-size: 8.5px; font-family: 'Times New Roman', 'SimHei'; text-anchor: middle; fill: #111111" x="95" y="176.085977" transform="rotate(-0 95 176.085977)">PL_BASE 0x8030_1000</text>
+   </g>
+   <g id="text_12">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: middle; fill: #4a4a4a" x="95" y="187.234961" transform="rotate(-0 95 187.234961)">单次读 188ns（20 万次统计）</text>
+   </g>
+   <g id="text_13">
+    <text style="font-weight: 700; font-size: 8.5px; font-family: 'Times New Roman', 'SimHei'; text-anchor: middle; fill: #111111" x="95" y="219.851641" transform="rotate(-0 95 219.851641)">按 addr[11:8] 分段译码</text>
+   </g>
+   <g id="text_14">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: middle; fill: #4a4a4a" x="95" y="230.220312" transform="rotate(-0 95 230.220312)">0x000 ~ 0x500 → 右侧各段</text>
+   </g>
+   <g id="text_15">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #6a6a6a" x="12" y="256.709961" transform="rotate(-0 12 256.709961)">新模块从 0x5xx 起（用前先登记）</text>
+   </g>
+   <g id="text_16">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #6a6a6a" x="12" y="268.724609" transform="rotate(-0 12 268.724609)">CEP 排针 J12 = BANK11 · 3.3V LVCMOS</text>
+   </g>
+   <g id="text_17">
+    <text style="font-weight: 700; font-size: 7.5px; font-family: 'Times New Roman', 'SimHei'; text-anchor: start; fill: #111111" x="204" y="44.482617" transform="rotate(-0 204 44.482617)">0x000</text>
+   </g>
+   <g id="text_18">
+    <text style="font-weight: 700; font-size: 8.5px; font-family: 'Times New Roman', 'SimHei'; text-anchor: start; fill: #111111" x="248" y="43.897227" transform="rotate(-0 248 43.897227)">des_regs</text>
+   </g>
+   <g id="text_19">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #4a4a4a" x="248" y="56.680664" transform="rotate(-0 248 56.680664)">ID / 版本 / 自由计数</text>
+   </g>
+   <g id="text_20">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #4a4a4a" x="248" y="66.295312" transform="rotate(-0 248 66.295312)">拍摄锁存：帧号 + 位置</text>
+   </g>
+   <g id="text_21">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #4a4a4a" x="354" y="56.695312" transform="rotate(-0 354 56.695312)">开始写 / 写完</text>
+   </g>
+   <g id="text_22">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #4a4a4a" x="354" y="66.309961" transform="rotate(-0 354 66.309961)">像素域翻转 + 两级同步</text>
+   </g>
+   <g id="text_23">
+    <text style="font-weight: 700; font-size: 7.5px; font-family: 'Times New Roman', 'SimHei'; text-anchor: start; fill: #111111" x="204" y="83.482617" transform="rotate(-0 204 83.482617)">0x100</text>
+   </g>
+   <g id="text_24">
+    <text style="font-weight: 700; font-size: 8.5px; font-family: 'Times New Roman', 'SimHei'; text-anchor: start; fill: #111111" x="248" y="82.897227" transform="rotate(-0 248 82.897227)">servo_bus</text>
+   </g>
+   <g id="text_25">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #4a4a4a" x="248" y="95.695312" transform="rotate(-0 248 95.695312)">协议主机 · SYNC WRITE</text>
+   </g>
+   <g id="text_26">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #4a4a4a" x="248" y="105.295312" transform="rotate(-0 248 105.295312)">补帧头 · 校验 · 超时</text>
+   </g>
+   <g id="text_27">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #4a4a4a" x="354" y="95.164453" transform="rotate(-0 354 95.164453)">SERVO_BUS Y9 开漏</text>
+   </g>
+   <g id="text_28">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #4a4a4a" x="354" y="105.295312" transform="rotate(-0 354 105.295312)">BSS138 → 6 舵机</text>
+   </g>
+   <g id="text_29">
+    <text style="font-weight: 700; font-size: 7.5px; font-family: 'Times New Roman', 'SimHei'; text-anchor: start; fill: #111111" x="204" y="122.482617" transform="rotate(-0 204 122.482617)">0x200</text>
+   </g>
+   <g id="text_30">
+    <text style="font-weight: 700; font-size: 8.5px; font-family: 'Times New Roman', 'SimHei'; text-anchor: start; fill: #111111" x="248" y="121.897227" transform="rotate(-0 248 121.897227)">stepper_ctrl</text>
+   </g>
+   <g id="text_31">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #4a4a4a" x="248" y="134.709961" transform="rotate(-0 248 134.709961)">梯形加减速 · 运动中改目标</text>
+   </g>
+   <g id="text_32">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #4a4a4a" x="248" y="144.309961" transform="rotate(-0 248 144.309961)">刹车距离 · 首脉冲</text>
+   </g>
+   <g id="text_33">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #4a4a4a" x="354" y="134.545312" transform="rotate(-0 354 134.545312)">STEP PUL/DIR/ENA</text>
+   </g>
+   <g id="text_34">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #4a4a4a" x="354" y="144.152344" transform="rotate(-0 354 144.152344)">Y12/Y13/T9 · TB6600</text>
+   </g>
+   <g id="text_35">
+    <text style="font-weight: 700; font-size: 7.5px; font-family: 'Times New Roman', 'SimHei'; text-anchor: start; fill: #111111" x="204" y="161.480859" transform="rotate(-0 204 161.480859)">0x300</text>
+   </g>
+   <g id="text_36">
+    <text style="font-weight: 700; font-size: 8.5px; font-family: 'Times New Roman', 'SimHei'; text-anchor: start; fill: #111111" x="248" y="160.963633" transform="rotate(-0 248 160.963633)">des_vision</text>
+   </g>
+   <g id="text_37">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #4a4a4a" x="248" y="173.709961" transform="rotate(-0 248 173.709961)">灰度 / 高斯 / 二值 / Sobel</text>
+   </g>
+   <g id="text_38">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #4a4a4a" x="248" y="183.309961" transform="rotate(-0 248 183.309961)">ROI 统计 · 像素域 111MHz</text>
+   </g>
+   <g id="text_39">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #4a4a4a" x="354" y="173.739258" transform="rotate(-0 354 173.739258)">HDMI 直接显示处理图</text>
+   </g>
+   <g id="text_40">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #4a4a4a" x="354" y="182.888672" transform="rotate(-0 354 182.888672)">60fps 切模式可见</text>
+   </g>
+   <g id="text_41">
+    <text style="font-weight: 700; font-size: 7.5px; font-family: 'Times New Roman', 'SimHei'; text-anchor: start; fill: #111111" x="204" y="200.482617" transform="rotate(-0 204 200.482617)">0x400</text>
+   </g>
+   <g id="text_42">
+    <text style="font-weight: 700; font-size: 8.5px; font-family: 'Times New Roman', 'SimHei'; text-anchor: start; fill: #111111" x="248" y="199.897227" transform="rotate(-0 248 199.897227)">des_pwm</text>
+   </g>
+   <g id="text_43">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #4a4a4a" x="248" y="212.680664" transform="rotate(-0 248 212.680664)">导流挡板 2 路 50Hz PWM</text>
+   </g>
+   <g id="text_44">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #4a4a4a" x="248" y="222.324609" transform="rotate(-0 248 222.324609)">新脉宽下周期生效</text>
+   </g>
+   <g id="text_45">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #4a4a4a" x="354" y="212.552344" transform="rotate(-0 354 212.552344)">FLAP1 Y6 / FLAP2 Y8</text>
+   </g>
+   <g id="text_46">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #4a4a4a" x="354" y="222.082617" transform="rotate(-0 354 222.082617)">MG996R ×2</text>
+   </g>
+   <g id="text_47">
+    <text style="font-weight: 700; font-size: 7.5px; font-family: 'Times New Roman', 'SimHei'; text-anchor: start; fill: #111111" x="204" y="239.482617" transform="rotate(-0 204 239.482617)">0x500</text>
+   </g>
+   <g id="text_48">
+    <text style="font-weight: 700; font-size: 8.5px; font-family: 'Times New Roman', 'SimHei'; text-anchor: start; fill: #111111" x="248" y="238.963633" transform="rotate(-0 248 238.963633)">des_io · v11</text>
+   </g>
+   <g id="text_49">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #4a4a4a" x="248" y="251.724609" transform="rotate(-0 248 251.724609)">急停锁存 → 立即停脉冲</text>
+   </g>
+   <g id="text_50">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #4a4a4a" x="248" y="261.309961" transform="rotate(-0 248 261.309961)">对射 / 限位 · 编码器计数</text>
+   </g>
+   <g id="text_51">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #4a4a4a" x="354" y="250.730273" transform="rotate(-0 354 250.730273)">ESTOP_IN V11 · IR1 V6</text>
+   </g>
+   <g id="text_52">
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #4a4a4a" x="354" y="261.145312" transform="rotate(-0 354 261.145312)">ENC A/B/Z U10/T5/U5</text>
+   </g>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="pf56903056d">
+   <rect x="0" y="0" width="447.92" height="280"/>
+  </clipPath>
+ </defs>
+</svg>

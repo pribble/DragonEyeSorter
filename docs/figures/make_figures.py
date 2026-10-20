@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 """make_figures.py — 生成技术文档 / 作品报告 / PPT 的 5 张插图（SVG + PNG + fig_meta.json）。
 
-    python docs/figures/make_figures.py              # 重画全部
+    python docs/figures/make_figures.py              # 重画全部（slide 主题 → 本目录，给 PPT）
+    python docs/figures/make_figures.py --paper      # 重画全部（paper 主题 → paper/，给报告）
     python docs/figures/make_figures.py arch time    # 只重画名字里含 arch / time 的
-    python docs/figures/fig_timebase.py              # 单张调试（等价于上面 + 只跑这一张）
+    python docs/figures/fig_timebase.py --paper      # 单张调试（等价于上一行 + 只跑这一张）
 
 约定与图元都在 figkit.py：**画布按报告落版尺寸（15.8cm 宽，单位 pt）作图，字号即纸面字号**，
 每张图保存前会核对文字越界与字号（见文件头注释）。单张图的画法看 fig_architecture.py。
-每个 fig_*.py 要暴露 draw() 与 REGIONS，并能单独 `python docs/figures/fig_xxx.py` 跑。
+每个 fig_*.py 要暴露 draw() 与 REGIONS，并能单独 `python docs/figures/fig_xxx.py [--paper]` 跑。
+
+两套主题共用同一份坐标：slide（默认，浅色编辑风，PPT 用）与 paper（期刊线稿，报告用）。
+报告 `docs/技术文档.md` 引用的是 `figures/paper/` 那一套；PPT 用本目录这一套。
 """
 import importlib
 import os
@@ -16,14 +20,19 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-import figkit as fk                                  # noqa: E402
+PAPER = '--paper' in sys.argv
+if PAPER:
+    os.environ['FIG_STYLE'] = 'paper'
+
+import figkit as fk                                   # noqa: E402
 
 MODULE_NAMES = ['fig_architecture', 'fig_timebase', 'fig_pl_regs', 'fig_pick_sequence', 'fig_layout']
 
 
 def main(argv):
-    keys = argv[1:]
+    keys = [a for a in argv[1:] if not a.startswith('--')]
     skipped, drawn = [], 0
+    print('主题：%s → %s' % (fk.STYLE, os.path.relpath(fk.OUT_DIR, HERE)))
     for name in MODULE_NAMES:
         if keys and not any(k in name for k in keys):
             continue
@@ -43,7 +52,7 @@ def main(argv):
     if fk.failed() or skipped:
         print('有插图越界 / 字号不足 / 模块缺失 —— 见上面的 ERR 行')
         return 1
-    print('全部 %d 张插图完成' % drawn)
+    print('%s 主题全部 %d 张插图完成' % (fk.STYLE, drawn))
     return 0
 
 

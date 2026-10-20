@@ -193,7 +193,7 @@ pwsh -File submission/build/export_ppt_preview.ps1
 
 | 项 | 规范 |
 |---|---|
-| 图源 | `docs/figures/*.png`，由 `python docs/figures/make_figures.py` 生成，不手工画；SVG 版仅作矢量备份 |
+| 图源 | `docs/figures/*.png`（`slide` 主题，浅色编辑风），由 `python docs/figures/make_figures.py` 生成，不手工画；SVG 版仅作矢量备份。报告 / 技术文档用的是同一份脚本出的 `paper` 主题（`figures/paper/`，期刊线稿），两套坐标相同、只有装饰不同 |
 | 版式语言 | 与 PPT 同一套浅色编辑风：浅灰分组面板（小标题 + 细线）、卡片白底 + 2pt 强调色条、中性灰细箭头；不用高饱和整块填充与粗虚线框；图内不画大标题（标题由页标题 / 图注承担），详见 [figures/README](../docs/figures/README.md) |
 | 本版用图 | 第 4 页 `fig_architecture.png`、第 5 页 `fig_timebase.png`、第 6 页 `fig_pl_regs.png`（重点框 `modules`）、第 8 页 `fig_pick_sequence.png`、第 9 页 `fig_layout.png` |
 | 嵌入方式 | **整图按源图原生像素嵌入**，等比缩放、居中，白底图加 `C_LINE` 细边框；不做局部放大、不做像素裁切 |
@@ -203,7 +203,7 @@ pwsh -File submission/build/export_ppt_preview.ps1
 | 缺图 / 缺 meta | 插图缺失时脚本抛 `FileNotFoundError`；`fig_meta.json` 缺失或没有对应插图 / 区域键时脚本退出并提示先跑 `make_figures.py` |
 | 新增图 | 图放 `docs/figures/` 并由 `make_figures.py` 登记 → 重跑生成 `fig_meta.json` → 在 `slide_specs()` 里用 `figure_side` / `figure_full` 加页；3200px 源图放置宽度不要超过约 **10.6 in**（否则跌破 300 dpi） |
 
-`fig_meta.json` 里的 `min_fs_pt`（每图最小字号 ≥7.5pt）是报告链的落版字号门槛，PPT 侧读的是同一文件的 `regions`；改插图后重跑 `make_figures.py`，报告与 PPT 的自检会一起跟上（见 [figures/README](../docs/figures/README.md)）。
+`fig_meta.json` 里的 `min_fs_pt`（每图最小字号 ≥7.5pt）是报告链的落版字号门槛（报告读 `figures/paper/fig_meta.json`），PPT 侧读的是 slide 版同一文件的 `regions`；改插图后两套都重跑 `make_figures.py`，报告与 PPT 的自检会一起跟上（见 [figures/README](../docs/figures/README.md)）。
 
 ### 4.7 动效建议（少而稳）
 

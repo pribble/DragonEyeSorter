@@ -14,14 +14,24 @@
 3. 文字一律用 ``box()`` / ``text()`` / ``group()`` 画：``save()`` 会核对**是否越出盒子或画布**
    （误差 > 0.5pt 即报错退出），并打印每图的最小盒内余量与最小字号 —— 排版靠数据，不靠目测。
 4. **不画图内标题**：标题由报告图注（``*图 2-1 …*``）与 PPT 页标题承担。
-5. 版式语言（与答辩 PPT 同一套）：白 / 极浅灰底，卡片白底 + 左侧 2pt 强调色条 + 1px 灰边，
-   面板用浅灰底与「强调色小标题 + 细分隔线」，箭头用中性灰细线；不画粗虚线框、不用高饱和填充。
+5. 两套同名图：脚本只画一次坐标，主题换渲染。
+   ``FIG_STYLE=slide``（默认，入库到 ``docs/figures/``）给 PPT：浅色编辑风，卡片 + 左侧色条
+   + 浅灰面板；``FIG_STYLE=paper``（入库到 ``docs/figures/paper/``）给技术文档与作品报告：
+   期刊线稿风 —— 白底、方框细边、虚线分组框、黑色细箭头、Times 西文 + 宋体中文、无装饰色。
+   两套图坐标完全相同（同一份脚本），所以报告里的图与 PPT 里的图只是「同图两种画法」。
 6. 导出：SVG（矢量，文字可编辑）+ PNG 宽 3200px；同时写 ``fig_meta.json``（画布尺寸、
    ``px_per_pt``、PPT 重点框像素矩形），供 ``make_ppt.py`` 与 ``verify_report.py`` 读取。
+   paper 主题写 ``paper/fig_meta.json``（报告自检读它复核落版字号）。
 """
 import json
 import os
 import sys
+
+# 主题：环境变量 FIG_STYLE=paper，或命令行带 --paper（单张调试用）
+STYLE = os.environ.get('FIG_STYLE', 'slide').strip().lower()
+if '--paper' in sys.argv:
+    STYLE = 'paper'
+PAPER = STYLE == 'paper'
 
 try:                                   # Windows 控制台默认 GBK，中文/µ 会乱码甚至报错
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -36,10 +46,18 @@ from matplotlib.patches import (Circle, FancyArrowPatch, FancyBboxPatch,   # noq
                                 Polygon, Rectangle)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-META_PATH = os.path.join(HERE, 'fig_meta.json')
+OUT_DIR = os.path.join(HERE, 'paper') if PAPER else HERE     # 两套图分开存，PPT 用 slide 那套
+META_PATH = os.path.join(OUT_DIR, 'fig_meta.json')
 
-plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei',
-                                   'SimHei', 'DejaVu Sans']
+if PAPER:                      # 期刊线稿：西文 Times、中文宋体（matplotlib 逐字回退）
+    plt.rcParams['font.family'] = ['Times New Roman', 'SimSun', 'Microsoft YaHei']
+    # SimSun 没有粗体字面，标题里的中文按常规字重回退（西文仍是 Times Bold），不刷屏警告
+    import logging
+    logging.getLogger('matplotlib.font_manager').setLevel(logging.ERROR)
+else:
+    plt.rcParams['font.family'] = ['sans-serif']
+    plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei',
+                                       'SimHei', 'DejaVu Sans']
 plt.rcParams['axes.unicode_minus'] = False
 plt.rcParams['svg.fonttype'] = 'none'      # SVG 里的字保持可编辑文本（PPT 里能改）
 plt.rcParams['svg.hashsalt'] = 'dragoneye'  # 固定 clip-path id，重跑 SVG 逐字节一致（可复现）
@@ -54,25 +72,51 @@ FS_MIN = 7.5                                # 全图最小字号（pt）
 # 字号档位（落版真实 pt）。要改字号只改这里，别在画图代码里写数字。
 FS = {'box': 8.5, 'sub': 7.5, 'group': 9.5, 'head': 9.5, 'note': 7.5}
 
-# 色板：墨色文字 / 次级灰 / 极浅面板 / 细线，强调色每域一个（只用在色条与小标题上）
-INK = '#0E1B2B'
-BODY = '#334155'
-MUTED = '#5F7285'
-FAINT = '#6B7A8B'
-RULE = '#DCE3EA'
-EDGE = '#D5DDE5'
-PANEL = '#F7F9FB'
-WHITE = '#FFFFFF'
-
-# kind -> (卡片底色, 强调色)。底色只给极淡的一层，颜色识别靠左侧色条与小标题。
-C = {
-    'pl': ('#EFFAF7', '#0D9488'),      # PL 硬实时（青绿）
-    'ps': ('#F2F6FC', '#2563EB'),      # PS / Linux（蓝）
-    'npu': ('#FFF7EC', '#B45309'),     # NPU（琥珀）
-    'ext': ('#F6F8FA', '#64748B'),     # 外部设备 / 中性（灰蓝）
-    'mem': ('#F6F3FD', '#6D4AC7'),     # 存储（紫）
-    'acc': ('#FDF4F3', '#B91C1C'),     # 安全 / 告警（红）
-}
+if PAPER:
+    # ---- 期刊线稿风：只用黑 / 灰，颜色不参与信息表达（分组靠标签与虚线框）----
+    INK = '#111111'
+    BODY = '#333333'
+    MUTED = '#4A4A4A'
+    FAINT = '#6A6A6A'
+    RULE = '#C8C8C8'
+    EDGE = '#333333'
+    PANEL = '#FFFFFF'
+    WHITE = '#FFFFFF'
+    ARROW = '#333333'
+    # 卡片底色：白，NPU / 警示块用极浅灰
+    C = {
+        'pl': ('#FFFFFF', '#111111'),
+        'ps': ('#FFFFFF', '#111111'),
+        'npu': ('#F2F2F2', '#111111'),
+        'ext': ('#FFFFFF', '#111111'),
+        'mem': ('#F0F0F0', '#111111'),
+        'acc': ('#F2F2F2', '#111111'),
+    }
+    # 布局图专用底纹（皮带 / 灯光条）
+    BELT_FILL, BELT_EDGE, BELT_HATCH = '#F7F7F7', '#444444', '#E0E0E0'
+    LIGHT_FILL, LIGHT_EDGE = '#F2F2F2', '#444444'
+else:
+    # ---- 浅色编辑风（答辩 PPT）：白 / 极浅灰底，强调色只用在色条与小标题上 ----
+    INK = '#0E1B2B'
+    BODY = '#334155'
+    MUTED = '#5F7285'
+    FAINT = '#6B7A8B'
+    RULE = '#DCE3EA'
+    EDGE = '#D5DDE5'
+    PANEL = '#F7F9FB'
+    WHITE = '#FFFFFF'
+    ARROW = '#8A99A8'
+    # kind -> (卡片底色, 强调色)。底色只给极淡的一层，颜色识别靠左侧色条与小标题。
+    C = {
+        'pl': ('#EFFAF7', '#0D9488'),      # PL 硬实时（青绿）
+        'ps': ('#F2F6FC', '#2563EB'),      # PS / Linux（蓝）
+        'npu': ('#FFF7EC', '#B45309'),     # NPU（琥珀）
+        'ext': ('#F6F8FA', '#64748B'),     # 外部设备 / 中性（灰蓝）
+        'mem': ('#F6F3FD', '#6D4AC7'),     # 存储（紫）
+        'acc': ('#FDF4F3', '#B91C1C'),     # 安全 / 告警（红）
+    }
+    BELT_FILL, BELT_EDGE, BELT_HATCH = '#F3F6F9', '#C9D4DE', '#E8EDF2'
+    LIGHT_FILL, LIGHT_EDGE = '#FDF6E3', '#D9B45B'
 
 _ctx = {'name': None}
 _checks = []            # [(artist, rect|None, text, fs)]
@@ -104,6 +148,9 @@ def text(ax, x, y, s, fs=None, ha='left', va='center', color=INK, weight='normal
     bg=True 给白底（短线箭头上的标签压住线时用，避免读成线的一部分）。"""
     fs = FS['sub'] if fs is None else fs
     kw = {}
+    if PAPER and weight in ('bold', 'semibold'):
+        # 宋体没有粗体字面；中文标题用黑体（中文期刊图的惯例），西文仍走 Times Bold
+        kw['family'] = ['Times New Roman', 'SimHei']
     if bg:
         kw['bbox'] = dict(boxstyle='square,pad=0.10', fc=WHITE, ec='none')
     if family:
@@ -135,18 +182,21 @@ def _block(ax, cx, cy, title, rest, rect, *, align='center', fs=None, pad_x=4.0,
 # --------------------------------------------------------------------------------------------- 图元
 def box(ax, x, y, w, h, s='', kind='pl', fs=None, weight='normal', align='center', pad_x=4.0,
         lw=0.7, round_=2.2, ls='-', fc=None, bar=True):
-    """卡片：白/极浅底色 + 左侧强调色条 + 细灰边，文字两级（名称 + 限定）。
+    """卡片：slide 主题为白/极浅底 + 左侧强调色条 + 细边；paper 主题为方角细边框。
 
     ``s`` 里第一行是名称（8.5pt 粗体），其余行是限定（7.5pt 次级灰）。
-    ``bar=False`` 用于不需要色条的小标签框。
+    ``bar=False`` 用于不需要色条的小标签框（paper 主题本来就无装饰）。
     """
     face, accent = C[kind]
     face = face if fc is None else fc
-    ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle='round,pad=0,rounding_size=%g' % round_,
-                                fc=face, ec=EDGE, lw=lw, ls=ls, zorder=2))
-    if bar:
-        ax.add_patch(Rectangle((x, y + 2.0), 2.0, max(h - 4.0, 0.1), fc=accent, ec='none',
-                               zorder=2.5))
+    if PAPER:
+        ax.add_patch(Rectangle((x, y), w, h, fc=face, ec=EDGE, lw=lw, ls=ls, zorder=2))
+    else:
+        ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle='round,pad=0,rounding_size=%g' % round_,
+                                    fc=face, ec=EDGE, lw=lw, ls=ls, zorder=2))
+        if bar:
+            ax.add_patch(Rectangle((x, y + 2.0), 2.0, max(h - 4.0, 0.1), fc=accent, ec='none',
+                                   zorder=2.5))
     if s:
         lines = s.split('\n')
         _block(ax, x + w / 2.0 if align == 'center' else x, y + h / 2.0, lines[0], lines[1:],
@@ -155,9 +205,13 @@ def box(ax, x, y, w, h, s='', kind='pl', fs=None, weight='normal', align='center
 
 
 def chip(ax, x, y, w, h, s, kind='pl', fs=None, align='center'):
-    """小标签（寄存器偏移、段号）：浅底 + 强调色文字，无边框。"""
+    """小标签（寄存器偏移、段号）：slide 为浅底 + 强调色文字；paper 为黑色粗体文字。"""
     _, accent = C[kind]
     fs = FS['sub'] if fs is None else fs
+    if PAPER:
+        text(ax, x + w / 2.0 if align == 'center' else x + 3.0, y + h / 2.0, s, fs=fs,
+             ha=align, va='center', color=INK, weight='bold', rect=(x, y, w, h))
+        return (x, y, w, h)
     ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle='round,pad=0,rounding_size=1.5',
                                 fc=WHITE, ec=EDGE, lw=0.6, zorder=2))
     text(ax, x + w / 2.0 if align == 'center' else x + 3.0, y + h / 2.0, s, fs=fs,
@@ -166,13 +220,24 @@ def chip(ax, x, y, w, h, s, kind='pl', fs=None, align='center'):
 
 
 def group(ax, x, y, w, h, label, kind, fs=None, lw=1.4, note=None):
-    """浅灰面板 + 左上角强调色小标题 + 标题下细线（不用虚线框）。
+    """分组：slide 为浅灰面板 + 强调色小标题 + 细线；paper 为灰色虚线圆角框 + 黑色标题。
 
     ``note`` 给右侧一行灰色小字（域说明 / 数量），与标题同基线。
     内容区从 ``y + h - 26`` 往下排（标题占顶部 26pt）。
     """
     _, accent = C[kind]
     fs = FS['group'] if fs is None else fs
+    if PAPER:
+        ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle='round,pad=0,rounding_size=3.5',
+                                    fc='none', ec='#7F7F7F', lw=0.7, ls=(0, (4.0, 2.4)),
+                                    zorder=1))
+        ty = y + h - 13.5
+        text(ax, x + 8, ty, label, fs=fs, ha='left', va='center', weight='bold', color=INK,
+             rect=(x, y, w, h))
+        if note:
+            text(ax, x + w - 8, ty, note, fs=FS['sub'], ha='right', va='center', color=FAINT,
+                 rect=(x, y, w, h))
+        return (x, y, w, h)
     ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle='round,pad=0,rounding_size=3.5',
                                 fc=PANEL, ec='none', zorder=1))
     ty = y + h - 13.5
@@ -185,8 +250,9 @@ def group(ax, x, y, w, h, label, kind, fs=None, lw=1.4, note=None):
     return (x, y, w, h)
 
 
-def arrow(ax, p, q, s=None, color='#8A99A8', lw=0.9, style='-|>', fs=None, off=(0, 3.2),
+def arrow(ax, p, q, s=None, color=None, lw=0.9, style='-|>', fs=None, off=(0, 3.2),
           both=False, ls='-', ms=6.5, bg=True):
+    color = ARROW if color is None else color
     a = FancyArrowPatch(p, q, arrowstyle=('<|-|>' if both else style), mutation_scale=ms, lw=lw,
                         color=color, linestyle=ls, shrinkA=0, shrinkB=0, zorder=2)
     ax.add_patch(a)
@@ -195,8 +261,9 @@ def arrow(ax, p, q, s=None, color='#8A99A8', lw=0.9, style='-|>', fs=None, off=(
              ha='center', va='bottom', color=color, bg=bg)
 
 
-def poly(ax, pts, color='#8A99A8', lw=0.9, ls='-'):
+def poly(ax, pts, color=None, lw=0.9, ls='-'):
     """折线（最后一笔带箭头），用来绕开框走线。"""
+    color = ARROW if color is None else color
     for a, b in zip(pts[:-2], pts[1:-1]):
         ax.plot([a[0], b[0]], [a[1], b[1]], color=color, lw=lw, ls=ls, solid_capstyle='butt',
                 zorder=2)
@@ -218,12 +285,13 @@ def rect(ax, x, y, w, h, fc=WHITE, ec=EDGE, lw=0.7, ls='-', alpha=1.0):
     return p
 
 
-def circle(ax, x, y, r, color='#0D9488'):
-    ax.add_patch(Circle((x, y), r, color=color, zorder=5))
+def circle(ax, x, y, r, color=None):
+    ax.add_patch(Circle((x, y), r, color=ARROW if color is None else color, zorder=5))
 
 
-def tick(ax, x, y0, y1, color='#8A99A8', lw=0.9, zorder=2):
-    ax.plot([x, x], [y0, y1], color=color, lw=lw, solid_capstyle='butt', zorder=zorder)
+def tick(ax, x, y0, y1, color=None, lw=0.9, zorder=2):
+    ax.plot([x, x], [y0, y1], color=ARROW if color is None else color, lw=lw,
+            solid_capstyle='butt', zorder=zorder)
 
 
 # --------------------------------------------------------------------------------------------- 校验
@@ -263,15 +331,17 @@ def save(fig, name, regions=None):
     """核对越界 → 写 <name>.svg / <name>.png → 登记 meta，并打印该图一行结论。
 
     regions：{键: (x0, y0, x1, y1)}（pt 坐标，左下原点；范围须在画布内），
-    供 PPT 重点框定位 —— meta 里存成像素矩形、左上原点。
+    供 PPT 重点框定位 —— meta 里存成像素矩形、左上原点。paper 主题不供 PPT 用，
+    regions 仍照常校验（坐标与 slide 完全相同，脚本无需分支）。
     """
     w, h = fig._fk_size
     dpi = PNG_W * 72.0 / w
     rep = _check(fig, name)
     _report_line(rep)
-    fig.savefig(os.path.join(HERE, name + '.svg'), facecolor='white',
+    os.makedirs(OUT_DIR, exist_ok=True)
+    fig.savefig(os.path.join(OUT_DIR, name + '.svg'), facecolor='white',
                 metadata={'Date': None})
-    fig.savefig(os.path.join(HERE, name + '.png'), dpi=dpi, facecolor='white')
+    fig.savefig(os.path.join(OUT_DIR, name + '.png'), dpi=dpi, facecolor='white')
     plt.close(fig)
 
     png = (PNG_W, int(round(h * PNG_W / w)))
@@ -284,8 +354,9 @@ def save(fig, name, regions=None):
                        int(round(x1 * k)), int(round((h - y0) * k))]
     _meta[name] = dict(w_pt=round(w, 2), h_pt=round(h, 2), png_w=png[0], png_h=png[1],
                        px_per_pt=round(k, 4), min_fs_pt=rep['min_fs'], regions=reg_px)
-    print('       → %s.svg / %s.png  %.1f x %.1f pt  PNG %d x %d（%.0f dpi @15.8cm）' %
-          (name, name, w, h, png[0], png[1], png[0] / (w / 72.0)))
+    print('       → %sfig_%s.svg / fig_%s.png  %.1f x %.1f pt  PNG %d x %d（%.0f dpi @15.8cm）' %
+          ('' if not PAPER else 'paper/', name.replace('fig_', ''), name.replace('fig_', ''),
+           w, h, png[0], png[1], png[0] / (w / 72.0)))
     return rep['bad']
 
 
@@ -321,7 +392,8 @@ def write_meta():
         json.dump(dict(figure_width_pt=FIG_W, png_width=PNG_W, figures=merged), f,
                   ensure_ascii=False, indent=1)
         f.write('\n')
-    print('wrote fig_meta.json（本次 %d 图，合并后 %d 图）' % (len(_meta), len(merged)))
+    print('wrote %s（%s 主题，本次 %d 图，合并后 %d 图）' %
+          (os.path.relpath(META_PATH, HERE), STYLE, len(_meta), len(merged)))
 
 
 def failed():

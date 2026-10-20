@@ -15,7 +15,7 @@
   9 TOC 域与 updateFields
  10 疑似行框重叠（PyMuPDF 逐页两两求交）
  11 **插图清晰度：每张插图等效 dpi ≥ 300**（Word 导出只有 96，靠 pdf_images_hires.py 提上来）
- 12 **插图可读性：每张插图落版最小字号 ≥ 7pt**（figkit 按 15.8cm 落版 1:1 作图，读 fig_meta.json）
+ 12 **插图可读性：每张插图落版最小字号 ≥ 7pt**（figkit 按 15.8cm 落版 1:1 作图，读 paper/fig_meta.json）
  13 **逐页底部空白分析**（信息项：每页数值 + >20% 的页及原因）+ 正文页不被撑空（填充 ≥ 50%）
  14 代码包与 README 登记
 
@@ -597,8 +597,8 @@ def main(argv=None) -> int:
         # 教训（本版重画的起因）：旧插图按 16in（1152pt）画布作图、再缩到 15.8cm 落版，
         # 缩放 0.389 → 图内 8pt 落到纸面只剩 3.1pt，报告里整片文字读不动。
         # 现在 docs/figures/figkit.py 强制「画布宽 = 落版宽、字号 = 纸面字号」，
-        # 这里拿 fig_meta.json 的原始记录独立复核一遍等效字号。
-        meta_p = REPO / "docs" / "figures" / "fig_meta.json"
+        # 这里拿报告用的 paper 主题 fig_meta.json 的原始记录独立复核一遍等效字号。
+        meta_p = REPO / "docs" / "figures" / "paper" / "fig_meta.json"
         figs_meta = {}
         if meta_p.is_file():
             figs_meta = json.loads(meta_p.read_text(encoding="utf-8")).get("figures", {})
@@ -608,7 +608,7 @@ def main(argv=None) -> int:
                for k in FIG_NAMES if k in figs_meta]
         low = ["%s %.1fpt" % (k, e) for k, e in eff if e < MIN_FIG_PT - 1e-6]
         if missing:
-            fs_txt = "fig_meta.json 缺条目：" + ", ".join(missing) + "（先跑 docs/figures/make_figures.py）"
+            fs_txt = "fig_meta.json 缺条目：" + ", ".join(missing) + "（先跑 docs/figures/make_figures.py --paper）"
         elif low:
             fs_txt = "低于阈值：" + "; ".join(low)
         else:

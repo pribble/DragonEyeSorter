@@ -33,7 +33,7 @@ def draw():
     S, B = fk.FS['sub'], fk.FS['box']
 
     # ---------------- 时间轴（示意） ----------------
-    fk.arrow(ax, (10, AXIS_Y), (436, AXIS_Y), color='#8A99A8', lw=0.9, ms=6.0)
+    fk.arrow(ax, (10, AXIS_Y), (436, AXIS_Y), color=fk.ARROW, lw=0.9, ms=6.0)
     fk.text(ax, 436, 148, '时间（示意）', ha='right', va='center', fs=S, color=fk.MUTED)
     for x, name, sub, kind, lock in EVENTS:
         accent = fk.C[kind][1]

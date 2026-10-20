@@ -54,6 +54,32 @@ def _row(ax, y, idx, off, name, lines, pins):
         fk.text(ax, x + SEP + 8, y + 15 - i * 9.6, s, fs=fk.FS['sub'], color=fk.FAINT)
 
 
+def _row_paper(ax, y, idx, off, name, lines, pins):
+    """paper 主题：三线表行——偏移 / 模块 / 管脚，列对齐，行内不加边框。"""
+    x = RX + 6
+    fk.text(ax, x + 8, y + 27, off, fs=fk.FS['sub'], weight='bold', color=fk.INK)
+    fk.text(ax, x + 52, y + 27, name, fs=fk.FS['box'], weight='bold', color=fk.INK)
+    for i, s in enumerate(lines):
+        fk.text(ax, x + 52, y + 15 - i * 9.6, s, fs=fk.FS['sub'], color=fk.MUTED)
+    for i, s in enumerate(pins):
+        fk.text(ax, x + SEP + 8, y + 15 - i * 9.6, s, fs=fk.FS['sub'], color=fk.MUTED)
+
+
+def _table_paper(ax):
+    """paper 主题右栏：三线表（顶线 / 底线 + 行间极浅分隔），列不竖线、不用斑马底。"""
+    x = RX + 6
+    w = RW - 12
+    row_h, gap = ROW_H - 1.0, ROW_GAP          # 行略压低，给底线与分组虚线框留出余量
+    y_last = ROW_TOP - row_h - (len(MODS) - 1) * (row_h + gap)
+    fk.hline(ax, x, x + w, ROW_TOP + 2.5, color=fk.INK, lw=1.0)
+    for i, (off, name, lines, pins) in enumerate(MODS):
+        y = ROW_TOP - row_h - i * (row_h + gap)
+        _row_paper(ax, y, i, off, name, lines, pins)
+        if i:
+            fk.hline(ax, x, x + w, y + row_h + gap - 0.5, color=fk.RULE, lw=0.4, zorder=1.2)
+    fk.hline(ax, x, x + w, y_last - 1.5, color=fk.INK, lw=1.0)
+
+
 def draw():
     fig, ax = fk.new_fig(H)
 
@@ -80,9 +106,12 @@ def draw():
     fk.arrow(ax, (cx, 84), (cx, 78), ms=6.0)
 
     # ---------------- 右栏：寄存器段表 ----------------
-    for i, (off, name, lines, pins) in enumerate(MODS):
-        y = ROW_TOP - ROW_H - i * (ROW_H + ROW_GAP)
-        _row(ax, y, i, off, name, lines, pins)
+    if fk.PAPER:
+        _table_paper(ax)
+    else:
+        for i, (off, name, lines, pins) in enumerate(MODS):
+            y = ROW_TOP - ROW_H - i * (ROW_H + ROW_GAP)
+            _row(ax, y, i, off, name, lines, pins)
 
     return fig, ax
 

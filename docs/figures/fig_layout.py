@@ -33,10 +33,11 @@ def draw():
     red, amber = fk.C['acc'][1], fk.C['npu'][1]
 
     # ---------------- 皮带（俯视，按比例） ----------------
-    belt = fk.rect(ax, BX0, BY0, BW, BH, fc='#F3F6F9', ec='#C9D4DE', lw=1.0)
+    belt = fk.rect(ax, BX0, BY0, BW, BH, fc=fk.BELT_FILL, ec=fk.BELT_EDGE, lw=1.0)
     belt.set_zorder(1.0)
     for x in range(int(BX0) + 22, int(BX0 + BW), 20):
-        ln, = ax.plot([x, x - 16], [BY0 + 2, BY0 + BH - 2], color='#E8EDF2', lw=0.6, zorder=1.2)
+        ln, = ax.plot([x, x - 16], [BY0 + 2, BY0 + BH - 2], color=fk.BELT_HATCH, lw=0.6,
+                      zorder=1.2)
         ln.set_clip_path(belt)          # 斜纹不许越出皮带边
     fk.text(ax, BX0 + 4, BY0 + BH + 6, '皮带 800 × 300mm', fs=S, color=fk.MUTED)
 
@@ -77,13 +78,16 @@ def draw():
     fk.box(ax, *BOX2, '料盒：返修', 'acc')
     ax.plot([300, 56], [BY0 + 11, BY0 + 11], color=red, lw=1.0, ls=(0, (5, 3)), zorder=1.2)
     fk.arrow(ax, (120, BY0 + 11), (56, BY0 + 11), color=red, lw=1.0, ls=(0, (5, 3)), ms=6.0)
-    fk.text(ax, 250, BY0 + 11, 'NG 不停带分流', fs=S, ha='center', color=red, bg=True)
+    if fk.PAPER:                        # 线稿风：标签放在线上方、避开视野框下边
+        fk.text(ax, 170, BY0 + 15, 'NG 不停带分流', fs=S, ha='center', color=red)
+    else:
+        fk.text(ax, 250, BY0 + 11, 'NG 不停带分流', fs=S, ha='center', color=red, bg=True)
     fk.box(ax, 2, 92, 40, 34, '带尾\n复检箱', 'ext')
     fk.arrow(ax, (56, 109), (43, 109), ms=5.0)
 
     # ---------------- 灯、龙门、走料方向 ----------------
     for y in (FOV_T + 2, BY0 - 6):
-        fk.rect(ax, FOV_L, y, FOV_W, 3.5, fc='#FDF6E3', ec='#D9B45B', lw=0.7)
+        fk.rect(ax, FOV_L, y, FOV_W, 3.5, fc=fk.LIGHT_FILL, ec=fk.LIGHT_EDGE, lw=0.7)
     fk.text(ax, 240, 226, '条形光 ×2（两侧 · 离带面 80~120mm）', fs=S, color=amber)
     fk.box(ax, 186, 8, 160, 34, '龙门支架：板卡 + 相机\n（机械臂的另一侧）', 'ext')
     fk.arrow(ax, (436, 26), (356, 26), color=fk.MUTED, lw=1.2, ms=6.5)
