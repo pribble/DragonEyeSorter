@@ -118,7 +118,7 @@ ArmExec::Result ArmExec::run(const std::vector<ServoFrame> &wp, bool dry, const 
                 bool rc2 = des_servo_read_u16(hw_, id(5), 0x2E, &ma) == DES_OK;
                 res.grip_pos = rp ? p : -1;
                 res.grip_ma = rc2 ? ma : -1;
-                const float per_mm = std::fabs(cfg_.grip_open_count - cfg_.grip_closed_count) / cfg_.grip_max_open;
+                const float per_mm = grip_counts_per_mm(cfg_, grip_mm(cfg_, f.pos[5]));
                 res.grasped = rp && std::fabs(float(p) - float(f.pos[5])) > 1.5f * per_mm;
                 if (!rp) {
                     res.why = "gripper did not answer (grasp unknown)";

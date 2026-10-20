@@ -63,8 +63,11 @@ struct ArmConfig {
     float tilt_step_deg = 5;     // tilts tried: 0, step, 2 step, ... (the smallest that reaches wins)
 
     std::array<JointCal, 6> joint{};
-    // gripper (#6): count at fully open (max_open mm) and fully closed (0 mm), linear in between ⚠
+    // gripper (#6): count at fully open (max_open mm) and fully closed (0 mm), linear in between, unless grip_table
+    // gives measured (count, opening mm) points: the finger linkage is far from linear (10-22: 32 mm at 2318 where
+    // the straight line between closed 2919 and open 1195 says 21 mm)
     float grip_open_count = 2600, grip_closed_count = 1500, grip_max_open = 60;
+    std::vector<std::array<float, 2>> grip_table;   // (count, mm), any order; >= 2 points replaces the line
     float grip_squeeze = 2;      // close this much narrower than the part
 
     // motion
@@ -105,6 +108,11 @@ Vec3 table_to_arm(const ArmConfig &c, Vec2 p_table, float z_above_belt);
 float table_axis_to_arm(const ArmConfig &c, float axis_table);
 
 // joint angles (+ gripper opening mm) -> servo counts; nullptr on success, else the joint that is out of range
+// gripper opening <-> servo count (grip_table or the open / closed line), clamped to 0..grip_max_open
+float grip_count(const ArmConfig &c, float mm);
+float grip_mm(const ArmConfig &c, float count);
+float grip_counts_per_mm(const ArmConfig &c, float mm);   // local slope (counts per mm, > 0)
+
 const char *arm_to_counts(const ArmConfig &c, const JointAngles &j, float grip_mm, std::array<uint16_t, 6> &pos);
 // servo counts -> joint angles + gripper opening (mm), the inverse of arm_to_counts (teaching by hand)
 JointAngles arm_from_counts(const ArmConfig &c, const std::array<uint16_t, 6> &pos, float &grip_mm);

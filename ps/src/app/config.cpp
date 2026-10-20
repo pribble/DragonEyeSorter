@@ -141,6 +141,11 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             get(c, "servo_in_min_r_mm", a.servo_in_min_r);
             get(c, "grip_open_count", a.grip_open_count); get(c, "grip_closed_count", a.grip_closed_count);
             get(c, "grip_max_open", a.grip_max_open); get(c, "grip_squeeze", a.grip_squeeze);
+            if (c.contains("grip_table")) {   // [[count, mm], ...] measured on the gripper
+                a.grip_table.clear();
+                for (const auto &e : c["grip_table"])
+                    if (e.size() == 2) a.grip_table.push_back({e[0].get<float>(), e[1].get<float>()});
+            }
             get(c, "z_safe", a.z_safe); get(c, "z_grasp", a.z_grasp); get(c, "joint_speed", a.joint_speed);
             get(c, "min_ms", a.min_ms); get(c, "descend_ms", a.descend_ms);
             get(c, "close_ms", a.close_ms); get(c, "open_ms", a.open_ms);

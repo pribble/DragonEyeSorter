@@ -526,6 +526,23 @@ static void test_arm()
     for (int i = 0; i < 5; i++) worst_q = std::fmax(worst_q, std::fabs(jb.q[i] - ja.q[i]));
     CHECK(worst_q < 0.1f, "counts -> angles round trip error %.3f deg", worst_q);   // 1 count = 0.073 deg
     CHECK(std::fabs(grip - 35.f) < 0.1f, "gripper round trip %.2f mm", grip);
+    {   // measured gripper (10-22): closed 2919, a 32 mm gear at 2318, fully open 61 mm at 1195 -> piecewise linear
+        ArmConfig g = c;
+        g.grip_max_open = 61;
+        g.grip_table = {{1195, 61}, {2919, 0}, {2318, 32}};
+        CHECK(std::fabs(grip_count(g, 0) - 2919) < 0.5f && std::fabs(grip_count(g, 32) - 2318) < 0.5f &&
+                  std::fabs(grip_count(g, 61) - 1195) < 0.5f && std::fabs(grip_count(g, 80) - 1195) < 0.5f,
+              "grip table: 0 / 32 / 61 / clamp -> %.0f %.0f %.0f %.0f", grip_count(g, 0), grip_count(g, 32),
+              grip_count(g, 61), grip_count(g, 80));
+        bool rt = true;
+        for (float mm : {0.f, 5.f, 30.f, 32.f, 45.f, 61.f}) rt = rt && std::fabs(grip_mm(g, grip_count(g, mm)) - mm) < 0.01f;
+        CHECK(rt, "grip table round trip");
+        CHECK(std::fabs(grip_counts_per_mm(g, 30) - 601.f / 32) < 0.1f && std::fabs(grip_counts_per_mm(g, 50) - 1123.f / 29) < 0.1f,
+              "grip slope %.2f / %.2f counts per mm", grip_counts_per_mm(g, 30), grip_counts_per_mm(g, 50));
+        std::array<uint16_t, 6> pc;
+        CHECK(!arm_to_counts(g, jb, 30, pc) && pc[5] == uint16_t(std::lround(2919 - 601.f * 30 / 32)),
+              "grip 30 mm -> count %u", pc[5]);
+    }
 
     // a taught bin pose outside the joint limits must be refused
     ArmConfig lim = c;

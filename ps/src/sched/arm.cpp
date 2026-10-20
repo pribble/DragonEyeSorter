@@ -83,6 +83,47 @@ float arm_tangential_axis(const ArmConfig &c, Vec2 p)
     return wrap_axis(std::atan2(p.y - c.base_xy.y, p.x - c.base_xy.x) + kPi / 2);
 }
 
+// grip_table sorted by opening; piecewise linear, extrapolated from the end segments
+static bool grip_points(const ArmConfig &c, std::vector<std::array<float, 2>> &t)
+{
+    if (c.grip_table.size() < 2) return false;
+    t = c.grip_table;
+    std::sort(t.begin(), t.end(), [](const std::array<float, 2> &a, const std::array<float, 2> &b) { return a[1] < b[1]; });
+    return true;
+}
+
+float grip_count(const ArmConfig &c, float mm)
+{
+    mm = std::min(std::max(mm, 0.f), c.grip_max_open);
+    std::vector<std::array<float, 2>> t;
+    if (!grip_points(c, t)) return c.grip_closed_count + (c.grip_open_count - c.grip_closed_count) * mm / c.grip_max_open;
+    size_t i = 1;
+    while (i + 1 < t.size() && mm > t[i][1]) i++;
+    const float d = t[i][1] - t[i - 1][1];
+    return d != 0 ? t[i - 1][0] + (t[i][0] - t[i - 1][0]) * (mm - t[i - 1][1]) / d : t[i][0];
+}
+
+float grip_mm(const ArmConfig &c, float count)
+{
+    std::vector<std::array<float, 2>> t;
+    if (!grip_points(c, t)) {
+        float span = c.grip_open_count - c.grip_closed_count;
+        return span != 0 ? (count - c.grip_closed_count) / span * c.grip_max_open : 0.f;
+    }
+    // counts are monotonic in the opening: find the segment whose count range holds `count`
+    size_t i = 1;
+    const bool up = t.back()[0] > t.front()[0];
+    while (i + 1 < t.size() && (up ? count > t[i][0] : count < t[i][0])) i++;
+    const float d = t[i][0] - t[i - 1][0];
+    return d != 0 ? t[i - 1][1] + (t[i][1] - t[i - 1][1]) * (count - t[i - 1][0]) / d : t[i][1];
+}
+
+float grip_counts_per_mm(const ArmConfig &c, float mm)
+{
+    const float a = std::max(mm - 0.5f, 0.f), b = std::min(mm + 0.5f, c.grip_max_open);
+    return b > a ? std::fabs(grip_count(c, b) - grip_count(c, a)) / (b - a) : 1.f;
+}
+
 const char *arm_to_counts(const ArmConfig &c, const JointAngles &j, float grip_mm, std::array<uint16_t, 6> &pos)
 {
     static const char *rng[5] = {"servo 1 count range", "servo 2 count range", "servo 3 count range",
@@ -92,8 +133,9 @@ const char *arm_to_counts(const ArmConfig &c, const JointAngles &j, float grip_m
         if (v < 0 || v > 4095) return rng[i];
         pos[i] = uint16_t(std::lround(v));
     }
-    float g = std::min(std::max(grip_mm, 0.f), c.grip_max_open) / c.grip_max_open;
-    pos[5] = uint16_t(std::lround(c.grip_closed_count + (c.grip_open_count - c.grip_closed_count) * g));
+    const float g = grip_count(c, grip_mm);
+    if (g < 0 || g > 4095) return "servo 6 count range";
+    pos[5] = uint16_t(std::lround(g));
     return nullptr;
 }
 
@@ -104,8 +146,7 @@ JointAngles arm_from_counts(const ArmConfig &c, const std::array<uint16_t, 6> &p
         float cpd = c.joint[i].counts_per_deg;
         j.q[i] = cpd != 0 ? (pos[i] - c.joint[i].zero_count) / cpd : 0.f;
     }
-    float span = c.grip_open_count - c.grip_closed_count;
-    grip_mm = span != 0 ? (pos[5] - c.grip_closed_count) / span * c.grip_max_open : 0.f;
+    grip_mm = des::grip_mm(c, pos[5]);
     return j;
 }
 
