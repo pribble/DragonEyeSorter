@@ -8,7 +8,7 @@ f12e08c32d51edc12a0e5292852d9e7a  /root/des/des_service.sh
 33dea57fd3f6aa6e1f936751ca37490e  /root/des/can_up.sh
 97b15a5f12a767a99a036912e03de753  /root/des/des_app.sh
 227b885f39f3cf2d4de80b92e14cbbf9  /root/des/shutdown.sh
-ecacef01828800e104e6fbe790652c6f  /root/des/des_app
+0370ddcda3d3fad426138eac283d6dd9  /root/des/des_app
 d40e48b3471bc1e1cce8ed34d74e9b2d  /root/des/des_app.json
 34217fcaa714e9ca299a099e042cdf9e  /root/des/recipes.json
 ca201b388abf331aad2d88cda8978142  /root/des/label_list.json

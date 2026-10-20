@@ -494,6 +494,16 @@ static ArmConfig arm_cfg()
     return c;
 }
 
+// servo counts of the ready pose: picks start gripper-down (plan_pick refuses anything else)
+static std::array<uint16_t, 6> ready_counts(const ArmConfig &a)
+{
+    std::array<uint16_t, 6> k{};
+    JointAngles j;
+    j.q = a.home_deg;
+    arm_to_counts(a, j, 30, k);
+    return k;
+}
+
 static void test_arm()
 {
     ArmConfig c = arm_cfg();
@@ -526,6 +536,24 @@ static void test_arm()
     for (int i = 0; i < 5; i++) worst_q = std::fmax(worst_q, std::fabs(jb.q[i] - ja.q[i]));
     CHECK(worst_q < 0.1f, "counts -> angles round trip error %.3f deg", worst_q);   // 1 count = 0.073 deg
     CHECK(std::fabs(grip - 35.f) < 0.1f, "gripper round trip %.2f mm", grip);
+    {   // a pick only starts from / passes through gripper-down poses (10-22: the 190 mm gripper swinging forward from
+        // a gripper-up pose reaches the light bar across the belt)
+        ArmConfig u = c;
+        JointAngles up;
+        up.q = {0, 90, 0, 0, 0};   // arm straight up, gripper up
+        std::array<uint16_t, 6> upc;
+        CHECK(!arm_to_counts(u, up, 30, upc), "candle pose counts");
+        std::vector<ServoFrame> w;
+        const char *why = plan_pick(u, {c.base_xy.x + 10.f, c.base_xy.y + 120.f}, 0.f, 40, 30, 0, upc, w);
+        CHECK(why && strstr(why, "not pointing down"), "pick from a gripper-up pose refused: %s", why ? why : "planned");
+        u.home_deg = up.q;   // ready pose taught gripper-up
+        std::array<uint16_t, 6> okc;
+        JointAngles dn;
+        dn.q = c.home_deg;
+        arm_to_counts(c, dn, 30, okc);
+        why = plan_pick(u, {c.base_xy.x + 10.f, c.base_xy.y + 120.f}, 0.f, 40, 30, 0, okc, w);
+        CHECK(why && strstr(why, "ready pose"), "gripper-up ready pose refused: %s", why ? why : "planned");
+    }
     {   // measured gripper (10-22): closed 2919, a 32 mm gear at 2318, fully open 61 mm at 1195 -> piecewise linear
         ArmConfig g = c;
         g.grip_max_open = 61;
@@ -554,7 +582,7 @@ static void test_arm()
     const char *w2 = plan_pick(lim, {c.base_xy.x + 10.f, c.base_xy.y + 120.f}, 0.f, 40, 30, 0, home2, wp2);
     CHECK(w2 && std::string(w2) == "bin pose outside joint limits", "bin outside limits: %s", w2 ? w2 : "accepted");
 
-    std::array<uint16_t, 6> home{{2048, 2048, 2048, 2048, 2048, 2048}};
+    std::array<uint16_t, 6> home = ready_counts(c);
     std::vector<ServoFrame> wp;
     Vec2 target = {c.base_xy.x + 10.f, c.base_xy.y + 120.f};   // 120 mm in front of the base
     const char *why = plan_pick(c, target, 0.f, 40, 30, 1, home, wp);
@@ -585,7 +613,7 @@ static void test_arm()
         }
         CHECK(arm_ik(t, far, 0.f, jt, tilt) != nullptr, "a tilted grasp refuses a radial closing axis");
 
-        std::array<uint16_t, 6> h{{2048, 2048, 2048, 2048, 2048, 2048}};
+        std::array<uint16_t, 6> h = ready_counts(t);
         std::vector<ServoFrame> wt;
         const Vec2 tp{t.base_xy.x, t.base_xy.y + 200.f};   // base_yaw 90 deg: arm +x = table +y
         float used = -1;

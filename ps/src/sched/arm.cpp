@@ -187,6 +187,16 @@ const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, 
         if (drop.q[i] < c.joint[i].min_deg || drop.q[i] > c.joint[i].max_deg) return "bin pose outside joint limits";
         if (home.q[i] < c.joint[i].min_deg || home.q[i] > c.joint[i].max_deg) return "home pose outside joint limits";
     }
+    // Every frame below has the gripper pointing down, and the gripper pitch q2 + q3 + q4 is linear in the joints, so
+    // the joint-space moves between them keep it down all the way. From a gripper-up or sideways pose the first move
+    // would swing the 190 mm gripper forward across the belt into the opposite light bar (10-22): refuse instead.
+    {
+        float g;
+        if (tool_pitch_deg(arm_from_counts(c, prev, g)) > kToolDownMaxDeg)
+            return "gripper not pointing down: reset the arm to the ready pose first";
+    }
+    if (tool_pitch_deg(home) > kToolDownMaxDeg) return "ready pose is not gripper-down: teach it again";
+    if (tool_pitch_deg(drop) > kToolDownMaxDeg) return "bin pose is not gripper-down: teach it again";
     float held = std::max(part_wid - c.grip_squeeze, 0.f);
 
     ServoFrame f;

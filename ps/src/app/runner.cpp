@@ -468,6 +468,10 @@ void Runner::arm_loop()
         std::vector<ServoFrame> wp;
         Done d{j.track_id, false, ""};
         float tilt = 0;
+        if (opt_.arm_go) {   // where the arm really is (moved by hand, reset, a failed pick) - plan_pick checks it
+            std::array<uint16_t, 6> now;
+            if (arm_.read_positions(now)) arm_counts_ = now;
+        }
         const char *why = plan_pick(ac, j.p, j.close_axis, j.open_mm, j.part_wid, j.bin, arm_counts_, wp, &tilt);
         if (!why && j.flying) {   // intercept: vertical only; the close frame waits for the part
             if (tilt != 0) why = "intercept point needs a tilted grasp";

@@ -110,6 +110,10 @@ float table_axis_to_arm(const ArmConfig &c, float axis_table);
 // joint angles (+ gripper opening mm) -> servo counts; nullptr on success, else the joint that is out of range
 // gripper opening <-> servo count (grip_table or the open / closed line), clamped to 0..grip_max_open
 float grip_count(const ArmConfig &c, float mm);
+// gripper direction in the arm's vertical plane (deg): -90 = straight down, +90 = up (q2 + q3 + q4)
+inline float tool_pitch_deg(const JointAngles &j) { return j.q[1] + j.q[2] + j.q[3]; }
+// poses a pick may start from / pass through: gripper pointing down within the tilted-grasp range
+constexpr float kToolDownMaxDeg = -40.f;
 float grip_mm(const ArmConfig &c, float count);
 float grip_counts_per_mm(const ArmConfig &c, float mm);   // local slope (counts per mm, > 0)
 

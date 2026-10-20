@@ -206,6 +206,26 @@ void ArmManual::handle(const ArmRequest &r)
             say("还没有设定初始姿态：先把机械臂调到位，点「设为初始姿态」");
             return;
         }
+        {   // one joint-space move: if the gripper pitch changes a lot (up <-> down) it swings the 190 mm gripper
+            // through horizontal, forward across the belt (opposite light bar, 10-22) -> do that by hand first
+            const ArmConfig &ac = arm_.config();
+            bool known = true;
+            std::array<uint16_t, 6> now{}, home{};
+            for (int k = 0; k < 6; k++) {
+                if (v.j[k].pos < 0) known = false;
+                now[k] = uint16_t(std::clamp(v.j[k].pos, 0, 4095));
+                home[k] = uint16_t(std::clamp(v.home[k], 0, 4095));
+            }
+            float g;
+            const float pn = tool_pitch_deg(arm_from_counts(ac, now, g)), ph = tool_pitch_deg(arm_from_counts(ac, home, g));
+            if (!known || std::fabs(pn - ph) > 60.f) {
+                const std::string d = known ? "与初始姿态差 " + std::to_string(int(std::lround(std::fabs(pn - ph)))) + "°"
+                                            : "未读到";
+                say("不复位：夹爪方向" + d + "，直接转会把夹爪甩过皮带（可能碰对面灯条）。"
+                    "先关扭矩用手把夹爪摆成和初始姿态差不多（朝下），再点复位");
+                return;
+            }
+        }
         uint8_t ids[6];
         uint16_t pos[6], ms[6];
         const uint16_t t = uint16_t(std::clamp(r.ms, 2000, 5000));   // all six together: never faster than 2 s
