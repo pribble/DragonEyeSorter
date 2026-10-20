@@ -215,6 +215,7 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             get(c, "walls_visible", m.walls_visible); get(c, "max_smear_mm", m.max_smear_mm);
             get(c, "short_tooth_mm", m.short_tooth_mm); get(c, "flash_mm", m.flash_mm);
             get(c, "od_offset_mm", m.od_offset_mm); get(c, "bore_offset_mm", m.bore_offset_mm);
+            get(c, "bore_near_arc", m.bore_near_arc);
             if (c.contains("colors")) {
                 t.colors.clear();
                 for (const json &cj : c["colors"]) {

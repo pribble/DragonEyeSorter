@@ -14,6 +14,7 @@ namespace {
 struct Edge {
     Vec2 p;      // table mm (after parallax correction)
     Vec2 n;      // unit normal pointing to the dark side (out of the part / into a hole), table frame
+    bool far = false;   // hole edge not on the clean near-axis half of the rim (see edges(): lit inner wall)
 };
 
 float bilinear(const cv::Mat &g, float x, float y)
@@ -27,8 +28,14 @@ float bilinear(const cv::Mat &g, float x, float y)
 
 // Sub-pixel edge for every contour pixel: along the normal, where the interpolated gray crosses thr (bright part ->
 // dark belt), then into table mm with parallax correction.
+// hole = the contour is a bore: its rim lies in the top face all round. On the side towards the optical axis the
+// bright top face ends exactly at the rim (the inner wall there faces away from the camera), so that half is a clean
+// top-face edge. On the far side the camera looks at the inner wall facing it, lit by the opposite light bar down to
+// a depth that depends on the lighting: the dark boundary sits somewhere between the top and the bottom rim (real
+// gears: bore +0.3 mm at 40 mm off-centre, +1.1 mm at 80 mm when that half was taken as the bottom rim). Every hole
+// edge is scaled as a top-face edge and the far ones are flagged (Edge::far) so the bore fit can leave them out.
 std::vector<Edge> edges(const cv::Mat &g, const std::vector<cv::Point> &c, cv::Point off, float thr,
-                        const Homography &h, const MeasureConfig &cfg, float part_h)
+                        const Homography &h, const MeasureConfig &cfg, float part_h, bool hole = false)
 {
     std::vector<Edge> out;
     const int n = int(c.size());
@@ -72,7 +79,13 @@ std::vector<Edge> edges(const cv::Mat &g, const std::vector<cv::Point> &c, cv::P
         // top-face edges (the magnified top projection is the visible boundary where the normal faces away from
         // the optical axis) are scaled back about the axis; bottom edges (facing the axis) are true size.
         // Walls dark: every visible edge is a top-face edge.
-        if (parallax && cfg.walls_visible) {
+        if (parallax && cfg.walls_visible && hole && cfg.bore_near_arc) {
+            Vec2 r = ed.p - O;
+            // clean near-side rim: dark side (into the hole) pointing away from the axis within 60 deg; towards the
+            // two corners where the near (top) rim meets the far boundary the edge is neither -> counted as far
+            ed.far = dot(ed.n, r) < 0.5f * norm(r);
+            ed.p = O + r * (1.f / k);
+        } else if (parallax && cfg.walls_visible) {
             // an edge running along the ray from the axis is the projection of a vertical wall corner (sweep line,
             // e.g. the ramp beside each tooth tip at the gear's sides): neither top nor bottom -> dropped
             Vec2 r = ed.p - O;
@@ -374,12 +387,27 @@ GearMeasure measure_gear(const cv::Mat &gray, cv::Rect roi, const Homography &h,
     if (fit_circle(root_pts, cr, rr)) g.root_d = 2 * rr;
 
     if (!hole.empty()) {
-        std::vector<Edge> he = edges(gray, hole, roi.tl(), thr, h, cfg, cfg.gear_h_mm);
-        std::vector<Vec2> hp;
-        for (const Edge &e : he) hp.push_back(e.p);
+        std::vector<Edge> he = edges(gray, hole, roi.tl(), thr, h, cfg, cfg.gear_h_mm, true);
+        std::vector<Vec2> hp, near;
+        for (const Edge &e : he) {
+            hp.push_back(e.p);
+            if (!e.far) near.push_back(e.p);
+        }
         Vec2 cb;
         float rb;
-        if (fit_circle(hp, cb, rb)) {
+        bool fit = fit_circle(hp, cb, rb);
+        // off-centre (axis outside the bore + 1 mm): fit the clean near-side arc only (~120 deg); near the centre
+        // both halves are top-rim edges to within (k-1)*distance and all points are kept
+        if (fit && cfg.bore_near_arc && norm(cb - cfg.axis_table) > rb + 1.f && near.size() >= 12 &&
+            near.size() * 5 >= hp.size()) {
+            Vec2 cn;
+            float rn;
+            if (fit_circle(near, cn, rn)) {
+                cb = cn;
+                rb = rn;
+            }
+        }
+        if (fit) {
             g.bore_d = 2 * rb + cfg.bore_offset_mm;
             g.ecc = norm(cb - ct);
             g.bore_center = cb;

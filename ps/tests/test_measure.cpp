@@ -268,6 +268,11 @@ int main()
         CHECK(std::fabs(raw.od - 32) > 0.3f, "parallax should show without correction (%.3f)", raw.od);
         CHECK(cor.ok && std::fabs(cor.od - 32 - GROW) < TOL, "corrected OD %.3f", cor.od);
         CHECK(std::fabs(cor.bore_d - 6 - GROW) < TOL, "corrected bore %.3f", cor.bore_d);
+        MeasureConfig nc = pc;   // bore from the near-axis rim arc only
+        nc.bore_near_arc = true;
+        GearMeasure na = measure_gear(s.img, s.roi, h, nc);
+        printf("[parallax 22mm near arc] bore %.3f\n", na.bore_d);
+        CHECK(na.ok && std::fabs(na.bore_d - 6 - GROW) < TOL, "near-arc bore %.3f", na.bore_d);
         CHECK(cor.teeth_judged && cor.teeth == 30, "judged %d teeth %d", cor.teeth_judged, cor.teeth);
         CHECK(cor.short_teeth == 0 && cor.missing_teeth == 0 && cor.flash_gaps == 0, "false defects %d %d %d",
               cor.short_teeth, cor.missing_teeth, cor.flash_gaps);
@@ -296,6 +301,11 @@ int main()
         CHECK(g.short_teeth == 0 && g.missing_teeth == 0 && g.flash_gaps == 0, "unjudged counts must be 0");
         CHECK(std::fabs(g.od - 32 - GROW) < 2 * TOL, "far OD %.3f", g.od);
         CHECK(std::fabs(g.bore_d - 6 - GROW) < 2 * TOL, "far bore %.3f", g.bore_d);
+        MeasureConfig nc = pc;
+        nc.bore_near_arc = true;
+        GearMeasure na = measure_gear(s.img, s.roi, h, nc);
+        printf("[parallax 112mm near arc] bore %.3f\n", na.bore_d);
+        CHECK(na.ok && std::fabs(na.bore_d - 6 - GROW) < 2 * TOL, "far near-arc bore %.3f", na.bore_d);
     }
     {   // D4: walls dark (only the top face bright), 112 mm off: everything scales back, no smear
         Vec2 c = AXIS + Vec2{100, 50};

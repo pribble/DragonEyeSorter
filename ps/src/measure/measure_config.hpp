@@ -24,6 +24,9 @@ struct MeasureConfig {
     // (des_tool measure -n 20); redo after changing the exposure, the light or the camera.
     float od_offset_mm = 0;
     float bore_offset_mm = 0;
+    // bore off-centre from the clean near-axis rim arc only (measure.cpp edges()); off until checked on real gears
+    // (10-21 sweep: same gear 0.14 mm spread instead of 0.67, but wrong > 160 mm off and the offset must be redone)
+    bool bore_near_arc = false;
     // Rolling shutter: row r of the image is exposed later than row row0 by (r - row0) row times, during which the
     // belt moved belt_mm_per_row * (r - row0) along table +x. Edge points are moved back to the row0 instant.
     // Set per frame by the caller (track_measure); 0 = still belt / global shutter.
