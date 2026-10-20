@@ -5,10 +5,10 @@
   1 产物存在 / PDF 文件头 / 页数 / **PDF ≤ 50MB（打印现值）**
   2 仓库内脚本不含主机绝对路径（AGENTS.md 硬性约定第 9 条）
   3 docx 结构：段落 / 表格 / 插图 / 标题层级 / 节数（与 _md2docx.json 对账 + 源文件独立数）
-  4 版式设计口径：微软雅黑 10.5pt 正文、16/13pt 标题、1.3 倍行距（微软雅黑视觉等效 1.5）、
-    首行缩进 2 字符（420 twips）、行内代码 Consolas、墨色正文
-  5 设计令牌：章标题青绿左色块 + 下细线、表头浅青灰底 #E6F4F2 + 青绿分隔线、三线表无竖线、
-    图注编号加粗 / 说明灰字、页眉页脚小号浅灰
+  4 版式设计口径：宋体 10.5pt 正文、黑体 16/13pt 标题、1.5 倍行距、
+    首行缩进 2 字符（420 twips）、行内代码 Consolas、全篇黑色正文
+  5 设计令牌：章标题无装饰线（学术版）、三线表无竖线无行线无底纹、图注全黑 9pt、
+    页眉页脚小号深灰
   6 页面与版心、表格宽度、表格固定布局、表头重复、插图宽度（满版心 15.8cm）
   7 封面 / 目录 / 正文的页眉页脚、页码域（PAGE / NUMPAGES）
   8 竞赛禁项扫描（含页眉页脚与表格）
@@ -50,18 +50,19 @@ STATS = OUT / "_md2docx.json"
 PDF_STATS = OUT / "_word_to_pdf.json"
 
 # ---- 版式设计令牌（与 md2docx.py 同口径；独立复核用，不 import 生成脚本）
-FONT_CN = "微软雅黑"
+FONT_CN = "宋体"
+FONT_HEI = "黑体"
+FONT_EN = "Times New Roman"
 FONT_CODE = "Consolas"
-C_INK = "0E1B2B"          # 墨：标题 / 正文
-C_TEAL = "0D9488"         # 青绿：章标题色块 / 表头分隔线
-C_GRAY = "5F7285"         # 次级灰：图注 / 页眉页脚
-C_LINE = "DCE3EA"         # 细线
-C_HEAD_FILL = "E6F4F2"    # 表头浅青灰底
+C_INK = "000000"          # 黑：标题 / 正文
+C_GRAY = "3F3F3F"         # 深灰：图注 / 页眉页脚
+C_LINE = "808080"         # 灰线：页眉细线
 BODY_PT = 10.5
-BODY_LINE = 1.3           # 微软雅黑单倍行高 ≈ 字号 × 1.72，1.3 倍 ≈ 宋体 12pt 的 1.5 倍视觉行距
+BODY_LINE = 1.5           # 宋体单倍行高 ≈ 字号 × 1.286，1.5 倍 ≈ 20.25pt
 H1_PT, H2_PT = 16.0, 13.0
 CAPTION_PT = 9.0
-SMALL_PT = 8.5
+TABLE_PT = 9.0
+SMALL_PT = 9.0
 CHAR_TWIPS = 420          # 2 字符 = 2 × 10.5pt × 20
 LIST_LEFT_TW = 840        # 列表正文左缩进 4 字符
 LIST_HANG_TW = 420        # 列表悬挂 2 字符
@@ -139,8 +140,8 @@ def page_fill_rows(pdf, warn=FILL_WARN):
         m = re.search(r"第\s*(\d+)\s*页", text)
         printed = int(m.group(1)) if m else None
         # 目录页现在也有页眉（「龙瞳分拣 · …」在最上面），不能再靠「第一行是不是目录」
-        # 判断角色——用目录页独有的 CONTENTS 小标签认（字距被拉开，去掉空格再匹配）。
-        role = "正文" if m else ("目录" if "CONTENTS" in text.replace(" ", "") else "封面")
+        # 判断角色——没有页码的页里，带「目录」页眉的是目录页，其余是封面。
+        role = "正文" if m else ("目录" if "目录" in text.replace(" ", "") else "封面")
         imgs = [b for b in blocks if b["type"] == 1]
         row = {"page": pno, "printed": printed, "role": role,
                "image": block_label(imgs[0]) if imgs else None,
@@ -311,7 +312,7 @@ def main(argv=None) -> int:
     check("源里插图数 = docx 插图数", src_img == n_img, "源 %d / docx %d" % (src_img, n_img))
     check("源里表格数 = docx 表格数", src_tbl == n_tbl, "源 %d / docx %d" % (src_tbl, n_tbl))
 
-    # ---- 4 字体字号 / 行距 / 缩进（新版式口径：微软雅黑 10.5pt） ----
+    # ---- 4 字体字号 / 行距 / 缩进（学术报告口径：宋体 10.5pt） ----
     def run_font(run):
         rpr = run._element.find(qn("w:rPr"))
         fonts = rpr.find(qn("w:rFonts")) if rpr is not None else None
@@ -330,30 +331,29 @@ def main(argv=None) -> int:
     # 表格单元格各有各的样式，天然不进这个样本。
     body = [p for p in doc.paragraphs if p.style.name == "BodyCN" and p.text.strip()]
     lst = [p for p in doc.paragraphs if p.style.name == "ListCN" and p.text.strip()]
-    body_runs = [r for p in body + lst for r in p.runs
-                 if r.text.strip() and run_font(r)[1] != FONT_CODE
-                 and run_font(r)[2] != C_TEAL]
     code_runs = [r for p in body + lst for r in p.runs
                  if r.text.strip() and run_font(r)[1] == FONT_CODE]
-    # 全部文字 run 走微软雅黑（加粗靠字重，不再混第二种中文字体），字色墨 #0E1B2B；
-    # 行内代码单独走 Consolas（9.5pt 左右、青绿深）。
-    bad_font, n_plain, n_bold = [], 0, 0
+    body_runs = [r for p in body + lst for r in p.runs
+                 if r.text.strip() and run_font(r)[1] != FONT_CODE]
+    # 正文宋体（中文强调走黑体，不叠字重）、西文 Times、黑色；行内代码 Consolas。
+    bad_font, n_plain, n_hei = [], 0, 0
     for r in body_runs:
         ea, _, color = run_font(r)
-        if ea != FONT_CN:
-            bad_font.append("%r(期望%s 实为%s)" % (r.text[:10], FONT_CN, ea))
+        if ea not in (FONT_CN, FONT_HEI):
+            bad_font.append("%r(期望宋体/黑体 实为%s)" % (r.text[:10], ea))
         elif color != C_INK:
             bad_font.append("%r(字色 %s 期望 %s)" % (r.text[:10], color, C_INK))
+        elif ea == FONT_HEI:
+            n_hei += 1
         else:
-            n_bold += 1 if r.font.bold else 0
-            n_plain += 0 if r.font.bold else 1
+            n_plain += 1
     sz_ok = all(r.font.size is not None and abs(r.font.size.pt - BODY_PT) < 1e-6
                 for r in body_runs)
     code_ok = all(r.font.size is not None and 8.0 <= r.font.size.pt <= BODY_PT
                   for r in code_runs)
     check("正文 %d 段 + 列表 %d 段：%d 个文字 run 字体/字色正确"
-          "（微软雅黑 %d / 加粗 %d，另 %d 个行内代码 run）"
-          % (len(body), len(lst), len(body_runs), n_plain, n_bold, len(code_runs)),
+          "（宋体 %d / 黑体强调 %d，另 %d 个行内代码 run）"
+          % (len(body), len(lst), len(body_runs), n_plain, n_hei, len(code_runs)),
           not bad_font, "; ".join(bad_font[:4]))
     check("正文 / 列表字号 = 10.5pt（行内代码 8~10.5pt）", sz_ok and code_ok)
     h_ok, h_detail = True, []
@@ -363,9 +363,9 @@ def main(argv=None) -> int:
         got_sz = {round(r.font.size.pt, 2) for r in runs if r.font.size}
         got_cn = {run_font(r)[0] for r in runs}
         h_detail.append("%s: %s %s" % (lvl, sorted(got_cn), sorted(got_sz)))
-        if got_cn != {FONT_CN} or got_sz != {want} or not all(r.font.bold for r in runs):
+        if got_cn != {FONT_HEI} or got_sz != {want}:
             h_ok = False
-    check("标题全 run 中文 = 微软雅黑、加粗，字号 16 / 13pt", h_ok, "; ".join(h_detail))
+    check("标题全 run 中文 = 黑体，字号 16 / 13pt", h_ok, "; ".join(h_detail))
 
     # 首行缩进：BodyCN 必须是 420 twips（2 字符 @10.5pt）；ListCN 用悬挂缩进
     ind_bad = [p.text[:24] for p in body if par_ind(p, "firstLine") != str(CHAR_TWIPS)]
@@ -376,7 +376,7 @@ def main(argv=None) -> int:
     line_bad = [p.text[:20] for p in body + lst
                 if p.paragraph_format.line_spacing is None
                 or abs(p.paragraph_format.line_spacing - BODY_LINE) > 1e-6]
-    check("正文 / 列表行距 = 1.3 倍（微软雅黑视觉等效 1.5 倍）", not line_bad,
+    check("正文 / 列表行距 = 1.5 倍（宋体 10.5pt → 20.25pt）", not line_bad,
           "; ".join(line_bad[:3]) if line_bad else "")
     check("正文段 ≥ 30 且列表段 ≥ 20（样本量够）",
           len(body) >= 30 and len(lst) >= 20, "正文 %d / 列表 %d" % (len(body), len(lst)))
@@ -388,11 +388,11 @@ def main(argv=None) -> int:
     marker_bad = []
     for p in lst:
         runs = [r for r in p.runs if r.text.strip()]
-        if not runs or run_font(runs[0])[2] != C_TEAL or not runs[0].font.bold:
+        if not runs or run_font(runs[0])[2] != C_INK:
             marker_bad.append(p.text[:16])
-    check("列表标记 = 青绿加粗（• / 1.）", not marker_bad, "; ".join(marker_bad[:3]))
+    check("列表标记 = 黑色（• / 1.）", not marker_bad, "; ".join(marker_bad[:3]))
 
-    # ---- 5 设计令牌（与答辩 PPT 同一套语言） ----
+    # ---- 5 设计令牌（学术版：黑白灰、无装饰色） ----
     def style_pPr(name):
         for st in doc.styles:
             if st.name.lower() == name.lower():
@@ -402,37 +402,51 @@ def main(argv=None) -> int:
     def edge(bdr, name):
         return None if bdr is None else bdr.find(qn("w:" + name))
 
-    bdr1 = None
+    # 学术版：章标题不加装饰色块 / 色线（Heading 1 样式不应带 pBdr）
     ppr1 = style_pPr("Heading 1")
-    if ppr1 is not None:
-        bdr1 = ppr1.find(qn("w:pBdr"))
-    left, bottom = edge(bdr1, "left"), edge(bdr1, "bottom")
-    check("一级标题：青绿左色块 #0D9488 + 下细线 #DCE3EA",
-          left is not None and left.get(qn("w:color")) == C_TEAL
-          and left.get(qn("w:sz")) == "32"
-          and bottom is not None and bottom.get(qn("w:color")) == C_LINE,
-          "left=%s bottom=%s" % (
-              None if left is None else left.get(qn("w:color")),
-              None if bottom is None else bottom.get(qn("w:color"))))
+    bdr1 = ppr1.find(qn("w:pBdr")) if ppr1 is not None else None
+    decorated = bdr1 is not None and any(
+        edge(bdr1, e) is not None and edge(bdr1, e).get(qn("w:val")) not in (None, "none")
+        for e in ("top", "left", "bottom", "right"))
+    check("一级标题无装饰色块 / 色线（学术版）", not decorated,
+          "pBdr=%s" % ("有" if decorated else "无"))
 
     head_bad, border_bad = [], []
     for i, t in enumerate(doc.tables, 1):
         cells = list(t.rows[0].cells)
-        if not cells or not all(
-                c._tc.tcPr is not None
-                and c._tc.tcPr.find(qn("w:shd")) is not None
-                and c._tc.tcPr.find(qn("w:shd")).get(qn("w:fill")) == C_HEAD_FILL
-                for c in cells):
+
+        def unshaded(c):
+            tcPr = c._tc.tcPr
+            if tcPr is None:
+                return True
+            shd = tcPr.find(qn("w:shd"))
+            if shd is None:
+                return True
+            return shd.get(qn("w:fill")) in (None, "auto", "FFFFFF")
+
+        if not cells or not all(unshaded(c) for c in cells):
             head_bad.append("表%d" % i)
         tblb = t._tbl.tblPr.find(qn("w:tblBorders"))
-        top, bot, iv = edge(tblb, "top"), edge(tblb, "bottom"), edge(tblb, "insideV")
+        top, bot = edge(tblb, "top"), edge(tblb, "bottom")
+        iv, ih = edge(tblb, "insideV"), edge(tblb, "insideH")
+        hdr_line = True
+        for c in cells:                      # 栏目线：表头单元格下边框 0.75pt 黑
+            tcPr = c._tc.tcPr
+            tb = tcPr.find(qn("w:tcBorders")) if tcPr is not None else None
+            b = edge(tb, "bottom")
+            if b is None or b.get(qn("w:sz")) != "6" or b.get(qn("w:color")) != C_INK:
+                hdr_line = False
         if not (top is not None and top.get(qn("w:sz")) == "12"
                 and top.get(qn("w:color")) == C_INK
-                and bot is not None and bot.get(qn("w:color")) == C_INK
-                and iv is not None and iv.get(qn("w:val")) == "none"):
+                and bot is not None and bot.get(qn("w:sz")) == "12"
+                and bot.get(qn("w:color")) == C_INK
+                and iv is not None and iv.get(qn("w:val")) == "none"
+                and ih is not None and ih.get(qn("w:val")) == "none"
+                and hdr_line):
             border_bad.append("表%d" % i)
-    check("表头浅青灰底 #E6F4F2（%d 张表）" % n_tbl, not head_bad, "; ".join(head_bad))
-    check("三线表：上粗下细墨线、无竖线", not border_bad, "; ".join(border_bad))
+    check("表头无底色（三线表，%d 张表）" % n_tbl, not head_bad, "; ".join(head_bad))
+    check("三线表：上下 1.5pt 黑线 + 表头下 0.75pt 细线，无竖线无行线",
+          not border_bad, "; ".join(border_bad[:3]))
 
     caps = [p for p in doc.paragraphs if p.style.name == "CaptionCN" and p.text.strip()]
     cap_bad = []
@@ -440,11 +454,13 @@ def main(argv=None) -> int:
         runs = [r for r in p.runs if r.text.strip()]
         if not runs:
             continue
-        if not (runs[0].font.bold and run_font(runs[0])[2] == C_INK):
-            cap_bad.append("%s（编号未加粗 / 非墨色）" % p.text[:14])
-        elif any(run_font(r)[2] != C_GRAY for r in runs[1:]):
-            cap_bad.append("%s（说明未用灰字）" % p.text[:14])
-    check("图注：编号加粗墨色 + 说明灰字（%d 条）" % len(caps), not cap_bad,
+        bad = [r for r in runs if run_font(r)[2] != C_INK
+               or r.font.size is None or abs(r.font.size.pt - CAPTION_PT) > 1e-6]
+        if bad:
+            cap_bad.append("%s（字色 / 字号不合口径）" % p.text[:14])
+        elif p.paragraph_format.alignment != 1:      # 1 = 居中
+            cap_bad.append("%s（未居中）" % p.text[:14])
+    check("图注：全黑 %gpt 居中（%d 条）" % (CAPTION_PT, len(caps)), not cap_bad,
           "; ".join(cap_bad[:3]))
 
     toc_bad = []
@@ -464,6 +480,15 @@ def main(argv=None) -> int:
                    if int(v) < 240 and int(v) != 144})
     check("无 fixed / exact 行距", not bad, ",".join(bad) if bad else "仅 auto")
     check("无 < 1.0 倍行距（144 的表后空行除外）", not tiny, str(tiny))
+
+    # 学术版不再用彩色：正文 / 页眉页脚里只允许黑、深灰、灰三种字色，表格线同理
+    # （000000 / 808080）。styles.xml 里 Word 内置样式的默认主题色不算（未被任何文字使用）。
+    color_xml = "".join(
+        zf.read(n).decode("utf-8", "replace") for n in zf.namelist()
+        if re.match(r"word/(document|header\d*|footer\d*)\.xml$", n))
+    colors = {c.upper() for c in re.findall(r'w:color w:val="([0-9A-Fa-f]{6})"', color_xml)}
+    weird = sorted(c for c in colors if c not in {C_INK, C_GRAY, C_LINE})
+    check("全篇无彩色（字色 / 线条只有黑 / 深灰 / 灰）", not weird, str(weird[:8]))
 
     # ---- 6 页面 / 版心 / 表格 / 插图宽度 ----
     sec = doc.sections[2]
@@ -504,10 +529,10 @@ def main(argv=None) -> int:
           toc_hdr.startswith(HEADER_TEXT) and toc_hdr.endswith(HEADER_TOC),
           repr(toc_hdr))
     hdr_runs = [r for r in hdr_par.runs if r.text.strip()]
-    check("页眉字号 = 8.5pt（小号浅灰）", all(
+    check("页眉字号 = 9pt 深灰", all(
         r.font.size is not None and abs(r.font.size.pt - SMALL_PT) < 1e-6
-        for r in hdr_runs), "字号 %s" % sorted({r.font.size.pt for r in hdr_runs
-                                                if r.font.size}))
+        and run_font(r)[2] == C_GRAY for r in hdr_runs),
+        "字号 %s" % sorted({r.font.size.pt for r in hdr_runs if r.font.size}))
     footer_xml = "".join(zf.read(n).decode("utf-8") for n in zf.namelist()
                          if re.match(r"word/footer\d*\.xml$", n))
     check("页脚含 PAGE 与 NUMPAGES 域", "PAGE" in footer_xml and "NUMPAGES" in footer_xml)
