@@ -488,7 +488,9 @@ def main(argv=None) -> int:
         if re.match(r"word/(document|header\d*|footer\d*)\.xml$", n))
     colors = {c.upper() for c in re.findall(r'w:color w:val="([0-9A-Fa-f]{6})"', color_xml)}
     weird = sorted(c for c in colors if c not in {C_INK, C_GRAY, C_LINE})
-    check("全篇无彩色（字色 / 线条只有黑 / 深灰 / 灰）", not weird, str(weird[:8]))
+    check("全篇无彩色（字色 / 线条只有黑 / 深灰 / 灰）", not weird,
+          ("出现 %s" % "、".join(weird[:8])) if weird
+          else "实测 %d 种：%s" % (len(colors), "、".join(sorted(colors))))
 
     # ---- 6 页面 / 版心 / 表格 / 插图宽度 ----
     sec = doc.sections[2]
