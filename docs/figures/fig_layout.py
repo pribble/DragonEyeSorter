@@ -67,7 +67,7 @@ def draw():
            'SYNC WRITE 一帧下发 6 轴', 'ps')
     fk.arrow(ax, (PICK, 234), (PICK, BY0 + BH), color=blue, lw=1.0, ms=6.5)
     fk.text(ax, PICK + 5, 224, '良品停带抓取', fs=S, color=blue)
-    fk.box(ax, BIN_X0, 234, BIN_W, 36, '料盒：齿轮 / 齿条\n按规格 · 颜色分选', 'ps')
+    fk.box(ax, BIN_X0, 234, BIN_W, 36, '料盒：齿轮\n按规格 · 颜色分选', 'ps')
 
     # ---------------- 挡板分流（抓取线下游）+ 带尾复检 ----------------
     for x, name in ((FLAP1, '挡板 1'), (FLAP2, '挡板 2')):

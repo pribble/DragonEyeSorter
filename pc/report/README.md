@@ -1,6 +1,6 @@
 # pc/report — 测试报告出数
 
-赛题硬性项⑥要「同步精度 / 采集延迟 / AI 耗时 / 总线稳定性」四类实测数据：`des_app live / run` 每判定一件就往 `/root/des/data/log/<日期>/parts_<会话>.csv` 写一行（40 列，定义见 `ps/src/app/part_log.cpp` 的 `csv_header()`），本目录脚本把 CSV 变成报告里的表。
+赛题硬性项⑥要「同步精度 / 采集延迟 / AI 耗时 / 总线稳定性」四类实测数据：`des_app live / run` 每判定一件就往 `/root/des/data/log/<日期>/parts_<会话>.csv` 写一行（43 列，定义见 `ps/src/app/part_log.cpp` 的 `csv_header()`），本目录脚本把 CSV 变成报告里的表。
 
 ```bash
 scp -r $BOARD_HOST:/root/des/data/log ./records
@@ -16,10 +16,10 @@ scp -r $BOARD_HOST:/root/des/data/log ./records
 | `python part_stats.py --fed 200 run.csv` | 实际投放 200 件 → 漏检率 |
 | `python part_stats.py --same-part --true-size 31.98 loop.csv` | 同一件反复过线 → 重复性 σ、相对卡尺的平均 / 最大误差（赛题中级 < 0.3mm） |
 | `--md out.md --json out.json` | 表格 / 数字另存 |
-| `--plots figs` | 报告图（PNG，需 matplotlib）：`ai_time`（NPU 推理与帧完成→结果延迟分布，标 p50 / p95）、`size_gear` / `size_rack`（逐件尺寸趋势 + 规格线，超差件红叉，标题带均值 / σ / Cpk）、`confusion`（给了真值时的混淆矩阵）、`throughput`（单文件时的累计件数）。配方号列存在时概况表多一行「配方」 |
+| `--plots figs` | 报告图（PNG，需 matplotlib）：`ai_time`（推理与帧完成→结果延迟分布，标 p50 / p95）、`size_gear`（逐件尺寸趋势 + 规格线 + Cpk）、`confusion`（有真值时）、`throughput`（单文件累计件数）；有配方号列时概况表多一行「配方」 |
 
-尺寸规格按每条记录的 `recipe` 列取 `ps/src/recipes.json` 里该配方的值（换型前后的记录分组统计，图也分开出；三个配方的齿条长度公差都是 **±1.0**）；记录没有配方号时才用脚本内置缺省 32±0.15 / **50±0.5**（`part_stats.py` 的 `DEFAULT_SPEC`）；`--gear-od/--gear-tol/--rack-len/--rack-tol` 对所有记录强制覆盖；类别名、OK/NG 判定来自 `models/label_list.json`。
+尺寸规格按每条记录的 `recipe` 列取 `ps/src/recipes.json` 里该配方的值（换型前后的记录分组统计，图也分开出；现 5 条配方全为齿轮，齿条已取消）；记录没有配方号时才用脚本内置缺省 32±0.15（`part_stats.py` 的 `DEFAULT_SPEC`）；`--gear-od/--gear-tol` 等对所有记录强制覆盖；类别名、OK/NG 判定来自 `models/label_list.json`。
 
 ## 长时间运行（板上）
 
-`scripts/deploy/out/soak.sh [秒=7200] [输出目录]`（测试脚本，手动 `scp scripts/deploy/out/soak.sh $BOARD_HOST:/root/des/`）：起 CAN（默认回环；`SOAK_CAN=normal` 要有真 PLC / USB-CAN 应答）、`des_app run` + `canplc` 当 PLC（START、5Hz 心跳、监听）；每分钟记 des_app 内存 / 线程、负载、可用内存、磁盘、CAN 收发与错误计数、PL 帧号到 `mon.csv`，结束出 `summary.txt`（帧率、RSS 首末 / 最大、STATUS 帧丢失、最后的计数）。实物到货后同一脚本即「连续运行 2h 无故障」测试；不加 `--go` 时机械臂空跑。
+`scripts/deploy/out/soak.sh [秒=7200] [输出目录]`（测试脚本，手动 `scp scripts/deploy/out/soak.sh $BOARD_HOST:/root/des/`）：起 CAN（默认回环；`SOAK_CAN=normal` 要有真 PLC / USB-CAN 应答）、`des_app run` + `canplc` 当 PLC；每分钟记内存 / 线程、负载、磁盘、CAN 收发与错误计数、PL 帧号到 `mon.csv`，结束出 `summary.txt`（帧率、RSS、STATUS 帧丢失、计数）。同一脚本即「连续运行 2h 无故障」测试；不加 `--go` 时机械臂空跑。

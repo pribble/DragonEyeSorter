@@ -7,7 +7,7 @@
 | `syn_1/soc_prj.prj` | 工程文件（源文件表 / 器件 / 顶层） | 引用 `../../src/**`，含自研模块；综合不会改写它 |
 | `syn_1/settings.cfg` | `DefaultFlow.tcl` 的流程参数（起止步骤、器件、封装、速度） | `DefaultFlow.tcl` 第一步就是 `source ./settings.cfg`，缺了直接失败 |
 | `phy_1/settings.cfg` | 同上，`run_type phy` / `start_step opt_place` / `end_step bitgen` / `parent ../syn_1` | |
-| `phy_1/soc_prj.prj` | 与 `syn_1` 那份同一个工程，另带 `<compress>on</compress>` 与 `<PlaceProperty><opt_timing>high</opt_timing>`（厂家 GUI 的设置） | `phy_1` 也要有自己的这份，缺了报 `PRJ-8642 ERROR: Project file soc_prj.prj does not exist.`；属性不同则 bitgen 产物与布局质量跟 v8 不可比 |
+| `phy_1/soc_prj.prj` | 与 `syn_1` 那份同一个工程，另带 `<compress>on</compress>` 与 `<PlaceProperty><opt_timing>high</opt_timing>`（厂家 GUI 的设置） | 缺了报 `PRJ-8642 ERROR: Project file soc_prj.prj does not exist.`；属性不同则 bitgen 产物与布局质量不可比 |
 
 跑法（两个目录各跑一次；耗时与完整说明见 [开发环境与构建](../../../docs/开发环境与构建.md)）：
 
@@ -15,6 +15,4 @@
 td_commands_prompt.exe <TD_ROOT>/scripts/DefaultFlow.tcl < NUL
 ```
 
-⚠ `td_commands_prompt.exe` **出错也返回 exit 0**（报错后掉进 `td >`，stdin 是 NUL 就退出）。判断成败只能看本目录里的 `.<step>.end.f` 标记与产物文件（`soc_prj_gate.db` / `soc_prj.bit` 等）。
-
-其余文件（`*.db` / `*.log` / `*.logw` / `*.bit` / `*.timing` / `*.area` / `*.qor` / `.*.f` / `flow.status` …）都是编译生成的，不入库。
+⚠ `td_commands_prompt.exe` **出错也返回 exit 0**（报错后掉进 `td >`，stdin 是 NUL 就退出）。判断成败只能看本目录里的 `.<step>.end.f` 标记与产物文件（`soc_prj_gate.db` / `soc_prj.bit` 等）。`*.db` / `*.log` / `*.bit` / `*.timing` / `*.area` / `*.qor` / `.*.f` / `flow.status` 等编译生成物不入库。
