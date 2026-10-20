@@ -57,6 +57,8 @@ struct ArmConfig {
     float tool_offset = 0;       // grasp point from the #5 axis toward the #6 servo side (mm) ⚠ measure
     float servo_side = 0;        // direction of that side: the closing direction turned about the tool axis
                                  // (rad, +-pi/2 when the servo sits beside the finger plane) ⚠ check sign
+    float servo_in_min_r = 120;  // closer to the base axis than this (mm) a vertical grasp must not turn the #6 servo
+                                 // toward the base: it sticks out ~40 mm and hit the base turret at 83 mm (10-21)
     float max_tilt_deg = 0;      // tilted grasp: lean the tool away from the base up to this (0 = vertical only)
     float tilt_step_deg = 5;     // tilts tried: 0, step, 2 step, ... (the smallest that reaches wins)
 

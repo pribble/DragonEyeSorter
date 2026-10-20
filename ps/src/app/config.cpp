@@ -138,6 +138,7 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             a.servo_side = side_deg * kPi / 180.f;
             get(c, "belt_z", a.belt_z);
             get(c, "max_tilt_deg", a.max_tilt_deg); get(c, "tilt_step_deg", a.tilt_step_deg);
+            get(c, "servo_in_min_r_mm", a.servo_in_min_r);
             get(c, "grip_open_count", a.grip_open_count); get(c, "grip_closed_count", a.grip_closed_count);
             get(c, "grip_max_open", a.grip_max_open); get(c, "grip_squeeze", a.grip_squeeze);
             get(c, "z_safe", a.z_safe); get(c, "z_grasp", a.z_grasp); get(c, "joint_speed", a.joint_speed);

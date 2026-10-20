@@ -2,6 +2,7 @@
 // Linux host:  ./test_scheduler   (exit code = number of failed checks)
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <random>
 #include <string>
 
@@ -602,6 +603,22 @@ static void test_arm()
                       w ? w : "ok", std::hypot(std::hypot(q.x - p.x, q.y - p.y), q.z - p.z));
                 const float closing = j.q[0] / 180 * kPi + j.q[4] / 180 * kPi + o.grip_axis_at_zero;
                 CHECK(std::fabs(wrap_axis(closing - ax)) < 1e-3f, "offset: fingers still close along %.2f", ax);
+            }
+            for (float ax : {0.f, 0.6f, -1.2f, 1.5f}) {   // near the base: the #6 servo must not face it
+                const Vec3 near{90, -12, 3};
+                JointAngles jn;
+                const char *w = arm_ik(o, near, ax, jn);
+                if (w) {
+                    CHECK(!strcmp(w, "servo would face the base (joint 5 limit)"), "near base (axis %.1f): %s", ax, w);
+                    continue;
+                }
+                const float phi = jn.q[4] / 180 * kPi + o.grip_axis_at_zero + o.servo_side;
+                Vec3 q = arm_fk(o, jn);
+                CHECK(std::cos(phi) >= -0.5f, "near base (side %+.0f, axis %.1f): servo toward the base (phi %.0f deg)",
+                      side * 180 / kPi, ax, phi * 180 / kPi);
+                CHECK(std::hypot(std::hypot(q.x - near.x, q.y - near.y), q.z - near.z) < 0.02f, "near base ik/fk");
+                const float closing = jn.q[0] / 180 * kPi + jn.q[4] / 180 * kPi + o.grip_axis_at_zero;
+                CHECK(std::fabs(wrap_axis(closing - ax)) < 1e-3f, "near base: fingers still close along %.2f", ax);
             }
             JointAngles z0 = j;   // the offset is real: ignoring it misses by ~9 mm
             ArmConfig n = o;

@@ -18,14 +18,26 @@ const char *arm_ik(const ArmConfig &c, Vec3 p, float close_axis, JointAngles &ou
     // the offset's tangential part moves the grasp point out of the arm plane: q1 aims the plane so that the
     // grasp point lands on p; q5 (from the closing axis) and q1 depend on each other -> a few fixed-point passes
     float q1 = az, q5 = 0, phi = 0, rho = R;
-    for (int it = 0; it < 8; it++) {
-        q5 = wrap_axis(close_axis - q1 - c.grip_axis_at_zero);
-        if (tilt != 0 && beside) q5 = wrap_pi(-c.grip_axis_at_zero - c.servo_side);   // servo on the upper side
-        phi = q5 + c.grip_axis_at_zero + c.servo_side;
-        const float tau = D * std::sin(phi);
-        if (R <= std::fabs(tau)) return "too close to the base axis";
-        rho = std::sqrt(R * R - tau * tau);
-        q1 = az - std::atan2(tau, rho);
+    auto aim = [&](float flip) -> const char * {   // flip: q5 + 180 deg = same closing line, servo on the other side
+        for (int it = 0; it < 8; it++) {
+            q5 = wrap_axis(close_axis - q1 - c.grip_axis_at_zero) + flip;
+            if (tilt != 0 && beside) q5 = wrap_pi(-c.grip_axis_at_zero - c.servo_side);   // servo on the upper side
+            phi = q5 + c.grip_axis_at_zero + c.servo_side;
+            const float tau = D * std::sin(phi);
+            if (R <= std::fabs(tau)) return "too close to the base axis";
+            rho = std::sqrt(R * R - tau * tau);
+            q1 = az - std::atan2(tau, rho);
+        }
+        return nullptr;
+    };
+    if (const char *w = aim(0)) return w;
+    // vertical tool: the servo points along cos(phi) e_r + sin(phi) e_t; more than 60 deg toward the base near it
+    // -> the other q5 for the same closing line, if joint 5 has it
+    if (tilt == 0 && beside && std::cos(phi) < -0.5f && R < c.servo_in_min_r) {
+        const float flip = q5 <= 0 ? kPi : -kPi, f5 = (q5 + flip) * kDeg;
+        if (f5 < c.joint[4].min_deg || f5 > c.joint[4].max_deg) return "servo would face the base (joint 5 limit)";
+        q1 = az;
+        if (const char *w = aim(flip)) return w;
     }
     // wrist pitch axis: back along the tool and the offset (arm plane: radial, up)
     float dx = rho - lt * std::cos(a3) + D * std::cos(phi) * std::sin(a3);
