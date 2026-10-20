@@ -55,6 +55,7 @@ bool parse(int argc, char **argv, Args &a)
         else if (k == "--full" && (v = val())) a.full = atoi(v);
         else if (k == "--steps" && (v = val())) a.steps = atoi(v);
         else if (k == "--marker-h" && (v = val())) a.marker_h = float(atof(v));
+        else if (k == "--carry" && (v = val())) a.carry_mm = float(atof(v));
         else if (a.mode.empty() && k[0] != '-') a.mode = k;   // first plain word is the mode
         else if (a.sub.empty() && isalpha((unsigned char)k[0])) a.sub = k;   // then an optional sub-command
         else if (k[0] != '-' || (k.size() > 1 && (isdigit(k[1]) || k[1] == '.'))) a.pos.push_back(atof(k.c_str()));

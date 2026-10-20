@@ -34,6 +34,7 @@ struct Args {
     int every = 6, maxpp = 10, full = 0;
     int steps = 0;                // calib-belt: long move (0 = to ~75 % of the view)
     float marker_h = -1;          // calib-arm: height of the marker top above the belt (mm); < 0 = keep belt_z
+    float carry_mm = 0;           // calib-arm: belt carries each located marker this far downstream to the arm
 };
 
 extern volatile sig_atomic_t g_stop;   // set by on_sigint; every mode's loop polls it

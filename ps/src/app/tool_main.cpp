@@ -68,6 +68,7 @@ static void usage_tool()
             "  calib-flat: a blank white sheet covering the upstream edge of the view; the belt carries it across\n"
             "             in --steps steps (default 40 mm) and back: white level of the view -> flat.json (crops)\n"
             "  calib-arm: interactive hand-eye calibration (camera calibrated, joint zeros right): -n <points, >= 3>\n"
+            "             --carry <mm> (belt carries each located marker downstream to the arm before the touch)\n"
             "             --marker-h <mm> (marker top above the belt; also fits arm.belt_z)  --out <calib.json>\n"
             "  arm: scan | read | teach | torque-on | torque-off | home | goto x y [z] [axis] | pick x y [axis] [bin]\n"
             "       motion commands only print the servo frames unless --go\n"
@@ -829,6 +830,9 @@ static int run_calib_flat(des_hw_t &hw, const AppConfig &cfg, const Args &a)
 // ---------------------------------------------------------------- calib-arm
 // Hand-eye: where the arm stands on the table (base_xy, base_yaw) and how high the belt is in the arm frame, from
 // >= 3 marker positions that the camera sees and the gripper tip touches. Interactive (Enter between the steps).
+// The arm stands beside the pick line, downstream of the view: with --carry <mm> the camera locates each marker in
+// the view and the belt then carries it that far downstream (belt.mm_per_step, calib-belt) into the arm's working
+// area, where the tip touches it - the fit then covers the area the arm really picks in.
 // The joint zeros / directions must be right first (arm read = geometric angles, docs/运动控制与分拣.md bring-up step 3).
 static bool wait_enter(const char *prompt)
 {
@@ -861,13 +865,26 @@ static int run_calib_arm(des_hw_t &hw, const AppConfig &cfg, const Args &a)
     std::vector<Vec2> tab_pts;
     for (int i = 0; i < n && !g_stop; i++) {
         char msg[200];
-        snprintf(msg, sizeof msg, "[%d/%d] put the marker in view (reachable), move the arm out of the picture, Enter:",
+        snprintf(msg, sizeof msg, a.carry_mm > 0
+                     ? "[%d/%d] put the marker in view (downstream half), take the hand and the arm off the belt, Enter:"
+                     : "[%d/%d] put the marker in view (reachable), move the arm out of the picture, Enter:",
                  i + 1, n);
         if (!wait_enter(msg)) break;
         Vec2 p;
         std::string e = still_position(cam, loc, cfg, p);
         if (!e.empty()) { printf("  %s - again\n", e.c_str()); i--; continue; }
         printf("  marker at table (%.1f, %.1f) mm\n", p.x, p.y);
+        if (a.carry_mm > 0) {   // into the arm's area: table x grows downstream
+            const double mmps = std::fabs(cfg.belt.mm_per_step), vmax = 20.0 / mmps;
+            const int32_t steps = (cfg.belt.dir >= 0 ? 1 : -1) * int32_t(std::lround(a.carry_mm / mmps));
+            des_step_enable(&hw, 1);
+            e = belt_move(hw, steps, vmax, vmax * 2);
+            des_step_stop(&hw);
+            if (!e.empty()) { printf("  belt: %s - stopped\n", e.c_str()); break; }
+            p.x += float(std::abs(steps) * mmps);
+            printf("  carried %.1f mm downstream: marker now at table (%.1f, %.1f) mm\n", std::abs(steps) * mmps, p.x,
+                   p.y);
+        }
         if (!wait_enter("  touch the marker centre with the gripper tip (between the fingers), Enter:")) break;
         if (!ex.read_positions(pos)) { printf("  servo read failed - again\n"); i--; continue; }
         float grip = 0;
