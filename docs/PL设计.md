@@ -42,11 +42,12 @@
 
 - 寄存器读多路选择须为组合逻辑：`fvdma_ctrl` 桥按 1 拍取数，打 1 拍则 `0x3xx` 读回全是 THR。
 - `clk_mipi` 在 `timing.sdc` 里约束到 `U_io_clk_div_1.clkdivout`（8.0ns，像素时钟 111.1MHz）；厂家原 SDC 写硬 MIPI PHY 引脚名，对本设计（LVDS IO）不生效。
+- 跨时钟域用「翻转 + 两级同步」（像素域 ↔ 75MHz 已在 `set_clock_groups -exclusive`），不直接跨域采样。
 
 ### 资源
 
 - 官方 demo 基线见 [pl/README](../pl/README.md) 资源预算（LUT6 79% / slice 85.8% / ERAM 92.5% / DSP 59.6%，WNS −4.12ns；NPU 软核独占 2.24 万 LUT + 156 ERAM；LUT6 与 slice 是两个口径）。
-- 现约 slice 82%（全量重编 82.41%），ERAM 261/280（剩 19 块）；自研 `des_vision` 约 1k LUT + 2 ERAM + 13 DSP，`servo_bus` / `stepper_ctrl` 各数百 LUT。不再加大模块；仍不够时 `des_vision` 用 `LANES=2`（滤波逻辑减半）。
+- 现约 slice 82%（全量重编 82.41%），ERAM 261/280（剩 19 块）；自研 `des_vision` 约 1k LUT + 2 ERAM + 13 DSP，`servo_bus` / `stepper_ctrl` 各数百 LUT。单个新模块控制在几百 LUT 以内，不再加大模块；仍不够时 `des_vision` 用 `LANES=2`（滤波逻辑减半）。
 - ISP 白平衡两个「每时钟出一个商」的流水线除法器改为背靠背逐位除（`pl/soc_base/src/des/awb_seq_div.v`，改 `ui_isp/awb_1_1/awb.v`）：每 49 时钟一个新增益、增益差 ≤1 步、不再每帧开头复位；对照仿真 `run_sim.sh awb` 逐拍一致，省约 4k LUT + 2k 加法链 + 5k FF。
 - NPU 软核里的 YOLO 后处理 / 缩放单元理论上可省（我们是 ROI 分类 + PS 预处理），但 ArmNN Alnpu 后端依赖不确定，不动。
 

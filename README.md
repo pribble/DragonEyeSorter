@@ -34,9 +34,9 @@
 | 入口 | 内容 |
 |---|---|
 | [docs/README.md](docs/README.md) | 文档地图（读者 / 唯一源 / 状态）、写作约定、各目录 README 索引 |
-| [AGENTS.md](AGENTS.md) | 协作规范：目录约定、12 条硬性约定、工作流、Git 与板子、操作禁忌 |
+| [AGENTS.md](AGENTS.md) | 给 AI 的常驻说明：事实纪律、按任务读的路由表、红线、提交纪律 |
 | [docs/系统概述.md](docs/系统概述.md) | 定位、总体架构、已锁定决策、优先级分级 |
 | [docs/测试与验证.md](docs/测试与验证.md) | 全部实测数字的唯一汇总与测试报告框架 |
 | [docs/log/](docs/log/) | 按日期的实测记录与决策沿革 |
 
-仓库目录与各目录职责见 [AGENTS.md](AGENTS.md)「目录约定」。
+仓库目录与各目录职责见 [docs/README.md](docs/README.md) 文档地图。
