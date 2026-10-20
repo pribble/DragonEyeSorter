@@ -50,6 +50,7 @@ cv::Mat crop_part(const cv::Mat &src, const Homography &px_to_table, Vec2 center
                         cv::BORDER_CONSTANT, cv::Scalar::all(0));
     if (out.channels() == 4) cv::cvtColor(out, out, cv::COLOR_BGRA2BGR);
     else if (out.channels() == 1) cv::cvtColor(out, out, cv::COLOR_GRAY2BGR);
+    if (spec.flat && spec.flat->ok()) apply_flat(out, *spec.flat, M);
     return out;
 }
 

@@ -10,6 +10,8 @@
   "px_to_table_comment": "未标定时的占位：视野宽 300mm / 1920px，x 沿图像向右（皮带前进方向），y 沿图像向上（右手系，z 朝上），原点 = 左边缘中点。用 des_tool calib-cam 标定后由 calib.json 覆盖",
   "px_to_table": [0.15625, 0, 0,  0, -0.15625, 84.375,  0, 0, 1],
   "calib_file": "calib.json",
+  "flat_file_comment": "视野白电平（des_tool calib-flat 生成，与 calib.json 同目录）：零件裁切图乘 ref / white（NPU 输入、存图、训练集同一路径）；文件不在 = 裁切图不校正，置空 = 关",
+  "flat_file": "flat.json",
 
   "belt_comment": "mm_per_step = 10-16 尺量：主动轴 4 圈（12800 步）皮带走约 265mm → 0.0207（有效辊径约 21mm）；dir = -1（前进 = 步进位置递减，10-16 实测）。des_tool calib-belt 用相机实测后写进 calib.json 覆盖这里",
   "belt_adapt_comment": "adapt：机械臂还在忙、下一个良品又快到抓取线时，先把带速降到「零件到线时臂刚好空出来」（不低于 min_mm_s），减少整停整起（赛题领域 3 高级「流水线速度自适应」）；停在抓取线仍由调度器的定点停带保证",

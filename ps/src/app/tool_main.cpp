@@ -43,6 +43,7 @@
 #include "cli_common.hpp"
 #include "config.hpp"
 #include "des_hw.h"
+#include "flat_field.hpp"
 #include "hdmi_out.hpp"
 #include "live.hpp"
 #include "locate.hpp"
@@ -55,7 +56,8 @@ using namespace des;
 static void usage_tool()
 {
     fprintf(stderr,
-            "usage: des_tool probe|locate|track|display|collect|measure|calib-cam|calib-belt|calib-enc|calib-arm|arm|ik [options]\n"
+            "usage: des_tool probe|locate|track|display|collect|measure|calib-cam|calib-belt|calib-enc|calib-flat|calib-arm|arm|ik\n"
+            "       [options]\n"
             "  -c cfg.json  -n N  --vmax N  --exp us  --gain dB*10  --dump file.png  --belt mm/s  --no-rt\n"
             "  calib-cam: --board <cols>x<rows> (inner corners)  --square <mm>  --travel right|left|down|up\n"
             "             --image <file> (instead of the camera)  --out <calib.json>  --exhaustive\n"
@@ -63,6 +65,8 @@ static void usage_tool()
             "             forward and back. --steps <long move>  --belt <mm/s> (default 20)  --out <calib.json>\n"
             "  calib-enc: EMPTY belt; moves --steps (default 300 mm) downstream and back, -n rounds, at --belt mm/s\n"
             "             (default belt.run_speed): measuring-wheel encoder vs stepper -> calib.json \"encoder\"\n"
+            "  calib-flat: a blank white sheet covering the upstream edge of the view; the belt carries it across\n"
+            "             in --steps steps (default 40 mm) and back: white level of the view -> flat.json (crops)\n"
             "  calib-arm: interactive hand-eye calibration (camera calibrated, joint zeros right): -n <points, >= 3>\n"
             "             --marker-h <mm> (marker top above the belt; also fits arm.belt_z)  --out <calib.json>\n"
             "  arm: scan | read | teach | torque-on | torque-off | home | goto x y [z] [axis] | pick x y [axis] [bin]\n"
@@ -703,6 +707,125 @@ static int run_calib_enc(des_hw_t &hw, const AppConfig &cfg, const Args &a)
     return e.empty() ? 0 : 1;
 }
 
+// ---------------------------------------------------------------- calib-flat
+// Flat field for the part crops (flat_field.hpp). A blank white sheet (A4 across the belt is enough) lies at the
+// upstream edge of the view and covers it; the belt carries it downstream in --steps steps (default 40 mm), 4 frames
+// averaged per stop, until the sheet's leading edge has reached the downstream edge of the view plus one more stop
+// (every column then seen under the sheet), at most 15 stops; then back to the start. Writes flat.json next to the
+// config (des_app.json "flat_file") or --out.
+static int run_calib_flat(des_hw_t &hw, const AppConfig &cfg, const Args &a)
+{
+    if (cfg.calib_loaded.empty()) {
+        fprintf(stderr, "calibrate the camera first (des_tool calib-cam): belt direction and mm per step\n");
+        return 1;
+    }
+    CameraRig cam(&hw);
+    if (open_camera(cam, cfg, a)) return 1;
+    const double mmps = std::fabs(cfg.belt.mm_per_step), mm_s = a.belt > 0 ? a.belt : 20.0;
+    const double vmax = mm_s / mmps, acc = vmax * 2;
+    const int dir = cfg.belt.dir >= 0 ? 1 : -1;   // + steps move parts downstream when belt.dir = +1
+    const int32_t step = a.steps ? a.steps : dir * int32_t(std::lround(40.0 / mmps));
+    const Vec2 pl = cfg.px_to_table.map({0, 540}), pr = cfg.px_to_table.map({1919, 540});
+    const bool down_left = pl.x > pr.x;   // table x grows downstream
+    des_step_enable(&hw, 1);
+    usleep(100000);
+    auto grab = [&](cv::Mat &gray) -> std::string {
+        CapturedFrame f;
+        std::string err;
+        for (int i = 0; i < cfg.camera.buffers + 2; i++)   // frames exposed during the move
+            if (!(err = cam.next(f, false)).empty()) return err;
+        cv::Mat sum;
+        for (int i = 0; i < 4; i++) {
+            if (!(err = cam.next(f, true)).empty()) return err;
+            cv::Mat bgra(f.height, f.width, CV_8UC4, const_cast<uint8_t *>(f.bgra), size_t(f.stride)), g;
+            cv::cvtColor(bgra, g, cv::COLOR_BGRA2GRAY);
+            if (sum.empty()) sum = cv::Mat::zeros(g.size(), CV_32F);
+            cv::accumulate(g, sum);
+        }
+        sum.convertTo(gray, CV_8U, 0.25);
+        return "";
+    };
+    // sheet columns: mean of the middle 40 % of the rows above belt + half the contrast (vignetting is mild there)
+    auto span = [](const cv::Mat &g, int &c0, int &c1) {
+        cv::Mat band = g.rowRange(g.rows * 3 / 10, g.rows * 7 / 10), prof;
+        cv::reduce(band, prof, 0, cv::REDUCE_AVG, CV_32F);
+        std::vector<float> p(prof.begin<float>(), prof.end<float>()), s = p;
+        std::sort(s.begin(), s.end());
+        const float lo = s[s.size() / 10], hi = s[s.size() * 99 / 100], thr = lo + 0.5f * (hi - lo);
+        c0 = -1;
+        c1 = -1;
+        if (hi - lo < 40) return;   // no sheet
+        for (int x = 0; x < int(p.size()); x++)
+            if (p[x] > thr) {
+                if (c0 < 0) c0 = x;
+                c1 = x;
+            }
+    };
+    FlatBuilder fb;
+    int32_t moved = 0;
+    bool last = false;
+    std::string e;
+    for (int k = 0; k < 15 && !g_stop; k++) {
+        cv::Mat g;
+        if (!(e = grab(g)).empty()) break;
+        int c0, c1;
+        span(g, c0, c1);
+        if (c0 < 0) {
+            e = "no white sheet in view at stop " + std::to_string(k);
+            break;
+        }
+        fb.add(g);
+        const int W = g.cols, lead = down_left ? c0 : W - 1 - c1, trail = down_left ? W - 1 - c1 : c0;
+        printf("stop %2d (belt %+.0f mm): sheet columns %d..%d\n", k, moved * mmps * dir, c0, c1);
+        if (k == 0 && trail > 3)
+            printf("  note: the sheet does not reach the upstream edge of the view (%d px short): that strip is "
+                   "filled from its neighbours\n", trail);
+        if (last) break;
+        if (lead <= 3) last = true;   // leading edge at the downstream edge: one more stop for the eroded margin
+        if (!(e = belt_move(hw, step, vmax, acc)).empty()) break;
+        moved += step;
+    }
+    if (moved) {
+        std::string b = belt_move(hw, -moved, vmax, acc);
+        printf("belt back %d steps: %s\n", -moved, b.empty() ? "ok" : b.c_str());
+    }
+    des_step_stop(&hw);
+    if (!e.empty()) {
+        fprintf(stderr, "calib-flat: %s\n", e.c_str());
+        return 2;
+    }
+    if (!last) printf("note: the sheet never reached the downstream edge of the view; the rest is filled in\n");
+    FlatField ff;
+    FlatStats st;
+    if (!(e = fb.build(ff, 48, 27, &st)).empty()) {
+        fprintf(stderr, "calib-flat: %s\n", e.c_str());
+        return 2;
+    }
+    printf("== flat field: %d stops, %.1f %% of the view under the sheet; centre white %.1f, darkest %.0f %%; "
+           "corners TL %.0f TR %.0f BL %.0f BR %.0f %%\n", st.frames, st.covered * 100, st.centre, st.min_rel * 100,
+           st.corner_rel[0] * 100, st.corner_rel[1] * 100, st.corner_rel[2] * 100, st.corner_rel[3] * 100);
+    printf("   corrected sheet p5..p95 = %.1f .. %.1f %% of the centre\n", st.resid_p5 * 100, st.resid_p95 * 100);
+    printf("   white level / centre (%%), 8 x 4 over the view (left = image left):\n");
+    for (int r = 0; r < 4; r++) {
+        printf("  ");
+        for (int c = 0; c < 8; c++)
+            printf(" %4.0f", ff.white_at((c + 0.5f) * ff.width / 8 - 0.5f, (r + 0.5f) * ff.height / 4 - 0.5f) /
+                                 ff.ref * 100);
+        printf("\n");
+    }
+    std::string out = a.out;
+    if (out.empty()) {
+        const std::string fn = cfg.flat_file.empty() ? "flat.json" : cfg.flat_file;
+        out = fn[0] == '/' ? fn : cfg.config_dir + "/" + fn;
+    }
+    char note[96];
+    snprintf(note, sizeof note, "%d stops of %d steps, %.1f %% covered", st.frames, step, st.covered * 100);
+    e = save_flat(out, ff, note);
+    printf("saved %s: %s%s\n", out.c_str(), e.empty() ? "ok" : e.c_str(),
+           e.empty() && cfg.flat_file.empty() ? " (des_app.json flat_file is empty: crops stay raw)" : "");
+    return e.empty() ? 0 : 1;
+}
+
 // ---------------------------------------------------------------- calib-arm
 // Hand-eye: where the arm stands on the table (base_xy, base_yaw) and how high the belt is in the arm frame, from
 // >= 3 marker positions that the camera sees and the gripper tip touches. Interactive (Enter between the steps).
@@ -870,6 +993,7 @@ int main(int argc, char **argv)
     std::string err = load_config(a.config, cfg);
     if (!err.empty()) fprintf(stderr, "config: %s (using defaults)\n", err.c_str());
     if (!cfg.calib_loaded.empty()) printf("config: camera calibration from %s\n", cfg.calib_loaded.c_str());
+    if (!cfg.flat_loaded.empty()) printf("config: flat field (crops) from %s\n", cfg.flat_loaded.c_str());
     else if (a.mode != "calib-cam") printf("config: no %s, camera mapping is the uncalibrated placeholder\n",
                                             cfg.calib_file.c_str());
     if (a.mode == "ik") return run_ik(cfg, a);
@@ -895,6 +1019,7 @@ int main(int argc, char **argv)
     else if (a.mode == "calib-cam") rc = run_calib(&hw, cfg, a);
     else if (a.mode == "calib-belt") rc = run_calib_belt(hw, cfg, a);
     else if (a.mode == "calib-enc") rc = run_calib_enc(hw, cfg, a);
+    else if (a.mode == "calib-flat") rc = run_calib_flat(hw, cfg, a);
     else if (a.mode == "calib-arm") rc = run_calib_arm(hw, cfg, a);
     else if (a.mode == "arm") rc = run_arm(hw, cfg, a);
     else if (a.mode == "measure") rc = run_measure(&hw, cfg, a);

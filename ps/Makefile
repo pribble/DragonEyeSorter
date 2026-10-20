@@ -67,7 +67,7 @@ APP_SRC := src/app/camera_rig.cpp src/app/locate.cpp src/app/config.cpp \
            src/app/live.cpp src/app/runner.cpp src/app/belt_ctl.cpp src/app/arm_exec.cpp \
            src/app/part_log.cpp src/app/net_feed.cpp src/app/img_writer.cpp src/app/collector.cpp src/hw/modbus_tcp.cpp \
            src/app/npu_cls.cpp src/app/npu_async.cpp src/app/arm_manual.cpp \
-           src/measure/measure.cpp src/measure/track_measure.cpp src/measure/roi_crop.cpp \
+           src/measure/measure.cpp src/measure/track_measure.cpp src/measure/roi_crop.cpp src/measure/flat_field.cpp \
            src/ui/hdmi_out.cpp src/ui/scale34.cpp src/ui/text_ft.cpp src/ui/ui_input.cpp src/ui/hmi.cpp
 # 只有 des_tool 用：标定（会写 calib.json）与人工测量报告；这两个对象不要链进产品 des_app
 OPS_SRC := src/measure/calib.cpp src/measure/measure_tool.cpp
@@ -119,10 +119,10 @@ $(BUILD)/test_scheduler: tests/test_scheduler.cpp $(SCHED_SRC) $(wildcard src/sc
 	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_scheduler.cpp $(SCHED_SRC)
 
 $(BUILD)/test_measure: tests/test_measure.cpp src/measure/measure.cpp src/measure/track_measure.cpp \
-    src/measure/roi_crop.cpp src/app/part_log.cpp src/app/net_feed.cpp $(SCHED_SRC) \
-    $(wildcard src/measure/*measure*.hpp src/measure/roi_crop.hpp src/app/part_log.hpp src/sched/*.hpp) | check-sdk $(BUILD)
+    src/measure/roi_crop.cpp src/measure/flat_field.cpp src/app/part_log.cpp src/app/net_feed.cpp $(SCHED_SRC) \
+    $(wildcard src/measure/*measure*.hpp src/measure/roi_crop.hpp src/measure/flat_field.hpp src/app/part_log.hpp src/sched/*.hpp) | check-sdk $(BUILD)
 	$(CXX) $(CXXFLAGS) $(INC) -I$(OPENCV)/include/opencv4 -o $@ tests/test_measure.cpp src/measure/measure.cpp \
-	    src/measure/track_measure.cpp src/measure/roi_crop.cpp src/app/part_log.cpp src/app/net_feed.cpp $(SCHED_SRC) \
+	    src/measure/track_measure.cpp src/measure/roi_crop.cpp src/measure/flat_field.cpp src/app/part_log.cpp src/app/net_feed.cpp $(SCHED_SRC) \
 	    -L$(OPENCV)/lib -Wl,-rpath-link,$(OPENCV)/lib $(RPATH) -lopencv_imgcodecs -lopencv_imgproc -lopencv_core -lpthread
 
 # Modbus-TCP slave over loopback (no SDK; also builds with WSL g++)

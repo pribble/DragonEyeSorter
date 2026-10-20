@@ -2,7 +2,9 @@
 #include "config.hpp"
 
 #include <fstream>
+#include <memory>
 
+#include "flat_field.hpp"
 #include "json.hpp"
 
 namespace des {
@@ -279,6 +281,19 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             cfg.calib_loaded = cp;
         } catch (const std::exception &e) {
             return cp + ": " + e.what();
+        }
+    }
+    get(j, "flat_file", cfg.flat_file);
+    if (!cfg.flat_file.empty()) {   // flat field for the part crops (des_tool calib-flat); missing = raw crops
+        std::string fp = cfg.flat_file;
+        if (fp[0] != '/') fp = cfg.config_dir + "/" + fp;
+        std::ifstream ff(fp);
+        if (ff) {
+            auto f = std::make_shared<FlatField>();
+            std::string e = load_flat(fp, *f);
+            if (!e.empty()) return e;
+            cfg.measure.flat = f;
+            cfg.flat_loaded = fp;
         }
     }
     {   // ready pose taught on the HMI arm page (「设为初始姿态」): counts of the six servos, over arm.home_deg

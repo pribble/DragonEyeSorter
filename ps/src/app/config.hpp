@@ -87,6 +87,8 @@ struct AppConfig {
     std::string label_list = "models/label_list.json";
     std::string calib_file = "calib.json";     // written by des_tool calib-cam, merged over this file if present
     std::string calib_loaded;                  // path actually merged (empty = none)
+    std::string flat_file = "flat.json";       // des_tool calib-flat: white level of the view for the crops ("" = off)
+    std::string flat_loaded;                   // path actually loaded (empty = none, crops raw)
     float pick_after_fov = 0;                  // > 0: picker.pick_x = calibrated fov_x1 + this (mm)
     bool belt_calibrated = false;
     bool enc_calibrated = false;               // calib file had an "encoder" section (des_tool calib-enc)

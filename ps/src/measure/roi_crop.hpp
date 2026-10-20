@@ -11,6 +11,7 @@
 
 #include <opencv2/core.hpp>
 
+#include "flat_field.hpp"
 #include "geom.hpp"
 #include "measure_config.hpp"
 
@@ -19,6 +20,7 @@ namespace des {
 struct CropSpec {
     float side_mm = 56;
     int out_px = 224;
+    const FlatField *flat = nullptr;   // white level of the view (flat_field.hpp): crop * ref / white; null = raw
 };
 
 // src: BGRA (camera buffer, may be uncached: only the bounding box is read, once) or BGR; returns BGR out_px x out_px

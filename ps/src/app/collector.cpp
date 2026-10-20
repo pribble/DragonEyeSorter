@@ -19,6 +19,7 @@ Collector::Collector(const CollectOptions &opt, const AppConfig &cfg)
     if (!opt_.out.empty() && opt_.out[0] != '/') opt_.out = cfg.config_dir + "/" + opt_.out;
     spec_.side_mm = cfg.measure.crop_side_mm;
     spec_.out_px = cfg.measure.crop_px > 0 ? cfg.measure.crop_px : 224;
+    spec_.flat = cfg.measure.flat.get();
 }
 
 std::string Collector::open()

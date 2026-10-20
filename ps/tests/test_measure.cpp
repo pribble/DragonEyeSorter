@@ -562,6 +562,64 @@ int main()
                   pc.sat, ci >= 0 ? cl[ci].name.c_str() : "none");
         }
     }
+    // flat field (flat_field.hpp): white level 180 * v(x, y), v = 1 at the centre .. 0.4 in the corners
+    auto vig = [](float x, float y) {
+        const float dx = (x - 959.5f) / 960, dy = (y - 539.5f) / 540;
+        return 1.f - 0.3f * (dx * dx + dy * dy);
+    };
+    {   // crops of a uniform part (150 at the centre) seen through the vignetting come out uniform at 150
+        FlatField ff;
+        ff.gw = 48;
+        ff.gh = 27;
+        ff.ref = 180;
+        for (int j = 0; j < 27; j++)
+            for (int i = 0; i < 48; i++) ff.white.push_back(180 * vig((i + 0.5f) * 40 - 0.5f, (j + 0.5f) * 40 - 0.5f));
+        cv::Mat img(1080, 1920, CV_8UC1);
+        for (int y = 0; y < 1080; y++)
+            for (int x = 0; x < 1920; x++) img.at<uint8_t>(y, x) = uint8_t(std::lround(150 * vig(float(x), float(y))));
+        CropSpec cs;
+        const Vec2 c{300 * S, 250 * S};   // near the top-left corner (v ~ 0.77)
+        cv::Mat raw = crop_part(img, h, c, 0.3f, cs);
+        cs.flat = &ff;
+        cv::Mat cor = crop_part(img, h, c, 0.3f, cs);
+        double mn, mx;
+        cv::Mat g;
+        cv::cvtColor(cor, g, cv::COLOR_BGR2GRAY);
+        cv::minMaxLoc(g, &mn, &mx);
+        printf("[flat crop] raw mean %.1f, corrected mean %.1f (%.0f .. %.0f), centre gain %.3f corner gain %.3f\n",
+               cv::mean(raw)[0], cv::mean(cor)[0], mn, mx, ff.gain_at(959.5f, 539.5f), ff.gain_at(0, 0));
+        CHECK(cv::mean(raw)[0] < 125 && std::fabs(cv::mean(cor)[0] - 150) < 2 && mx - mn <= 4,
+              "flat crop: raw %.1f corrected %.1f range %.0f", cv::mean(raw)[0], cv::mean(cor)[0], mx - mn);
+        CHECK(std::fabs(ff.gain_at(959.5f, 539.5f) - 1) < 0.01f && std::fabs(ff.gain_at(0, 0) * vig(20, 20) - 1) < 0.03f,
+              "flat gains: centre %.3f corner %.3f", ff.gain_at(959.5f, 539.5f), ff.gain_at(0, 0));
+    }
+    {   // FlatBuilder: a white sheet (180 v) 1100 px wide over the belt (30 v), 7 stops 200 px apart
+        FlatBuilder fb;
+        for (int k = 0; k < 7; k++) {
+            const int x0 = 820 - 200 * k;
+            cv::Mat f(1080, 1920, CV_8UC1);
+            for (int y = 0; y < 1080; y++)
+                for (int x = 0; x < 1920; x++)
+                    f.at<uint8_t>(y, x) = uint8_t(std::lround((x >= x0 && x < x0 + 1100 ? 180 : 30) * vig(float(x), float(y))));
+            cv::GaussianBlur(f, f, cv::Size(5, 5), 1.0);
+            fb.add(f);
+        }
+        FlatField f;
+        FlatStats st;
+        const std::string e = fb.build(f, 48, 27, &st);
+        printf("[flat build] %s covered %.3f centre %.1f corner %.3f (want %.3f) residual %.3f .. %.3f\n",
+               e.empty() ? "ok" : e.c_str(), st.covered, st.centre, st.corner_rel[0], vig(20, 20), st.resid_p5,
+               st.resid_p95);
+        CHECK(e.empty() && st.covered > 0.97f && std::fabs(st.centre - 180) < 2, "flat build: %s covered %.3f centre %.1f",
+              e.c_str(), st.covered, st.centre);
+        CHECK(std::fabs(st.corner_rel[0] - vig(20, 20)) < 0.03f && st.resid_p5 > 0.97f && st.resid_p95 < 1.03f,
+              "flat build: corner %.3f residual %.3f .. %.3f", st.corner_rel[0], st.resid_p5, st.resid_p95);
+        const std::string fn = "/tmp/des_flat_test.json";
+        FlatField back;
+        CHECK(save_flat(fn, f, "test").empty() && load_flat(fn, back).empty() && back.gw == 48 && back.gh == 27 &&
+                  std::fabs(back.white_at(700, 300) - f.white_at(700, 300)) < 0.01f,
+              "flat.json round trip");
+    }
     printf("%d passed, %d failed\n", g_pass, g_fail);
     return g_fail;
 }

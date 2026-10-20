@@ -63,6 +63,7 @@ int main(int argc, char **argv)
     std::string err = load_config(a.config, cfg);
     if (!err.empty()) fprintf(stderr, "config: %s (using defaults)\n", err.c_str());
     if (!cfg.calib_loaded.empty()) printf("config: camera calibration from %s\n", cfg.calib_loaded.c_str());
+    if (!cfg.flat_loaded.empty()) printf("config: flat field (crops) from %s\n", cfg.flat_loaded.c_str());
     else printf("config: no %s, camera mapping is the uncalibrated placeholder\n", cfg.calib_file.c_str());
 
     des_hw_t hw;

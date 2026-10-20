@@ -2,12 +2,15 @@
 // OpenCV, so config.hpp can hold them (des_app.json "measure", docs/视觉与检测.md "几何测量").
 #pragma once
 
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "geom.hpp"
 
 namespace des {
+
+struct FlatField;   // flat_field.hpp
 
 struct MeasureConfig {
     float camera_h_mm = 0;       // camera height above the belt; 0 = no parallax correction  ⚠ measure (H)
@@ -75,6 +78,7 @@ struct TrackMeasureConfig {
     float crop_side_mm = 56;     // part crop taken with every successful measurement (roi_crop.hpp: NPU input,
     int crop_px = 224;           // NG images, training set); 0 = no crop
     std::vector<ColorClass> colors;   // colour from every crop; empty = not classified (hue / sat still logged)
+    std::shared_ptr<const FlatField> flat;   // flat.json (des_tool calib-flat) applied to the crops; null = raw
     MeasureConfig m;
 };
 
