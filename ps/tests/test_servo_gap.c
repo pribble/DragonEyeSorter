@@ -43,33 +43,33 @@ int main(int argc, char **argv)
     printf("servo %u, %d PINGs per gap; gap = end of previous reply -> start of next frame (PL timestamps)\n", id, n);
     for (unsigned g = 0; g < n_gaps; g++) {
         des_sb_result_t r;
-        des_servo_ping(&hw, id, &r);   // prime: start from a known state (and after a long idle)
+        (void)des_servo_ping(&hw, id, &r);   // prime: start from a known state (and after a long idle)
         struct timespec ts = {0, 50 * 1000000};
         nanosleep(&ts, NULL);
-        des_servo_ping(&hw, id, &r);
+        int rc = des_servo_ping(&hw, id, &r);
         uint32_t t_prev = r.t_rx;
-        int prev_ok = r.rc == DES_OK;
+        int prev_ok = rc == DES_OK;
         int ok = 0, to = 0, other = 0;
         double gmin = 1e9, gmax = 0, lat_sum = 0;
         char pat[64] = {0};
         for (int i = 0; i < n; i++) {
             if (prev_ok) spin_until(&hw, t_prev, gaps_us[g]);   // after a timeout: send at once (it is idle anyway)
-            des_servo_ping(&hw, id, &r);
+            rc = des_servo_ping(&hw, id, &r);
             const double gap = des_ticks_us(r.t_tx0 - t_prev);
             if (prev_ok) {
                 if (gap < gmin) gmin = gap;
                 if (gap > gmax) gmax = gap;
             }
-            if (r.rc == DES_OK) {
+            if (rc == DES_OK) {
                 ok++;
                 lat_sum += des_ticks_us(r.t_rx - r.t_tx1);
                 t_prev = r.t_rx;
             } else {
-                if (r.rc == DES_E_TIMEOUT) to++; else other++;
+                if (rc == DES_E_TIMEOUT) to++; else other++;
                 t_prev = des_now(&hw);
             }
-            if (i < (int)sizeof pat - 1) pat[i] = r.rc == DES_OK ? 'o' : 'x';
-            prev_ok = r.rc == DES_OK;
+            if (i < (int)sizeof pat - 1) pat[i] = rc == DES_OK ? 'o' : 'x';
+            prev_ok = rc == DES_OK;
         }
         printf("gap %6.0f us (actual %6.0f..%6.0f): ok %2d  timeout %2d  other %d  reply %.0f us  %s\n", gaps_us[g],
                gmin < 1e9 ? gmin : 0, gmax, ok, to, other, ok ? lat_sum / ok : 0, pat);

@@ -15,7 +15,7 @@
 #include <opencv2/imgcodecs.hpp>
 
 #include "json.hpp"
-#include "npu_cls.hpp"
+#include "npu.hpp"
 
 using namespace des;
 

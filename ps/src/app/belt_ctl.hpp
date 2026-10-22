@@ -7,39 +7,31 @@
 //   Hold    arm on the belt: if (unexpectedly) moving, ramp down; otherwise do nothing
 // Belt travel B [mm] = POS * mm_per_step * dir (same as the camera / tracker side).
 #pragma once
-
 #include <cstdint>
-
 #include "config.hpp"
 #include "des_hw.h"
 #include "picker.hpp"
-
 namespace des {
-
 class BeltDriver {
 public:
     BeltDriver(des_hw_t *hw, const BeltConfig &cfg);
-
     void enable(bool on);
     void apply(const BeltPlan &plan);   // once per control cycle
     void set_speed(double mm_s);        // cruise speed used from the next move / retarget (CAN / UI)
     // manual jog while the line is stopped (HMI): +1 = forward (parts toward the arm), -1 = reverse, at the cruise
     // speed; 0 = ramp down. A change of direction ramps down first and starts on a later call. Call every cycle.
     void jog(int dir);
-
     double belt_mm() const;
     double speed_mm_s() const;
     double brake_mm() const;            // distance needed to stop from the current speed
     bool stopped() const;
     int32_t steps_for(double belt_mm) const;
-
     struct Stats {
         uint64_t runs = 0;        // Run plans that (re)started or re-extended a move
         uint64_t stops = 0;       // StopAt targets written
         uint64_t late = 0;        // StopAt targets already behind the belt (PL ramps down past them / no reverse)
         uint64_t holds = 0;       // Hold while moving (should stay 0)
     } stats;
-
 private:
     void move_to(int32_t target);
     des_hw_t *hw_;
@@ -50,5 +42,8 @@ private:
     int32_t last_target_ = 0;
     int jog_dir_ = 0;           // direction of the running jog move, 0 = none
 };
-
+// Picker::Input for one control cycle. belt != nullptr = production (run): brake distance from the PL's
+// des_step_brake_steps. belt == nullptr = dry mode (live without Runner, `live --belt`): brake distance from
+// v^2 / (2 a) and no speed (that mode only displays picker plans). Both formulas are kept on purpose.
+Picker::Input picker_input(const BeltDriver *belt, des_hw_t *hw, const BeltConfig &cfg);
 }  // namespace des

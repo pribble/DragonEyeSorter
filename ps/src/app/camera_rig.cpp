@@ -1,36 +1,19 @@
 // camera_rig.cpp — see camera_rig.hpp
 #include "camera_rig.hpp"
-
-#include <time.h>
-
 #include <vector>
-
 #include "flow_common_types.hpp"
 #include "mipi_camera.hpp"
-
+#include "util.hpp"
 namespace des {
-
 static constexpr uint8_t kImx415 = 0x1a;
-
-static uint64_t now_us()
-{
-    timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return uint64_t(ts.tv_sec) * 1000000u + ts.tv_nsec / 1000;
-}
-
 struct CameraRig::Impl {
-    std::unique_ptr<CmaResourceZone> zone;
-    std::shared_ptr<camera_t> cam;
-    std::vector<CmaBuf> bufs;
-    int cur = 0;
-    bool have_prev = false;
-    uint32_t prev_frame = 0;
+    std::unique_ptr<CmaResourceZone> zone; std::shared_ptr<camera_t> cam;
+    std::vector<CmaBuf> bufs; int cur = 0;
+    bool have_prev = false; uint32_t prev_frame = 0;
+    int capture_support = -1;   // PL latch (VERSION >= 5): -1 unknown, 1 yes, 0 no (probed once, not per frame)
 };
-
-CameraRig::CameraRig(des_hw_t *hw) : p_(new Impl), hw_(hw) {}
+CameraRig::CameraRig(des_hw_t *hw) : hw_(hw) {}
 CameraRig::~CameraRig() = default;
-
 int CameraRig::sensor_write(uint16_t reg, uint8_t val)
 {
     uint8_t b[3] = {uint8_t(reg >> 8), uint8_t(reg & 0xff), val};
@@ -39,7 +22,6 @@ int CameraRig::sensor_write(uint16_t reg, uint8_t val)
     if (sensor_read(reg, v) || v != val) return -1;
     return 0;
 }
-
 int CameraRig::sensor_read(uint16_t reg, uint8_t &val)
 {
     uint8_t out[1] = {0};
@@ -48,10 +30,10 @@ int CameraRig::sensor_read(uint16_t reg, uint8_t &val)
     val = out[0];
     return 0;
 }
-
 std::string CameraRig::open(int buffers, int vmax, int exposure_us, int gain_db10)
 {
     try {
+        p_.reset(new Impl);
         p_->zone.reset(new CmaResourceZone);
     } catch (const std::exception &e) {
         return std::string("CMA init: ") + e.what();
@@ -59,12 +41,10 @@ std::string CameraRig::open(int buffers, int vmax, int exposure_us, int gain_db1
     p_->cam = std::make_shared<camera_t>();
     p_->cam->open("/dev/mipicam");          // finds the sensor, writes the vendor register set, maps the DMA regs
     if (!p_->cam->is_open()) return "camera open failed (/dev/mipicam, mipicam.ko loaded? sensor on I2C?)";
-
     // read back the VMAX the driver configured
     uint8_t v0 = 0, v1 = 0, v2 = 0;
     sensor_read(0x3024, v0); sensor_read(0x3025, v1); sensor_read(0x3026, v2);
     vmax_ = v0 | (v1 << 8) | ((v2 & 0x0f) << 16);
-
     if (vmax > 0 || exposure_us > 0 || gain_db10 > 0) {
         int err = 0;
         err |= sensor_write(0x3001, 1);                      // REGHOLD: apply everything on the same frame
@@ -93,7 +73,6 @@ std::string CameraRig::open(int buffers, int vmax, int exposure_us, int gain_db1
         err |= sensor_write(0x3001, 0);
         if (err) return "sensor register write/read-back failed";
     }
-
     if (buffers < 2) buffers = 2;
     size_t size = p_->cam->buffer_size();
     for (int i = 0; i < buffers; i++) {
@@ -103,58 +82,60 @@ std::string CameraRig::open(int buffers, int vmax, int exposure_us, int gain_db1
     }
     p_->cur = 0;
     p_->have_prev = false;
+    p_->capture_support = -1;
     p_->cam->SubmitAndStart(p_->bufs[0]->phys_addr, p_->bufs[0]->virt_addr);
     return "";
 }
-
 std::string CameraRig::next(CapturedFrame &f, bool need_pixels)
 {
     Impl &p = *p_;
-    uint64_t t0 = now_us();
+    const uint64_t t0 = mono_us();
     if (p.cam->WaitFinish()) return "frame timeout (no camera interrupt within 1 s)";
-    uint64_t t1 = now_us();
-
+    const uint64_t t1 = mono_us();
     // re-arm first: the next frame start may be less than a millisecond away
-    int nxt = (p.cur + 1) % int(p.bufs.size());
+    const int nxt = (p.cur + 1) % int(p.bufs.size());
     p.cam->SubmitAndStart(p.bufs[nxt]->phys_addr, p.bufs[nxt]->virt_addr);
-    uint64_t t2 = now_us();
-
+    const uint64_t t2 = mono_us();
+    // v5+: exact frame identity and belt position at its first / last row. Old bitstreams have no latch: they are
+    // read right after the completion (the belt has moved for about one frame time). Probed once: the fallback then skips the failing capture read on every frame.
     des_capture_t cap;
-    if (des_capture_read(hw_, &cap) == DES_OK) {
-        // v5: exact frame identity and belt position at its first / last row
+    bool latched = false;
+    if (p.capture_support != 0) {
+        if (des_capture_read(hw_, &cap) == DES_OK) {
+            p.capture_support = 1;
+            latched = true;
+        } else if (p.capture_support < 0) {
+            p.capture_support = 0;
+        }
+    }
+    if (latched) {
         f.latched = true;
         f.pl_frame = cap.frame;
-        f.pl_ts = cap.t0;
         f.step_pos = cap.pos0;
         f.step_pos_end = cap.pos1;
     } else {
-        // older bitstreams: read right after the completion (belt has moved for about one frame time)
         des_frame_t fr;
         des_frame_read(hw_, &fr);
         f.latched = false;
         f.pl_frame = fr.cnt;
-        f.pl_ts = des_now(hw_);
         f.step_pos = f.step_pos_end = des_step_pos(hw_);
     }
     f.pl_gap = p.have_prev ? f.pl_frame - p.prev_frame : 1;
     p.prev_frame = f.pl_frame;
     p.have_prev = true;
-
-    f.buf = p.cur;
     f.width = p.cam->width();
     f.height = p.cam->height();
     f.stride = f.width * p.cam->channel();
     f.bgra = static_cast<const uint8_t *>(p.bufs[p.cur]->virt_addr);
     f.t_us = t1;
-    f.wait_us = double(t1 - t0);
-    f.rearm_us = double(t2 - t1);
+    f.wait_us = uint32_t(t1 - t0);
+    f.rearm_us = uint32_t(t2 - t1);
     f.sync_us = 0;
     if (need_pixels) {
         p.bufs[p.cur].sync_cpu();
-        f.sync_us = double(now_us() - t2);
+        f.sync_us = uint32_t(mono_us() - t2);
     }
     p.cur = nxt;
     return "";
 }
-
 }  // namespace des

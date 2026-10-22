@@ -9,7 +9,6 @@
 #include <string>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
-#include <memory>
 #include <type_traits>
 #include <unistd.h>
 
@@ -37,29 +36,6 @@ public:
         (void)rtv;
         return rtv;
     }
-
-    // template <typename T_REG, typename T, size_t N>
-    // int Write(unsigned char dev_addr, T_REG reg, const T (&buf)[N]) {
-    //     static_assert(
-    //         std::is_same_v<unsigned char, T_REG>
-    //             || std::is_same_v<uint16_t, T_REG>,
-    //         "no support");
-    //     struct i2c_rdwr_ioctl_data data;
-    //     struct i2c_msg messages[2];
-    //     messages[0].addr = dev_addr;
-    //     messages[0].flags = 0;
-    //     messages[0].len = sizeof(reg);
-    //     messages[0].buf = reinterpret_cast<uint8_t *>(&reg);
-    //     messages[1].addr = dev_addr;
-    //     messages[1].flags = 0;
-    //     messages[1].len = N;
-    //     messages[1].buf = (unsigned char *)buf;
-    //     data.msgs = messages;
-    //     data.nmsgs = 2;
-    //     int rtv = ioctl(*fd, I2C_RDWR, &data) == 0;
-    //     (void)rtv;
-    //     return rtv;
-    // }
 
     template <typename T_REG, typename T, size_t N>
     int Read(unsigned char dev_addr, T_REG reg, T (&buf)[N]) {

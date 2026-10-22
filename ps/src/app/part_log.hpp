@@ -4,62 +4,58 @@
 // part), under <dir>/<YYYY-MM-DD>/: parts_<session>.csv and img/<session>_<track>_<label>.jpg. A background thread
 // does all file I/O, so the worker never waits for the SD card; when the queue is full records are dropped and
 // counted (never blocks). Columns match the SQLite table planned for the UI history view (docs/软件与UI.md).
-// ⚠ The board has no RTC: wall time is whatever the clock says (sync it with `date -s` before a test run); the
-// monotonic t_s column is always right.
+//
+// The same lines / images are also streamed over Ethernet when StorageConfig::feed_port > 0 (赛题拓展 5「千兆网数据
+// 上传」): the board listens on a TCP port and a PC client (pc/feed/des_feed.py) receives each record the log writes.
+// That NetFeed is an implementation detail of part_log.cpp (own thread, bounded per-client queues, dead clients just
+// close) — its wire frame is unchanged: 10-byte header, big-endian: 'D' 'F' <type> 0 <name_len:2> <payload_len:4>,
+// then name, then payload; 'H' hello (session + CSV header), 'R' record, 'I' image, 'S' status every 2 s.
+//
+// ⚠ The board has no RTC: wall time is whatever the clock says (sync it with `date -s` before a test run, or let the
+// PLC's TIME frame / Modbus time registers set the offset); the monotonic t_s column is always right.
 #pragma once
-
 #include <atomic>
-#include <condition_variable>
 #include <cstdint>
 #include <cstdio>
-#include <deque>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
-
 #include <opencv2/core.hpp>
-
+#include "bg_queue.hpp"
 #include "config.hpp"
-#include "net_feed.hpp"
-#include "tracker.hpp"
-
+#include "part_types.hpp"
 namespace des {
-
+class NetFeed;
+// One decided part. Pointers stay valid for the whole process: label points into AppConfig::tracker.rules[i].label
+// (or the literal "unclassified"), dest into AppConfig::bins / outlets.
 struct PartRecord {
-    int64_t wall_ms = 0;         // CLOCK_REALTIME
-    double t_s = 0;              // seconds since the log was opened (monotonic)
-    int track_id = 0;
-    uint32_t frame_first = 0, frame_last = 0;
-    int cls = -1;
-    std::string label;           // class label, "unclassified"
+    int64_t wall_ms = 0;  double t_s = 0;
+    int track_id = 0;     uint32_t frame_first = 0, frame_last = 0;
+    int16_t cls = -1;     const char *label = "unclassified";   // 指向 config rules[i].label / 字面量
     float conf = 0;
-    std::string disp, dest, why; // pick / flap / recheck, destination name, reason
+    Disposition disp = Disposition::None;
+    const char *dest = "";               // 指向 cfg.bins / cfg.outlets 的字符串
+    char why[40] = {0};
     PartMeasure meas;
-    float s = 0, y = 0, axis = 0, len = 0, wid = 0;   // belt coordinate / lateral position / blob geometry
-    // PL coarse measurement (des_vision ROI statistics, v6): bright area, area-equivalent diameter, bounding box
-    uint32_t pl_area = 0;
-    float pl_d_mm = 0, pl_w_mm = 0, pl_h_mm = 0;
-    // NPU: votes, mean inference time, mean latency camera frame complete -> probabilities (0 = no NPU result)
-    int votes = 0;
-    float npu_ms = 0, lat_ms = 0;
-    int recipe = 0;              // active recipe id when the part was logged (recipes.json)
+    float s = 0, y = 0, axis = 0, len = 0, wid = 0;
+    uint32_t pl_area = 0; float pl_d_mm = 0, pl_w_mm = 0, pl_h_mm = 0;
+    int16_t votes = 0;    float npu_ms = 0, lat_ms = 0;  uint8_t recipe = 0;
 };
-
+const char *csv_header();   // the 43 column names, one line (part_stats.py / des_feed.py read them by name)
 class PartLog {
 public:
-    ~PartLog() { close(); }
+    PartLog();
+    ~PartLog();
     std::string open(const StorageConfig &cfg);   // "" on success
     void add(PartRecord r, const cv::Mat &crop);  // non-blocking; crop may be empty
     void close();                                 // flush everything, stop the writer
     bool is_open() const { return th_.joinable(); }
-    void set_images(const std::string &mode) { std::lock_guard<std::mutex> lk(m_); cfg_.images = mode; }   // HMI
-    double now_s() const;                         // for PartRecord::t_s
-
+    void set_images(const std::string &mode);   // HMI: sampled per record by the writer's producer
+    double now_s() const;                         // for PartRecord::t_s (monotonic - open())
     std::string session;                          // YYYYMMDD-HHMMSS of open()
     std::string csv_path;
     std::atomic<uint64_t> written{0}, images{0}, dropped{0}, errors{0};
-    const NetFeed &feed() const { return feed_; }
-
 private:
     struct Item {
         PartRecord r;
@@ -67,25 +63,13 @@ private:
     };
     void loop();
     void write(const Item &it);
-
     StorageConfig cfg_;
+    mutable std::mutex m_;   // cfg_.images: set_images() vs add()
     std::string day_dir_;
     FILE *csv_ = nullptr;
     double t0_ = 0;
     std::thread th_;
-    std::mutex m_;
-    std::condition_variable cv_;
-    std::deque<Item> q_;
-    bool quit_ = false;
-    NetFeed feed_;
+    BgQueue<Item> q_;
+    std::unique_ptr<NetFeed> feed_;
 };
-
-const char *csv_header();
-
-// Wall clock for the records: CLOCK_REALTIME + an offset learned from the PLC's TIME frame (CAN 0x104), because the
-// board has no RTC. Thread-safe; 0 offset until a TIME frame arrives.
-void set_wall_offset_ms(int64_t offset_ms);
-int64_t wall_now_ms();
-bool wall_synced();
-
 }  // namespace des

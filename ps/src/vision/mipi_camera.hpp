@@ -26,24 +26,6 @@
  */
 class camera_t : public icamera {
 public:
-    typedef enum {
-        video_30fps,
-        video_60fps,
-        no_mipi
-    } video_fps;
-
-    typedef enum {
-        Normal,
-        Inverted
-    } Operation;
-
-    typedef enum {
-        Inverted_h,
-        Inverted_v,
-        Inverted_hv
-    } Inverted_x;
-
-public:
     camera_t() = default;
     ~camera_t();
 
@@ -114,20 +96,7 @@ public:
 
         try {
             selfTest();
-            std::string x(dev);
-            video_fps fps = video_30fps;
-            Operation sensor_opt = Normal;
-            Inverted_x sensor_inv = Inverted_h;
-            if (x.find("60fps") != std::string::npos) fps = video_60fps;
-            if (x.find("inverted") != std::string::npos) sensor_opt = Inverted;
-            if (x.find("hv") != std::string::npos)
-                sensor_inv = Inverted_hv;
-            else if (x.find("v") != std::string::npos)
-                sensor_inv = Inverted_v;
-            else
-                sensor_inv = Inverted_h;
-
-            init(fps, sensor_opt, sensor_inv);
+            init();
         } catch (const std::runtime_error &e) {
             std::cerr << e.what() << std::endl;
             fd = 0;
@@ -142,17 +111,11 @@ public:
 
     void selfTest();
 
-    int init(video_fps fps = video_30fps, Operation sensor_opt = Normal, Inverted_x sensor_inv = Inverted_h);
+    int init();
 
     void SubmitAndStart(uint64_t dma_rx_buf, void *rx_buf = nullptr) override;
 
     int WaitFinish() override;
-
-    
-
-    int AutoExposure(const int (&histogram)[256]) override;
-
-    int SetExposure(float exp_in_ms, uint16_t gain = 0x00);
 
 public:
     i2c_helper iic;
@@ -163,13 +126,6 @@ private:
     void configReg(uint16_t CfgAddr, uint8_t CfgValue);
     // 记录初始化开始时间
     std::chrono::high_resolution_clock::time_point init_start_time;
-    float max_line = 2250;
-    float line_1H_us = 29.63;
-
-    // 自动曝光
-    float m_exp_ms = 15.0;
-    int m_exp_status = 0; // 1: 需要上调, -1: 需要下调, 0: suspend
-    uint16_t m_gain = 0;
 
     int fd = 0;
     void *m_map_addr = nullptr;

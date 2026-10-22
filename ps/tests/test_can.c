@@ -1,15 +1,12 @@
 /* test_can: CAN protocol v1 (hw/can_proto.h) and SocketCAN link test on the board.
  * Run after `scripts/deploy/out/can_up.sh can0 loopback` (self test) or with a real partner on the bus.
  *   ./test_can [ifname] [roundtrips]     exit code = failed checks
- * Two sockets on the same interface play the PLC and DragonEyeSorter: frames one sends, the other receives.
- */
+ * Two sockets on the same interface play the PLC and DragonEyeSorter: frames one sends, the other receives. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-
 #include "can_link.h"
-
 static int g_fail = 0, g_pass = 0;
 #define CHECK(cond, ...)                                              \
     do {                                                              \
@@ -17,14 +14,12 @@ static int g_fail = 0, g_pass = 0;
         else { g_fail++; printf("FAIL %s:%d: ", __FILE__, __LINE__);  \
                printf(__VA_ARGS__); printf("\n"); }                   \
     } while (0)
-
 static double now_us(void)
 {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return ts.tv_sec * 1e6 + ts.tv_nsec / 1e3;
 }
-
 /* receive the next frame with the wanted id (other ids are skipped), 0 on timeout */
 static int recv_id(int fd, uint32_t id, canp_frame_t *f, int timeout_ms)
 {
@@ -37,36 +32,33 @@ static int recv_id(int fd, uint32_t id, canp_frame_t *f, int timeout_ms)
         if (f->id == id) return 1;
     }
 }
-
 static void test_codec(void)
 {
-    canp_status_t s = {CANP_ST_RUN, CANP_FLAG_BELT_MOVING | CANP_FLAG_PLC_LINK, 7, 42, 123.4, 3600};
+    canp_status_t s = {CANP_ST_RUN, CANP_FLAG_BELT_MOVING | CANP_FLAG_PLC_LINK, 7, 42, canp_mm_s_x10(123.4), 3600};
     canp_frame_t f = canp_status(&s);
     canp_status_t d = canp_status_decode(&f);
     CHECK(f.id == CANP_ID_STATUS && f.len == 8, "status frame header");
     CHECK(d.state == s.state && d.flags == s.flags && d.alarm == 7 && d.hb == 42 && d.uptime_s == 3600 &&
-              d.speed_mm_s > 123.39 && d.speed_mm_s < 123.41, "status round trip");
+              d.speed_x10 == 1234, "status round trip");
     canp_counts_t c = {60000, 41000, 15000, 4000};
     f = canp_counts(&c);
     canp_counts_t cd = canp_counts_decode(&f);
     CHECK(cd.total == 60000 && cd.ok == 41000 && cd.ng == 15000 && cd.recheck == 4000, "counts round trip");
-    canp_part_t p = {513, 4, CANP_DISP_PICK, 1, 93, 49.87};
+    canp_part_t p = {513, 4, CANP_DISP_PICK, 1, 93, 4987};
     f = canp_part(&p);
     canp_part_t pd = canp_part_decode(&f);
-    CHECK(pd.id == 513 && pd.cls == 4 && pd.disp == CANP_DISP_PICK && pd.dest == 1 && pd.conf_pct == 93 &&
-              pd.size_mm > 49.86 && pd.size_mm < 49.88, "part round trip");
+    CHECK(pd.id == 513 && pd.cls == 4 && pd.disp == CANP_DISP_PICK && pd.dest == 1 && pd.conf == 93 &&
+              pd.size_x100 == 4987, "part round trip");
     f = canp_speed(87.65, 9);
     CHECK(f.id == CANP_ID_SPEED && canp_get16(f.data) == 877 && f.data[2] == 9, "speed encoding (0.1 mm/s, LE)");
     f = canp_ack(CANP_ID_SPEED, 9, CANP_ACK_OK);
     CHECK(f.data[0] == 0x01 && f.data[1] == 9 && f.data[2] == 0, "ack carries the command id low byte and seq");
 }
-
 int main(int argc, char **argv)
 {
     const char *ifn = argc > 1 ? argv[1] : "can0";
     int n = argc > 2 ? atoi(argv[2]) : 1000;
     test_codec();
-
     int plc = can_open(ifn), des = can_open(ifn);
     if (plc < 0 || des < 0) {
         perror("can_open (interface up? see scripts/deploy/out/can_up.sh)");
@@ -75,7 +67,6 @@ int main(int argc, char **argv)
     long tx_err0 = can_stat(ifn, "tx_errors"), rx_err0 = can_stat(ifn, "rx_errors");
     canp_frame_t f;
     while (can_recv(plc, &f, 0) > 0 || can_recv(des, &f, 0) > 0) {}   /* drain */
-
     /* 1) command -> ack round trips */
     double rtt_min = 1e18, rtt_max = 0, rtt_sum = 0;
     int ok = 0, bad = 0;
@@ -104,10 +95,9 @@ int main(int argc, char **argv)
     printf("command -> ack: %d / %d ok, round trip min %.0f us, avg %.0f us, max %.0f us\n", ok, n, rtt_min,
            ok ? rtt_sum / ok : 0, rtt_max);
     CHECK(ok == n && bad == 0, "%d round trips failed", bad);
-
-    /* 2) streams at fixed rates: receiver checks every frame arrives, in order, intact.
-     * The application sends <= ~100 frames/s; on the board in loopback mode the controller silently loses frames
-     * when they are sent back to back (TX counter complete, RX counter short, no error counter moves). */
+    /* 2) streams at fixed rates: receiver checks every frame arrives, in order, intact. The application sends
+     * <= ~100 frames/s; in loopback mode the controller silently loses frames sent back to back (TX counter
+     * complete, RX counter short, no error counter moves). */
     const int rates[] = {200, 1000, 2000, 0};   /* frames/s, 0 = as fast as possible */
     for (int ri = 0; ri < 4; ri++) {
         const int rate = rates[ri], total = rate ? (rate < 1000 ? rate : 2000) : 2000;
@@ -143,20 +133,18 @@ int main(int argc, char **argv)
         if (rate && rate <= 1000) CHECK(received == total && wrong == 0, "%d frames/s: received %d / %d", rate, received, total);
         while (can_recv(des, &f, 50) > 0) {}   /* drain before the next rate */
     }
-
     /* 3) status stream DES -> PLC */
     int st_ok = 0;
     for (int i = 0; i < 100; i++) {
-        canp_status_t s = {CANP_ST_RUN, CANP_FLAG_PLC_LINK, 0, (uint8_t)i, 50.0, (uint16_t)i};
+        canp_status_t s = {CANP_ST_RUN, CANP_FLAG_PLC_LINK, 0, (uint8_t)i, canp_mm_s_x10(50.0), (uint16_t)i};
         canp_frame_t sf = canp_status(&s);
         can_send(des, &sf);
         if (recv_id(plc, CANP_ID_STATUS, &f, 100)) {
-            canp_status_t d = canp_status_decode(&f);
-            if (d.hb == (uint8_t)i && d.uptime_s == i) st_ok++;
+            canp_status_t dd = canp_status_decode(&f);
+            if (dd.hb == (uint8_t)i && dd.uptime_s == i) st_ok++;
         }
     }
     CHECK(st_ok == 100, "status stream: %d / 100", st_ok);
-
     long tx_err = can_stat(ifn, "tx_errors") - tx_err0, rx_err = can_stat(ifn, "rx_errors") - rx_err0;
     printf("interface error counters during the test: tx %ld, rx %ld\n", tx_err, rx_err);
     CHECK(tx_err == 0 && rx_err == 0, "bus errors tx %ld rx %ld", tx_err, rx_err);

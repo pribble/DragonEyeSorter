@@ -1,12 +1,10 @@
 // calib.cpp — see calib.hpp
 #include "calib.hpp"
-
 #include <poll.h>
 #include <signal.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
-
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -14,80 +12,87 @@
 #include <ctime>
 #include <fstream>
 #include <utility>
-
 #include <opencv2/calib3d.hpp>
 #include <opencv2/core/utility.hpp>
 #include <opencv2/imgproc.hpp>
-
 #include "json.hpp"
-
 namespace des {
-
-bool parse_travel(const std::string &s, Travel &t)
+namespace {
+// travel direction in the image, in enum order (Right, Left, Down, Up): index == enum value
+struct TravelInfo {
+    const char *name; Vec2 dir;
+};
+constexpr TravelInfo kTravels[] = {{"right", {1, 0}}, {"left", {-1, 0}}, {"down", {0, 1}}, {"up", {0, -1}}};
+constexpr size_t kTravelCount = sizeof(kTravels) / sizeof(kTravels[0]);
+const TravelInfo &travel_info(Travel t) { return kTravels[size_t(t)]; }   // only for a valid enum value
+Vec2 image_dir(Travel t) { return travel_info(t).dir; }
+// "YYYY-MM-DD HH:MM" (local time: the board has no RTC) of the calibration run
+std::string stamp()
 {
-    if (s == "right") t = Travel::Right;
-    else if (s == "left") t = Travel::Left;
-    else if (s == "down") t = Travel::Down;
-    else if (s == "up") t = Travel::Up;
-    else return false;
-    return true;
+    char b[32]; const time_t now = time(nullptr); strftime(b, sizeof b, "%Y-%m-%d %H:%M", localtime(&now)); return b;
 }
-
-const char *to_str(Travel t)
+// loads the existing calib JSON so a writer can merge its section into the others. Empty = ok (also when missing);
+// a broken file gives the fix-or-delete text.
+std::string merged(const std::string &path, nlohmann::ordered_json &j)
 {
-    switch (t) {
-    case Travel::Right: return "right";
-    case Travel::Left: return "left";
-    case Travel::Down: return "down";
-    case Travel::Up: return "up";
+    std::ifstream old(path);
+    if (!old) return "";
+    try {
+        old >> j;
+    } catch (const std::exception &e) {
+        return path + ": " + e.what() + " (fix or delete it, then run calib-cam again)";
     }
-    return "?";
+    return "";
 }
-
-static Vec2 image_dir(Travel t)
+std::string write_json(const std::string &path, const nlohmann::ordered_json &j)
 {
-    switch (t) {
-    case Travel::Right: return {1, 0};
-    case Travel::Left: return {-1, 0};
-    case Travel::Down: return {0, 1};
-    case Travel::Up: return {0, -1};
-    }
-    return {1, 0};
+    std::ofstream f(path);
+    if (!f) return "cannot write " + path;
+    f << j.dump(2) << "\n"; return f ? "" : "write failed: " + path;
 }
-
+// merge one section into calib.json, keeping the other sections (camera / belt / encoder / arm)
+std::string save_section(const std::string &path, const char *key, const nlohmann::ordered_json &sec)
+{
+    nlohmann::ordered_json j; const std::string e = merged(path, j);
+    if (!e.empty()) return e;
+    j[key] = sec; return write_json(path, j);
+}
 // nearest board axis (unit vector along +-x or +-y of the board frame)
-static Vec2 snap_axis(Vec2 v)
+Vec2 snap_axis(Vec2 v)
 {
     if (std::fabs(v.x) >= std::fabs(v.y)) return {v.x >= 0 ? 1.f : -1.f, 0.f};
     return {0.f, v.y >= 0 ? 1.f : -1.f};
 }
-
-static Homography normalized(const double m[9])
+Homography normalized(const double m[9])
 {
     Homography h;
-    for (int i = 0; i < 9; i++) h.h[i] = m[i] / m[8];
-    return h;
+    for (int i = 0; i < 9; i++) h.h[i] = m[i];
+    return h.normalized();  // divide by h[8] (geom.hpp)
 }
-
-static double ms_since(const timespec &t0)
+double ms_since(const timespec &t0)
 {
-    timespec t;
-    clock_gettime(CLOCK_MONOTONIC, &t);
+    timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
     return (t.tv_sec - t0.tv_sec) * 1e3 + (t.tv_nsec - t0.tv_nsec) / 1e6;
 }
-
+}  // namespace
+bool parse_travel(const std::string &s, Travel &t)
+{
+    for (size_t i = 0; i < kTravelCount; i++)
+        if (s == kTravels[i].name) {
+            t = Travel(i); return true;
+        }
+    return false;
+}
+const char *to_str(Travel t) { return size_t(t) < kTravelCount ? kTravels[size_t(t)].name : "?"; }
 bool detect_board(const cv::Mat &gray, const BoardSpec &board, bool exhaustive, std::vector<cv::Point2f> &c)
 {
     if (gray.empty() || gray.type() != CV_8UC1) return false;
-    timespec t0;
-    clock_gettime(CLOCK_MONOTONIC, &t0);
-    const cv::Size pattern(board.cols, board.rows);
+    timespec t0; clock_gettime(CLOCK_MONOTONIC, &t0); const cv::Size pattern(board.cols, board.rows);
     const cv::TermCriteria crit(cv::TermCriteria::EPS + cv::TermCriteria::COUNT, 50, 0.01);
-    const bool dbg = getenv("CALIB_DEBUG") != nullptr;
+    static const bool dbg = getenv("CALIB_DEBUG") != nullptr;  // process-wide debug switch, read once
     auto stage = [&](const char *what, bool ok) {
         if (dbg) fprintf(stderr, "calib: %s %s after %.0f ms\n", what, ok ? "found" : "failed", ms_since(t0));
-    };
-    // Cheapest first. The classic detector takes ~0.1 s on a clean board, but can search for minutes when the
+    };  // Cheapest first. The classic detector takes ~0.1 s on a clean board, but can search for minutes when the
     // board in view has a different corner count than --board (hence detect_board_timeout). The sector detector
     // (findChessboardCornersSB) is more robust to blur / noise but slow on the A35: ~12 s at full resolution.
     bool found = cv::findChessboardCorners(gray, pattern, c, cv::CALIB_CB_ADAPTIVE_THRESH |
@@ -95,10 +100,8 @@ bool detect_board(const cv::Mat &gray, const BoardSpec &board, bool exhaustive, 
     stage("classic", found);
     if (found) cv::cornerSubPix(gray, c, cv::Size(11, 11), cv::Size(-1, -1), crit);
     if (!found) {   // sector detector on half resolution, refined at full resolution
-        cv::Mat half;
-        cv::resize(gray, half, cv::Size(), 0.5, 0.5, cv::INTER_AREA);
-        found = cv::findChessboardCornersSB(half, pattern, c, cv::CALIB_CB_ACCURACY);
-        stage("sector 1/2", found);
+        cv::Mat half; cv::resize(gray, half, cv::Size(), 0.5, 0.5, cv::INTER_AREA);
+        found = cv::findChessboardCornersSB(half, pattern, c, cv::CALIB_CB_ACCURACY); stage("sector 1/2", found);
         if (found) {
             for (cv::Point2f &p : c) p = p * 2.f + cv::Point2f(0.5f, 0.5f);
             cv::cornerSubPix(gray, c, cv::Size(11, 11), cv::Size(-1, -1), crit);
@@ -110,70 +113,54 @@ bool detect_board(const cv::Mat &gray, const BoardSpec &board, bool exhaustive, 
     }
     return found && c.size() == size_t(board.cols * board.rows);
 }
-
-int detect_board_timeout(const cv::Mat &gray, const BoardSpec &board, bool exhaustive, double timeout_s,
-                         std::vector<cv::Point2f> &corners)
+int detect_board_timeout(const cv::Mat &gray, const BoardSpec &board, bool exhaustive, double timeout_s, std::vector<cv::Point2f> &corners)
 {
     int fds[2];
     if (pipe(fds) != 0) return detect_board(gray, board, exhaustive, corners) ? 1 : 0;
-    pid_t pid = fork();
+    const pid_t pid = fork();
     if (pid < 0) {
-        close(fds[0]);
-        close(fds[1]);
-        return detect_board(gray, board, exhaustive, corners) ? 1 : 0;
+        close(fds[0]); close(fds[1]); return detect_board(gray, board, exhaustive, corners) ? 1 : 0;
     }
     if (pid == 0) {   // child: detect, send the corners, exit without running the parent's destructors
-        close(fds[0]);
-        cv::setNumThreads(1);
-        std::vector<cv::Point2f> c;
-        int32_t n = detect_board(gray, board, exhaustive, c) ? int32_t(c.size()) : 0;
+        close(fds[0]); cv::setNumThreads(1); std::vector<cv::Point2f> c;
+        const int32_t n = detect_board(gray, board, exhaustive, c) ? int32_t(c.size()) : 0;
         if (write(fds[1], &n, sizeof n) == sizeof n && n > 0) {
-            ssize_t len = ssize_t(n) * ssize_t(sizeof(cv::Point2f)), done = 0;
-            while (done < len) {
-                ssize_t w = write(fds[1], reinterpret_cast<const char *>(c.data()) + done, size_t(len - done));
+            const ssize_t len = ssize_t(n) * ssize_t(sizeof(cv::Point2f));
+            for (ssize_t done = 0; done < len;) {
+                const ssize_t w = write(fds[1], reinterpret_cast<const char *>(c.data()) + done, size_t(len - done));
                 if (w <= 0) break;
                 done += w;
             }
         }
         _exit(0);
     }
-    close(fds[1]);
-    pollfd pfd{fds[0], POLLIN, 0};
-    int pr = poll(&pfd, 1, int(timeout_s * 1000));
-    int result = -1;
+    close(fds[1]); pollfd pfd{fds[0], POLLIN, 0}; const int pr = poll(&pfd, 1, int(timeout_s * 1000)); int result = -1;
     if (pr > 0) {
         int32_t n = 0;
         if (read(fds[0], &n, sizeof n) == sizeof n) {
             corners.resize(size_t(n > 0 ? n : 0));
-            ssize_t len = ssize_t(n > 0 ? n : 0) * ssize_t(sizeof(cv::Point2f)), done = 0;
-            while (done < len) {
-                ssize_t rd = read(fds[0], reinterpret_cast<char *>(corners.data()) + done, size_t(len - done));
+            const ssize_t len = ssize_t(n > 0 ? n : 0) * ssize_t(sizeof(cv::Point2f)); ssize_t done = 0;
+            for (; done < len;) {
+                const ssize_t rd = read(fds[0], reinterpret_cast<char *>(corners.data()) + done, size_t(len - done));
                 if (rd <= 0) break;
                 done += rd;
             }
             result = (n > 0 && done == len) ? 1 : 0;
         } else {
-            result = 0;   // child died without answering
+            result = 0;  // child died without answering
         }
     } else {
         kill(pid, SIGKILL);
     }
-    waitpid(pid, nullptr, 0);
-    close(fds[0]);
-    return result;
+    waitpid(pid, nullptr, 0); close(fds[0]); return result;
 }
-
-CalibResult calibrate_from_corners(const std::vector<cv::Point2f> &c, cv::Size image, const BoardSpec &board,
-                                   Travel travel)
+CalibResult calibrate_from_corners(const std::vector<cv::Point2f> &c, cv::Size image, const BoardSpec &board, Travel travel)
 {
     CalibResult r;
     if (c.size() != size_t(board.cols * board.rows)) {
-        r.err = "corner count does not match --board";
-        return r;
+        r.err = "corner count does not match --board"; return r;
     }
-    r.corners = c;
-
-    // board frame: OpenCV corner order is row-major, (i, j) -> (i * sq, j * sq); which corner is first depends on
+    r.corners = c;  // board frame: OpenCV corner order is row-major, (i, j) -> (i * sq, j * sq); which corner is first depends on
     // how the board lies, so the axes are re-derived below from the image directions
     std::vector<cv::Point2f> obj;
     for (int j = 0; j < board.rows; j++)
@@ -182,120 +169,73 @@ CalibResult calibrate_from_corners(const std::vector<cv::Point2f> &c, cv::Size i
     if (hm.empty()) { r.err = "homography fit failed"; return r; }
     double hb_raw[9];
     for (int i = 0; i < 9; i++) hb_raw[i] = hm.at<double>(i / 3, i % 3);
-    const Homography hb = normalized(hb_raw);
-
-    double se = 0;
+    const Homography hb = normalized(hb_raw); double se = 0;
     for (size_t k = 0; k < c.size(); k++) {
-        Vec2 p = hb.map({c[k].x, c[k].y});
-        float e = std::hypot(p.x - obj[k].x, p.y - obj[k].y);
-        se += double(e) * e;
-        r.max_mm = std::max(r.max_mm, e);
+        const Vec2 p = hb.map({c[k].x, c[k].y}); const float e = std::hypot(p.x - obj[k].x, p.y - obj[k].y);
+        se += double(e) * e; r.max_mm = std::max(r.max_mm, e);
     }
     r.rms_mm = float(std::sqrt(se / c.size()));
-
     // table axes: x = board axis closest to the travel direction, y = 90 deg CCW seen from above.
     // The image is a top view (not mirrored): rotating an image direction t by +90 deg CCW gives (t.y, -t.x).
-    const float W = float(image.width), H = float(image.height);
-    const Vec2 cimg{W / 2, H / 2};
-    const Vec2 t = image_dir(travel), n{t.y, -t.x};
-    const Vec2 b0 = hb.map(cimg);
-    const Vec2 ex = snap_axis(hb.map(cimg + t * 50.f) - b0);
-    const Vec2 ey = snap_axis(hb.map(cimg + n * 50.f) - b0);
+    const float W = float(image.width), H = float(image.height); const Vec2 cimg{W / 2, H / 2};
+    const Vec2 t = image_dir(travel), n{t.y, -t.x}; const Vec2 b0 = hb.map(cimg);
+    const Vec2 ex = snap_axis(hb.map(cimg + t * 50.f) - b0), ey = snap_axis(hb.map(cimg + n * 50.f) - b0);
     if (std::fabs(dot(ex, ey)) > 0.5f) {
-        r.err = "board axes ambiguous: lay the board with an edge along the belt";
-        return r;
+        r.err = "board axes ambiguous: lay the board with an edge along the belt"; return r;
     }
-    // origin: x = 0 at the upstream image edge (center line), y = 0 on the image center line
+    // origin: x = 0 at the upstream image edge (center line), y = 0 on the image center line. The upstream /
+    // downstream edge points are the image border the belt enters / leaves, on the center row / column.
     Vec2 up_edge, dn_edge;
-    switch (travel) {
-    case Travel::Right: up_edge = {0, H / 2}; dn_edge = {W - 1, H / 2}; break;
-    case Travel::Left: up_edge = {W - 1, H / 2}; dn_edge = {0, H / 2}; break;
-    case Travel::Down: up_edge = {W / 2, 0}; dn_edge = {W / 2, H - 1}; break;
-    case Travel::Up: up_edge = {W / 2, H - 1}; dn_edge = {W / 2, 0}; break;
+    if (t.x != 0) {
+        up_edge = {t.x > 0 ? 0.f : W - 1, H / 2}; dn_edge = {t.x > 0 ? W - 1 : 0.f, H / 2};
+    } else {
+        up_edge = {W / 2, t.y > 0 ? 0.f : H - 1}; dn_edge = {W / 2, t.y > 0 ? H - 1 : 0.f};
     }
     const float ox = -dot(hb.map(up_edge), ex), oy = -dot(hb.map(cimg), ey);
-    const double A[9] = {ex.x, ex.y, ox, ey.x, ey.y, oy, 0, 0, 1};
-    double m[9];
+    const double A[9] = {ex.x, ex.y, ox, ey.x, ey.y, oy, 0, 0, 1}; double m[9];
     for (int i = 0; i < 3; i++)
         for (int k = 0; k < 3; k++)
             m[i * 3 + k] = A[i * 3] * hb.h[k] + A[i * 3 + 1] * hb.h[3 + k] + A[i * 3 + 2] * hb.h[6 + k];
-    r.px_to_table = normalized(m);
-
-    const Homography &h = r.px_to_table;
-    r.mm_per_px = norm(h.map(cimg + Vec2{1, 0}) - h.map(cimg));
-    r.fov_x0 = h.map(up_edge).x;
-    r.fov_x1 = h.map(dn_edge).x;
-    const Vec2 ic[4] = {{0, 0}, {W - 1, 0}, {W - 1, H - 1}, {0, H - 1}};
+    r.px_to_table = normalized(m); const Homography &h = r.px_to_table;
+    r.mm_per_px = norm(h.map(cimg + Vec2{1, 0}) - h.map(cimg)); r.fov_x0 = h.map(up_edge).x;
+    r.fov_x1 = h.map(dn_edge).x; const Vec2 ic[4] = {{0, 0}, {W - 1, 0}, {W - 1, H - 1}, {0, H - 1}};
     for (int i = 0; i < 4; i++) r.fov_corners[i] = h.map(ic[i]);
-    r.ok = true;
-    return r;
+    r.ok = true; return r;
 }
-
 CalibResult calibrate_table(const cv::Mat &gray, const BoardSpec &board, Travel travel, bool exhaustive)
 {
-    timespec t0;
-    clock_gettime(CLOCK_MONOTONIC, &t0);
-    std::vector<cv::Point2f> c;
-    bool found = detect_board(gray, board, exhaustive, c);
-    double ms = ms_since(t0);
-    CalibResult r;
-    if (!found) {
-        r.err = "board not found (check --board inner-corner count, focus, lighting; whole board in view)";
-    } else {
-        r = calibrate_from_corners(c, gray.size(), board, travel);
-    }
-    r.detect_ms = ms;
-    return r;
+    timespec t0; clock_gettime(CLOCK_MONOTONIC, &t0); std::vector<cv::Point2f> c;
+    const bool found = detect_board(gray, board, exhaustive, c); const double ms = ms_since(t0); CalibResult r;
+    if (found) r = calibrate_from_corners(c, gray.size(), board, travel);
+    else r.err = "board not found (check --board inner-corner count, focus, lighting; whole board in view)";
+    r.detect_ms = ms; return r;
 }
-
 std::string save_calib(const std::string &path, const CalibResult &r, const BoardSpec &board, Travel travel)
 {
     if (!r.ok) return "no calibration to save";
-    nlohmann::ordered_json j;
-    char date[32];
-    time_t now = time(nullptr);
-    strftime(date, sizeof date, "%Y-%m-%d %H:%M", localtime(&now));
-    j["comment"] = "des_tool calib-cam 生成，勿手改（重新标定会覆盖）。load_config 读完 des_app.json 后合并本文件。";
-    j["date"] = date;
-    j["board"] = {{"cols", board.cols}, {"rows", board.rows}, {"square_mm", board.square_mm}};
-    j["travel"] = to_str(travel);
-    j["rms_mm"] = r.rms_mm;
-    j["max_mm"] = r.max_mm;
-    j["mm_per_px"] = r.mm_per_px;
+    nlohmann::ordered_json j; j["comment"] = "des_tool calib-cam 生成，勿手改（重新标定会覆盖）。load_config 读完 des_app.json 后合并本文件。";
+    j["date"] = stamp(); j["board"] = {{"cols", board.cols}, {"rows", board.rows}, {"square_mm", board.square_mm}};
+    j["travel"] = to_str(travel); j["rms_mm"] = r.rms_mm; j["max_mm"] = r.max_mm; j["mm_per_px"] = r.mm_per_px;
     nlohmann::json h = nlohmann::json::array();
     for (double v : r.px_to_table.h) h.push_back(v);
-    j["px_to_table"] = h;
-    j["tracker"] = {{"fov_x0", r.fov_x0}, {"fov_x1", r.fov_x1}};
+    j["px_to_table"] = h; j["tracker"] = {{"fov_x0", r.fov_x0}, {"fov_x1", r.fov_x1}};
     nlohmann::json fc = nlohmann::json::array();
     for (const Vec2 &v : r.fov_corners) fc.push_back({v.x, v.y});
     j["fov_corners"] = fc;
-    {   // keep the belt / encoder scales of earlier calib-belt / calib-enc runs (they do not depend on the camera pose)
-        std::ifstream old(path);
-        nlohmann::ordered_json o;
-        if (old) {
-            try {
-                old >> o;
-                if (o.contains("belt")) j["belt"] = o["belt"];
-                if (o.contains("encoder")) j["encoder"] = o["encoder"];
-                if (o.contains("arm")) j["arm"] = o["arm"];
-            } catch (const std::exception &) {
-            }
-        }
+    {   // keep the belt / encoder / arm sections of earlier calib-belt / calib-enc / calib-arm runs (they do not
+        // depend on the camera pose). A broken old file is simply replaced: calib-cam regenerates the camera part.
+        nlohmann::ordered_json old;
+        if (merged(path, old).empty())   // on a parse error the parser may have left a partial object behind
+            for (const char *k : {"belt", "encoder", "arm"})
+                if (old.contains(k)) j[k] = old[k];
     }
-    std::ofstream f(path);
-    if (!f) return "cannot write " + path;
-    f << j.dump(2) << "\n";
-    return f ? "" : "write failed: " + path;
+    return write_json(path, j);
 }
-
 BeltCalib belt_from_positions(Vec2 p0, Vec2 p1, Vec2 p2, Vec2 p3, int32_t s1, int32_t s2, int steps_per_rev)
 {
-    BeltCalib b;
-    const int32_t n = s1 + s2;
-    const double dx = p2.x - p0.x;
+    BeltCalib b; const int32_t n = s1 + s2; const double dx = p2.x - p0.x;
     if (n == 0 || std::fabs(p1.x - p0.x) < 1.0) {
-        b.err = "the part did not move with the belt (driver off / not wired / belt slipping)";
-        return b;
+        b.err = "the part did not move with the belt (driver off / not wired / belt slipping)"; return b;
     }
     if (s2 != 0) {   // both moves must give the same scale and direction (else the part slid / the belt slipped)
         const double k1 = (p1.x - p0.x) / s1, k2 = (p2.x - p1.x) / s2;
@@ -305,47 +245,25 @@ BeltCalib belt_from_positions(Vec2 p0, Vec2 p1, Vec2 p2, Vec2 p3, int32_t s1, in
             return b;
         }
     }
-    b.steps = n;
-    b.travel_mm = std::fabs(dx);
-    b.mm_per_step = b.travel_mm / std::fabs(double(n));
-    b.dir = (dx > 0) == (n > 0) ? 1 : -1;
-    b.return_err_mm = p3.x - p0.x;
+    b.steps = n; b.travel_mm = std::fabs(dx); b.mm_per_step = b.travel_mm / std::fabs(double(n));
+    b.dir = (dx > 0) == (n > 0) ? 1 : -1; b.return_err_mm = p3.x - p0.x;
     b.drift_mm_per_100 = (p2.y - p0.y) / b.travel_mm * 100.0;
     b.roller_d_mm = b.mm_per_step * steps_per_rev / 3.14159265358979;
     if (b.travel_mm < 20) {
-        b.err = "travel below 20 mm: too short for a useful scale (move the part upstream, raise --steps)";
-        return b;
+        b.err = "travel below 20 mm: too short for a useful scale (move the part upstream, raise --steps)"; return b;
     }
     b.ok = true;
     return b;
 }
-
 std::string save_belt_calib(const std::string &path, const BeltCalib &b)
 {
     if (!b.ok) return "no belt calibration to save";
-    nlohmann::ordered_json j;
-    {
-        std::ifstream old(path);
-        if (old) {
-            try {
-                old >> j;
-            } catch (const std::exception &e) {
-                return path + ": " + e.what() + " (fix or delete it, then run calib-cam again)";
-            }
-        }
-    }
-    char date[32];
-    time_t now = time(nullptr);
-    strftime(date, sizeof date, "%Y-%m-%d %H:%M", localtime(&now));
-    j["belt"] = {{"mm_per_step", b.mm_per_step}, {"dir", b.dir}, {"date", date}, {"travel_mm", b.travel_mm},
-                 {"steps", b.steps}, {"return_err_mm", b.return_err_mm}, {"drift_mm_per_100", b.drift_mm_per_100},
-                 {"roller_d_mm", b.roller_d_mm}};
-    std::ofstream f(path);
-    if (!f) return "cannot write " + path;
-    f << j.dump(2) << "\n";
-    return f ? "" : "write failed: " + path;
+    const nlohmann::ordered_json sec = {{"mm_per_step", b.mm_per_step}, {"dir", b.dir}, {"date", stamp()},
+                                        {"travel_mm", b.travel_mm}, {"steps", b.steps},
+                                        {"return_err_mm", b.return_err_mm},
+                                        {"drift_mm_per_100", b.drift_mm_per_100}, {"roller_d_mm", b.roller_d_mm}};
+    return save_section(path, "belt", sec);
 }
-
 EncCalib enc_from_samples(const std::vector<EncSample> &fwd, const std::vector<EncSample> &back, double mm_per_step,
                           int dir_steps, int counts_per_rev, double nominal_mm_per_count)
 {
@@ -357,7 +275,7 @@ EncCalib enc_from_samples(const std::vector<EncSample> &fwd, const std::vector<E
     const int64_t dsb = int64_t(b1.pos) - back.front().pos, dcb = int64_t(b1.enc) - back.front().enc;
     if (ds == 0) { e.err = "the stepper did not move"; return e; }
     e.travel_mm = std::fabs(double(ds)) * mm_per_step;
-    const double expect = e.travel_mm / nominal_mm_per_count;   // counts with the nominal wheel
+    const double expect = e.travel_mm / nominal_mm_per_count;  // counts with the nominal wheel
     if (std::fabs(double(dc)) < 0.05 * expect) {
         char b[200];
         snprintf(b, sizeof b, "the encoder did not count (%lld counts, ~%.0f expected): powered, A/B wired, wheel "
@@ -368,7 +286,7 @@ EncCalib enc_from_samples(const std::vector<EncSample> &fwd, const std::vector<E
     e.counts_per_step = std::fabs(double(dc) / double(ds));
     e.back_counts_per_step = dsb ? std::fabs(double(dcb) / double(dsb)) : 0;
     e.mm_per_count = mm_per_step / e.counts_per_step;
-    const int down = (ds > 0) == (dir_steps > 0) ? 1 : -1;   // +1: the forward move went downstream
+    const int down = (ds > 0) == (dir_steps > 0) ? 1 : -1;  // +1: the forward move went downstream
     e.dir = (dc > 0) == (down > 0) ? 1 : -1;
     e.wheel_circ_mm = counts_per_rev * e.mm_per_count;
     const double step_sign = dir_steps > 0 ? 1.0 : -1.0;
@@ -381,7 +299,7 @@ EncCalib enc_from_samples(const std::vector<EncSample> &fwd, const std::vector<E
     e.return_err_mm = enc_mm(f0, b1) - step_mm(f0, b1);
     for (const EncSample &s : fwd) e.lag_max_mm = std::max(e.lag_max_mm, std::fabs(enc_mm(f0, s) - step_mm(f0, s)));
     // constant-speed part of the forward move: non-overlapping 0.2 s windows at >= 97 % of the top stepper speed
-    std::vector<std::pair<double, double>> win;   // (stepper mm/s, encoder mm/s)
+    std::vector<std::pair<double, double>> win;  // (stepper mm/s, encoder mm/s)
     for (size_t i = 0, j = 0; i < fwd.size(); i = j) {
         for (j = i + 1; j < fwd.size() && fwd[j].t - fwd[i].t < 0.2; j++) {}
         if (j >= fwd.size()) break;
@@ -407,67 +325,28 @@ EncCalib enc_from_samples(const std::vector<EncSample> &fwd, const std::vector<E
     e.ok = true;
     return e;
 }
-
 std::string save_enc_calib(const std::string &path, const EncCalib &e, int rounds, double mm_per_count_sd)
 {
     if (!e.ok) return "no encoder calibration to save";
-    nlohmann::ordered_json j;
-    {
-        std::ifstream old(path);
-        if (old) {
-            try {
-                old >> j;
-            } catch (const std::exception &x) {
-                return path + ": " + x.what() + " (fix or delete it, then run calib-cam again)";
-            }
-        }
-    }
-    char date[32];
-    time_t now = time(nullptr);
-    strftime(date, sizeof date, "%Y-%m-%d %H:%M", localtime(&now));
-    j["encoder"] = {{"mm_per_count", e.mm_per_count}, {"dir", e.dir}, {"date", date}, {"rounds", rounds},
-                    {"mm_per_count_sd", mm_per_count_sd}, {"counts_per_step", e.counts_per_step},
-                    {"travel_mm", e.travel_mm}, {"wheel_circ_mm", e.wheel_circ_mm},
-                    {"return_err_mm", e.return_err_mm}, {"lag_max_mm", e.lag_max_mm},
-                    {"cruise_mm_s", e.cruise_mm_s}, {"enc_speed_sd_mm_s", e.enc_speed_sd_mm_s}};
-    std::ofstream f(path);
-    if (!f) return "cannot write " + path;
-    f << j.dump(2) << "\n";
-    return f ? "" : "write failed: " + path;
+    const nlohmann::ordered_json sec = {
+        {"mm_per_count", e.mm_per_count}, {"dir", e.dir}, {"date", stamp()}, {"rounds", rounds},
+        {"mm_per_count_sd", mm_per_count_sd}, {"counts_per_step", e.counts_per_step}, {"travel_mm", e.travel_mm},
+        {"wheel_circ_mm", e.wheel_circ_mm}, {"return_err_mm", e.return_err_mm}, {"lag_max_mm", e.lag_max_mm},
+        {"cruise_mm_s", e.cruise_mm_s}, {"enc_speed_sd_mm_s", e.enc_speed_sd_mm_s}};
+    return save_section(path, "encoder", sec);
 }
-
 std::string save_arm_calib(const std::string &path, const ArmBaseFit &f, bool with_belt_z)
 {
     if (!f.ok) return "no arm calibration to save";
-    nlohmann::ordered_json j;
-    {
-        std::ifstream old(path);
-        if (old) {
-            try {
-                old >> j;
-            } catch (const std::exception &e) {
-                return path + ": " + e.what() + " (fix or delete it, then run calib-cam again)";
-            }
-        }
-    }
-    char date[32];
-    time_t now = time(nullptr);
-    strftime(date, sizeof date, "%Y-%m-%d %H:%M", localtime(&now));
-    nlohmann::ordered_json a;
-    a["base_xy"] = {f.base_xy.x, f.base_xy.y};
-    a["base_yaw_deg"] = f.base_yaw * 180.0 / 3.14159265358979;
+    nlohmann::ordered_json a = {{"base_xy", {f.base_xy.x, f.base_xy.y}},
+                                {"base_yaw_deg", f.base_yaw * 180.0 / 3.14159265358979}};
     if (with_belt_z) a["belt_z"] = f.belt_z;
-    a["date"] = date;
+    a["date"] = stamp();
     a["rms_mm"] = f.rms;
     a["max_mm"] = f.max;
     a["points"] = f.resid.size();
-    j["arm"] = a;
-    std::ofstream o(path);
-    if (!o) return "cannot write " + path;
-    o << j.dump(2) << "\n";
-    return o ? "" : "write failed: " + path;
+    return save_section(path, "arm", a);
 }
-
 void draw_calib(cv::Mat &bgr, const CalibResult &r)
 {
     if (!r.ok) return;
@@ -476,8 +355,10 @@ void draw_calib(cv::Mat &bgr, const CalibResult &r)
     const Homography inv = r.px_to_table.inverse();
     float ymin = 1e9f, ymax = -1e9f, xmin = 1e9f, xmax = -1e9f;
     for (const Vec2 &v : r.fov_corners) {
-        ymin = std::min(ymin, v.y); ymax = std::max(ymax, v.y);
-        xmin = std::min(xmin, v.x); xmax = std::max(xmax, v.x);
+        ymin = std::min(ymin, v.y);
+        ymax = std::max(ymax, v.y);
+        xmin = std::min(xmin, v.x);
+        xmax = std::max(xmax, v.x);
     }
     auto px = [&](float x, float y) { Vec2 p = inv.map({x, y}); return cv::Point2f(p.x, p.y); };
     for (float x = std::ceil(xmin / 50) * 50; x <= xmax; x += 50)
@@ -489,10 +370,8 @@ void draw_calib(cv::Mat &bgr, const CalibResult &r)
     cv::putText(bgr, "x (belt)", px(62, 0), cv::FONT_HERSHEY_SIMPLEX, 0.9, cv::Scalar(0, 0, 255), 2);
     cv::putText(bgr, "y", px(0, 62), cv::FONT_HERSHEY_SIMPLEX, 0.9, cv::Scalar(0, 200, 0), 2);
     char t[128];
-    snprintf(t, sizeof t, "rms %.3f mm  max %.3f mm  %.4f mm/px  FOV x %.1f..%.1f mm", r.rms_mm, r.max_mm, r.mm_per_px,
-             r.fov_x0, r.fov_x1);
+    snprintf(t, sizeof t, "rms %.3f mm  max %.3f mm  %.4f mm/px  FOV x %.1f..%.1f mm", r.rms_mm, r.max_mm, r.mm_per_px, r.fov_x0, r.fov_x1);
     cv::rectangle(bgr, cv::Rect(0, 0, 1000, 44), cv::Scalar(0, 0, 0), cv::FILLED);
     cv::putText(bgr, t, cv::Point(12, 30), cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(255, 255, 255), 2);
 }
-
 }  // namespace des

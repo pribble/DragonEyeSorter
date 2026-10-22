@@ -4,7 +4,7 @@
 
 ## 已经改好并编入 `des_app` 的部分（在 ps/src/vision/）
 
-`mipi_camera.cpp`（`/dev/mipicam` DMA 取帧，`icamera::enumerate_device` 的定义也在这里）、`executor.cpp`（`NPUExecutor`：ArmNN + Alnpu 同步推理）、`flow_common_types.cpp`、`logger_forward.cpp`；配套头也在 `ps/src/vision/`。ioctl ABI 头 `mipicam_module.h` 只有一份，在 `ps/kernel/`（`ps/Makefile` 的 `-Ikernel` 让两边共享）。显示不走厂家的 `ihdmi`：HDMI 输出是 `src/ui/hdmi_out.cpp`（直写显示 VDMA）。
+`mipi_camera.cpp`（`/dev/mipicam` DMA 取帧，`icamera::enumerate_device` 的定义也在这里）、`executor.cpp`（`NPUExecutor`：ArmNN + Alnpu 同步推理）、`flow_common_types.cpp`、`logger_forward.cpp`；配套头也在 `ps/src/vision/`。ioctl ABI 头 `mipicam_module.h` 只有一份，在 `ps/kernel/`（`ps/Makefile` 的 `-Ikernel` 让两边共享）。显示不走厂家的 `ihdmi`：HDMI 输出是 `src/ui/display.cpp`（直写显示 VDMA）。
 
 ## 本目录内容（未编入）
 
@@ -12,7 +12,7 @@
 |---|---|
 | `preprocess.cpp` `.hpp` | resize 前处理；已知瓶颈，优化在这里做 |
 | `postprocess.cpp` `.hpp` | YOLOv8 后处理 `getFastDecodeOutputYolov8WorkLoad`（类别 / 阈值走 JSON） |
-| `buffered_executor.cpp` `.hpp` | `BufferedNPUExecutor` 8 缓冲流水推理；现在用同步 `executor.cpp` + 自研 `src/app/npu_async.cpp` |
+| `buffered_executor.cpp` `.hpp` | `BufferedNPUExecutor` 8 缓冲流水推理；现在用同步 `executor.cpp` + 自研 `src/app/npu.cpp` |
 | `hdmi.cpp` `.hpp`、`hdmi_framebuffer.cpp` `.hpp`、`ihdmi.hpp`、`axi_hdmi.h`、`fast_io.cpp` `.h` | 厂家 fb0 显示路径，不编入 |
 | `example_yolo.json` | 后处理参数示例，接 `postprocess.cpp` 时的模板 |
 

@@ -1,4 +1,5 @@
-// ui_input.cpp — see ui_input.hpp
+// ui_input.cpp — see ui_input.hpp. The device set (and its pollfd/name arrays) is rebuilt only on the 2 s hot-plug
+// scan or when a device disappears, never per wake-up; FIFO protocol, event content and 200 ms poll timeout kept.
 #include "ui_input.hpp"
 
 #include <dirent.h>
@@ -7,7 +8,6 @@
 #include <poll.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
-#include <time.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -15,37 +15,27 @@
 #include <cstring>
 #include <map>
 
+#include "util.hpp"
+
 namespace des {
 namespace {
-
-double mono_s()
-{
-    timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts.tv_sec + ts.tv_nsec * 1e-9;
-}
-
 struct Dev {
     int fd = -1;
     bool abs = false;
     input_absinfo ax{}, ay{};
 };
-
 }  // namespace
-
 void UiInput::start()
 {
     if (th_.joinable()) return;
     quit_ = false;
     th_ = std::thread(&UiInput::loop, this);
 }
-
 void UiInput::stop()
 {
     quit_ = true;
     if (th_.joinable()) th_.join();
 }
-
 std::vector<UiEvent> UiInput::take()
 {
     std::lock_guard<std::mutex> lk(m_);
@@ -53,14 +43,12 @@ std::vector<UiEvent> UiInput::take()
     r.swap(ev_);
     return r;
 }
-
 void UiInput::cursor(int &x, int &y, bool &visible) const
 {
     x = x_;
     y = y_;
     visible = mono_s() - last_move_ < 10.0;
 }
-
 // Remote / scripted input: text lines written to the FIFO /tmp/des_ui act like a pointer:
 //   "click X Y", "move X Y", "wheel N", "key CODE" (linux key code). For tests and demo scripts over SSH
 //   (echo "click 75 860" > /tmp/des_ui); the board has no uinput.
@@ -87,18 +75,29 @@ void UiInput::fifo_line(const std::string &l)
         ev_.push_back({UiEvent::Key, x_, y_, a});
     }
 }
-
 void UiInput::loop()
 {
     std::map<std::string, Dev> devs;
+    std::vector<pollfd> pf;
+    std::vector<std::string> names;   // names[i] belongs to pf[i]; empty = the FIFO entry
     double last_scan = -1e9;
     static const char *kFifo = "/tmp/des_ui";
     mkfifo(kFifo, 0666);
     const int fifo = open(kFifo, O_RDONLY | O_NONBLOCK);
     const int fifo_keep = open(kFifo, O_WRONLY | O_NONBLOCK);   // our own writer: no POLLHUP when scripts close
     std::string fifo_buf;
+    auto rebuild = [&]() {
+        pf.clear();
+        names.clear();
+        for (auto &kv : devs) {
+            pf.push_back({kv.second.fd, POLLIN, 0});
+            names.push_back(kv.first);
+        }
+        if (fifo >= 0) pf.push_back({fifo, POLLIN, 0});
+    };
+    rebuild();
     while (!quit_) {
-        if (mono_s() - last_scan > 2.0) {   // hot plug
+        if (mono_s() - last_scan > 2.0) {   // hot plug: scan the directory, reopen only new devices
             last_scan = mono_s();
             if (DIR *d = opendir("/dev/input")) {
                 while (dirent *e = readdir(d)) {
@@ -114,22 +113,17 @@ void UiInput::loop()
                     devs[p] = dv;
                 }
                 closedir(d);
+                ndev_ = int(devs.size());
+                rebuild();
             }
-            ndev_ = int(devs.size());
         }
-        std::vector<pollfd> pf;
-        std::vector<std::string> names;
-        for (auto &kv : devs) {
-            pf.push_back({kv.second.fd, POLLIN, 0});
-            names.push_back(kv.first);
-        }
-        if (fifo >= 0) pf.push_back({fifo, POLLIN, 0});
         if (pf.empty()) {
             usleep(200000);
             continue;
         }
         if (poll(pf.data(), pf.size(), 200) <= 0) continue;
-        if (fifo >= 0 && (pf.back().revents & POLLIN)) {
+        const size_t nd = names.size();   // devices first, the FIFO entry (if any) last
+        if (fifo >= 0 && (pf[nd].revents & POLLIN)) {
             char buf[256];
             ssize_t n = read(fifo, buf, sizeof buf);
             if (n > 0) fifo_buf.append(buf, size_t(n));
@@ -139,10 +133,12 @@ void UiInput::loop()
             }
             if (fifo_buf.size() > 1024) fifo_buf.clear();
         }
-        for (size_t i = 0; i < names.size(); i++) {
+        bool gone = false;
+        for (size_t i = 0; i < nd; i++) {
             if (pf[i].revents & (POLLERR | POLLHUP | POLLNVAL)) {   // unplugged
                 close(pf[i].fd);
                 devs.erase(names[i]);
+                gone = true;
                 continue;
             }
             if (!(pf[i].revents & POLLIN)) continue;
@@ -177,10 +173,10 @@ void UiInput::loop()
                 }
             }
         }
+        if (gone) rebuild();   // close()/erase already done; ndev_ refreshes on the next 2 s scan (as before)
     }
     for (auto &kv : devs) close(kv.second.fd);
     if (fifo >= 0) close(fifo);
     if (fifo_keep >= 0) close(fifo_keep);
 }
-
 }  // namespace des

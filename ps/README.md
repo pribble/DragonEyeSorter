@@ -19,21 +19,24 @@
 
 | 位置 | 内容 |
 |---|---|
-| ★ 入口 | `src/app/main.cpp`（`des_app`：只 `run` / `live`）、`src/app/tool_main.cpp`（`des_tool`：11 个模式） |
+| ★ 入口 | `src/app/main.cpp`（`des_app`：只 `run` / `live`）、`src/app/tool_main.cpp`（`des_tool`：13 个模式） |
 | 共用实现 | `src/{app,hw,sched,measure,ui,vision}/` 编进两个入口（静态链接） |
 | 支撑 | `kernel/`（`mipicam.ko`）、`tools/`（第④层）、`tests/`（第③层）、`vendor/`（非自研，只有 `json.hpp` 编入）、`build/`（`make` 输出，已忽略） |
 
 ```
 ps/
 ├── Makefile        # 唯一构建入口
-├── src/app/        # 入口与编排：main / tool_main / cli_common / runner（CAN + Modbus 状态机总装）/
-│                   #   live（60fps 主循环）/ camera_rig / locate / config / part_log / belt_ctl /
-│                   #   arm_exec / arm_manual / npu_cls + npu_async / collector / img_writer / net_feed
+├── src/app/        # 入口与编排：main / tool_main / cli_common / tool_util（仅 des_tool）/
+│                   #   runner（CAN + Modbus 状态机总装）/ live（60fps 主循环）/ camera_rig / locate /
+│                   #   config / part_log（含网口上传）/ belt_ctl / arm_io（机械臂执行 + 手动调试）/
+│                   #   npu（NPU 分类 + 异步线程）/ collector（采集，含异步 JPEG 写盘）/
+│                   #   util（时钟 / 文件 / 格式化）/ json_io / bg_queue
 ├── src/hw/         # 硬件契约：des_hw + des_regs（↔ PL）/ can_link + can_proto（↔ PLC）/
-│                   #   modbus_tcp + modbus_map（Modbus-TCP 从站）
-├── src/sched/      # 纯逻辑库（无硬件 / OpenCV 依赖）：tracker / picker / arm（IK）/ flap / geom
-├── src/measure/    # 几何测量与标定：measure / track_measure / roi_crop / measure_tool / calib（仅 des_tool）
-├── src/ui/         # 界面：hmi / ui_input / text_ft / hdmi_out（OpenCV 自绘 + FreeType，不用 Qt）
+│                   #   modbus_tcp（Modbus-TCP 从站 + 寄存器表）
+├── src/sched/      # 纯逻辑库（无硬件 / OpenCV 依赖）：part_types / tracker / picker（含挡板 / 带速自适应）/ arm（IK）/ geom
+├── src/measure/    # 几何测量与标定：measure_gear / measure_rack / fit / track_measure / roi_crop / flat_field /
+│                   #   measure_tool + calib（后两个仅 des_tool）
+├── src/ui/         # 界面：hmi / ui_input / ui_text（FreeType 中文 + 绘制辅助）/ display（HDMI 输出 + 3/4 缩放）
 ├── src/vision/     # 厂家 face_detection demo 的 4 个改造件（见下）
 ├── src/des_app.json# 配置模板（板上与二进制同目录）
 ├── tools/          # desreg、canplc
@@ -56,7 +59,7 @@ ps/
 
 其他参数（`-c` / `--vmax` / `--exp` / `--gain` / `--no-rt`）见「开关速查」。**运维 / 测试模式不在 `des_app` 里**：`des_app probe` 之类会明确报错并提示用 `des_tool`。
 
-## `des_tool`（人工运维 / 现场工具：11 个模式）
+## `des_tool`（人工运维 / 现场工具：13 个模式）
 
 | 模式 | 作用 |
 |---|---|
@@ -121,19 +124,19 @@ ps/
 - 取帧：厂家帧 DMA「提交一块写一帧」，完成后立即重提下一块（4 块环形缓冲）。每帧带锁存的拍摄时刻带位置（`CAP_*`），旧比特流自动退回「完成后读」。帧率与丢帧见 [测试与验证](../docs/测试与验证.md)。
 - 定位：1/4 降采样灰度 + Otsu（下限钳位）+ 开运算 + 外轮廓 + minAreaRect；耗时见 [测试与验证](../docs/测试与验证.md)。
 - 几何测量：`src/measure/measure`（外径 / 根径 / 孔径 / 偏心 / 规格齿数 / 缺料·缺齿·飞边，含视差校正），已接入 live / run（`track_measure`：每件取离光轴最近那帧，结果进跟踪表与 CAN；`measure.rule` 尺寸 / 规格判定默认关）。方法见 [视觉与检测](../docs/视觉与检测.md)「几何测量」。
-- 网口：`des_app run` 起 Modbus-TCP 从站（`des_app.json` 的 `plc.modbus_port`，0 = 关；寄存器表 `ps/src/hw/modbus_map.h`，协议见 [软件与UI](../docs/软件与UI.md)「Modbus-TCP」）；`net_feed` 供 PC 取记录（`pc/feed/des_feed.py`）。
+- 网口：`des_app run` 起 Modbus-TCP 从站（`des_app.json` 的 `plc.modbus_port`，0 = 关；寄存器表 `ps/src/hw/modbus_tcp.hpp`，协议见 [软件与UI](../docs/软件与UI.md)「Modbus-TCP」）；网口实时上传（NetFeed）并入 `part_log`，供 PC 取记录（`pc/feed/des_feed.py`）。
 - 配置：`src/des_app.json`（标定值，标 TODO 的待实物标定）、`src/recipes.json`（产品配方，换型停机切换）、类别表 `models/label_list.json`（`config.cpp` 解析）；部署到 `/root/des/` 走 [scripts/deploy](../scripts/deploy/README.md) 的清单。
 
 ## src/vision/ 的定位与改造边界
 
-`src/vision/` 来自安路官方 face_detection demo，是**检测流水线的改造起点**，已改成零件检测。只放编进二进制的 4 个 `.cpp`：取帧 `mipi_camera`（`/dev/mipicam` DMA，`icamera::enumerate_device` 的定义并在这里）、推理 `executor`（`NPUExecutor`，ArmNN + Alnpu）、`flow_common_types`、`logger_forward`；显示不走厂家的 `ihdmi`（HDMI 输出是 `src/ui/hdmi_out.cpp`）。厂家 demo 的其余现成件（前处理 `preprocess`、8 缓冲流水 `BufferedNPUExecutor`、后处理）在 [vendor/demo](vendor/demo/README.md)，**没编入**。
+`src/vision/` 来自安路官方 face_detection demo，是**检测流水线的改造起点**，已改成零件检测。只放编进二进制的 4 个 `.cpp`：取帧 `mipi_camera`（`/dev/mipicam` DMA，`icamera::enumerate_device` 的定义并在这里）、推理 `executor`（`NPUExecutor`，ArmNN + Alnpu）、`flow_common_types`、`logger_forward`；显示不走厂家的 `ihdmi`（HDMI 输出是 `src/ui/display.cpp`）。厂家 demo 的其余现成件（前处理 `preprocess`、8 缓冲流水 `BufferedNPUExecutor`、后处理）在 [vendor/demo](vendor/demo/README.md)，**没编入**。
 
 ## 编译与部署
 
 构建步骤、`.env`、SDK 依赖与 sdk_fix_sonames 见 [开发环境与构建](../docs/开发环境与构建.md)「PS：构建」与 [scripts/README](../scripts/README.md)。要点：
 
 - **`make -C ps all` 出 10 个产物**：`des_app`、`des_tool`、`desreg`、`canplc` + 6 个 `test_*`（scheduler / modbus / calib / measure / belt_hil / can）。只有 `des_app` 属于板端产品运行时（进部署清单）；其余要用时手动 `scp`。`test_npu` 与 `test_servo_gap` 不在 `all` 里，要显式点名。
-- 两个入口共享的源码各编一次成 `build/obj/*.o`（`-MMD -MP` 自动头文件依赖）；`des_tool` 另链标定 / 测量报告对象（`calib.o` / `measure_tool.o`，**不链进产品**）。第二遍 `make` 应是 no-op。
+- 两个入口共享的源码各编一次成 `build/obj/*.o`（`-MMD -MP` 自动头文件依赖）；源文件由 Makefile 的 `wildcard` 自动收集（新增 / 删除 `.cpp` 不用改 Makefile，**唯一约束仍是 basename 唯一**），只有 `OPS_SRC`（`calib.cpp` / `measure_tool.cpp` / `tool_util.cpp`）显式列给 `des_tool`，**不链进产品**。第二遍 `make` 应是 no-op。
 - `des_app` / `des_tool` 需要厂家 NPU demo 的 `libs/`（OpenCV 4.7 + ArmNN），Makefile 变量 `SDK` 指向它；不入库。Windows 解压丢 `.so` 软链接时先跑 `sh scripts/sdk_fix_sonames.sh <SDK> <readelf>`。
 - 运行时库路径已写进 rpath（`/opt/armnn_lib/lib`、`/opt/ffmpeg_opencv4.7.0_aarch64/lib`），板上不用设 `LD_LIBRARY_PATH`；`/dev/mipicam` 独占打开，`des_app` / `des_tool` / 厂家 demo 同一时刻只能跑一个。
 
@@ -148,5 +151,5 @@ ps/
 - `src/hw/des_regs.h` 与 [PL设计](../docs/PL设计.md)、PL 端 `pl/soc_base/src/des/` 的对应模块同一次提交更新；访问 PL 用 `src/hw/des_hw`（舵机事务、步进、帧计数都在里面）。
 - 类别表从 `models/label_list.json` 统一加载；时间戳、计数、统计接口随功能一起写。
 - **头文件平铺**：全仓库没有跨目录 `#include`，靠 `ps/Makefile` 的 `INC` 解析 —— **各目录 basename 必须唯一**，重名会静默命中先搜到的那个（`build/obj/` 平铺 `.o` 也依赖这条）。
-- 移动文件时同步改：`ps/Makefile` 的源列表 / `INC` / `SHARED_SRC` / `OPS_SRC`、本文档，以及 `docs/` + `pc/` + `train/` 里按路径引用的契约（`des_regs.h`、`can_proto.h`、`part_log.cpp` 的 CSV 列、`roi_crop` 的裁切几何、`runner.cpp` 的状态机）。
+- 移动文件时同步改：`ps/Makefile` 的 `INC` / `OPS_SRC`（源列表自动收集）、本文档，以及 `docs/` + `pc/` + `train/` 里按路径引用的契约（`des_regs.h`、`can_proto.h`、`part_log.cpp` 的 CSV 列、`roi_crop` 的裁切几何、`runner.cpp` 的状态机）。
 - 新增命令先问"它属于哪一层"：产品运行时加进 `main.cpp` 的 `run` / `live`，人工运维加进 `tool_main.cpp` 并更新本文档的两张表，自动断言加进 `tests/`（退出码 = 失败项数），底层调试加进 `tools/`。

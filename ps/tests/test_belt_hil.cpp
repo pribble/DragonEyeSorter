@@ -5,6 +5,7 @@
 //   ./test_belt_hil [speed_mm_s]      exit code = failed checks
 #include <time.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -13,31 +14,12 @@
 
 #include "belt_ctl.hpp"
 #include "picker.hpp"
+#include "sim.hpp"
+#include "test_check.hpp"
 #include "tracker.hpp"
+#include "util.hpp"
 
 using namespace des;
-
-static int g_fail = 0, g_pass = 0;
-#define CHECK(cond, ...)                                              \
-    do {                                                              \
-        if (cond) g_pass++;                                           \
-        else { g_fail++; printf("FAIL %s:%d: ", __FILE__, __LINE__);  \
-               printf(__VA_ARGS__); printf("\n"); }                   \
-    } while (0)
-
-static double now_s()
-{
-    timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts.tv_sec + ts.tv_nsec * 1e-9;
-}
-
-struct SimPart {
-    float s, y, len, wid, axis;
-    int cls;
-    bool gone = false;
-    bool picked = false;
-};
 
 int main(int argc, char **argv)
 {
@@ -52,24 +34,17 @@ int main(int argc, char **argv)
     bc.run_speed = argc > 1 ? atof(argv[1]) : 50;
     bc.accel = 400;
 
-    TrackerConfig tc;
-    tc.fov_x0 = 0; tc.fov_x1 = 300; tc.edge_margin = 10; tc.decide_x = 270; tc.tail_x = 600;
-    tc.rules = {{"gear_ok", Disposition::Pick, 0}, {"gear_short", Disposition::Flap, 1},
-                {"gear_flash", Disposition::Flap, 2}, {"gear_dirty", Disposition::Flap, 1},
-                {"rack_ok", Disposition::Pick, 1}, {"rack_short", Disposition::Flap, 1},
-                {"rack_flash", Disposition::Flap, 2}, {"rack_dirty", Disposition::Flap, 1}};
+    TrackerConfig tc = tracker_cfg();
     PickerConfig pc;
     pc.pick_x = 380; pc.tail_x = tc.tail_x; pc.reach_y0 = -80; pc.reach_y1 = 80;
 
-    // 12 parts, 70 mm apart; every third one NG
+    // 12 gear parts, 70 mm apart; every third one is gear_flash (NG, rework) and rides to the belt end
     std::vector<SimPart> parts;
     int expect_pick = 0;
     for (int k = 0; k < 12; k++) {
-        bool rack = k % 2;
-        int cls = (k % 3 == 2) ? (rack ? 5 : 1) : (rack ? 4 : 0);
-        if (cls == 0 || cls == 4) expect_pick++;
-        parts.push_back({-40.f - 70.f * k, k % 2 ? 20.f : -20.f, rack ? 50.f : 32.f, rack ? 15.f : 32.f,
-                         rack ? 0.3f : 0.f, cls});
+        const int cls = (k % 3 == 2) ? 2 : 0;   // gear_flash / gear_ok
+        if (cls == 0) expect_pick++;
+        parts.push_back({-40.f - 70.f * k, k % 2 ? 20.f : -20.f, 32.f, 32.f, 0.f, cls});
     }
 
     Tracker tr(tc);
@@ -80,64 +55,39 @@ int main(int argc, char **argv)
     belt.enable(true);
 
     std::mt19937 rng(3);
-    std::normal_distribution<float> noise(0.f, 0.3f);
     enum { ArmIdle, ArmDown, ArmPlacing } arm = ArmIdle;
     double arm_t = 0;
     PickJob job{};
     std::vector<double> stop_err;
     int flapped = 0;
-    const double t_start = now_s(), period = 1.0 / 60;
+    const double t_start = mono_s(), period = 1.0 / 60;
     double next = t_start;
     uint32_t frame = 0;
     std::vector<bool> logged(4096, false);
 
-    while (now_s() - t_start < 120) {
+    while (mono_s() - t_start < 120) {
         next += period;
         timespec ts;
         double wake = next;
         ts.tv_sec = time_t(wake);
         ts.tv_nsec = long((wake - double(ts.tv_sec)) * 1e9);
         clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &ts, nullptr);
-        const double B = belt.belt_mm(), t = now_s();
+        const double B = belt.belt_mm(), t = mono_s();
 
-        // simulated camera
-        FrameObs obs;
-        obs.frame = frame++;
-        obs.belt_mm = B;
+        // simulated camera: parts past the belt end are gone, the rest are seen through sim.hpp's camera model
         for (SimPart &p : parts) {
             if (p.gone) continue;
-            float x = p.s + float(B);
-            const float half = p.len / 2;
-            if (x + half > 0 && x - half < 300 && (x - half < 0 || x + half > 300)) {
-                // cut by the image edge: the real locator reports a partial blob with a shifted center
-                Detection d;
-                float cut_lo = std::max(0.f, x - half), cut_hi = std::min(300.f, x + half);
-                d.p = {0.5f * (cut_lo + cut_hi) + noise(rng), p.y + noise(rng)};
-                d.len = cut_hi - cut_lo; d.wid = p.wid; d.axis = p.axis;
-                d.cls = p.cls; d.conf = 0.6f;
-                d.partial = true;
-                obs.dets.push_back(d);
-                continue;
-            }
-            if (x - half < 0 || x + half > 300) {
-                if (x > tc.tail_x + 20) {
-                    p.gone = true;
-                    if (!p.picked) flapped++;
-                    if ((p.cls == 0 || p.cls == 4) && !p.picked)
-                        for (const Track &tk : tr.tracks())
-                            if (std::fabs(tk.s - p.s) < 5)
-                                printf("   OK part s=%.0f went to the tail: track %d %s/%s (%s) len %.1f wid %.1f\n", p.s,
-                                       tk.id, to_str(tk.state), to_str(tk.disp), tk.why.c_str(), tk.len, tk.wid);
-                }
-                continue;
-            }
-            Detection d;
-            d.p = {x + noise(rng), p.y + noise(rng)};
-            d.len = p.len; d.wid = p.wid; d.axis = p.axis;
-            d.cls = p.cls; d.conf = 0.9f;
-            obs.dets.push_back(d);
+            const float x = p.s + float(B);
+            if (x <= tc.tail_x + 20) continue;
+            p.gone = true;
+            if (!p.picked) flapped++;
+            if (p.cls == 0 && !p.picked)
+                for (const Track &tk : tr.tracks())
+                    if (std::fabs(tk.s - p.s) < 5)
+                        printf("   OK part s=%.0f went to the tail: track %d %s/%s (%s) len %.1f wid %.1f\n", p.s, tk.id,
+                               to_str(tk.state), to_str(tk.disp), tk.why, tk.len, tk.wid);
         }
-        tr.update(obs);
+        tr.update(observe(parts, B, frame++, rng));
 
         // simulated arm: 0.3 s on the belt, 0.7 s placing
         if (arm == ArmDown && t - arm_t > 0.3) {
@@ -186,7 +136,7 @@ int main(int argc, char **argv)
             if (tk.state != TrackState::New && tk.state != TrackState::Tracking && !logged[tk.id % 4096]) {
                 logged[tk.id % 4096] = true;
                 printf("   [belt %7.2f] track %d s=%.1f y=%.1f cls %d -> %s (%s)\n", B, tk.id, tk.s, tk.y, tk.cls,
-                       to_str(tk.disp), tk.why.c_str());
+                       to_str(tk.disp), tk.why);
             }
         tr.retire(B);
 
@@ -195,7 +145,7 @@ int main(int argc, char **argv)
         if (all_gone && arm == ArmIdle) break;
     }
     des_step_stop(&hw);
-    double el = now_s() - t_start;
+    double el = mono_s() - t_start;
     belt.enable(false);
 
     double worst = 0;
@@ -212,7 +162,7 @@ int main(int argc, char **argv)
     CHECK(belt.stats.late == 0, "late stops %llu", (unsigned long long)belt.stats.late);
     CHECK(belt.stats.holds == 0, "belt moving while the arm was down (%llu)", (unsigned long long)belt.stats.holds);
     CHECK(pk.stats.missed == 0, "missed %llu", (unsigned long long)pk.stats.missed);
-    printf("%d passed, %d failed\n", g_pass, g_fail);
+    const int fails = test_summary();
     des_hw_close(&hw);
-    return g_fail;
+    return fails;
 }

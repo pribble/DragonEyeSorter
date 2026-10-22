@@ -6,17 +6,14 @@
 
 namespace des {
 
-static constexpr float kDeg = 180.f / kPi;
-
 const char *arm_ik(const ArmConfig &c, Vec3 p, float close_axis, JointAngles &out, float tilt)
 {
     const float az = std::atan2(p.y, p.x), R = std::hypot(p.x, p.y);
-    if (tilt != 0 && std::fabs(wrap_axis(close_axis - az - kPi / 2)) > 10.f / kDeg)
+    if (tilt != 0 && std::fabs(wrap_axis(close_axis - az - kPi / 2)) > deg2rad(10.f))
         return "tilted grasp needs a tangential closing axis";
     const float lt = c.l_wrist + c.l_tool, D = c.tool_offset, a3 = -kPi / 2 + tilt;
     const bool beside = std::fabs(std::fabs(c.servo_side) - kPi / 2) < 0.1f;   // servo beside the finger plane
-    // the offset's tangential part moves the grasp point out of the arm plane: q1 aims the plane so that the
-    // grasp point lands on p; q5 (from the closing axis) and q1 depend on each other -> a few fixed-point passes
+    // the offset moves the grasp point out of the arm plane: q1 aims the plane at p, q5 / q1 coupled (fixed-point)
     float q1 = az, q5 = 0, phi = 0, rho = R;
     auto aim = [&](float flip) -> const char * {   // flip: q5 + 180 deg = same closing line, servo on the other side
         for (int it = 0; it < 8; it++) {
@@ -31,105 +28,100 @@ const char *arm_ik(const ArmConfig &c, Vec3 p, float close_axis, JointAngles &ou
         return nullptr;
     };
     if (const char *w = aim(0)) return w;
-    // vertical tool: the servo points along cos(phi) e_r + sin(phi) e_t; more than 60 deg toward the base near it
-    // -> the other q5 for the same closing line, if joint 5 has it
+    // vertical tool: more than 60 deg toward the base near it -> the other q5 for the same closing line (if allowed)
     if (tilt == 0 && beside && std::cos(phi) < -0.5f && R < c.servo_in_min_r) {
-        const float flip = q5 <= 0 ? kPi : -kPi, f5 = (q5 + flip) * kDeg;
+        const float flip = q5 <= 0 ? kPi : -kPi, f5 = rad2deg(q5 + flip);
         if (f5 < c.joint[4].min_deg || f5 > c.joint[4].max_deg) return "servo would face the base (joint 5 limit)";
         q1 = az;
         if (const char *w = aim(flip)) return w;
     }
     // wrist pitch axis: back along the tool and the offset (arm plane: radial, up)
-    float dx = rho - lt * std::cos(a3) + D * std::cos(phi) * std::sin(a3);
-    float dz = p.z - lt * std::sin(a3) - D * std::cos(phi) * std::cos(a3) - c.base_h;
+    const float dx = rho - lt * std::cos(a3) + D * std::cos(phi) * std::sin(a3);
+    const float dz = p.z - lt * std::sin(a3) - D * std::cos(phi) * std::cos(a3) - c.base_h;
     if (dx < 20) return "too close for this tilt";
-    float L1 = c.l_upper, L2 = c.l_fore;
-    float c3 = (dx * dx + dz * dz - L1 * L1 - L2 * L2) / (2 * L1 * L2);
+    const float L1 = c.l_upper, L2 = c.l_fore;
+    const float c3 = (dx * dx + dz * dz - L1 * L1 - L2 * L2) / (2 * L1 * L2);
     if (c3 > 1.f || c3 < -1.f) return "out of reach";
-    float q3 = -std::acos(c3);                        // elbow up
-    float q2 = std::atan2(dz, dx) - std::atan2(L2 * std::sin(q3), L1 + L2 * std::cos(q3));
-    float q4 = a3 - (q2 + q3);
-
-    out.q = {q1 * kDeg, q2 * kDeg, q3 * kDeg, q4 * kDeg, q5 * kDeg};
+    const float q3 = -std::acos(c3);   // elbow up
+    const float q2 = std::atan2(dz, dx) - std::atan2(L2 * std::sin(q3), L1 + L2 * std::cos(q3));
+    const float q4 = a3 - (q2 + q3);
+    out.q = {rad2deg(q1), rad2deg(q2), rad2deg(q3), rad2deg(q4), rad2deg(q5)};
     static const char *lim[5] = {"joint 1 limit", "joint 2 limit", "joint 3 limit", "joint 4 limit", "joint 5 limit"};
     for (int i = 0; i < 5; i++)
         if (out.q[i] < c.joint[i].min_deg || out.q[i] > c.joint[i].max_deg) return lim[i];
     return nullptr;
 }
-
 Vec3 arm_fk(const ArmConfig &c, const JointAngles &j)
 {
-    float q1 = j.q[0] / kDeg, a1 = j.q[1] / kDeg, a2 = a1 + j.q[2] / kDeg, a3 = a2 + j.q[3] / kDeg;
-    float lt = c.l_wrist + c.l_tool, D = c.tool_offset;
-    float phi = j.q[4] / kDeg + c.grip_axis_at_zero + c.servo_side;
-    float r = c.l_upper * std::cos(a1) + c.l_fore * std::cos(a2) + lt * std::cos(a3) - D * std::cos(phi) * std::sin(a3);
-    float t = D * std::sin(phi);
-    float z = c.base_h + c.l_upper * std::sin(a1) + c.l_fore * std::sin(a2) + lt * std::sin(a3) +
-              D * std::cos(phi) * std::cos(a3);
+    const float q1 = deg2rad(j.q[0]), a1 = deg2rad(j.q[1]), a2 = a1 + deg2rad(j.q[2]), a3 = a2 + deg2rad(j.q[3]);
+    const float lt = c.l_wrist + c.l_tool, D = c.tool_offset;
+    const float phi = deg2rad(j.q[4]) + c.grip_axis_at_zero + c.servo_side;
+    const float r = c.l_upper * std::cos(a1) + c.l_fore * std::cos(a2) + lt * std::cos(a3) - D * std::cos(phi) * std::sin(a3);
+    const float t = D * std::sin(phi);
+    const float z = c.base_h + c.l_upper * std::sin(a1) + c.l_fore * std::sin(a2) + lt * std::sin(a3) +
+                    D * std::cos(phi) * std::cos(a3);
     return {r * std::cos(q1) - t * std::sin(q1), r * std::sin(q1) + t * std::cos(q1), z};
 }
-
 Vec3 table_to_arm(const ArmConfig &c, Vec2 p, float z_above_belt)
 {
-    float dx = p.x - c.base_xy.x, dy = p.y - c.base_xy.y;
-    float cy = std::cos(c.base_yaw), sy = std::sin(c.base_yaw);
+    const float dx = p.x - c.base_xy.x, dy = p.y - c.base_xy.y;
+    const float cy = std::cos(c.base_yaw), sy = std::sin(c.base_yaw);
     return {cy * dx + sy * dy, -sy * dx + cy * dy, c.belt_z + z_above_belt};
 }
-
+Vec2 arm_to_table(const ArmConfig &c, Vec3 p)
+{
+    const float cy = std::cos(c.base_yaw), sy = std::sin(c.base_yaw);
+    return {c.base_xy.x + cy * p.x - sy * p.y, c.base_xy.y + sy * p.x + cy * p.y};
+}
 float table_axis_to_arm(const ArmConfig &c, float axis_table) { return wrap_axis(axis_table - c.base_yaw); }
+float arm_tangential_axis(const ArmConfig &c, Vec2 p) { return arm_tangential_axis(c.base_xy, p); }
 
-float arm_tangential_axis(const ArmConfig &c, Vec2 p)
+// grip_table sorted by opening once (it only changes with the configuration); piecewise linear, extrapolated from
+// the end segments. Mutates the cache in ArmConfig: nullptr = no measured table = use the straight line.
+static const std::vector<std::array<float, 2>> *grip_points(const ArmConfig &c)
 {
-    return wrap_axis(std::atan2(p.y - c.base_xy.y, p.x - c.base_xy.x) + kPi / 2);
+    if (c.grip_table.size() < 2) return nullptr;
+    if (!c.grip_sorted) {
+        std::sort(c.grip_table.begin(), c.grip_table.end(),
+                  [](const std::array<float, 2> &a, const std::array<float, 2> &b) { return a[1] < b[1]; });
+        c.grip_sorted = true;
+    }
+    return &c.grip_table;
 }
-
-// grip_table sorted by opening; piecewise linear, extrapolated from the end segments
-static bool grip_points(const ArmConfig &c, std::vector<std::array<float, 2>> &t)
-{
-    if (c.grip_table.size() < 2) return false;
-    t = c.grip_table;
-    std::sort(t.begin(), t.end(), [](const std::array<float, 2> &a, const std::array<float, 2> &b) { return a[1] < b[1]; });
-    return true;
-}
-
 float grip_count(const ArmConfig &c, float mm)
 {
-    mm = std::min(std::max(mm, 0.f), c.grip_max_open);
-    std::vector<std::array<float, 2>> t;
-    if (!grip_points(c, t)) return c.grip_closed_count + (c.grip_open_count - c.grip_closed_count) * mm / c.grip_max_open;
+    mm = clampf(mm, 0.f, c.grip_max_open);
+    const std::vector<std::array<float, 2>> *t = grip_points(c);
+    if (!t) return c.grip_closed_count + (c.grip_open_count - c.grip_closed_count) * mm / c.grip_max_open;
     size_t i = 1;
-    while (i + 1 < t.size() && mm > t[i][1]) i++;
-    const float d = t[i][1] - t[i - 1][1];
-    return d != 0 ? t[i - 1][0] + (t[i][0] - t[i - 1][0]) * (mm - t[i - 1][1]) / d : t[i][0];
+    while (i + 1 < t->size() && mm > (*t)[i][1]) i++;
+    const float d = (*t)[i][1] - (*t)[i - 1][1];
+    return d != 0 ? (*t)[i - 1][0] + ((*t)[i][0] - (*t)[i - 1][0]) * (mm - (*t)[i - 1][1]) / d : (*t)[i][0];
 }
-
 float grip_mm(const ArmConfig &c, float count)
 {
-    std::vector<std::array<float, 2>> t;
-    if (!grip_points(c, t)) {
-        float span = c.grip_open_count - c.grip_closed_count;
+    const std::vector<std::array<float, 2>> *t = grip_points(c);
+    if (!t) {
+        const float span = c.grip_open_count - c.grip_closed_count;
         return span != 0 ? (count - c.grip_closed_count) / span * c.grip_max_open : 0.f;
     }
-    // counts are monotonic in the opening: find the segment whose count range holds `count`
-    size_t i = 1;
-    const bool up = t.back()[0] > t.front()[0];
-    while (i + 1 < t.size() && (up ? count > t[i][0] : count < t[i][0])) i++;
-    const float d = t[i][0] - t[i - 1][0];
-    return d != 0 ? t[i - 1][1] + (t[i][1] - t[i - 1][1]) * (count - t[i - 1][0]) / d : t[i][1];
+    size_t i = 1;   // counts are monotonic in the opening: find the segment whose count range holds `count`
+    const bool up = t->back()[0] > t->front()[0];
+    while (i + 1 < t->size() && (up ? count > (*t)[i][0] : count < (*t)[i][0])) i++;
+    const float d = (*t)[i][0] - (*t)[i - 1][0];
+    return d != 0 ? (*t)[i - 1][1] + ((*t)[i][1] - (*t)[i - 1][1]) * (count - (*t)[i - 1][0]) / d : (*t)[i][1];
 }
-
 float grip_counts_per_mm(const ArmConfig &c, float mm)
 {
     const float a = std::max(mm - 0.5f, 0.f), b = std::min(mm + 0.5f, c.grip_max_open);
     return b > a ? std::fabs(grip_count(c, b) - grip_count(c, a)) / (b - a) : 1.f;
 }
-
 const char *arm_to_counts(const ArmConfig &c, const JointAngles &j, float grip_mm, std::array<uint16_t, 6> &pos)
 {
     static const char *rng[5] = {"servo 1 count range", "servo 2 count range", "servo 3 count range",
                                  "servo 4 count range", "servo 5 count range"};
     for (int i = 0; i < 5; i++) {
-        float v = c.joint[i].zero_count + c.joint[i].counts_per_deg * j.q[i];
+        const float v = c.joint[i].zero_count + c.joint[i].counts_per_deg * j.q[i];
         if (v < 0 || v > 4095) return rng[i];
         pos[i] = uint16_t(std::lround(v));
     }
@@ -138,38 +130,34 @@ const char *arm_to_counts(const ArmConfig &c, const JointAngles &j, float grip_m
     pos[5] = uint16_t(std::lround(g));
     return nullptr;
 }
-
 JointAngles arm_from_counts(const ArmConfig &c, const std::array<uint16_t, 6> &pos, float &grip_mm)
 {
     JointAngles j;
     for (int i = 0; i < 5; i++) {
-        float cpd = c.joint[i].counts_per_deg;
+        const float cpd = c.joint[i].counts_per_deg;
         j.q[i] = cpd != 0 ? (pos[i] - c.joint[i].zero_count) / cpd : 0.f;
     }
     grip_mm = des::grip_mm(c, pos[5]);
     return j;
 }
-
 static uint16_t move_ms(const ArmConfig &c, const std::array<uint16_t, 6> &a, const std::array<uint16_t, 6> &b)
 {
     float worst = 0;
     for (int i = 0; i < 5; i++) {
-        float cpd = std::fabs(c.joint[i].counts_per_deg);
+        const float cpd = std::fabs(c.joint[i].counts_per_deg);
         if (cpd > 0) worst = std::max(worst, std::abs(int(a[i]) - int(b[i])) / cpd);
     }
-    float ms = worst / c.joint_speed * 1000.f;
-    return uint16_t(std::min(std::max(ms, float(c.min_ms)), 5000.f));
+    return uint16_t(std::min(std::max(worst / c.joint_speed * 1000.f, float(c.min_ms)), 5000.f));
 }
-
 const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, float open_mm, float part_wid,
                       int bin, const std::array<uint16_t, 6> &prev, std::vector<ServoFrame> &out, float *tilt_deg)
 {
     out.clear();
-    float ax = table_axis_to_arm(c, close_axis_table);
+    const float ax = table_axis_to_arm(c, close_axis_table);
     JointAngles above, down, home, drop;
     const char *vertical_why = nullptr;
     for (float t = 0;; t += c.tilt_step_deg) {
-        const float tr = t / kDeg;
+        const float tr = deg2rad(t);
         const char *why = arm_ik(c, table_to_arm(c, p_table, c.z_safe), ax, above, tr);
         if (!why) why = arm_ik(c, table_to_arm(c, p_table, c.z_grasp), ax, down, tr);
         if (!why) {
@@ -182,14 +170,13 @@ const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, 
     if (bin < 0 || size_t(bin) >= c.bins.size()) return "no drop pose for bin";
     drop.q = c.bins[bin];
     home.q = c.home_deg;
-    // taught poses bypass the IK limit check: check them here
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 5; i++) {   // taught poses bypass the IK limit check: check them here
         if (drop.q[i] < c.joint[i].min_deg || drop.q[i] > c.joint[i].max_deg) return "bin pose outside joint limits";
         if (home.q[i] < c.joint[i].min_deg || home.q[i] > c.joint[i].max_deg) return "home pose outside joint limits";
     }
-    // Every frame below has the gripper pointing down, and the gripper pitch q2 + q3 + q4 is linear in the joints, so
-    // the joint-space moves between them keep it down all the way. From a gripper-up or sideways pose the first move
-    // would swing the 190 mm gripper forward across the belt into the opposite light bar (10-22): refuse instead.
+    // Every frame below has the gripper pointing down, and the pitch q2 + q3 + q4 is linear in the joints, so the
+    // joint-space moves keep it down all the way. From a gripper-up pose the first move would swing the 190 mm
+    // gripper forward across the belt into the opposite light bar (10-22): refuse instead.
     {
         float g;
         if (tool_pitch_deg(arm_from_counts(c, prev, g)) > kToolDownMaxDeg)
@@ -197,8 +184,7 @@ const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, 
     }
     if (tool_pitch_deg(home) > kToolDownMaxDeg) return "ready pose is not gripper-down: teach it again";
     if (tool_pitch_deg(drop) > kToolDownMaxDeg) return "bin pose is not gripper-down: teach it again";
-    float held = std::max(part_wid - c.grip_squeeze, 0.f);
-
+    const float held = std::max(part_wid - c.grip_squeeze, 0.f);
     ServoFrame f;
     auto add = [&](const JointAngles &j, float grip, uint16_t ms, const char *what) -> const char * {
         f = ServoFrame{};
@@ -220,40 +206,22 @@ const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, 
     if ((why = add(home, open_mm, 0, "home"))) return why;
     return nullptr;
 }
-
 ArmBaseFit fit_arm_base(const std::vector<Vec3> &arm, const std::vector<Vec2> &table, float marker_h)
 {
     ArmBaseFit f;
     const size_t n = arm.size();
     if (n != table.size()) { f.err = "point lists differ in length"; return f; }
     if (n < 3) { f.err = "need at least 3 points (2 fix the transform exactly, a third checks it)"; return f; }
-    double ax = 0, ay = 0, tx = 0, ty = 0, z = 0;
-    for (size_t i = 0; i < n; i++) {
-        ax += arm[i].x; ay += arm[i].y; tx += table[i].x; ty += table[i].y; z += arm[i].z;
+    std::vector<Vec2> src;   // planar part of the arm-frame points
+    src.reserve(n);
+    double z = 0;
+    for (size_t i = 0; i < n; i++) { src.push_back({arm[i].x, arm[i].y}); z += arm[i].z; }
+    // table = base + R(yaw) * arm, the convention of table_to_arm; residual = per-point hand-eye error (mm)
+    if (!fit_rigid_2d(src.data(), table.data(), n, f.base_xy, f.base_yaw, &f.rms, &f.max, &f.resid)) {
+        f.err = "points too close together: spread the marker over >= 40 mm of the reachable view";
+        return f;
     }
-    ax /= n; ay /= n; tx /= n; ty /= n; z /= n;
-    double sxx = 0, sxy = 0, spread = 0;
-    for (size_t i = 0; i < n; i++) {
-        const double px = arm[i].x - ax, py = arm[i].y - ay, qx = table[i].x - tx, qy = table[i].y - ty;
-        sxx += px * qx + py * qy;
-        sxy += px * qy - py * qx;
-        spread = std::max(spread, std::sqrt(qx * qx + qy * qy));
-    }
-    if (spread < 20) { f.err = "points too close together: spread the marker over >= 40 mm of the reachable view"; return f; }
-    const double yaw = std::atan2(sxy, sxx), c = std::cos(yaw), s = std::sin(yaw);
-    f.base_yaw = float(yaw);
-    f.base_xy = {float(tx - (c * ax - s * ay)), float(ty - (s * ax + c * ay))};
-    f.belt_z = float(z - marker_h);
-    double ss = 0;
-    for (size_t i = 0; i < n; i++) {
-        const double ex = f.base_xy.x + c * arm[i].x - s * arm[i].y - table[i].x;
-        const double ey = f.base_xy.y + s * arm[i].x + c * arm[i].y - table[i].y;
-        const float e = float(std::sqrt(ex * ex + ey * ey));
-        f.resid.push_back(e);
-        f.max = std::max(f.max, e);
-        ss += ex * ex + ey * ey;
-    }
-    f.rms = float(std::sqrt(ss / n));
+    f.belt_z = float(z / n - marker_h);
     f.ok = true;
     return f;
 }

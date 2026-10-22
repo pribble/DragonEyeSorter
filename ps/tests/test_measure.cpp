@@ -21,18 +21,11 @@
 #include "measure.hpp"
 #include "part_log.hpp"
 #include "roi_crop.hpp"
+#include "test_check.hpp"
 #include "track_measure.hpp"
 #include "tracker.hpp"
 
 using namespace des;
-
-static int g_fail = 0, g_pass = 0;
-#define CHECK(cond, ...)                                              \
-    do {                                                              \
-        if (cond) g_pass++;                                           \
-        else { g_fail++; printf("FAIL %s:%d: ", __FILE__, __LINE__);  \
-               printf(__VA_ARGS__); printf("\n"); }                   \
-    } while (0)
 
 static const float S = 0.15f;                 // mm per px
 // fillPoly fills boundary pixels: rendered shapes are 2 * 0.5 / SS px = 0.019 mm larger than drawn (holes too)
@@ -202,26 +195,26 @@ int main()
         GearMeasure g = measure_gear(s.img, s.roi, h, cfg);
         auto t0 = std::chrono::steady_clock::now();
         for (int i = 0; i < 20; i++) measure_gear(s.img, s.roi, h, cfg);
-        printf("[timing] measure_gear %.2f ms/part (ROI %dx%d)\n",
-               std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() / 20,
-               s.roi.width, s.roi.height);
-        printf("[gear30] ok %d teeth %d OD %.3f root %.3f bore %.3f ecc %.3f rms %.3f short %d missing %d flash %d\n",
-               g.ok, g.teeth, g.od, g.root_d, g.bore_d, g.ecc, g.fit_rms, g.short_teeth, g.missing_teeth, g.flash_gaps);
+        printf("[timing] measure_gear %.2f ms/part (ROI %dx%d)\n", std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() / 20, s.roi.width, s.roi.height);
+        printf("[gear30] ok %d teeth %d OD %.3f root %.3f bore %.3f ecc %.3f rms %.3f short %d missing %d flash %d\n", g.ok, g.teeth, g.od, g.root_d, g.bore_d, g.ecc, g.fit_rms, g.short_teeth, g.missing_teeth, g.flash_gaps);
         CHECK(g.ok, "gear30 failed: %s", g.err.c_str());
         CHECK(g.teeth == 30, "teeth %d", g.teeth);
+        std::vector<float> rt;   // optional r(theta) out-param (des_tool report inset): 720 bins, live path passes 0
+        GearMeasure gr = measure_gear(s.img, s.roi, h, cfg, &rt);
+        float rt_lo = 1e9f, rt_hi = 0;
+        for (float v : rt) { rt_lo = std::min(rt_lo, v); rt_hi = std::max(rt_hi, v); }
+        CHECK(rt.size() == 720 && rt_lo > 12 && gr.teeth == g.teeth && std::fabs(gr.od - g.od) < 1e-6f, "r(theta): %zu bins %.3f..%.3f, teeth %d", rt.size(), rt_lo, rt_hi, gr.teeth);
+        CHECK(std::fabs(rt_hi - g.od / 2) < 0.05f, "r(theta) max %.3f vs od/2 %.3f", rt_hi, g.od / 2);
         MeasureConfig oc = cfg;   // master-part offsets move only the reported OD / bore
         oc.od_offset_mm = 0.41f;
         oc.bore_offset_mm = -0.07f;
         GearMeasure go = measure_gear(s.img, s.roi, h, oc);
-        CHECK(std::fabs(go.od - g.od - 0.41f) < 1e-4f && std::fabs(go.bore_d - g.bore_d + 0.07f) < 1e-4f &&
-                  go.teeth == g.teeth && std::fabs(go.root_d - g.root_d) < 1e-4f,
-              "offsets: OD %+.4f bore %+.4f", go.od - g.od, go.bore_d - g.bore_d);
+        CHECK(std::fabs(go.od - g.od - 0.41f) < 1e-4f && std::fabs(go.bore_d - g.bore_d + 0.07f) < 1e-4f && go.teeth == g.teeth && std::fabs(go.root_d - g.root_d) < 1e-4f, "offsets: OD %+.4f bore %+.4f", go.od - g.od, go.bore_d - g.bore_d);
         CHECK(std::fabs(g.od - 32 - GROW) < TOL, "OD %.3f", g.od);
         CHECK(std::fabs(g.root_d - 27.5f - GROW) < TOL, "root %.3f", g.root_d);
         CHECK(std::fabs(g.bore_d - 6 - GROW) < TOL, "bore %.3f", g.bore_d);
         CHECK(std::fabs(g.ecc - 0.13f) < 0.01f, "ecc %.3f", g.ecc);
-        CHECK(g.short_teeth == 0 && g.missing_teeth == 0 && g.flash_gaps == 0, "false defects %d %d %d", g.short_teeth,
-              g.missing_teeth, g.flash_gaps);
+        CHECK(g.short_teeth == 0 && g.missing_teeth == 0 && g.flash_gaps == 0, "false defects %d %d %d", g.short_teeth, g.missing_teeth, g.flash_gaps);
     }
     {   // B: defects — tooth 5 short by 1 mm, tooth 12 missing, gap after tooth 20 filled 0.8 mm above the root,
         //    gap after tooth 26 filled almost to the tips (the two teeth merge into one run), a blob standing in the
@@ -235,8 +228,7 @@ int main()
         fill[2] = -15.5f;
         Scene s = render(gear(c, 30, 16, 13.75f, 0.3f, tip, fill), circle(c, 3), 1.f);
         GearMeasure g = measure_gear(s.img, s.roi, h, cfg);
-        printf("[gear30 defects] teeth %d OD %.3f short %d missing %d flash %d\n", g.teeth, g.od, g.short_teeth,
-               g.missing_teeth, g.flash_gaps);
+        printf("[gear30 defects] teeth %d OD %.3f short %d missing %d flash %d\n", g.teeth, g.od, g.short_teeth, g.missing_teeth, g.flash_gaps);
         CHECK(g.ok && g.teeth == 30, "spec teeth %d (%s)", g.teeth, g.err.c_str());
         CHECK(g.short_teeth == 1, "short %d", g.short_teeth);
         CHECK(g.missing_teeth == 1, "missing %d", g.missing_teeth);
@@ -248,8 +240,7 @@ int main()
         Scene s = render(gear(c, 28, 15, 12.75f, 0.2f, {}, {}), circle(c, 3), 1.f);
         GearMeasure g = measure_gear(s.img, s.roi, h, cfg);
         printf("[gear28] teeth %d OD %.3f missing %d\n", g.teeth, g.od, g.missing_teeth);
-        CHECK(g.ok && g.teeth == 28 && g.missing_teeth == 0, "28-tooth gear read as %d (+%d missing)", g.teeth,
-              g.missing_teeth);
+        CHECK(g.ok && g.teeth == 28 && g.missing_teeth == 0, "28-tooth gear read as %d (+%d missing)", g.teeth, g.missing_teeth);
         CHECK(std::fabs(g.od - 30 - GROW) < TOL, "OD28 %.3f", g.od);
     }
     // D: parallax — camera 360 mm above the belt (8 mm lens), gear 10 mm thick: k = 360 / 350
@@ -262,9 +253,7 @@ int main()
         Scene s = render(gear(c, 30, 16, 13.75f, 0.05f, {}, {}), circle(c, 3), k);
         GearMeasure raw = measure_gear(s.img, s.roi, h, cfg);
         GearMeasure cor = measure_gear(s.img, s.roi, h, pc);
-        printf("[parallax 22mm] uncorrected OD %.3f bore %.3f | corrected OD %.3f bore %.3f teeth %d smear %.2f "
-               "judged %d defects %d/%d/%d\n", raw.od, raw.bore_d, cor.od, cor.bore_d, cor.teeth, cor.smear_mm,
-               cor.teeth_judged, cor.short_teeth, cor.missing_teeth, cor.flash_gaps);
+        printf("[parallax 22mm] uncorrected OD %.3f bore %.3f | corrected OD %.3f bore %.3f teeth %d smear %.2f judged %d defects %d/%d/%d\n", raw.od, raw.bore_d, cor.od, cor.bore_d, cor.teeth, cor.smear_mm, cor.teeth_judged, cor.short_teeth, cor.missing_teeth, cor.flash_gaps);
         CHECK(std::fabs(raw.od - 32) > 0.3f, "parallax should show without correction (%.3f)", raw.od);
         CHECK(cor.ok && std::fabs(cor.od - 32 - GROW) < TOL, "corrected OD %.3f", cor.od);
         CHECK(std::fabs(cor.bore_d - 6 - GROW) < TOL, "corrected bore %.3f", cor.bore_d);
@@ -274,8 +263,7 @@ int main()
         printf("[parallax 22mm near arc] bore %.3f\n", na.bore_d);
         CHECK(na.ok && std::fabs(na.bore_d - 6 - GROW) < TOL, "near-arc bore %.3f", na.bore_d);
         CHECK(cor.teeth_judged && cor.teeth == 30, "judged %d teeth %d", cor.teeth_judged, cor.teeth);
-        CHECK(cor.short_teeth == 0 && cor.missing_teeth == 0 && cor.flash_gaps == 0, "false defects %d %d %d",
-              cor.short_teeth, cor.missing_teeth, cor.flash_gaps);
+        CHECK(cor.short_teeth == 0 && cor.missing_teeth == 0 && cor.flash_gaps == 0, "false defects %d %d %d", cor.short_teeth, cor.missing_teeth, cor.flash_gaps);
     }
     {   // D2: the defect gear 21 mm off the axis
         Vec2 c = AXIS + Vec2{-15, 15};
@@ -285,18 +273,15 @@ int main()
         fill[20] = 13.75f + 0.8f;
         Scene s = render(gear(c, 30, 16, 13.75f, 0.3f, tip, fill), circle(c, 3), k);
         GearMeasure g = measure_gear(s.img, s.roi, h, pc);
-        printf("[parallax defects] OD %.3f teeth %d smear %.2f short %d missing %d flash %d\n", g.od, g.teeth,
-               g.smear_mm, g.short_teeth, g.missing_teeth, g.flash_gaps);
+        printf("[parallax defects] OD %.3f teeth %d smear %.2f short %d missing %d flash %d\n", g.od, g.teeth, g.smear_mm, g.short_teeth, g.missing_teeth, g.flash_gaps);
         CHECK(g.ok && g.teeth_judged && g.teeth == 30, "teeth %d judged %d", g.teeth, g.teeth_judged);
-        CHECK(g.short_teeth == 1 && g.missing_teeth == 1 && g.flash_gaps == 1, "defects %d %d %d", g.short_teeth,
-              g.missing_teeth, g.flash_gaps);
+        CHECK(g.short_teeth == 1 && g.missing_teeth == 1 && g.flash_gaps == 1, "defects %d %d %d", g.short_teeth, g.missing_teeth, g.flash_gaps);
     }
     {   // D3: 112 mm off the axis (smear 3.2 mm ~ one pitch: side gaps filled) -> size only, teeth not judged
         Vec2 c = AXIS + Vec2{100, 50};
         Scene s = render(gear(c, 30, 16, 13.75f, 0.0f, {}, {}), circle(c, 3), k);
         GearMeasure g = measure_gear(s.img, s.roi, h, pc);
-        printf("[parallax 112mm] OD %.3f bore %.3f smear %.2f judged %d\n", g.od, g.bore_d, g.smear_mm,
-               g.teeth_judged);
+        printf("[parallax 112mm] OD %.3f bore %.3f smear %.2f judged %d\n", g.od, g.bore_d, g.smear_mm, g.teeth_judged);
         CHECK(g.ok && !g.teeth_judged, "far off-axis must not judge teeth (smear %.2f)", g.smear_mm);
         CHECK(g.short_teeth == 0 && g.missing_teeth == 0 && g.flash_gaps == 0, "unjudged counts must be 0");
         CHECK(std::fabs(g.od - 32 - GROW) < 2 * TOL, "far OD %.3f", g.od);
@@ -315,8 +300,7 @@ int main()
         GearMeasure g = measure_gear(s.img, s.roi, h, tc);
         printf("[top face 112mm] OD %.3f bore %.3f teeth %d judged %d\n", g.od, g.bore_d, g.teeth, g.teeth_judged);
         CHECK(g.ok && g.teeth_judged && g.teeth == 30, "teeth %d", g.teeth);
-        CHECK(std::fabs(g.od - 32 - GROW) < TOL && std::fabs(g.bore_d - 6 - GROW) < TOL, "OD %.3f bore %.3f", g.od,
-              g.bore_d);
+        CHECK(std::fabs(g.od - 32 - GROW) < TOL && std::fabs(g.bore_d - 6 - GROW) < TOL, "OD %.3f bore %.3f", g.od, g.bore_d);
         CHECK(g.short_teeth == 0 && g.missing_teeth == 0 && g.flash_gaps == 0, "false defects");
     }
     {   // E: rack 50 mm, 15 teeth, 25 deg
@@ -324,11 +308,8 @@ int main()
         RackMeasure r = measure_rack(s.img, s.roi, h, cfg);
         auto t0 = std::chrono::steady_clock::now();
         for (int i = 0; i < 20; i++) measure_rack(s.img, s.roi, h, cfg);
-        printf("[timing] measure_rack %.2f ms/part (ROI %dx%d)\n",
-               std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() / 20,
-               s.roi.width, s.roi.height);
-        printf("[rack50] ok %d length %.3f height %.3f pitch %.4f teeth %d short %d flash %d\n", r.ok, r.length, r.height,
-               r.pitch, r.teeth, r.short_teeth, r.flash_gaps);
+        printf("[timing] measure_rack %.2f ms/part (ROI %dx%d)\n", std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() / 20, s.roi.width, s.roi.height);
+        printf("[rack50] ok %d length %.3f height %.3f pitch %.4f teeth %d short %d flash %d\n", r.ok, r.length, r.height, r.pitch, r.teeth, r.short_teeth, r.flash_gaps);
         CHECK(r.ok, "rack failed: %s", r.err.c_str());
         CHECK(std::fabs(r.length - 50 - GROW) < TOL, "length %.3f", r.length);
         CHECK(std::fabs(r.height - 15 - GROW) < TOL, "height %.3f", r.height);
@@ -343,8 +324,7 @@ int main()
         printf("[rack48] length %.3f pitch %.4f teeth %d short %d\n", r.length, r.pitch, r.teeth, r.short_teeth);
         CHECK(r.ok && std::fabs(r.length - 48 - GROW) < TOL, "length %.3f", r.length);
         CHECK(r.short_teeth == 1, "short %d", r.short_teeth);
-        CHECK(r.teeth == 14 && r.missing_teeth == 0 && r.flash_gaps == 0, "teeth %d missing %d flash %d", r.teeth,
-              r.missing_teeth, r.flash_gaps);
+        CHECK(r.teeth == 14 && r.missing_teeth == 0 && r.flash_gaps == 0, "teeth %d missing %d flash %d", r.teeth, r.missing_teeth, r.flash_gaps);
     }
     {   // G: rack 50 mm, tooth 4 missing, gap after tooth 9 filled 1 mm above the root, gap after tooth 12 filled
         //    almost to the tips, a blob in the middle of the gap after tooth 6
@@ -355,32 +335,25 @@ int main()
         fill[6] = -14.5f;
         Scene s = render(rack({140, 60}, 50, 15, 70 * kPi / 180, tip, fill), {}, 1.f);
         RackMeasure r = measure_rack(s.img, s.roi, h, cfg);
-        printf("[rack defects] teeth %d missing %d flash %d short %d pitch %.4f\n", r.teeth, r.missing_teeth,
-               r.flash_gaps, r.short_teeth, r.pitch);
+        printf("[rack defects] teeth %d missing %d flash %d short %d pitch %.4f\n", r.teeth, r.missing_teeth, r.flash_gaps, r.short_teeth, r.pitch);
         CHECK(r.ok && r.teeth == 15, "teeth %d (%s)", r.teeth, r.err.c_str());
-        CHECK(r.missing_teeth == 1 && r.flash_gaps == 3 && r.short_teeth == 0, "missing %d flash %d short %d",
-              r.missing_teeth, r.flash_gaps, r.short_teeth);
+        CHECK(r.missing_teeth == 1 && r.flash_gaps == 3 && r.short_teeth == 0, "missing %d flash %d short %d", r.missing_teeth, r.flash_gaps, r.short_teeth);
         CHECK(std::fabs(r.pitch - kPi) < 0.01f, "pitch %.4f", r.pitch);
     }
     {   // I: rolling shutter, exaggerated (0.005 mm per row: 1 mm shear across the gear)
         Vec2 c{110, 70};
         const float mpr = 0.005f, row0 = 540;
-        Scene s = render(sheared(gear(c, 30, 16, 13.75f, 0.1f, {}, {}), mpr, row0),
-                         sheared(circle(c, 3), mpr, row0), 1.f);
+        Scene s = render(sheared(gear(c, 30, 16, 13.75f, 0.1f, {}, {}), mpr, row0), sheared(circle(c, 3), mpr, row0), 1.f);
         GearMeasure raw = measure_gear(s.img, s.roi, h, cfg);
         MeasureConfig rc = cfg;
         rc.belt_mm_per_row = mpr;
         rc.row0 = row0;
         GearMeasure g = measure_gear(s.img, s.roi, h, rc);
-        printf("[rolling shutter] uncorrected OD %.3f rms %.3f | corrected OD %.3f rms %.3f bore %.3f ecc %.3f\n",
-               raw.od, raw.fit_rms, g.od, g.fit_rms, g.bore_d, g.ecc);
+        printf("[rolling shutter] uncorrected OD %.3f rms %.3f | corrected OD %.3f rms %.3f bore %.3f ecc %.3f\n", raw.od, raw.fit_rms, g.od, g.fit_rms, g.bore_d, g.ecc);
         CHECK(raw.fit_rms > 0.05f, "shear should show without correction (rms %.3f)", raw.fit_rms);
-        CHECK(g.ok && std::fabs(g.od - 32 - GROW) < TOL && g.fit_rms < 0.02f, "corrected OD %.3f rms %.3f", g.od,
-              g.fit_rms);
-        CHECK(std::fabs(g.center.x - c.x - SHIFT) < 0.02f && std::fabs(g.center.y - c.y - SHIFT) < 0.02f,
-              "center back at the row0 instant (%.3f, %.3f)", g.center.x - c.x - SHIFT, g.center.y - c.y - SHIFT);
-        CHECK(g.ecc < 0.02f && g.teeth == 30 && g.short_teeth + g.missing_teeth + g.flash_gaps == 0,
-              "ecc %.3f teeth %d defects %d/%d/%d", g.ecc, g.teeth, g.short_teeth, g.missing_teeth, g.flash_gaps);
+        CHECK(g.ok && std::fabs(g.od - 32 - GROW) < TOL && g.fit_rms < 0.02f, "corrected OD %.3f rms %.3f", g.od, g.fit_rms);
+        CHECK(std::fabs(g.center.x - c.x - SHIFT) < 0.02f && std::fabs(g.center.y - c.y - SHIFT) < 0.02f, "center back at the row0 instant (%.3f, %.3f)", g.center.x - c.x - SHIFT, g.center.y - c.y - SHIFT);
+        CHECK(g.ecc < 0.02f && g.teeth == 30 && g.short_teeth + g.missing_teeth + g.flash_gaps == 0, "ecc %.3f teeth %d defects %d/%d/%d", g.ecc, g.teeth, g.short_teeth, g.missing_teeth, g.flash_gaps);
     }
     {   // J: TrackMeasurer end to end: full frame (BGRA), tracker tracks -> ROI from the track footprint -> gear /
         //    rack by shape -> cropped homography -> results applied to the tracks; best-frame selection
@@ -416,16 +389,11 @@ int main()
             if (norm(Vec2{t.s, t.y} - cg) < 2) mg = &t.meas;
             if (norm(Vec2{t.s, t.y} - cr) < 2) mr = &t.meas;
         }
-        printf("[track measurer] %d results in %d calls, %.2f ms last | gear %c OD %.3f z%d | rack %c L %.3f p %.4f\n",
-               results, calls, tm.last_ms, mg ? mg->kind : '-', mg ? mg->size : 0, mg ? mg->teeth : 0,
-               mr ? mr->kind : '-', mr ? mr->size : 0, mr ? mr->pitch : 0);
+        printf("[track measurer] %d results in %d calls, %.2f ms last | gear %c OD %.3f z%d | rack %c L %.3f p %.4f\n", results, calls, tm.last_ms, mg ? mg->kind : '-', mg ? mg->size : 0, mg ? mg->teeth : 0, mr ? mr->kind : '-', mr ? mr->size : 0, mr ? mr->pitch : 0);
         CHECK(results == 2, "each part measured once (still parts: no nearer frame), got %d", results);
-        CHECK(mg && mg->valid && mg->kind == 'g' && std::fabs(mg->size - 32 - GROW) < TOL && mg->teeth == 30,
-              "gear via tracker");
-        CHECK(mr && mr->valid && mr->kind == 'r' && std::fabs(mr->size - 50 - GROW) < TOL && mr->teeth == 15,
-              "rack via tracker");
-        CHECK(mg && std::fabs(mg->axis_dist - norm(cg - AXIS)) < 0.5f, "gear axis distance %.2f",
-              mg ? mg->axis_dist : -1.f);
+        CHECK(mg && mg->valid && mg->kind == 'g' && std::fabs(mg->size - 32 - GROW) < TOL && mg->teeth == 30, "gear via tracker");
+        CHECK(mr && mr->valid && mr->kind == 'r' && std::fabs(mr->size - 50 - GROW) < TOL && mr->teeth == 15, "rack via tracker");
+        CHECK(mg && std::fabs(mg->axis_dist - norm(cg - AXIS)) < 0.5f, "gear axis distance %.2f", mg ? mg->axis_dist : -1.f);
         // the gear moves 20 mm toward the axis -> clearly nearer (31.6 -> ~13) -> measured again
         for (Track &t : tr.tracks())
             if (norm(Vec2{t.s, t.y} - cg) < 2) t.s += 20;
@@ -433,27 +401,25 @@ int main()
         gray = cv::max(a2.img, b.img);
         cv::cvtColor(gray, bgra, cv::COLOR_GRAY2BGRA);
         auto res = tm.measure(tr, bgra.data, bgra.cols, bgra.rows, int(bgra.step), 0.0, 0.0, 20);
-        CHECK(res.size() == 1 && res[0].m.count == 2 && res[0].m.axis_dist < 15,
-              "re-measured nearer the axis (%zu results)", res.size());
+        CHECK(res.size() == 1 && res[0].m.count == 2 && res[0].m.axis_dist < 15, "re-measured nearer the axis (%zu results)", res.size());
         // the crop that goes with it: 224 x 224 BGR, gear centered (bright center, dark corners)
         if (!res.empty() && !res[0].crop.empty()) {
-            const cv::Mat &cr = res[0].crop;
+            const cv::Mat &cr2 = res[0].crop;
             cv::Mat g1;
-            cv::cvtColor(cr, g1, cv::COLOR_BGR2GRAY);
+            cv::cvtColor(cr2, g1, cv::COLOR_BGR2GRAY);
             cv::Moments mo = cv::moments(g1 > 130, true);
             float cx = float(mo.m10 / mo.m00), cy = float(mo.m01 / mo.m00);
-            printf("[crop] %dx%d, bright centroid (%.1f, %.1f), area %.0f px (gear ~ %.0f)\n", cr.cols, cr.rows, cx, cy,
-                   mo.m00, kPi * 16 * 16 / 0.0625 - kPi * 9 / 0.0625 - 30 * 0.36f * 3.35f * 2.25f / 0.0625f);
-            CHECK(cr.cols == 224 && cr.rows == 224 && cr.type() == CV_8UC3, "crop size / type");
+            printf("[crop] %dx%d, bright centroid (%.1f, %.1f), area %.0f px (gear ~ %.0f)\n", cr2.cols, cr2.rows, cx, cy, mo.m00, kPi * 16 * 16 / 0.0625 - kPi * 9 / 0.0625 - 30 * 0.36f * 3.35f * 2.25f / 0.0625f);
+            CHECK(cr2.cols == 224 && cr2.rows == 224 && cr2.type() == CV_8UC3, "crop size / type");
             CHECK(std::fabs(cx - 111.5f) < 1.5f && std::fabs(cy - 111.5f) < 1.5f, "gear centered in the crop");
         } else {
             CHECK(false, "no crop returned");
         }
     }
-    {   // K: local storage — 3 decided parts, images for the NG / recheck ones only, read back
+    {   // K: local storage — 3 decided parts, images for the NG / recheck ones only, read back over the TCP feed
         StorageConfig sc;
         sc.dir = "/tmp/des_logtest";
-        sc.feed_port = 19501;   // live upload (net_feed): a loopback client receives the same records + images
+        sc.feed_port = 19501;   // live upload: a loopback client receives the same records + images
         if (system("rm -rf /tmp/des_logtest") != 0) {}
         PartLog log;
         std::string e = log.open(sc);
@@ -479,26 +445,25 @@ int main()
         };
         struct Frame { char type; std::string name, payload; };
         auto read_frame = [&](Frame &f) {
-            std::string h;
-            if (!read_exact(h, 10) || h[0] != 'D' || h[1] != 'F') return false;
-            const size_t nl = (uint8_t(h[4]) << 8) | uint8_t(h[5]);
-            const size_t pl = (size_t(uint8_t(h[6])) << 24) | (uint8_t(h[7]) << 16) | (uint8_t(h[8]) << 8) | uint8_t(h[9]);
-            f.type = h[2];
+            std::string hd;
+            if (!read_exact(hd, 10) || hd[0] != 'D' || hd[1] != 'F') return false;
+            const size_t nl = (uint8_t(hd[4]) << 8) | uint8_t(hd[5]);
+            const size_t pl = (size_t(uint8_t(hd[6])) << 24) | (uint8_t(hd[7]) << 16) | (uint8_t(hd[8]) << 8) | uint8_t(hd[9]);
+            f.type = hd[2];
             return read_exact(f.name, nl) && read_exact(f.payload, pl);
         };
         Frame hello;
-        CHECK(conn && read_frame(hello) && hello.type == 'H' && hello.payload == csv_header() && hello.name == log.session,
-              "feed: hello carries the session and the CSV header");
+        CHECK(conn && read_frame(hello) && hello.type == 'H' && hello.payload == csv_header() && hello.name == log.session, "feed: hello carries the session and the CSV header");
         cv::Mat crop(224, 224, CV_8UC3, cv::Scalar(30, 200, 30));
-        const char *disp[] = {"pick", "flap", "recheck"};
+        const Disposition disp[] = {Disposition::Pick, Disposition::Flap, Disposition::Recheck};
         for (int i = 0; i < 3; i++) {
             PartRecord r;
             r.track_id = 10 + i;
-            r.cls = i;
+            r.cls = int16_t(i);
             r.label = i == 0 ? "gear_ok" : i == 1 ? "gear_short" : "unclassified";
             r.disp = disp[i];
             r.dest = i == 0 ? "gear_box" : i == 1 ? "scrap" : "recheck";
-            r.why = "test, with a comma";
+            snprintf(r.why, sizeof r.why, "%s", "test, with a comma");
             r.meas.valid = true; r.meas.kind = 'g'; r.meas.size = 32.01f; r.meas.teeth = 30;
             r.t_s = log.now_s();
             log.add(r, crop);
@@ -516,10 +481,7 @@ int main()
             if (strstr(buf, ".jpg")) with_img++;
         }
         if (f) fclose(f);
-        printf("[storage] %s: %d lines, %d with image, written %llu images %llu dropped %llu errors %llu\n",
-               log.csv_path.c_str(), lines, with_img, (unsigned long long)log.written.load(),
-               (unsigned long long)log.images.load(), (unsigned long long)log.dropped.load(),
-               (unsigned long long)log.errors.load());
+        printf("[storage] %s: %d lines, %d with image, written %llu images %llu dropped %llu errors %llu\n", log.csv_path.c_str(), lines, with_img, (unsigned long long)log.written.load(), (unsigned long long)log.images.load(), (unsigned long long)log.dropped.load(), (unsigned long long)log.errors.load());
         CHECK(lines == 4 && fields_ok == 3, "csv lines %d, rows with 43 columns %d", lines, fields_ok);
         CHECK(with_img == 2 && log.images == 2, "images only for flap / recheck (%d)", with_img);
         int nr = 0, ni = 0, jpg_ok = 0;
@@ -529,8 +491,7 @@ int main()
             if (fr.type == 'R' && nr++ == 0) first_line = fr.payload;
             if (fr.type == 'I') {
                 ni++;
-                jpg_ok += fr.payload.size() > 100 && uint8_t(fr.payload[0]) == 0xFF && uint8_t(fr.payload[1]) == 0xD8 &&
-                          fr.name.rfind("img/", 0) == 0;
+                jpg_ok += fr.payload.size() > 100 && uint8_t(fr.payload[0]) == 0xFF && uint8_t(fr.payload[1]) == 0xD8 && fr.name.rfind("img/", 0) == 0;
             }
         }
         close(cfd);
@@ -552,14 +513,13 @@ int main()
                                                                 {cv::Scalar(40, 200, 220), "yellow"},
                                                                 {cv::Scalar(220, 120, 40), "blue"},
                                                                 {cv::Scalar(50, 40, 210), "red"}};
-        for (auto &k : cases) {
+        for (auto &k2 : cases) {
             cv::Mat crop(224, 224, CV_8UC3, cv::Scalar(22, 24, 20));
-            cv::circle(crop, cv::Point(112, 112), 70, k.bgr, cv::FILLED);
+            cv::circle(crop, cv::Point(112, 112), 70, k2.bgr, cv::FILLED);
             cv::circle(crop, cv::Point(112, 112), 12, cv::Scalar(22, 24, 20), cv::FILLED);   // bore
             const PartColor pc = part_color(crop);
             const int ci = classify_color(cl, pc);
-            CHECK(ci >= 0 && !strcmp(cl[ci].name.c_str(), k.want), "colour %s: hue %.0f sat %.0f -> %s", k.want, pc.hue,
-                  pc.sat, ci >= 0 ? cl[ci].name.c_str() : "none");
+            CHECK(ci >= 0 && !strcmp(cl[ci].name.c_str(), k2.want), "colour %s: hue %.0f sat %.0f -> %s", k2.want, pc.hue, pc.sat, ci >= 0 ? cl[ci].name.c_str() : "none");
         }
     }
     // flat field (flat_field.hpp): white level 180 * v(x, y), v = 1 at the centre .. 0.4 in the corners
@@ -586,12 +546,9 @@ int main()
         cv::Mat g;
         cv::cvtColor(cor, g, cv::COLOR_BGR2GRAY);
         cv::minMaxLoc(g, &mn, &mx);
-        printf("[flat crop] raw mean %.1f, corrected mean %.1f (%.0f .. %.0f), centre gain %.3f corner gain %.3f\n",
-               cv::mean(raw)[0], cv::mean(cor)[0], mn, mx, ff.gain_at(959.5f, 539.5f), ff.gain_at(0, 0));
-        CHECK(cv::mean(raw)[0] < 125 && std::fabs(cv::mean(cor)[0] - 150) < 2 && mx - mn <= 4,
-              "flat crop: raw %.1f corrected %.1f range %.0f", cv::mean(raw)[0], cv::mean(cor)[0], mx - mn);
-        CHECK(std::fabs(ff.gain_at(959.5f, 539.5f) - 1) < 0.01f && std::fabs(ff.gain_at(0, 0) * vig(20, 20) - 1) < 0.03f,
-              "flat gains: centre %.3f corner %.3f", ff.gain_at(959.5f, 539.5f), ff.gain_at(0, 0));
+        printf("[flat crop] raw mean %.1f, corrected mean %.1f (%.0f .. %.0f), centre gain %.3f corner gain %.3f\n", cv::mean(raw)[0], cv::mean(cor)[0], mn, mx, ff.gain_at(959.5f, 539.5f), ff.gain_at(0, 0));
+        CHECK(cv::mean(raw)[0] < 125 && std::fabs(cv::mean(cor)[0] - 150) < 2 && mx - mn <= 4, "flat crop: raw %.1f corrected %.1f range %.0f", cv::mean(raw)[0], cv::mean(cor)[0], mx - mn);
+        CHECK(std::fabs(ff.gain_at(959.5f, 539.5f) - 1) < 0.01f && std::fabs(ff.gain_at(0, 0) * vig(20, 20) - 1) < 0.03f, "flat gains: centre %.3f corner %.3f", ff.gain_at(959.5f, 539.5f), ff.gain_at(0, 0));
     }
     {   // FlatBuilder: a white sheet (180 v) 1100 px wide over the belt (30 v), 7 stops 200 px apart
         FlatBuilder fb;
@@ -607,19 +564,12 @@ int main()
         FlatField f;
         FlatStats st;
         const std::string e = fb.build(f, 48, 27, &st);
-        printf("[flat build] %s covered %.3f centre %.1f corner %.3f (want %.3f) residual %.3f .. %.3f\n",
-               e.empty() ? "ok" : e.c_str(), st.covered, st.centre, st.corner_rel[0], vig(20, 20), st.resid_p5,
-               st.resid_p95);
-        CHECK(e.empty() && st.covered > 0.97f && std::fabs(st.centre - 180) < 2, "flat build: %s covered %.3f centre %.1f",
-              e.c_str(), st.covered, st.centre);
-        CHECK(std::fabs(st.corner_rel[0] - vig(20, 20)) < 0.03f && st.resid_p5 > 0.97f && st.resid_p95 < 1.03f,
-              "flat build: corner %.3f residual %.3f .. %.3f", st.corner_rel[0], st.resid_p5, st.resid_p95);
+        printf("[flat build] %s covered %.3f centre %.1f corner %.3f (want %.3f) residual %.3f .. %.3f\n", e.empty() ? "ok" : e.c_str(), st.covered, st.centre, st.corner_rel[0], vig(20, 20), st.resid_p5, st.resid_p95);
+        CHECK(e.empty() && st.covered > 0.97f && std::fabs(st.centre - 180) < 2, "flat build: %s covered %.3f centre %.1f", e.c_str(), st.covered, st.centre);
+        CHECK(std::fabs(st.corner_rel[0] - vig(20, 20)) < 0.03f && st.resid_p5 > 0.97f && st.resid_p95 < 1.03f, "flat build: corner %.3f residual %.3f .. %.3f", st.corner_rel[0], st.resid_p5, st.resid_p95);
         const std::string fn = "/tmp/des_flat_test.json";
         FlatField back;
-        CHECK(save_flat(fn, f, "test").empty() && load_flat(fn, back).empty() && back.gw == 48 && back.gh == 27 &&
-                  std::fabs(back.white_at(700, 300) - f.white_at(700, 300)) < 0.01f,
-              "flat.json round trip");
+        CHECK(save_flat(fn, f, "test").empty() && load_flat(fn, back).empty() && back.gw == 48 && back.gh == 27 && std::fabs(back.white_at(700, 300) - f.white_at(700, 300)) < 0.01f, "flat.json round trip");
     }
-    printf("%d passed, %d failed\n", g_pass, g_fail);
-    return g_fail;
+    return test_summary();
 }

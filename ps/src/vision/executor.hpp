@@ -7,14 +7,13 @@
 #define AL_NPU_EXECUTOR
 
 #include <optional>
-#include <vector>
 #include <string>
+#include <vector>
 
-#include "armnn/Types.hpp"
 #include "armnn/IRuntime.hpp"
 #include "armnn/Tensor.hpp"
+#include "armnn/Types.hpp"
 
-#include "armnnOnnxParser/IOnnxParser.hpp"
 #include "armnnOnnxParser/IOnnxParser.hpp"
 #include "flow_common_types.hpp"
 
@@ -39,6 +38,12 @@ private:
 
 	std::vector<CmaBuf> m_inputBuffers;
 	std::vector<CmaBuf> m_outputBuffers;
+
+    // 两个构造函数的公共部分：带 CMA 分配器的 runtime、优化、装载网络（Create 只做一次）
+    void prepare(armnn::INetworkPtr network, const std::vector<armnn::BackendId> &backends,
+                 const std::optional<armnn::INetworkProperties> &network_properties);
+    // binding info -> 每个输入/输出一个 CMA buffer + tensor（调用前先填好 binding info / 名字表）
+    void allocTensors();
 
 public:
     NPUExecutor() = delete;
@@ -81,9 +86,6 @@ public:
     float GetOutputQuantizationScale(int tensorIndex);
     int GetOutputQuantizationOffset(int tensorIndex);
 
-	std::string GetInputTensorName(int tensorIndex);
-	std::string GetOutputTensorName(int tensorIndex);
-
     /**
      * @brief Get the Input Buffer object
      *
@@ -99,32 +101,13 @@ public:
      */
     CmaBuf &GetOutputBuffer(int tensorIndex);
     /**
-     * @brief Get the Input Tensor object
-     *
-     * @param tensorIndex
-     * @return armnn::ConstTensor&
-     */
-    armnn::ConstTensor& GetInputTensor(int tensorIndex) {return m_inputTensors.at(tensorIndex).second;}
-    /**
      * @brief Get the Output Tensor object
      *
      * @param tensorIndex
      * @return armnn::Tensor&
      */
     armnn::Tensor &GetOutputTensor(int tensorIndex) { return m_outputTensors.at(tensorIndex).second; }
-    /**
-     * @brief Get the Output Tensors object
-     *
-     * @return const armnn::OutputTensors&
-     */
-    const armnn::OutputTensors &GetOutputTensors() { return m_outputTensors; }
-    /**
-     * @brief Get the Input Tensors object
-     *
-     * @return const armnn::InputTensors&
-     */
-    const armnn::InputTensors &GetInputTensors() { return m_inputTensors; }
-    
+
     /**
      * @brief Runs inference on the provided input data.
      *
@@ -138,10 +121,6 @@ public:
     {
         return static_cast<typename std::underlying_type<Enumeration>::type>(value);
     }
-
-    const armnn::IRuntimePtr &GetRuntime() { return m_runtime; }
-    const armnn::NetworkId &GetNetworkId() { return m_netId; }
 };
 
 #endif
-

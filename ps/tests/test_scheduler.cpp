@@ -8,62 +8,20 @@
 
 #include "arm.hpp"
 #include "geom.hpp"
-#include "flap.hpp"
 #include "picker.hpp"
-#include "speed_adapt.hpp"
+#include "sim.hpp"
+#include "test_check.hpp"
 #include "tracker.hpp"
 
 using namespace des;
-
-static int g_fail = 0, g_pass = 0;
-#define CHECK(cond, ...)                                              \
-    do {                                                              \
-        if (cond) g_pass++;                                           \
-        else { g_fail++; printf("FAIL %s:%d: ", __FILE__, __LINE__);  \
-               printf(__VA_ARGS__); printf("\n"); }                   \
-    } while (0)
-
-static TrackerConfig tracker_cfg()
-{
-    TrackerConfig c;
-    c.fov_x0 = 0; c.fov_x1 = 300; c.edge_margin = 10; c.decide_x = 270; c.tail_x = 600;
-    c.rules = {
-        {"gear_ok", Disposition::Pick, 0}, {"gear_short", Disposition::Flap, 1}, {"gear_flash", Disposition::Flap, 2},
-        {"gear_dirty", Disposition::Flap, 1}, {"rack_ok", Disposition::Pick, 1}, {"rack_short", Disposition::Flap, 1},
-        {"rack_flash", Disposition::Flap, 2}, {"rack_dirty", Disposition::Flap, 1},
-    };
-    return c;
-}
-
-struct SimPart { float s, y, len, wid, axis; int cls; };
-
-// camera model: parts fully inside the view are seen with noise, cut by the edge they are partial
-static FrameObs observe(const std::vector<SimPart> &parts, double B, uint32_t frame, std::mt19937 &rng)
-{
-    std::normal_distribution<float> n(0.f, 0.4f), na(0.f, 0.02f);
-    FrameObs o;
-    o.frame = frame;
-    o.belt_mm = B;
-    for (const SimPart &p : parts) {
-        float x = float(p.s + B);
-        float half = p.len / 2;
-        if (x + half < 0 || x - half > 300) continue;
-        Detection d;
-        d.p = {x + n(rng), p.y + n(rng)};
-        d.len = p.len + n(rng); d.wid = p.wid + n(rng); d.axis = wrap_axis(p.axis + na(rng));
-        d.cls = p.cls; d.conf = p.cls >= 0 ? 0.9f : 0.f;
-        d.partial = x - half < 0 || x + half > 300;
-        if (d.partial) d.p.x += x - half < 0 ? 0.25f * half : -0.25f * half;   // cut blob: shifted center
-        o.dets.push_back(d);
-    }
-    return o;
-}
 
 static void test_geom()
 {
     ORect a{{0, 0}, 10, 5, 0}, b{{18, 0}, 10, 5, 0}, c{{21, 0}, 10, 5, 0};
     CHECK(overlap(a, b), "aligned overlap");
     CHECK(!overlap(a, c), "aligned separated");
+    ORect touch{{20, 0}, 10, 5, 0};   // left edge exactly on a's right edge: touching counts as overlap
+    CHECK(overlap(a, touch), "touching counts as overlap");
     ORect r{{16.5f, 9.f}, 5, 2, kPi / 4};   // diagonal stick next to a's corner, not touching
     CHECK(!overlap(a, r), "rotated near miss");
     ORect r2{{12.f, 6.f}, 5, 2, kPi / 4};
@@ -91,7 +49,7 @@ static void test_tracker()
     Tracker tr(tracker_cfg());
     std::vector<SimPart> parts = {
         {-40, 10, 30, 30, 0.3f, 0},       // gear_ok -> pick bin 0
-        {-140, -30, 60, 12, 0.7f, 5},     // rack_short -> flap outlet 1
+        {-140, -30, 60, 12, 0.7f, 1},     // long thin part, gear_short -> flap outlet 1
         {-230, 40, 25, 25, 0.f, -1},      // no class -> recheck
     };
     double B = 0;
@@ -120,9 +78,9 @@ static void test_tracker()
               t.id, t.s - p->s, t.y - p->y);
         CHECK(t.state == TrackState::Decided, "track %d state %s", t.id, to_str(t.state));
         if (p->cls == 0) CHECK(t.disp == Disposition::Pick && t.dest == 0, "gear_ok -> %s", to_str(t.disp));
-        if (p->cls == 5) {
-            CHECK(t.disp == Disposition::Flap && t.dest == 1, "rack_short -> %s/%d", to_str(t.disp), t.dest);
-            CHECK(std::fabs(wrap_axis(t.axis - p->axis)) < 0.02f, "rack axis err %.3f", t.axis - p->axis);
+        if (p->cls == 1) {
+            CHECK(t.disp == Disposition::Flap && t.dest == 1, "gear_short -> %s/%d", to_str(t.disp), t.dest);
+            CHECK(std::fabs(wrap_axis(t.axis - p->axis)) < 0.02f, "long part axis err %.3f", t.axis - p->axis);
         }
         if (p->cls < 0) CHECK(t.disp == Disposition::Recheck, "unclassified -> %s", to_str(t.disp));
     }
@@ -171,7 +129,7 @@ static void check_size_cases(const TrackerConfig &cfg, const std::vector<SizeCas
         CHECK(tk && tk->state == TrackState::Decided, "%s %s: no decided track", tag, cases[i].what);
         if (!tk) continue;
         CHECK(tk->disp == cases[i].disp && tk->dest == cases[i].dest, "%s %s -> %s/%d (%s), want %s/%d", tag,
-              cases[i].what, to_str(tk->disp), tk->dest, tk->why.c_str(), to_str(cases[i].disp), cases[i].dest);
+              cases[i].what, to_str(tk->disp), tk->dest, tk->why, to_str(cases[i].disp), cases[i].dest);
     }
 }
 
@@ -186,13 +144,13 @@ static void test_size_rule()
         {0, meas_gear(30, 32.0f, 0.5f, 0, true), Disposition::Flap, 1, "eccentric bore"},
         {0, meas_gear(30, 32.0f, 0.05f, 1, true), Disposition::Recheck, 0, "NPU OK, measured short tooth"},
         {0, meas_gear(30, 32.0f, 0.05f, 1, false), Disposition::Pick, 0, "short tooth not judged (far off-axis)"},
-        {4, meas_rack(48.0f), Disposition::Flap, 1, "48 mm rack"},
-        {4, meas_rack(50.1f), Disposition::Pick, 1, "50 mm rack"},
+        {0, meas_rack(48.0f), Disposition::Flap, 1, "48 mm rack"},
+        {0, meas_rack(50.1f), Disposition::Pick, 0, "50 mm rack"},
         // racks are cut at whole teeth (pitch 3.125 mm, 16 teeth = 50.0): hand-cut 16-tooth parts scatter a few
         // tenths, a tooth more or less is 3.1 mm -> tolerance 1.0 (2026-10-17)
-        {4, meas_rack(50.8f), Disposition::Pick, 1, "16-tooth rack, hand-cut +0.8"},
-        {4, meas_rack(46.875f), Disposition::Flap, 1, "15-tooth rack"},
-        {4, meas_rack(53.125f), Disposition::Flap, 1, "17-tooth rack"},
+        {0, meas_rack(50.8f), Disposition::Pick, 0, "16-tooth rack, hand-cut +0.8"},
+        {0, meas_rack(46.875f), Disposition::Flap, 1, "15-tooth rack"},
+        {0, meas_rack(53.125f), Disposition::Flap, 1, "17-tooth rack"},
         {2, meas_gear(30, 32.0f, 0.05f, 0, true), Disposition::Flap, 2, "NPU flash stays NPU flash"},
         {0, PartMeasure{}, Disposition::Pick, 0, "not measured, require off"},
     }, "size rule:");
@@ -215,7 +173,7 @@ static void test_recipes()
     check_size_cases(cfg, {
         {0, meas_gear(28, 30.02f, 0.05f, 0, true), Disposition::Pick, 0, "28-tooth gear is good now"},
         {0, meas_gear(30, 32.0f, 0.05f, 0, true), Disposition::Flap, 1, "30-tooth gear is the mix-up now"},
-        {4, meas_rack(50.0f), Disposition::Pick, 1, "rack unchanged"},
+        {0, meas_rack(50.0f), Disposition::Pick, 0, "rack unchanged"},
     }, "recipe 2:");
     find_recipe(list, 3)->apply(cfg.size);
     check_size_cases(cfg, {
@@ -232,9 +190,8 @@ static void test_votes()
     std::mt19937 rng(3);
     Tracker tr(tracker_cfg());
     std::vector<SimPart> parts = {{-40, 0, 30, 30, 0.f, -1}, {-120, 10, 30, 30, 0.f, -1}};
-    std::vector<float> flash(8, 0.04f), unsure(8, 0.f);
-    flash[2] = 0.72f;                                   // gear_flash
-    unsure[0] = 0.4f; unsure[2] = 0.35f; unsure[3] = 0.25f;
+    float flash[4] = {0.04f, 0.04f, 0.72f, 0.04f};   // gear_flash
+    float unsure[4] = {0.4f, 0.f, 0.35f, 0.25f};
     int voted[2] = {0, 0};
     uint32_t f = 0;
     for (double B = 0; B < 450; B += 1.0, f++) {
@@ -243,7 +200,7 @@ static void test_votes()
             float x = t.x_at(B);
             for (int i = 0; i < 2; i++)
                 if (std::fabs(t.s - parts[i].s) < 5 && x > 100 && x < 200 && voted[i] < 3 && int(B) % 20 == 0)
-                    voted[i] += tr.vote(t.id, i == 0 ? flash : unsure);
+                    voted[i] += tr.vote(t.id, i == 0 ? flash : unsure, 4);
         }
     }
     CHECK(voted[0] == 3 && voted[1] == 3, "votes accepted %d %d", voted[0], voted[1]);
@@ -252,14 +209,20 @@ static void test_votes()
             CHECK(t.disp == Disposition::Flap && t.dest == 2 && std::fabs(t.cls_conf - 0.72f) < 1e-3f,
                   "voted flash -> %s/%d conf %.3f", to_str(t.disp), t.dest, t.cls_conf);
         if (std::fabs(t.s - parts[1].s) < 5)
-            CHECK(t.disp == Disposition::Recheck && t.why == "low confidence", "unsure votes -> %s (%s)",
-                  to_str(t.disp), t.why.c_str());
+            CHECK(t.disp == Disposition::Recheck && !strcmp(t.why, "low confidence"), "unsure votes -> %s (%s)",
+                  to_str(t.disp), t.why);
     }
-    CHECK(!tr.vote(9999, flash), "vote for a missing track is refused");
+    CHECK(!tr.vote(9999, flash, 4), "vote for a missing track is refused");
+    // the per-track score buffer is fixed (no heap): classes past Track::kMaxScore are dropped, the call says so
+    Tracker t3(tracker_cfg());
+    t3.update(observe({{-40, 0, 30, 30, 0.f, -1}}, 100, 0, rng));   // part at table x 60: inside the view
+    const Track *nt = t3.find(1);
+    float wide[20] = {};
+    CHECK(nt && !t3.vote(nt->id, wide, 20), "vote with more than 16 classes is refused");
+    CHECK(nt && nt->n_score == Track::kMaxScore, "score buffer clamped to 16 classes (%d)", nt ? int(nt->n_score) : -1);
 }
 
-// two-stage flaps follow the picker's flap events: set prepare_mm ahead, held until clear_mm past, rest = recheck
-// belt speed adaptation (sched/speed_adapt.hpp): slow down so the next OK part arrives when the arm is ready
+// belt speed adaptation (sched/picker.hpp): slow down so the next OK part arrives when the arm is ready
 static void test_speed_adapt()
 {
     SpeedAdaptConfig c;
@@ -275,6 +238,7 @@ static void test_speed_adapt()
     CHECK(adapt_speed(c, 50, 100, 4) == 50, "disabled: base");
 }
 
+// two-stage flaps follow the picker's flap events: set prepare_mm ahead, held until clear_mm past, rest = recheck
 static void test_flaps()
 {
     FlapConfig fc;   // prepare 110, clear 190
@@ -473,17 +437,17 @@ static void test_picker()
     CHECK(pk.stats.flap_conflicts >= 1, "flap conflict not detected");
     CHECK(job.open_mm > 30 && job.open_mm < 45, "gear opening %.1f", job.open_mm);
 
-    // crowded: an OK rack lying 3 mm beside another part cannot be gripped across its width
+    // crowded: an OK part lying 22 mm beside another part cannot be gripped across its width
     Tracker t2(tracker_cfg());
-    std::vector<SimPart> crowd = {{-40, 0, 60, 12, 0.f, 4}, {-40, 22, 60, 12, 0.f, 5}};
+    std::vector<SimPart> crowd = {{-40, 0, 60, 12, 0.f, 0}, {-40, 22, 60, 12, 0.f, 1}};
     for (double b = 0; b < 320; b += 1.0) t2.update(observe(crowd, b, uint32_t(b), rng));
     Picker::Input in;
     in.belt_mm = 320; in.brake_mm = 2; in.belt_stopped = false;
     pk.tick(t2, in);
     const Track *ok = nullptr;
     for (const Track &t : t2.tracks()) if (std::fabs(t.y) < 5) ok = &t;
-    CHECK(ok && ok->disp == Disposition::Recheck && ok->why == "crowded", "crowded rack -> %s (%s)",
-          ok ? to_str(ok->disp) : "none", ok ? ok->why.c_str() : "");
+    CHECK(ok && ok->disp == Disposition::Recheck && !strcmp(ok->why, "crowded"), "crowded part -> %s (%s)",
+          ok ? to_str(ok->disp) : "none", ok ? ok->why : "");
 }
 
 static ArmConfig arm_cfg()
@@ -502,6 +466,20 @@ static std::array<uint16_t, 6> ready_counts(const ArmConfig &a)
     j.q = a.home_deg;
     arm_to_counts(a, j, 30, k);
     return k;
+}
+
+// arm_ik -> arm_fk of a grasp point: CHECKs the solve and the round-trip error (tag names the case), so the call
+// sites only add their own convention checks.
+static bool check_ik_fk(const ArmConfig &c, Vec3 p, float close_axis, const char *tag, JointAngles &j, float tol = 0.02f,
+                        float tilt = 0)
+{
+    const char *w = arm_ik(c, p, close_axis, j, tilt);
+    CHECK(!w, "%s: %s", tag, w ? w : "ok");
+    if (w) return false;
+    const Vec3 q = arm_fk(c, j);
+    const float e = std::hypot(std::hypot(q.x - p.x, q.y - p.y), q.z - p.z);
+    CHECK(e < tol, "%s: ik/fk round trip %.4f mm", tag, e);
+    return true;
 }
 
 static void test_arm()
@@ -602,15 +580,9 @@ static void test_arm()
         const Vec3 far{200, 0, 6};   // 200 mm in front of the base axis, at grasp height
         CHECK(arm_ik(t, far, kPi / 2, jv) != nullptr, "200 mm is out of the vertical reach");
         const float tilt = 30.f * kPi / 180;
-        const char *w = arm_ik(t, far, kPi / 2, jt, tilt);
-        CHECK(!w, "200 mm tilted 30 deg: %s", w ? w : "ok");
-        if (!w) {
-            Vec3 q = arm_fk(t, jt);
-            CHECK(std::hypot(std::hypot(q.x - far.x, q.y - far.y), q.z - far.z) < 0.01f,
-                  "tilted ik/fk round trip (%.3f, %.3f, %.3f)", q.x, q.y, q.z);
+        if (check_ik_fk(t, far, kPi / 2, "200 mm tilted 30 deg", jt, 0.01f, tilt))
             CHECK(std::fabs(jt.q[1] + jt.q[2] + jt.q[3] + 60.f) < 1e-3f, "tool leans 30 deg: q2+q3+q4 = %.3f",
                   jt.q[1] + jt.q[2] + jt.q[3]);
-        }
         CHECK(arm_ik(t, far, 0.f, jt, tilt) != nullptr, "a tilted grasp refuses a radial closing axis");
 
         std::array<uint16_t, 6> h = ready_counts(t);
@@ -618,14 +590,14 @@ static void test_arm()
         const Vec2 tp{t.base_xy.x, t.base_xy.y + 200.f};   // base_yaw 90 deg: arm +x = table +y
         float used = -1;
         t.max_tilt_deg = 40;
-        w = plan_pick(t, tp, arm_tangential_axis(t, tp), 40, 32, 0, h, wt, &used);
-        CHECK(!w && used > 0 && used <= 40 && wt.size() == 7, "plan_pick 200 mm: %s, tilt %.0f deg", w ? w : "ok",
+        why = plan_pick(t, tp, arm_tangential_axis(t, tp), 40, 32, 0, h, wt, &used);
+        CHECK(!why && used > 0 && used <= 40 && wt.size() == 7, "plan_pick 200 mm: %s, tilt %.0f deg", why ? why : "ok",
               used);
         CHECK(plan_pick(t, tp, arm_tangential_axis(t, tp) + kPi / 2, 40, 32, 0, h, wt) != nullptr,
               "radial closing axis at 200 mm: out of reach");
         const Vec2 np{t.base_xy.x + 10.f, t.base_xy.y + 120.f};
-        w = plan_pick(t, np, arm_tangential_axis(t, np), 40, 32, 0, h, wt, &used);
-        CHECK(!w && used == 0, "120 mm stays vertical: %s, tilt %.0f", w ? w : "ok", used);
+        why = plan_pick(t, np, arm_tangential_axis(t, np), 40, 32, 0, h, wt, &used);
+        CHECK(!why && used == 0, "120 mm stays vertical: %s, tilt %.0f", why ? why : "ok", used);
         t.max_tilt_deg = 0;
         CHECK(plan_pick(t, tp, arm_tangential_axis(t, tp), 40, 32, 0, h, wt) != nullptr,
               "max_tilt_deg 0: vertical only");
@@ -641,13 +613,10 @@ static void test_arm()
             JointAngles j;
             for (float ax : {0.f, 0.6f, -1.2f, 1.5f}) {   // vertical grasps, any closing axis
                 const Vec3 p{130, -25, 3};
-                const char *w = arm_ik(o, p, ax, j);
-                Vec3 q = arm_fk(o, j);
-                CHECK(!w && std::hypot(std::hypot(q.x - p.x, q.y - p.y), q.z - p.z) < 0.02f,
-                      "offset vertical ik/fk (side %+.0f, axis %.1f): %s err %.3f", side * 180 / kPi, ax,
-                      w ? w : "ok", std::hypot(std::hypot(q.x - p.x, q.y - p.y), q.z - p.z));
-                const float closing = j.q[0] / 180 * kPi + j.q[4] / 180 * kPi + o.grip_axis_at_zero;
-                CHECK(std::fabs(wrap_axis(closing - ax)) < 1e-3f, "offset: fingers still close along %.2f", ax);
+                if (check_ik_fk(o, p, ax, "offset vertical grasp", j)) {
+                    const float closing = j.q[0] / 180 * kPi + j.q[4] / 180 * kPi + o.grip_axis_at_zero;
+                    CHECK(std::fabs(wrap_axis(closing - ax)) < 1e-3f, "offset: fingers still close along %.2f", ax);
+                }
             }
             for (float ax : {0.f, 0.6f, -1.2f, 1.5f}) {   // near the base: the #6 servo must not face it
                 const Vec3 near{90, -12, 3};
@@ -673,17 +642,14 @@ static void test_arm()
                   std::hypot(a.x - b.x, a.y - b.y));
             const Vec3 far{200, 0, 3};   // tilted: servo on the outer (upper) side, round trip exact
             const float tilt = 30.f * kPi / 180;
-            const char *w = arm_ik(o, far, kPi / 2, j, tilt);
-            CHECK(!w, "offset tilted: %s", w ? w : "ok");
-            if (!w) {
-                Vec3 q = arm_fk(o, j);
-                CHECK(std::hypot(std::hypot(q.x - far.x, q.y - far.y), q.z - far.z) < 0.02f,
-                      "offset tilted ik/fk (%.3f, %.3f, %.3f)", q.x, q.y, q.z);
-                const float phi = j.q[4] / 180 * kPi + o.grip_axis_at_zero + o.servo_side;
+            JointAngles jtilt;
+            if (check_ik_fk(o, far, kPi / 2, "offset tilted grasp", jtilt, 0.02f, tilt)) {
+                const float phi = jtilt.q[4] / 180 * kPi + o.grip_axis_at_zero + o.servo_side;
                 CHECK(std::fabs(wrap_pi(phi)) < 1e-4f, "tilted: servo side outward (phi %.3f)", phi);
                 ArmConfig lo = o;   // the servo side 9 mm along s: outward + up when leaning away
                 lo.tool_offset = 9 + 40;
-                CHECK(arm_fk(lo, j).z > q.z + 40 * std::sin(tilt) - 0.01f, "tilted: servo side is the upper side");
+                CHECK(arm_fk(lo, jtilt).z > arm_fk(o, jtilt).z + 40 * std::sin(tilt) - 0.01f,
+                      "tilted: servo side is the upper side");
             }
         }
     }
@@ -736,7 +702,7 @@ static void test_arm_base_fit()
     CHECK(std::fabs(f.base_yaw - yaw) < 0.3f * kPi / 180, "yaw %.3f deg", f.base_yaw * 180 / kPi);
     CHECK(std::fabs(f.belt_z - belt) < 0.3f, "belt_z %.2f", f.belt_z);
     CHECK(f.rms < 0.6f && f.max < 1.0f && f.resid.size() == 5, "residual rms %.2f max %.2f", f.rms, f.max);
-    // the fitted transform maps a new table point to the same arm point as the true one (within 1 mm)
+    // the fitted transform maps a new table point to the same arm point as the true one (within 1 mm), both ways
     ArmConfig cfg;
     cfg.base_xy = f.base_xy;
     cfg.base_yaw = f.base_yaw;
@@ -746,6 +712,9 @@ static void test_arm_base_fit()
     Vec3 a1 = table_to_arm(cfg, {330, 0}, 0), a2 = table_to_arm(truth, {330, 0}, 0);
     CHECK(std::hypot(a1.x - a2.x, a1.y - a2.y) < 1, "pick point through the fit off by %.2f mm",
           std::hypot(a1.x - a2.x, a1.y - a2.y));
+    Vec2 t1 = arm_to_table(cfg, a1), t2 = arm_to_table(truth, a2);
+    CHECK(std::hypot(t1.x - t2.x, t1.y - t2.y) < 1 && std::hypot(t1.x - 330, t1.y) < 1,
+          "arm_to_table inverts table_to_arm: (%.2f, %.2f)", t1.x, t1.y);
     // a wrong pair (marker moved after it was located) shows up in the residuals
     arm[2].x += 15;
     f = fit_arm_base(arm, table, h);
@@ -771,6 +740,5 @@ int main()
     test_picker_tangential();
     test_arm();
     test_arm_base_fit();
-    printf("%d passed, %d failed\n", g_pass, g_fail);
-    return g_fail;
+    return test_summary();
 }

@@ -11,18 +11,10 @@
 #include <string>
 #include <thread>
 
-#include "modbus_map.h"
 #include "modbus_tcp.hpp"
+#include "test_check.hpp"
 
 using namespace des;
-
-static int g_fail = 0, g_pass = 0;
-#define CHECK(cond, ...)                                              \
-    do {                                                              \
-        if (cond) g_pass++;                                           \
-        else { g_fail++; printf("FAIL %s:%d: ", __FILE__, __LINE__);  \
-               printf(__VA_ARGS__); printf("\n"); }                   \
-    } while (0)
 
 static int connect_to(int port)
 {
@@ -37,7 +29,6 @@ static int connect_to(int port)
     }
     return fd;
 }
-
 static std::string mbap(uint16_t tid, const std::string &pdu, uint8_t unit = 1)
 {
     std::string s;
@@ -46,9 +37,8 @@ static std::string mbap(uint16_t tid, const std::string &pdu, uint8_t unit = 1)
     s += char(n >> 8); s += char(n & 0xFF); s += char(unit);
     return s + pdu;
 }
-
 static std::string u16(uint16_t v) { return std::string{char(v >> 8), char(v & 0xFF)}; }
-
+static uint16_t reg(const std::string &f, int i) { return uint16_t((uint8_t(f[9 + 2 * i]) << 8) | uint8_t(f[10 + 2 * i])); }
 // one reply frame (MBAP + PDU), "" on timeout / close; bytes of a following frame stay buffered per socket
 static std::string recv_frame(int fd, int timeout_ms = 1000)
 {
@@ -74,9 +64,6 @@ static std::string recv_frame(int fd, int timeout_ms = 1000)
         in.append(b, size_t(r));
     }
 }
-
-static uint16_t reg(const std::string &f, int i) { return uint16_t((uint8_t(f[9 + 2 * i]) << 8) | uint8_t(f[10 + 2 * i])); }
-
 int main()
 {
     ModbusTcp mb(MB_N_HR, MB_N_IR);
@@ -87,10 +74,8 @@ int main()
     mb.set_inputs(MB_IR_STATE, {1, 0x11, 0, 70000 & 0xFFFF});
     mb.set_input(MB_IR_VERSION, MB_MAP_VERSION);
     mb.set_holding(MB_HR_SPEED, 500);
-
     const int fd = connect_to(port);
     CHECK(fd >= 0, "connect");
-
     // FC 04 read input registers
     send(fd, mbap(7, std::string("\x04", 1) + u16(0) + u16(4)).data(), 7 + 5, 0);
     std::string f = recv_frame(fd);
@@ -108,7 +93,6 @@ int main()
     send(fd, mbap(9, std::string("\x04", 1) + u16(MB_IR_VERSION) + u16(1)).data(), 12, 0);
     f = recv_frame(fd);
     CHECK(f.size() == 11 && reg(f, 0) == MB_MAP_VERSION, "map version");
-
     // FC 06 write single -> echoed, queued (not applied to the table)
     std::string w6 = std::string("\x06", 1) + u16(MB_HR_CMD) + u16(1);
     send(fd, mbap(10, w6).data(), 12, 0);
@@ -117,7 +101,6 @@ int main()
     auto w = mb.take_writes();
     CHECK(w.size() == 1 && w[0].addr == MB_HR_CMD && w[0].value == 1, "FC06 queued");
     CHECK(mb.take_writes().empty(), "queue drained");
-
     // FC 16 write multiple (time hi / lo in one request)
     std::string w16 = std::string("\x10", 1) + u16(MB_HR_TIME_HI) + u16(2) + std::string(1, '\x04') + u16(0x6712) + u16(0x3456);
     send(fd, mbap(11, w16).data(), 7 + w16.size(), 0);
@@ -130,7 +113,6 @@ int main()
     w = mb.take_writes();
     CHECK(w.size() == 2 && w[0].addr == MB_HR_TIME_HI && w[0].value == 0x6712 && w[1].addr == MB_HR_TIME_LO &&
               w[1].value == 0x3456, "FC16 queued in order");
-
     // exceptions: 01 unknown function, 02 out of range, 03 bad quantity
     send(fd, mbap(12, std::string("\x01", 1) + u16(0) + u16(1)).data(), 12, 0);
     f = recv_frame(fd);
@@ -145,7 +127,6 @@ int main()
     f = recv_frame(fd);
     CHECK(f.size() == 9 && uint8_t(f[7]) == 0x86 && uint8_t(f[8]) == 2, "exception 02 (FC06 address)");
     CHECK(mb.take_writes().empty(), "rejected writes not queued");
-
     // a request split over two TCP segments, then two requests in one segment
     std::string r1 = mbap(20, std::string("\x04", 1) + u16(0) + u16(1));
     send(fd, r1.data(), 5, 0);
@@ -159,7 +140,6 @@ int main()
     std::string g = recv_frame(fd);
     CHECK(f.size() == 11 && uint8_t(f[1]) == 21 && reg(f, 0) == 0x11, "pipelined 1");
     CHECK(g.size() == 11 && uint8_t(g[1]) == 22 && reg(g, 0) == 500, "pipelined 2");
-
     // second client at the same time; request counter
     const int fd2 = connect_to(port);
     send(fd2, mbap(30, std::string("\x04", 1) + u16(0) + u16(2)).data(), 12, 0);
@@ -168,7 +148,6 @@ int main()
     CHECK(mb.requests() == 13, "request count %llu", (unsigned long long)mb.requests());
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
     CHECK(mb.clients() == 2, "clients %d", mb.clients());
-
     // not Modbus (protocol id != 0): connection closed
     std::string bad = mbap(40, std::string("\x04", 1) + u16(0) + u16(1));
     bad[3] = 1;
@@ -178,7 +157,6 @@ int main()
     const bool closed = poll(&p, 1, 1000) == 1 && recv(fd2, &b, 1, 0) == 0;
     CHECK(closed, "bad protocol id closes the connection");
     close(fd2);
-
     // latency: 1000 sequential reads
     const auto t0 = std::chrono::steady_clock::now();
     int ok = 0;
@@ -187,13 +165,11 @@ int main()
         send(fd, rq.data(), rq.size(), 0);
         if (recv_frame(fd).size() == 9 + 2 * MB_N_IR) ok++;
     }
-    const double us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count() / 1000;
     CHECK(ok == 1000, "1000 reads, %d ok", ok);
+    const double us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count() / 1000;
     printf("read %d registers: %.1f us per round trip (loopback)\n", MB_N_IR, us);
-
     close(fd);
     mb.stop();
     CHECK(connect_to(port) < 0, "stopped: port closed");
-    printf("test_modbus: %d passed, %d failed\n", g_pass, g_fail);
-    return g_fail;
+    return test_summary("test_modbus");
 }

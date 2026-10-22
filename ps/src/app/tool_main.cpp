@@ -1,306 +1,202 @@
-// tool_main.cpp — des_tool: the operator entry point (register / calibration / measurement / bring-up modes).
-//
-//   des_tool probe  [-n sec] [--vmax N] [--exp us] [--gain dB*10]   capture timing: fps, skipped frames, re-arm latency
-//   des_tool locate [-n frames] [--dump file.png]                   capture + localization, prints blobs
-//   des_tool track  [-n sec] [--belt mm/s]                          capture + locate + tracking table + picker, no arm
-//   des_tool display [-n sec]                                       camera -> HDMI at 60 fps (BGRA->BGR + page flip), timing
-//   des_tool collect --cls <label> [-n sec] [--belt mm/s] [--every N] [--max N] [--full N] [--out dir]
-//                                                                   live + training crops of one class (des_app.json labels)
-//   des_tool measure [-n frames] [--image f.png] [--out raw.png] [--dump report.png]
-//                                                                   measure every gear / rack in view; -n > 1: repeatability
-//   des_tool calib-cam [--board 9x6] [--square mm] [--travel …] [--image f.png] [--out calib.json]
-//                                                                   checkerboard on the belt -> px_to_table (calib.json)
-//   des_tool calib-belt [--steps N] [--belt mm/s]                   one part on the belt -> mm_per_step, dir (calib.json)
-//   des_tool calib-enc [-n rounds] [--steps N] [--belt mm/s]        empty belt -> encoder mm_per_count, dir (calib.json)
-//   des_tool calib-arm [-n 4] [--marker-h mm]                       hand-eye: arm base_xy / yaw / belt_z (calib.json)
-//   des_tool arm scan|read|teach|torque-on|torque-off               servo bring-up (no motion)
-//   des_tool arm home|goto <x> <y> [z] [axis]|pick <x> <y> [axis_deg] [bin]    motion: dry run unless --go
-//   des_tool ik <x> <y> [z] [axis_deg]                              table-frame target -> joint angles / servo counts
-//   --version                                                       build date/time
-//
-// These are human-driven: they print measurements for a person to read, write calib.json / training crops, and
-// (with --go / calib-belt / calib-enc) can move hardware - so they are NOT part of the deployed product binary. The product
-// runtime (run / live) is main.cpp -> des_app. Automated pass/fail checks are the separate test_* binaries.
-#include <signal.h>
+// tool_main.cpp — des_tool: the operator entry point. Modes: probe | locate | track | display | collect | measure |
+//   calib-cam | calib-belt | calib-enc | calib-flat | calib-arm | arm (scan|read|teach|torque-*|home|goto|pick) | ik,
+//   --version; options: -c cfg.json -n N --vmax N --exp us --gain dB*10 --dump f.png --belt mm/s --no-rt --out …
+// Human-driven (prints measurements, writes calib.json / training crops, can move hardware with --go / calib-*), so it is
+// NOT part of the deployed product binary (run / live = main.cpp -> des_app); pass/fail checks are the test_* binaries.
 #include <unistd.h>
-
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <map>
-#include <memory>
 #include <string>
-
+#include <vector>
 #include <opencv2/core/utility.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
-
-#include "arm_exec.hpp"
+#include "arm_io.hpp"
 #include "calib.hpp"
 #include "camera_rig.hpp"
 #include "cli_common.hpp"
 #include "config.hpp"
 #include "des_hw.h"
+#include "display.hpp"
 #include "flat_field.hpp"
-#include "hdmi_out.hpp"
 #include "live.hpp"
 #include "locate.hpp"
 #include "measure_tool.hpp"
-
+#include "tool_util.hpp"
 using namespace des;
-
-// des_tool's usage text lives here (not in cli_common.cpp) so that the product binary does not carry the operator
-// command list: only this entry translation unit references it.
+// des_tool's usage text lives here (not in cli_common.cpp) so that the product binary does not carry the operator command list: only this entry translation unit references it.
 static void usage_tool()
 {
     fprintf(stderr,
-            "usage: des_tool probe|locate|track|display|collect|measure|calib-cam|calib-belt|calib-enc|calib-flat|calib-arm|arm|ik\n"
-            "       [options]\n"
-            "  -c cfg.json  -n N  --vmax N  --exp us  --gain dB*10  --dump file.png  --belt mm/s  --no-rt\n"
-            "  calib-cam: --board <cols>x<rows> (inner corners)  --square <mm>  --travel right|left|down|up\n"
-            "             --image <file> (instead of the camera)  --out <calib.json>  --exhaustive\n"
-            "  calib-belt: ONE part on the belt near the upstream edge (camera calibrated first); the belt moves\n"
-            "             forward and back. --steps <long move>  --belt <mm/s> (default 20)  --out <calib.json>\n"
-            "  calib-enc: EMPTY belt; moves --steps (default 300 mm) downstream and back, -n rounds, at --belt mm/s\n"
-            "             (default belt.run_speed): measuring-wheel encoder vs stepper -> calib.json \"encoder\"\n"
-            "  calib-flat: a blank white sheet covering the upstream edge of the view; the belt carries it across\n"
-            "             in --steps steps (default 40 mm) and back: white level of the view -> flat.json (crops)\n"
-            "  calib-arm: interactive hand-eye calibration (camera calibrated, joint zeros right): -n <points, >= 3>\n"
-            "             --carry <mm> (belt carries each located marker downstream to the arm before the touch)\n"
-            "             --marker-h <mm> (marker top above the belt; also fits arm.belt_z)  --out <calib.json>\n"
-            "  arm: scan | read | teach | torque-on | torque-off | home | goto x y [z] [axis] | pick x y [axis] [bin]\n"
-            "       motion commands only print the servo frames unless --go\n"
-            "  collect: --cls <label> (one class per session)  --every <frames>  --max <crops per part>\n"
-            "           --full <frames> (also full frames + YOLO boxes)  --out <dir>  --belt <mm/s>\n"
-            "  measure: -n <frames> (still parts: repeatability)  --image <file> (instead of the camera)\n"
-            "           --out <raw.png> (keep the frame for --image later)  --dump <report.png>\n"
-            "  --version  print the build date/time\n"
-            "product runtime (run / live) is des_app\n");
+            "usage: des_tool probe|locate|track|display|collect|measure|calib-cam|calib-belt|calib-enc|calib-flat|calib-arm|arm|ik\n       [options]\n  -c cfg.json  -n N  --vmax N  --exp us  --gain dB*10  --dump file.png  --belt mm/s  --no-rt\n"
+            "  calib-cam: --board <cols>x<rows> (inner corners)  --square <mm>  --travel right|left|down|up\n             --image <file> (instead of the camera)  --out <calib.json>  --exhaustive\n  calib-belt: ONE part on the belt near the upstream edge (camera calibrated first); the belt moves\n"
+            "             forward and back. --steps <long move>  --belt <mm/s> (default 20)  --out <calib.json>\n  calib-enc: EMPTY belt; moves --steps (default 300 mm) downstream and back, -n rounds, at --belt mm/s\n"
+            "             (default belt.run_speed): measuring-wheel encoder vs stepper -> calib.json \"encoder\"\n  calib-flat: a blank white sheet covering the upstream edge of the view; the belt carries it across\n"
+            "             in --steps steps (default 40 mm) and back: white level of the view -> flat.json (crops)\n  calib-arm: interactive hand-eye calibration (camera calibrated, joint zeros right): -n <points, >= 3>\n"
+            "             --carry <mm> (belt carries each located marker downstream to the arm before the touch)\n             --marker-h <mm> (marker top above the belt; also fits arm.belt_z)  --out <calib.json>\n"
+            "  arm: scan | read | teach | torque-on | torque-off | home | goto x y [z] [axis] | pick x y [axis] [bin]\n       motion commands only print the servo frames unless --go\n  collect: --cls <label> (one class per session)  --every <frames>  --max <crops per part>\n"
+            "           --full <frames> (also full frames + YOLO boxes)  --out <dir>  --belt <mm/s>\n  measure: -n <frames> (still parts: repeatability)  --image <file> (instead of the camera)\n           --out <raw.png> (keep the frame for --image later)  --dump <report.png>\n"
+            "  --version  print the build date/time\nproduct runtime (run / live) is des_app\n");
 }
-
-// ---------------------------------------------------------------- probe
 static int run_probe(des_hw_t &hw, const AppConfig &cfg, const Args &a)
 {
-    CameraRig cam(&hw);
-    if (open_camera(cam, cfg, a)) return 1;
+    CameraSession cam(&hw, cfg, a);
+    if (!cam.ok()) return 1;
     CapturedFrame f;
-    for (int i = 0; i < 30; i++)   // let exposure / VMAX changes settle
-        if (!cam.next(f, false).empty()) return 1;
-
+    if (!capture_frames(*cam, 30, f).empty()) return 1;   // let exposure / VMAX changes settle
     double secs = a.n > 0 ? a.n : 10;
-    uint64_t frames = 0, skipped = 0, gap_hist[4] = {0, 0, 0, 0};
-    double rearm_sum = 0, rearm_max = 0, wait_max = 0;
+    uint64_t frames = 0, skipped = 0, gap_hist[4] = {0, 0, 0, 0}, rearm_sum = 0; uint32_t rearm_max = 0, wait_max = 0;
     double t_start = now_s(), t_sec = t_start;
     uint64_t sec_frames = 0;
     while (!g_stop && now_s() - t_start < secs) {
-        std::string err = cam.next(f, false);
+        std::string err = cam->next(f, false);
         if (!err.empty()) { fprintf(stderr, "%s\n", err.c_str()); return 1; }
-        frames++;
-        sec_frames++;
-        uint32_t g = f.pl_gap;
-        gap_hist[g >= 3 ? 3 : g]++;
+        frames++; sec_frames++;
+        uint32_t g = f.pl_gap; gap_hist[g >= 3 ? 3 : g]++;
         if (g > 1) skipped += g - 1;
-        rearm_sum += f.rearm_us;
-        rearm_max = std::max(rearm_max, f.rearm_us);
+        rearm_sum += f.rearm_us; rearm_max = std::max(rearm_max, f.rearm_us);
         wait_max = std::max(wait_max, f.wait_us);
         double t = now_s();
         if (t - t_sec >= 1.0) {
-            des_frame_t fr;
-            des_frame_read(&hw, &fr);
-            printf("%5.1f fps (PS)  %6.2f fps (PL sensor)  skipped so far %llu\n", sec_frames / (t - t_sec),
-                   fr.period ? double(DES_FREE_CNT_HZ) / fr.period : 0.0, (unsigned long long)skipped);
-            fflush(stdout);
-            t_sec = t;
+            des_frame_t fr; des_frame_read(&hw, &fr);
+            printf("%5.1f fps (PS)  %6.2f fps (PL sensor)  skipped so far %llu\n", sec_frames / (t - t_sec), fr.period ? double(DES_FREE_CNT_HZ) / fr.period : 0.0, (unsigned long long)skipped);
+            fflush(stdout); t_sec = t;
             sec_frames = 0;
         }
     }
     double el = now_s() - t_start;
-    des_frame_t fr;
-    des_frame_read(&hw, &fr);
-    printf("\n== probe: %llu frames in %.2f s = %.2f fps captured; sensor %.3f fps (FRAME_PERIOD %u)\n",
-           (unsigned long long)frames, el, frames / el, fr.period ? double(DES_FREE_CNT_HZ) / fr.period : 0.0,
-           fr.period);
-    printf("   PL frame gap: 1 -> %llu, 2 -> %llu, >=3 -> %llu  (skipped %llu = %.2f%%)\n",
-           (unsigned long long)gap_hist[1], (unsigned long long)gap_hist[2], (unsigned long long)gap_hist[3],
-           (unsigned long long)skipped, frames ? 100.0 * skipped / (frames + skipped) : 0.0);
-    printf("   re-arm after completion: avg %.1f us, max %.1f us; longest wait %.1f ms\n",
-           frames ? rearm_sum / frames : 0.0, rearm_max, wait_max / 1000);
-    printf("   last frame: PL frame %u, belt pos %d -> %d steps (%s)\n", f.pl_frame, f.step_pos, f.step_pos_end,
-           f.latched ? "PL-latched at writer start / done" : "read after completion, pre-v5 bitstream");
+    des_frame_t fr; des_frame_read(&hw, &fr);
+    printf("\n== probe: %llu frames in %.2f s = %.2f fps captured; sensor %.3f fps (FRAME_PERIOD %u)\n", (unsigned long long)frames, el, frames / el, fr.period ? double(DES_FREE_CNT_HZ) / fr.period : 0.0, fr.period);
+    printf("   PL frame gap: 1 -> %llu, 2 -> %llu, >=3 -> %llu  (skipped %llu = %.2f%%)\n", (unsigned long long)gap_hist[1], (unsigned long long)gap_hist[2], (unsigned long long)gap_hist[3], (unsigned long long)skipped, frames ? 100.0 * skipped / (frames + skipped) : 0.0);
+    printf("   re-arm after completion: avg %.1f us, max %.1f us; longest wait %.1f ms\n", frames ? double(rearm_sum) / double(frames) : 0.0, double(rearm_max), wait_max / 1e3);
+    printf("   last frame: PL frame %u, belt pos %d -> %d steps (%s)\n", f.pl_frame, f.step_pos, f.step_pos_end, f.latched ? "PL-latched at writer start / done" : "read after completion, pre-v5 bitstream");
     return 0;
 }
-
-// ---------------------------------------------------------------- locate
 static int run_locate(des_hw_t &hw, const AppConfig &cfg, const Args &a)
 {
-    CameraRig cam(&hw);
-    if (open_camera(cam, cfg, a)) return 1;
-    Locator loc(cfg.locate);
-    CapturedFrame f;
+    CameraSession cam(&hw, cfg, a);
+    if (!cam.ok()) return 1;
+    Locator loc(cfg.locate); CapturedFrame f;
     int n = a.n > 0 ? int(a.n) : 60;
     double sum_ms = 0;
     for (int i = 0; i < n && !g_stop; i++) {
-        std::string err = cam.next(f, true);
+        std::string err = cam->next(f, true);
         if (!err.empty()) { fprintf(stderr, "%s\n", err.c_str()); return 1; }
-        LocateTiming tm;
-        auto dets = loc.run(f.bgra, f.width, f.height, f.stride, cfg.px_to_table, &tm);
-        double ms = (f.sync_us + tm.gray_us + tm.thresh_us + tm.contour_us) / 1000;
+        LocateTiming tm; auto dets = loc.run(f.bgra, f.width, f.height, f.stride, cfg.px_to_table, &tm);
+        double ms = double(f.sync_us + tm.gray_us + tm.thresh_us + tm.contour_us) / 1e3;
         sum_ms += ms;
-        printf("frame %u: %zu blobs, thr %d | sync %.1f gray %.1f thr %.1f contour %.1f = %.1f ms\n", f.pl_frame,
-               dets.size(), tm.threshold, f.sync_us / 1000, tm.gray_us / 1000, tm.thresh_us / 1000,
-               tm.contour_us / 1000, ms);
+        printf("frame %u: %zu blobs, thr %d | sync %.1f gray %.1f thr %.1f contour %.1f = %.1f ms\n", f.pl_frame, dets.size(), int(tm.threshold), f.sync_us / 1e3, tm.gray_us / 1e3, tm.thresh_us / 1e3, tm.contour_us / 1e3, ms);
         if (i == n - 1 || i % 30 == 0)
             for (const Detection &d : dets)
-                printf("   x %7.1f y %7.1f mm  len %5.1f wid %5.1f  axis %6.1f deg%s%s\n", d.p.x, d.p.y, d.len, d.wid,
-                       d.axis * 180 / kPi, d.partial ? "  partial" : "", d.merged ? "  MERGED" : "");
+                printf("   x %7.1f y %7.1f mm  len %5.1f wid %5.1f  axis %6.1f deg%s%s\n", d.p.x, d.p.y, d.len, d.wid, d.axis * 180 / kPi, d.partial ? "  partial" : "", d.merged ? "  MERGED" : "");
     }
     printf("== locate: avg %.1f ms per frame\n", sum_ms / n);
     if (!a.dump.empty()) printf("dump %s: %s\n", a.dump.c_str(), loc.dump(a.dump.c_str()) ? "ok" : "FAILED");
     return 0;
 }
-
-// ---------------------------------------------------------------- track
 static int run_track(des_hw_t &hw, const AppConfig &cfg, const Args &a)
 {
-    CameraRig cam(&hw);
-    if (open_camera(cam, cfg, a)) return 1;
-    Locator loc(cfg.locate);
-    Tracker tr(cfg.tracker);
-    Picker pk(cfg.picker);
-    const double mmps = cfg.belt.mm_per_step * cfg.belt.dir;
-
+    CameraSession cam(&hw, cfg, a);
+    if (!cam.ok()) return 1;
+    Locator loc(cfg.locate); Tracker tr(cfg.tracker);
+    Picker pk(cfg.picker); const double mmps = cfg.belt.mm_per_step * cfg.belt.dir;
     if (a.belt != 0) {
-        double sps = a.belt / cfg.belt.mm_per_step * cfg.belt.dir;
-        des_step_vel(&hw, sps, cfg.belt.accel / cfg.belt.mm_per_step);
-        printf("belt: velocity mode %.1f mm/s = %.0f steps/s (dry run: picker belt plans are only printed)\n",
-               a.belt, sps);
+        const BeltRates r = belt_rates(cfg, a.belt, cfg.belt.accel); const double sps = r.vmax * cfg.belt.dir;
+        des_step_vel(&hw, sps, r.acc); printf("belt: velocity mode %.1f mm/s = %.0f steps/s (dry run: picker belt plans are only printed)\n", a.belt, sps);
     }
-
-    std::map<int, std::pair<TrackState, Disposition>> seen;
-    BeltPlan last_plan;
+    std::map<int, std::pair<TrackState, Disposition>> seen; BeltPlan last_plan;
     last_plan.kind = BeltPlan::Run;
     double secs = a.n > 0 ? a.n : 30, t_start = now_s(), t_sec = t_start;
     CapturedFrame f;
     while (!g_stop && now_s() - t_start < secs) {
-        std::string err = cam.next(f, true);
+        std::string err = cam->next(f, true);
         if (!err.empty()) { fprintf(stderr, "%s\n", err.c_str()); break; }
-        FrameObs obs;
-        obs.frame = f.pl_frame;
+        FrameObs obs; obs.frame = f.pl_frame;
         // belt position at mid-frame; each part is corrected to the instant its own rows were read out
         double b0 = f.step_pos * mmps, b1 = f.step_pos_end * mmps;
-        obs.belt_mm = 0.5 * (b0 + b1);
-        obs.dets = loc.run(f.bgra, f.width, f.height, f.stride, cfg.px_to_table);
+        obs.belt_mm = 0.5 * (b0 + b1); obs.dets = loc.run(f.bgra, f.width, f.height, f.stride, cfg.px_to_table);
         for (Detection &d : obs.dets) d.p.x -= float((b1 - b0) * (d.img_v - 0.5f));
-        tr.update(obs);
-
-        Picker::Input in;
+        tr.update(obs); Picker::Input in;
         in.belt_mm = des_step_pos(&hw) * mmps;
         double v = des_step_speed(&hw) * cfg.belt.mm_per_step;
-        in.brake_mm = v * v / (2 * cfg.belt.accel);
-        in.belt_stopped = !(des_step_status(&hw) & DES_ST_STATUS_MOVING);
+        in.brake_mm = v * v / (2 * cfg.belt.accel); in.belt_stopped = !(des_step_status(&hw) & DES_ST_STATUS_MOVING);
         auto out = pk.tick(tr, in);
         if (out.have_job) {
-            printf("[%u] PICK track %d at (%.1f, %.1f) close %.0f deg open %.1f mm -> bin %d (dry run: done)\n",
-                   f.pl_frame, out.job.track_id, out.job.p.x, out.job.p.y, out.job.close_axis * 180 / kPi,
-                   out.job.open_mm, out.job.bin);
+            printf("[%u] PICK track %d at (%.1f, %.1f) close %.0f deg open %.1f mm -> bin %d (dry run: done)\n", f.pl_frame, out.job.track_id, out.job.p.x, out.job.p.y, out.job.close_axis * 180 / kPi, out.job.open_mm, out.job.bin);
             pk.job_done(tr, out.job.track_id, true);
         }
         if (out.belt.kind != last_plan.kind || std::fabs(out.belt.stop_belt_mm - last_plan.stop_belt_mm) > 0.5) {
             static const char *kinds[] = {"run", "stop-at", "hold"};
-            printf("[%u] belt plan: %s %.1f mm (track %d)\n", f.pl_frame, kinds[out.belt.kind],
-                   out.belt.stop_belt_mm, out.belt.track_id);
-            last_plan = out.belt;
+            printf("[%u] belt plan: %s %.1f mm (track %d)\n", f.pl_frame, kinds[out.belt.kind], out.belt.stop_belt_mm, out.belt.track_id); last_plan = out.belt;
         }
         for (const Track &t : tr.tracks()) {
-            auto cur = std::make_pair(t.state, t.disp);
-            auto it = seen.find(t.id);
+            auto cur = std::make_pair(t.state, t.disp); auto it = seen.find(t.id);
             if (it == seen.end() || it->second != cur) {
-                printf("[%u] track %d: %s %s  s %.1f y %.1f len %.1f wid %.1f axis %.0f deg hits %d %s\n", f.pl_frame,
-                       t.id, to_str(t.state), to_str(t.disp), t.s, t.y, t.len, t.wid, t.axis * 180 / kPi, t.hits,
-                       t.why.c_str());
+                printf("[%u] track %d: %s %s  s %.1f y %.1f len %.1f wid %.1f axis %.0f deg hits %d %s\n", f.pl_frame, t.id, to_str(t.state), to_str(t.disp), t.s, t.y, t.len, t.wid, t.axis * 180 / kPi, t.hits, t.why);
                 seen[t.id] = cur;
             }
         }
         tr.retire(in.belt_mm);
         double tnow = now_s();
         if (tnow - t_sec >= 5.0) {
-            printf("-- %llu frames, %zu live tracks, belt %.1f mm, created %llu noise %llu lost %llu, "
-                   "pick %llu flap %llu recheck %llu\n",
-                   (unsigned long long)tr.stats.frames, tr.tracks().size(), in.belt_mm,
-                   (unsigned long long)tr.stats.created, (unsigned long long)tr.stats.noise,
+            printf("-- %llu frames, %zu live tracks, belt %.1f mm, created %llu noise %llu lost %llu, " "pick %llu flap %llu recheck %llu\n", (unsigned long long)tr.stats.frames, tr.tracks().size(), in.belt_mm, (unsigned long long)tr.stats.created, (unsigned long long)tr.stats.noise,
                    (unsigned long long)tr.stats.lost, (unsigned long long)tr.stats.decided_pick,
-                   (unsigned long long)tr.stats.decided_flap, (unsigned long long)tr.stats.decided_recheck);
-            fflush(stdout);
+                   (unsigned long long)tr.stats.decided_flap, (unsigned long long)tr.stats.decided_recheck); fflush(stdout);
             t_sec = tnow;
         }
     }
     if (a.belt != 0) des_step_stop(&hw);
     return 0;
 }
-
-// ---------------------------------------------------------------- display
 // camera -> HDMI only (no overlays): measures the BGRA->BGR conversion + page flip cost (docs/软件与UI.md)
 static int run_display(des_hw_t &hw, const AppConfig &cfg, const Args &a)
 {
-    CameraRig cam(&hw);
-    if (open_camera(cam, cfg, a)) return 1;
-    HdmiOut hdmi;
-    std::string err = hdmi.open();
+    CameraSession cam(&hw, cfg, a);
+    if (!cam.ok()) return 1;
+    HdmiOut hdmi; std::string err = hdmi.open();
     if (!err.empty()) { fprintf(stderr, "hdmi: %s\n", err.c_str()); return 1; }
-
     double secs = a.n > 0 ? a.n : 10, t_start = now_s(), t_sec = t_start;
     double sum_conv = 0, max_conv = 0, sum_flush = 0;
-    uint64_t frames = 0, skipped = 0, sec_frames = 0;
-    CapturedFrame f;
+    uint64_t frames = 0, skipped = 0, sec_frames = 0; CapturedFrame f;
     char text[96];
     while (!g_stop && now_s() - t_start < secs) {
-        err = cam.next(f, true);
+        err = cam->next(f, true);
         if (!err.empty()) { fprintf(stderr, "%s\n", err.c_str()); break; }
         if (frames) skipped += f.pl_gap - 1;
         double t0 = now_s();
-        cv::Mat src(f.height, f.width, CV_8UC4, const_cast<uint8_t *>(f.bgra));
-        cv::Mat dst = hdmi.back();
-        cv::cvtColor(src, dst, cv::COLOR_BGRA2BGR);
-        snprintf(text, sizeof text, "PL frame %u  skipped %llu", f.pl_frame, (unsigned long long)skipped);
+        cv::Mat src(f.height, f.width, CV_8UC4, const_cast<uint8_t *>(f.bgra)); cv::Mat dst = hdmi.back();
+        cv::cvtColor(src, dst, cv::COLOR_BGRA2BGR); snprintf(text, sizeof text, "PL frame %u  skipped %llu", f.pl_frame, (unsigned long long)skipped);
         cv::rectangle(dst, cv::Rect(20, 20, 560, 50), cv::Scalar(0, 0, 0), cv::FILLED);
         cv::putText(dst, text, cv::Point(30, 56), cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 255, 0), 2);
         double t1 = now_s();
-        hdmi.flip();
-        frames++;
-        sec_frames++;
-        sum_conv += t1 - t0;
-        max_conv = std::max(max_conv, t1 - t0);
-        sum_flush += hdmi.last_flush_ms() / 1e3;
+        hdmi.flip(); frames++;
+        sec_frames++; sum_conv += t1 - t0;
+        max_conv = std::max(max_conv, t1 - t0); sum_flush += hdmi.last_flush_ms() / 1e3;
         if (now_s() - t_sec >= 1.0) {
-            printf("%5.1f fps shown, convert avg %.1f ms, skipped %llu\n", sec_frames / (now_s() - t_sec),
-                   sum_conv / frames * 1e3, (unsigned long long)skipped);
-            fflush(stdout);
-            t_sec = now_s();
+            printf("%5.1f fps shown, convert avg %.1f ms, skipped %llu\n", sec_frames / (now_s() - t_sec), sum_conv / frames * 1e3, (unsigned long long)skipped);
+            fflush(stdout); t_sec = now_s();
             sec_frames = 0;
         }
     }
     hdmi.close();
     double el = now_s() - t_start;
-    printf("\n== display: %llu frames in %.2f s = %.2f fps; skipped %llu; convert avg %.2f ms max %.2f ms; "
-           "flush avg %.2f ms\n",
-           (unsigned long long)frames, el, frames / el, (unsigned long long)skipped,
+    printf("\n== display: %llu frames in %.2f s = %.2f fps; skipped %llu; convert avg %.2f ms max %.2f ms; " "flush avg %.2f ms\n", (unsigned long long)frames, el, frames / el, (unsigned long long)skipped,
            frames ? sum_conv / frames * 1e3 : 0.0, max_conv * 1e3, frames ? sum_flush / frames * 1e3 : 0.0);
     return 0;
 }
-
-// ---------------------------------------------------------------- collect
-// live + training crops of one class; out dir: --out, else $DES_COLLECT (des.env)
+// live + training crops of one class; out dir: --out, else  (des.env)
 static int run_collect(des_hw_t &hw, const AppConfig &cfg, const Args &a)
 {
     if (a.cls.empty()) { fprintf(stderr, "collect needs --cls <label>\n"); return 1; }
-    CameraRig cam(&hw);
-    if (open_camera(cam, cfg, a)) return 1;
-    LiveOptions opt;
-    opt.seconds = a.n;
-    opt.belt_mm_s = a.belt;
-    opt.dump = a.dump;
+    CameraSession cam(&hw, cfg, a);
+    if (!cam.ok()) return 1;
+    LiveOptions opt; opt.seconds = a.n;
+    opt.belt_mm_s = a.belt; opt.dump = a.dump;
     for (size_t i = 0; i < cfg.tracker.rules.size(); i++)
         if (cfg.tracker.rules[i].label == a.cls) opt.collect.label_id = int(i);
     if (opt.collect.label_id < 0) {
@@ -309,30 +205,17 @@ static int run_collect(des_hw_t &hw, const AppConfig &cfg, const Args &a)
         fprintf(stderr, "\n");
         return 1;
     }
-    opt.collect.label = a.cls;
-    opt.collect.every = std::max(1, a.every);
-    opt.collect.max_per_part = std::max(1, a.maxpp);
-    opt.collect.full_every = std::max(0, a.full);
+    opt.collect.label = a.cls; opt.collect.every = std::max(1, a.every);
+    opt.collect.max_per_part = std::max(1, a.maxpp); opt.collect.full_every = std::max(0, a.full);
     if (!a.out.empty()) opt.collect.out = a.out;                             // --out 优先
     else if (const char *e = getenv("DES_COLLECT")) opt.collect.out = e;     // 否则环境里的 DES_COLLECT（des.env）
-    return run_live(hw, cfg, cam, opt, g_stop);
+    return run_live(hw, cfg, cam.rig(), opt, g_stop);
 }
-
-// ---------------------------------------------------------------- arm
-static Vec2 arm_to_table(const ArmConfig &c, Vec3 p)
-{
-    float cy = std::cos(c.base_yaw), sy = std::sin(c.base_yaw);
-    return {c.base_xy.x + cy * p.x - sy * p.y, c.base_xy.y + sy * p.x + cy * p.y};
-}
-
 static int run_arm(des_hw_t &hw, const AppConfig &cfg, const Args &a)
 {
-    const ArmConfig &ac = cfg.arm;
-    ArmExec ex(&hw, ac);
-    const std::string s = a.sub.empty() ? "scan" : a.sub;
-    const bool dry = !a.go;
+    const ArmConfig &ac = cfg.arm; ArmExec ex(&hw, ac);
+    const std::string s = a.sub.empty() ? "scan" : a.sub; const bool dry = !a.go;
     auto ok_or = [](int rc) { return rc == DES_OK ? "ok" : des_strerror(rc); };
-
     if (s == "scan") {
         int alive = 0;
         for (int j = 0; j < 6; j++) {
@@ -341,59 +224,43 @@ static int run_arm(des_hw_t &hw, const AppConfig &cfg, const Args &a)
                 printf("joint %d (id %u): no reply\n", j + 1, ex.id(j));
                 continue;
             }
-            alive++;
-            float deg = j < 5 ? (i.pos - ac.joint[j].zero_count) / ac.joint[j].counts_per_deg : 0.f;
-            printf("joint %d (id %u): pos %4d (%+7.1f deg)  %4d mA  %3d C  status 0x%02x%s%s%s\n", j + 1, ex.id(j), i.pos,
-                   deg, i.current_ma, i.temp_c, i.status, i.status & 0x20 ? " OVERLOAD" : "",
-                   i.status & 0x04 ? " OVER-TEMP" : "", i.status & 0x01 ? " VOLTAGE" : "");
+            alive++; float deg = j < 5 ? (i.pos - ac.joint[j].zero_count) / ac.joint[j].counts_per_deg : 0.f;
+            printf("joint %d (id %u): pos %4d (%+7.1f deg)  %4d mA  %3d C  status 0x%02x%s%s%s\n", j + 1, ex.id(j), i.pos, deg, i.current_ma, i.temp_c, i.status, i.status & 0x20 ? " OVERLOAD" : "", i.status & 0x04 ? " OVER-TEMP" : "", i.status & 0x01 ? " VOLTAGE" : "");
         }
-        printf("%d / 6 servos answered%s\n", alive,
-               alive ? "" : " (power, BSS138 wiring, CEP PIN19, ids 1..6? see docs/硬件与接线.md)");
+        printf("%d / 6 servos answered%s\n", alive, alive ? "" : " (power, BSS138 wiring, CEP PIN19, ids 1..6? see docs/硬件与接线.md)");
         return alive == 6 ? 0 : 2;
     }
     if (s == "read" || s == "teach") {
         std::array<uint16_t, 6> pos{};
         if (!ex.read_positions(pos)) { fprintf(stderr, "not all servos answered (des_tool arm scan)\n"); return 2; }
-        float grip = 0;
-        JointAngles j = arm_from_counts(ac, pos, grip);
-        Vec3 tip = arm_fk(ac, j);
-        Vec2 tt = arm_to_table(ac, tip);
+        float grip = 0; JointAngles j = arm_from_counts(ac, pos, grip);
+        Vec3 tip = arm_fk(ac, j); Vec2 tt = arm_to_table(ac, tip);
         printf("counts %u %u %u %u %u | grip %u\n", pos[0], pos[1], pos[2], pos[3], pos[4], pos[5]);
-        printf("angles q1..q5 = %.1f %.1f %.1f %.1f %.1f deg, gripper %.1f mm\n", j.q[0], j.q[1], j.q[2], j.q[3], j.q[4],
-               grip);
-        printf("grasp point: arm (%.1f, %.1f, %.1f) mm, table (%.1f, %.1f) mm, %.1f mm above the belt\n", tip.x, tip.y,
-               tip.z, tt.x, tt.y, tip.z - ac.belt_z);
+        printf("angles q1..q5 = %.1f %.1f %.1f %.1f %.1f deg, gripper %.1f mm\n", j.q[0], j.q[1], j.q[2], j.q[3], j.q[4], grip);
+        printf("grasp point: arm (%.1f, %.1f, %.1f) mm, table (%.1f, %.1f) mm, %.1f mm above the belt\n", tip.x, tip.y, tip.z, tt.x, tt.y, tip.z - ac.belt_z);
         if (s == "teach")
-            printf("paste into des_app.json arm.home_deg or arm.bins_deg:  [%.1f, %.1f, %.1f, %.1f, %.1f]\n", j.q[0], j.q[1],
-                   j.q[2], j.q[3], j.q[4]);
+            printf("paste into des_app.json arm.home_deg or arm.bins_deg:  [%.1f, %.1f, %.1f, %.1f, %.1f]\n", j.q[0], j.q[1], j.q[2], j.q[3], j.q[4]);
         return 0;
     }
     if (s == "torque-on" || s == "torque-off") {
-        int rc = ex.torque(s == "torque-on");
-        printf("torque %s (broadcast): %s\n", s == "torque-on" ? "on" : "off", ok_or(rc));
+        int rc = ex.torque(s == "torque-on"); printf("torque %s (broadcast): %s\n", s == "torque-on" ? "on" : "off", ok_or(rc));
         return rc == DES_OK ? 0 : 2;
     }
-
     // ---- motion
-    std::array<uint16_t, 6> now{};
-    bool have_now = !dry && ex.read_positions(now);
+    std::array<uint16_t, 6> now{}; bool have_now = !dry && ex.read_positions(now);
     if (!have_now) {   // dry run / no read back: assume the arm sits at home
-        JointAngles h;
-        h.q = ac.home_deg;
+        JointAngles h; h.q = ac.home_deg;
         arm_to_counts(ac, h, ac.grip_max_open, now);
     }
     std::vector<ServoFrame> wp;
     if (s == "home" || s == "goto") {
-        JointAngles target;
-        float grip = ac.grip_max_open;
+        JointAngles target; float grip = ac.grip_max_open;
         if (s == "home") {
             target.q = ac.home_deg;
         } else {
-            if (a.pos.size() < 2) { usage_tool(); return 1; }
-            float z = a.pos.size() > 2 ? float(a.pos[2]) : ac.z_safe;
-            float axis = a.pos.size() > 3 ? float(a.pos[3]) * kPi / 180 : 0.f;
-            if (const char *why = arm_ik(ac, table_to_arm(ac, {float(a.pos[0]), float(a.pos[1])}, z),
-                                         table_axis_to_arm(ac, axis), target)) {
+            if (a.npos < 2) { usage_tool(); return 1; }
+            float z = a.npos > 2 ? a.pos[2] : ac.z_safe; float axis = a.npos > 3 ? a.pos[3] * kPi / 180 : 0.f;
+            if (const char *why = arm_ik(ac, table_to_arm(ac, {a.pos[0], a.pos[1]}, z), table_axis_to_arm(ac, axis), target)) {
                 fprintf(stderr, "unreachable: %s\n", why);
                 return 2;
             }
@@ -401,13 +268,11 @@ static int run_arm(des_hw_t &hw, const AppConfig &cfg, const Args &a)
         ServoFrame f;
         if (const char *why = arm_to_counts(ac, target, grip, f.pos)) { fprintf(stderr, "%s\n", why); return 2; }
         f.ms = 1500;   // single moves from an unknown pose: slow on purpose
-        f.what = s == "home" ? "home" : "goto";
-        wp.push_back(f);
+        f.what = s == "home" ? "home" : "goto"; wp.push_back(f);
     } else if (s == "pick") {
-        if (a.pos.size() < 2) { usage_tool(); return 1; }
-        float axis = a.pos.size() > 2 ? float(a.pos[2]) * kPi / 180 : 0.f;
-        int bin = a.pos.size() > 3 ? int(a.pos[3]) : 0;
-        if (const char *why = plan_pick(ac, {float(a.pos[0]), float(a.pos[1])}, axis, 40.f, 30.f, bin, now, wp)) {
+        if (a.npos < 2) { usage_tool(); return 1; }
+        float axis = a.npos > 2 ? a.pos[2] * kPi / 180 : 0.f; int bin = a.npos > 3 ? int(a.pos[3]) : 0;
+        if (const char *why = plan_pick(ac, {a.pos[0], a.pos[1]}, axis, 40.f, 30.f, bin, now, wp)) {
             fprintf(stderr, "plan_pick: %s\n", why);
             return 2;
         }
@@ -415,14 +280,11 @@ static int run_arm(des_hw_t &hw, const AppConfig &cfg, const Args &a)
         usage_tool();
         return 1;
     }
-    printf("%s %s, %zu frame(s)%s\n", dry ? "DRY RUN" : "MOVING", s.c_str(), wp.size(),
-           dry ? " (add --go to move the arm)" : "");
+    printf("%s %s, %zu frame(s)%s\n", dry ? "DRY RUN" : "MOVING", s.c_str(), wp.size(), dry ? " (add --go to move the arm)" : "");
     ArmExec::Result r = ex.run(wp, dry, [] { printf("  (belt may move again)\n"); });
     printf("done in %.0f ms: %s%s\n", r.ms, r.ok ? "ok" : "FAILED", r.why.empty() ? "" : (" - " + r.why).c_str());
     return r.ok ? 0 : 2;
 }
-
-// ---------------------------------------------------------------- calib-cam
 static int run_calib(des_hw_t *hw, const AppConfig &cfg, const Args &a)
 {
     cv::setNumThreads(1);   // no OpenCV worker threads before detect_board_timeout forks
@@ -438,22 +300,19 @@ static int run_calib(des_hw_t *hw, const AppConfig &cfg, const Args &a)
     b.square_mm = float(a.square);
     Travel travel;
     if (!parse_travel(a.travel, travel)) { fprintf(stderr, "--travel right|left|down|up\n"); return 1; }
-
     cv::Mat bgr, gray;
     if (!a.image.empty()) {
-        bgr = cv::imread(a.image, cv::IMREAD_COLOR);
-        if (bgr.empty()) { fprintf(stderr, "cannot read %s\n", a.image.c_str()); return 1; }
+        if (!read_image(a.image, bgr, gray)) { fprintf(stderr, "cannot read %s\n", a.image.c_str()); return 1; }
     } else {
         if (!hw) { fprintf(stderr, "PL not available\n"); return 1; }
-        CameraRig cam(hw);
-        if (open_camera(cam, cfg, a)) return 1;
+        CameraSession cam(hw, cfg, a);
+        if (!cam.ok()) return 1;
         CapturedFrame f;
-        for (int i = 0; i < 20; i++)   // let exposure settle, keep the last frame
-            if (!cam.next(f, i == 19).empty()) return 1;
+        if (!capture_frames(*cam, 20, f, true).empty()) return 1;   // let exposure settle, keep the last frame
         cv::Mat src(f.height, f.width, CV_8UC4, const_cast<uint8_t *>(f.bgra));
         cv::cvtColor(src, bgr, cv::COLOR_BGRA2BGR);
+        cv::cvtColor(bgr, gray, cv::COLOR_BGR2GRAY);
     }
-    cv::cvtColor(bgr, gray, cv::COLOR_BGR2GRAY);
     const double timeout_s = a.exhaustive ? 120 : 20;
     printf("looking for a %dx%d inner-corner board (gives up after %.0f s)...\n", b.cols, b.rows, timeout_s);
     fflush(stdout);
@@ -474,105 +333,48 @@ static int run_calib(des_hw_t *hw, const AppConfig &cfg, const Args &a)
         if (!a.dump.empty()) cv::imwrite(a.dump, bgr);
         return 2;
     }
-    printf("board %dx%d inner corners, %.3f mm squares, travel %s: found %zu corners in %.0f ms\n", b.cols, b.rows,
-           b.square_mm, to_str(travel), r.corners.size(), r.detect_ms);
+    printf("board %dx%d inner corners, %.3f mm squares, travel %s: found %zu corners in %.0f ms\n", b.cols, b.rows, b.square_mm, to_str(travel), r.corners.size(), r.detect_ms);
     printf("fit residual rms %.3f mm, max %.3f mm; %.4f mm/px at the center\n", r.rms_mm, r.max_mm, r.mm_per_px);
     printf("FOV along the belt x %.1f .. %.1f mm; corners (table mm):", r.fov_x0, r.fov_x1);
     for (const Vec2 &v : r.fov_corners) printf(" (%.1f, %.1f)", v.x, v.y);
     printf("\n");
-    std::string out = a.out;
-    if (out.empty()) {
-        size_t k = a.config.find_last_of('/');
-        out = (k == std::string::npos ? std::string(".") : a.config.substr(0, k)) + "/calib.json";
-    }
-    std::string err = save_calib(out, r, b, travel);
-    printf("saved %s: %s\n", out.c_str(), err.empty() ? "ok" : err.c_str());
+    const std::string out = calib_out(cfg, a, CalibDefault::Camera);
+    const std::string err = save_calib(out, r, b, travel);
+    report_saved(out, err);
     if (!a.dump.empty()) {
         draw_calib(bgr, r);
         printf("dump %s: %s\n", a.dump.c_str(), cv::imwrite(a.dump, bgr) ? "ok" : "FAILED");
     }
     return err.empty() ? 0 : 1;
 }
-
-// ---------------------------------------------------------------- calib-belt
-// Belt scale and direction seen by the calibrated camera. The part's table position is the median over still frames
-// (largest blob not touching the image border). Moves: a short one (~8 mm with the configured estimate) for a rough
-// scale and the direction, a long one to ~75 % of the view, then back to the start (slip / backlash). The result
-// uses the whole travel, so the position noise (~0.05 mm) is < 0.1 % of it; the camera scale error adds to it.
-static std::string still_position(CameraRig &cam, Locator &loc, const AppConfig &cfg, Vec2 &p)
-{
-    CapturedFrame f;
-    std::string err;
-    for (int i = 0; i < cfg.camera.buffers + 2; i++)   // the ring may still hold frames exposed during the move
-        if (!(err = cam.next(f, false)).empty()) return err;
-    std::vector<float> xs, ys;
-    int blobs = 0;
-    for (int i = 0; i < 7; i++) {
-        if (!(err = cam.next(f, true)).empty()) return err;
-        std::vector<Detection> d = loc.run(f.bgra, f.width, f.height, f.stride, cfg.px_to_table);
-        const Detection *best = nullptr;
-        for (const Detection &x : d)
-            if (!x.partial && (!best || x.len * x.wid > best->len * best->wid)) best = &x;
-        blobs = std::max(blobs, int(d.size()));
-        if (best) {
-            xs.push_back(best->p.x);
-            ys.push_back(best->p.y);
-        }
-    }
-    if (xs.size() < 4) return "no part fully in view (one part on the belt, inside the view, threshold ok? try locate)";
-    if (blobs > 1) printf("  note: %d blobs in view, using the largest\n", blobs);
-    std::nth_element(xs.begin(), xs.begin() + xs.size() / 2, xs.end());
-    std::nth_element(ys.begin(), ys.begin() + ys.size() / 2, ys.end());
-    p = {xs[xs.size() / 2], ys[ys.size() / 2]};
-    return "";
-}
-
-static std::string belt_move(des_hw_t &hw, int32_t steps, double vmax, double acc)
-{
-    if (des_estop_latched(&hw) == 1)   // v11: the PL holds the stepper until the latch is cleared
-        return "e-stop latched: release the button, then desreg io estop-clr";
-    const int32_t target = des_step_pos(&hw) + steps;
-    des_step_move(&hw, target, vmax, acc);
-    const double t0 = now_s(), tmax = std::abs(steps) / vmax + 2 * vmax / acc + 3;
-    usleep(20000);
-    while (des_step_status(&hw) & DES_ST_STATUS_MOVING) {
-        if (g_stop || now_s() - t0 > tmax) {
-            des_step_stop(&hw);
-            return g_stop ? "interrupted" : "move did not finish in time";
-        }
-        usleep(5000);
-    }
-    if (des_step_status(&hw) & DES_ST_STATUS_HALTED) return "stepper halted (e-stop input?)";
-    return des_step_pos(&hw) == target ? "" : "stepper stopped short of the target";
-}
-
+// Belt scale and direction seen by the calibrated camera: median part position over still frames (largest blob not
+// touching the border); short ~8 mm move, long one to ~75 % of the view, then back (slip / backlash); the whole travel
+// sets the scale, so the position noise (~0.05 mm) is < 0.1 % of it; the camera scale error adds to it.
 static int run_calib_belt(des_hw_t &hw, const AppConfig &cfg, const Args &a)
 {
     if (cfg.calib_loaded.empty()) {
         fprintf(stderr, "calibrate the camera first (des_tool calib-cam): belt travel is measured in table mm\n");
         return 1;
     }
-    CameraRig cam(&hw);
-    if (open_camera(cam, cfg, a)) return 1;
+    CameraSession cam(&hw, cfg, a);
+    if (!cam.ok()) return 1;
     Locator loc(cfg.locate);
     const double est = std::fabs(cfg.belt.mm_per_step), mm_s = a.belt > 0 ? a.belt : 20.0;
-    const double vmax = mm_s / est, acc = vmax * 2;   // 0.5 s ramps
-    const int dir0 = cfg.belt.dir >= 0 ? 1 : -1;      // configured guess: + steps move parts downstream
-    des_step_enable(&hw, 1);
-    usleep(100000);
+    const BeltRates r = belt_rates(cfg, mm_s);   // 0.5 s ramps
+    const int dir0 = cfg.belt.dir >= 0 ? 1 : -1; // configured guess: + steps move parts downstream
+    belt_prepare(hw);
     auto fail = [&](const std::string &e) {
         fprintf(stderr, "calib-belt: %s\n", e.c_str());
         des_step_stop(&hw);
         return 2;
     };
     Vec2 p0, p1, p2, p3;
-    std::string e = still_position(cam, loc, cfg, p0);
+    std::string e = still_position(*cam, loc, cfg, p0);
     if (!e.empty()) return fail(e);
-    printf("start: part at x %.2f y %.2f mm (view x %.0f .. %.0f); estimate %.5f mm/step, %.0f mm/s\n", p0.x, p0.y,
-           cfg.tracker.fov_x0, cfg.tracker.fov_x1, est, mm_s);
+    printf("start: part at x %.2f y %.2f mm (view x %.0f .. %.0f); estimate %.5f mm/step, %.0f mm/s\n", p0.x, p0.y, cfg.tracker.fov_x0, cfg.tracker.fov_x1, est, mm_s);
     // 1. short move downstream (with the configured direction guess)
     const int32_t s1 = dir0 * int32_t(std::lround(8.0 / est));
-    if (!(e = belt_move(hw, s1, vmax, acc)).empty() || !(e = still_position(cam, loc, cfg, p1)).empty()) return fail(e);
+    if (!(e = belt_move(hw, s1, r.vmax, r.acc)).empty() || !(e = still_position(*cam, loc, cfg, p1)).empty()) return fail(e);
     const double rough = std::fabs(p1.x - p0.x) / std::abs(s1);
     printf("short move %d steps: x %.2f -> %.2f mm (%.5f mm/step)\n", s1, p0.x, p1.x, rough);
     if (std::fabs(p1.x - p0.x) < 1.0)
@@ -585,91 +387,65 @@ static int run_calib_belt(des_hw_t &hw, const AppConfig &cfg, const Args &a)
         if (room < 20) return fail("not enough room downstream: put the part near the upstream edge of the view");
         s2 = s_dir * int32_t(std::lround(room / rough));
     }
-    if (!(e = belt_move(hw, s2, vmax, acc)).empty() || !(e = still_position(cam, loc, cfg, p2)).empty()) return fail(e);
+    if (!(e = belt_move(hw, s2, r.vmax, r.acc)).empty() || !(e = still_position(*cam, loc, cfg, p2)).empty()) return fail(e);
     printf("long move %d steps: x %.2f -> %.2f mm\n", s2, p1.x, p2.x);
     // 3. back to the start
-    if (!(e = belt_move(hw, -(s1 + s2), vmax, acc)).empty() || !(e = still_position(cam, loc, cfg, p3)).empty())
+    if (!(e = belt_move(hw, -(s1 + s2), r.vmax, r.acc)).empty() || !(e = still_position(*cam, loc, cfg, p3)).empty())
         return fail(e);
     printf("back %d steps: x %.2f (start %.2f)\n", -(s1 + s2), p3.x, p0.x);
     BeltCalib b = belt_from_positions(p0, p1, p2, p3, s1, s2);
     if (!b.ok) return fail(b.err);
-    printf("== belt: %.6f mm/step, dir %+d (%.1f mm over %d steps); effective roller %.2f mm at 3200 steps/rev\n",
-           b.mm_per_step, b.dir, b.travel_mm, b.steps, b.roller_d_mm);
-    printf("   return error %+.3f mm after %.1f mm forward + back; lateral drift %+.2f mm per 100 mm\n",
-           b.return_err_mm, b.travel_mm, b.drift_mm_per_100);
+    printf("== belt: %.6f mm/step, dir %+d (%.1f mm over %d steps); effective roller %.2f mm at 3200 steps/rev\n", b.mm_per_step, b.dir, b.travel_mm, b.steps, b.roller_d_mm);
+    printf("   return error %+.3f mm after %.1f mm forward + back; lateral drift %+.2f mm per 100 mm\n", b.return_err_mm, b.travel_mm, b.drift_mm_per_100);
     if (std::fabs(b.mm_per_step - est) > 0.3 * est)
         printf("   (config estimate was %.5f: %+.0f %%)\n", est, (b.mm_per_step / est - 1) * 100);
     if (std::fabs(b.drift_mm_per_100) > 2)
-        printf("   lateral drift > 2 mm / 100 mm: the camera x axis is not along the belt (re-run calib-cam with the "
-               "board edge against the side guard) or the belt runs off\n");
-    std::string out = a.out.empty() ? cfg.calib_loaded : a.out;
+        printf("   lateral drift > 2 mm / 100 mm: the camera x axis is not along the belt (re-run calib-cam with the " "board edge against the side guard) or the belt runs off\n");
+    const std::string out = calib_out(cfg, a, CalibDefault::Belt);
     e = save_belt_calib(out, b);
-    printf("saved %s: %s\n", out.c_str(), e.empty() ? "ok" : e.c_str());
+    report_saved(out, e);
     return e.empty() ? 0 : 1;
 }
-
-// ---------------------------------------------------------------- calib-enc
-// Measuring-wheel encoder against the stepper: the (empty) belt moves --steps downstream and back, -n rounds, while
-// (time, POS, count) are sampled every 10 ms. No camera; mm come from belt.mm_per_step (calib-belt first).
-static std::string belt_move_sampled(des_hw_t &hw, int32_t steps, double vmax, double acc,
-                                     std::vector<EncSample> &out)
-{
-    out.clear();
-    auto sample = [&]() {
-        des_io_t io;
-        des_io_read(&hw, &io);
-        out.push_back({now_s(), des_step_pos(&hw), io.enc});
-    };
-    for (int i = 0; i < 5; i++) { sample(); usleep(10000); }
-    if (des_estop_latched(&hw) == 1) return "e-stop latched: release the button, then desreg io estop-clr";
-    const int32_t target = des_step_pos(&hw) + steps;
-    des_step_move(&hw, target, vmax, acc);
-    const double t0 = now_s(), tmax = std::abs(steps) / vmax + 2 * vmax / acc + 3;
-    usleep(10000);
-    while (des_step_status(&hw) & DES_ST_STATUS_MOVING) {
-        if (g_stop || now_s() - t0 > tmax) {
-            des_step_stop(&hw);
-            return g_stop ? "interrupted" : "move did not finish in time";
-        }
-        sample();
-        usleep(10000);
-    }
-    for (int i = 0; i < 30; i++) { sample(); usleep(10000); }   // 0.3 s: the belt / wheel settles
-    if (des_step_status(&hw) & DES_ST_STATUS_HALTED) return "stepper halted (e-stop input?)";
-    return des_step_pos(&hw) == target ? "" : "stepper stopped short of the target";
-}
-
+// Measuring-wheel encoder vs stepper: empty belt moves --steps downstream and back, -n rounds, sampled every 10 ms;
+// no camera, mm from belt.mm_per_step (calib-belt first).
 static int run_calib_enc(des_hw_t &hw, const AppConfig &cfg, const Args &a)
 {
     if (hw.version < DES_VERSION_IO) {
-        fprintf(stderr, "calib-enc: bitstream VERSION %u has no encoder input (needs >= %u)\n", hw.version,
-                DES_VERSION_IO);
+        fprintf(stderr, "calib-enc: bitstream VERSION %u has no encoder input (needs >= %u)\n", hw.version, DES_VERSION_IO);
         return 1;
     }
     if (!cfg.belt_calibrated)
-        printf("note: belt.mm_per_step %.5f is not from calib-belt: the encoder scale is only as good as it\n",
-               cfg.belt.mm_per_step);
+        printf("note: belt.mm_per_step %.5f is not from calib-belt: the encoder scale is only as good as it\n", cfg.belt.mm_per_step);
     const double mps = std::fabs(cfg.belt.mm_per_step), mm_s = a.belt > 0 ? a.belt : cfg.belt.run_speed;
-    const double vmax = mm_s / mps, acc = std::max(cfg.belt.accel, 1.0) / mps;
+    const BeltRates r = belt_rates(cfg, mm_s, std::max(cfg.belt.accel, 1.0));
     const int dir = cfg.belt.dir >= 0 ? 1 : -1;
     const int32_t steps = a.steps ? a.steps : dir * int32_t(std::lround(300.0 / mps));   // default 300 mm downstream
     const int rounds = a.n > 0 ? int(a.n) : 1;
     const double nominal = cfg.belt.enc_wheel_mm / cfg.belt.enc_counts_per_rev;
     des_io_t io0, io1;
     des_io_read(&hw, &io0);
-    printf("calib-enc: %d round(s) of %d steps (%.0f mm) at %.0f mm/s, forward and back; nominal %.4f mm/count "
-           "(%.0f mm wheel, %d counts/rev)\n", rounds, steps, std::abs(steps) * mps, mm_s, nominal,
-           cfg.belt.enc_wheel_mm, cfg.belt.enc_counts_per_rev);
-    printf("encoder inputs now: A%u B%u Z%u (1 = high / not pulled low), count %d, errors %u\n",
-           (io0.status >> 4) & 1, (io0.status >> 5) & 1, (io0.status >> 6) & 1, io0.enc, io0.enc_err);
-    des_step_enable(&hw, 1);
-    usleep(100000);
+    printf("calib-enc: %d round(s) of %d steps (%.0f mm) at %.0f mm/s, forward and back; nominal %.4f mm/count " "(%.0f mm wheel, %d counts/rev)\n", rounds, steps, std::abs(steps) * mps, mm_s, nominal, cfg.belt.enc_wheel_mm, cfg.belt.enc_counts_per_rev);
+    printf("encoder inputs now: A%u B%u Z%u (1 = high / not pulled low), count %d, errors %u\n", (io0.status >> 4) & 1, (io0.status >> 5) & 1, (io0.status >> 6) & 1, io0.enc, io0.enc_err);
+    belt_prepare(hw);
+    // (time, POS, encoder count) sampler: belt_move() calls it every 10 ms in sampled mode
+    auto sampler = [&hw](std::vector<EncSample> &out) {
+        out.clear();
+        return std::function<void()>([&hw, &out]() {
+            des_io_t io;
+            des_io_read(&hw, &io);
+            out.push_back({now_s(), des_step_pos(&hw), io.enc});
+        });
+    };
     std::vector<EncSample> fwd, back;
     std::vector<double> mpc;
     EncCalib last;
-    for (int r = 0; r < rounds && !g_stop; r++) {
-        std::string e = belt_move_sampled(hw, steps, vmax, acc, fwd);
-        if (e.empty()) e = belt_move_sampled(hw, -steps, vmax, acc, back);
+    for (int k = 0; k < rounds && !g_stop; k++) {
+        std::function<void()> sf = sampler(fwd);
+        std::string e = belt_move(hw, steps, r.vmax, r.acc, &sf);
+        if (e.empty()) {
+            std::function<void()> sb = sampler(back);
+            e = belt_move(hw, -steps, r.vmax, r.acc, &sb);
+        }
         if (!e.empty()) {
             fprintf(stderr, "calib-enc: %s\n", e.c_str());
             des_step_stop(&hw);
@@ -680,9 +456,7 @@ static int run_calib_enc(des_hw_t &hw, const AppConfig &cfg, const Args &a)
             fprintf(stderr, "calib-enc: %s\n", c.err.c_str());
             return 2;
         }
-        printf("[%d] %.6f mm/count (wheel %.2f mm), dir %+d, %.5f counts/step forward / %.5f back; return %+.3f mm; "
-               "lag max %.3f mm; cruise %.1f mm/s, encoder %.2f +- %.2f mm/s (%zu + %zu samples)\n",
-               r + 1, c.mm_per_count, c.wheel_circ_mm, c.dir, c.counts_per_step, c.back_counts_per_step,
+        printf("[%d] %.6f mm/count (wheel %.2f mm), dir %+d, %.5f counts/step forward / %.5f back; return %+.3f mm; " "lag max %.3f mm; cruise %.1f mm/s, encoder %.2f +- %.2f mm/s (%zu + %zu samples)\n", k + 1, c.mm_per_count, c.wheel_circ_mm, c.dir, c.counts_per_step, c.back_counts_per_step,
                c.return_err_mm, c.lag_max_mm, c.cruise_mm_s, c.enc_speed_mean_mm_s, c.enc_speed_sd_mm_s, fwd.size(),
                back.size());
         mpc.push_back(c.mm_per_count);
@@ -697,55 +471,34 @@ static int run_calib_enc(des_hw_t &hw, const AppConfig &cfg, const Args &a)
     sd = mpc.size() > 1 ? std::sqrt(sd / (mpc.size() - 1)) : 0;
     last.mm_per_count = mean;
     last.wheel_circ_mm = mean * cfg.belt.enc_counts_per_rev;
-    printf("== encoder: %.6f mm/count (sd %.6f over %zu rounds = %.3f %%), wheel %.2f mm (nominal %.0f, %+.2f %%), "
-           "dir %+d\n", mean, sd, mpc.size(), mean > 0 ? 100 * sd / mean : 0, last.wheel_circ_mm, cfg.belt.enc_wheel_mm,
-           (last.wheel_circ_mm / cfg.belt.enc_wheel_mm - 1) * 100, last.dir);
-    printf("   index pulses %u during the test, illegal A/B transitions %u (> 0: noise or too fast -> 4.7k pull-ups)\n",
-           io1.enc_zcnt - io0.enc_zcnt, io1.enc_err - io0.enc_err);
-    std::string out = a.out.empty() ? (cfg.calib_loaded.empty() ? cfg.calib_file : cfg.calib_loaded) : a.out;
+    printf("== encoder: %.6f mm/count (sd %.6f over %zu rounds = %.3f %%), wheel %.2f mm (nominal %.0f, %+.2f %%), " "dir %+d\n", mean, sd, mpc.size(), mean > 0 ? 100 * sd / mean : 0, last.wheel_circ_mm, cfg.belt.enc_wheel_mm, (last.wheel_circ_mm / cfg.belt.enc_wheel_mm - 1) * 100, last.dir);
+    printf("   index pulses %u during the test, illegal A/B transitions %u (> 0: noise or too fast -> 4.7k pull-ups)\n", io1.enc_zcnt - io0.enc_zcnt, io1.enc_err - io0.enc_err);
+    const std::string out = calib_out(cfg, a, CalibDefault::Encoder);
     std::string e = save_enc_calib(out, last, int(mpc.size()), sd);
-    printf("saved %s: %s\n", out.c_str(), e.empty() ? "ok" : e.c_str());
+    report_saved(out, e);
     return e.empty() ? 0 : 1;
 }
-
-// ---------------------------------------------------------------- calib-flat
-// Flat field for the part crops (flat_field.hpp). A blank white sheet (A4 across the belt is enough) lies at the
+// Flat field for the part crops (flat_field.hpp): a blank white sheet (A4 across the belt is enough) lies at the
 // upstream edge of the view and covers it; the belt carries it downstream in --steps steps (default 40 mm), 4 frames
 // averaged per stop, until the sheet's leading edge has reached the downstream edge of the view plus one more stop
-// (every column then seen under the sheet), at most 15 stops; then back to the start. Writes flat.json next to the
-// config (des_app.json "flat_file") or --out.
+// (every column then seen under the sheet), at most 15 stops; then back to the start. Writes flat.json next to the config (des_app.json "flat_file") or --out.
 static int run_calib_flat(des_hw_t &hw, const AppConfig &cfg, const Args &a)
 {
     if (cfg.calib_loaded.empty()) {
         fprintf(stderr, "calibrate the camera first (des_tool calib-cam): belt direction and mm per step\n");
         return 1;
     }
-    CameraRig cam(&hw);
-    if (open_camera(cam, cfg, a)) return 1;
+    CameraSession cam(&hw, cfg, a);
+    if (!cam.ok()) return 1;
     const double mmps = std::fabs(cfg.belt.mm_per_step), mm_s = a.belt > 0 ? a.belt : 20.0;
-    const double vmax = mm_s / mmps, acc = vmax * 2;
+    const BeltRates r = belt_rates(cfg, mm_s);   // 0.5 s ramps
     const int dir = cfg.belt.dir >= 0 ? 1 : -1;   // + steps move parts downstream when belt.dir = +1
     const int32_t step = a.steps ? a.steps : dir * int32_t(std::lround(40.0 / mmps));
     const Vec2 pl = cfg.px_to_table.map({0, 540}), pr = cfg.px_to_table.map({1919, 540});
     const bool down_left = pl.x > pr.x;   // table x grows downstream
-    des_step_enable(&hw, 1);
-    usleep(100000);
-    auto grab = [&](cv::Mat &gray) -> std::string {
-        CapturedFrame f;
-        std::string err;
-        for (int i = 0; i < cfg.camera.buffers + 2; i++)   // frames exposed during the move
-            if (!(err = cam.next(f, false)).empty()) return err;
-        cv::Mat sum;
-        for (int i = 0; i < 4; i++) {
-            if (!(err = cam.next(f, true)).empty()) return err;
-            cv::Mat bgra(f.height, f.width, CV_8UC4, const_cast<uint8_t *>(f.bgra), size_t(f.stride)), g;
-            cv::cvtColor(bgra, g, cv::COLOR_BGRA2GRAY);
-            if (sum.empty()) sum = cv::Mat::zeros(g.size(), CV_32F);
-            cv::accumulate(g, sum);
-        }
-        sum.convertTo(gray, CV_8U, 0.25);
-        return "";
-    };
+    belt_prepare(hw);
+    cv::Mat sum;   // scratch for capture_gray_avg: one CV_32F allocation for all stops
+    auto grab = [&](cv::Mat &gray) -> std::string { return capture_gray_avg(*cam, cfg.camera.buffers + 2, sum, gray); };
     // sheet columns: mean of the middle 40 % of the rows above belt + half the contrast (vignetting is mild there)
     auto span = [](const cv::Mat &g, int &c0, int &c1) {
         cv::Mat band = g.rowRange(g.rows * 3 / 10, g.rows * 7 / 10), prof;
@@ -779,15 +532,14 @@ static int run_calib_flat(des_hw_t &hw, const AppConfig &cfg, const Args &a)
         const int W = g.cols, lead = down_left ? c0 : W - 1 - c1, trail = down_left ? W - 1 - c1 : c0;
         printf("stop %2d (belt %+.0f mm): sheet columns %d..%d\n", k, moved * mmps * dir, c0, c1);
         if (k == 0 && trail > 3)
-            printf("  note: the sheet does not reach the upstream edge of the view (%d px short): that strip is "
-                   "filled from its neighbours\n", trail);
+            printf("  note: the sheet does not reach the upstream edge of the view (%d px short): that strip is " "filled from its neighbours\n", trail);
         if (last) break;
         if (lead <= 3) last = true;   // leading edge at the downstream edge: one more stop for the eroded margin
-        if (!(e = belt_move(hw, step, vmax, acc)).empty()) break;
+        if (!(e = belt_move(hw, step, r.vmax, r.acc)).empty()) break;
         moved += step;
     }
     if (moved) {
-        std::string b = belt_move(hw, -moved, vmax, acc);
+        std::string b = belt_move(hw, -moved, r.vmax, r.acc);
         printf("belt back %d steps: %s\n", -moved, b.empty() ? "ok" : b.c_str());
     }
     des_step_stop(&hw);
@@ -802,37 +554,27 @@ static int run_calib_flat(des_hw_t &hw, const AppConfig &cfg, const Args &a)
         fprintf(stderr, "calib-flat: %s\n", e.c_str());
         return 2;
     }
-    printf("== flat field: %d stops, %.1f %% of the view under the sheet; centre white %.1f, darkest %.0f %%; "
-           "corners TL %.0f TR %.0f BL %.0f BR %.0f %%\n", st.frames, st.covered * 100, st.centre, st.min_rel * 100,
+    printf("== flat field: %d stops, %.1f %% of the view under the sheet; centre white %.1f, darkest %.0f %%; " "corners TL %.0f TR %.0f BL %.0f BR %.0f %%\n", st.frames, st.covered * 100, st.centre, st.min_rel * 100,
            st.corner_rel[0] * 100, st.corner_rel[1] * 100, st.corner_rel[2] * 100, st.corner_rel[3] * 100);
     printf("   corrected sheet p5..p95 = %.1f .. %.1f %% of the centre\n", st.resid_p5 * 100, st.resid_p95 * 100);
     printf("   white level / centre (%%), 8 x 4 over the view (left = image left):\n");
-    for (int r = 0; r < 4; r++) {
+    for (int row = 0; row < 4; row++) {
         printf("  ");
-        for (int c = 0; c < 8; c++)
-            printf(" %4.0f", ff.white_at((c + 0.5f) * ff.width / 8 - 0.5f, (r + 0.5f) * ff.height / 4 - 0.5f) /
-                                 ff.ref * 100);
+        for (int col = 0; col < 8; col++)
+            printf(" %4.0f", ff.white_at((col + 0.5f) * ff.width / 8 - 0.5f, (row + 0.5f) * ff.height / 4 - 0.5f) / ff.ref * 100);
         printf("\n");
     }
-    std::string out = a.out;
-    if (out.empty()) {
-        const std::string fn = cfg.flat_file.empty() ? "flat.json" : cfg.flat_file;
-        out = fn[0] == '/' ? fn : cfg.config_dir + "/" + fn;
-    }
+    const std::string out = calib_out(cfg, a, CalibDefault::Flat);
     char note[96];
     snprintf(note, sizeof note, "%d stops of %d steps, %.1f %% covered", st.frames, step, st.covered * 100);
     e = save_flat(out, ff, note);
-    printf("saved %s: %s%s\n", out.c_str(), e.empty() ? "ok" : e.c_str(),
-           e.empty() && cfg.flat_file.empty() ? " (des_app.json flat_file is empty: crops stay raw)" : "");
+    report_saved(out, e, cfg.flat_file.empty() ? " (des_app.json flat_file is empty: crops stay raw)" : nullptr);
     return e.empty() ? 0 : 1;
 }
-
-// ---------------------------------------------------------------- calib-arm
 // Hand-eye: where the arm stands on the table (base_xy, base_yaw) and how high the belt is in the arm frame, from
 // >= 3 marker positions that the camera sees and the gripper tip touches. Interactive (Enter between the steps).
 // The arm stands beside the pick line, downstream of the view: with --carry <mm> the camera locates each marker in
-// the view and the belt then carries it that far downstream (belt.mm_per_step, calib-belt) into the arm's working
-// area, where the tip touches it - the fit then covers the area the arm really picks in.
+// the view and the belt then carries it that far downstream (belt.mm_per_step, calib-belt) into the arm's working area, where the tip touches it - the fit then covers the area the arm really picks in.
 // The joint zeros / directions must be right first (arm read = geometric angles, docs/运动控制与分拣.md bring-up step 3).
 static bool wait_enter(const char *prompt)
 {
@@ -842,7 +584,6 @@ static bool wait_enter(const char *prompt)
     if (!fgets(line, sizeof line, stdin)) return false;
     return line[0] != 'q' && line[0] != 'Q';
 }
-
 static int run_calib_arm(des_hw_t &hw, const AppConfig &cfg, const Args &a)
 {
     if (cfg.calib_loaded.empty()) {
@@ -853,45 +594,39 @@ static int run_calib_arm(des_hw_t &hw, const AppConfig &cfg, const Args &a)
     ArmExec ex(&hw, cfg.arm);
     std::array<uint16_t, 6> pos{};
     if (!ex.read_positions(pos)) { fprintf(stderr, "not all servos answered (des_tool arm scan)\n"); return 2; }
-    CameraRig cam(&hw);
-    if (open_camera(cam, cfg, a)) return 1;
+    CameraSession cam(&hw, cfg, a);
+    if (!cam.ok()) return 1;
     Locator loc(cfg.locate);
-    printf("Hand-eye calibration, %d points. Marker: a small flat part (or a 10~20 mm disc) whose centre you can\n"
-           "touch with the gripper tip; spread the points over the part of the view the arm reaches.\n"
-           "The arm torque goes OFF now - hold the arm.\n", n);
+    printf("Hand-eye calibration, %d points. Marker: a small flat part (or a 10~20 mm disc) whose centre you can\n" "touch with the gripper tip; spread the points over the part of the view the arm reaches.\n" "The arm torque goes OFF now - hold the arm.\n", n);
     if (!wait_enter("Enter to switch the torque off (q quits)")) return 1;
     ex.torque(false);
     std::vector<Vec3> arm_pts;
     std::vector<Vec2> tab_pts;
     for (int i = 0; i < n && !g_stop; i++) {
         char msg[200];
-        snprintf(msg, sizeof msg, a.carry_mm > 0
-                     ? "[%d/%d] put the marker in view (downstream half), take the hand and the arm off the belt, Enter:"
-                     : "[%d/%d] put the marker in view (reachable), move the arm out of the picture, Enter:",
-                 i + 1, n);
+        snprintf(msg, sizeof msg, a.carry_mm > 0 ? "[%d/%d] put the marker in view (downstream half), take the hand and the arm off the belt, Enter:" : "[%d/%d] put the marker in view (reachable), move the arm out of the picture, Enter:", i + 1, n);
         if (!wait_enter(msg)) break;
         Vec2 p;
-        std::string e = still_position(cam, loc, cfg, p);
+        std::string e = still_position(*cam, loc, cfg, p);
         if (!e.empty()) { printf("  %s - again\n", e.c_str()); i--; continue; }
         printf("  marker at table (%.1f, %.1f) mm\n", p.x, p.y);
         if (a.carry_mm > 0) {   // into the arm's area: table x grows downstream
-            const double mmps = std::fabs(cfg.belt.mm_per_step), vmax = 20.0 / mmps;
+            const double mmps = std::fabs(cfg.belt.mm_per_step);
+            const BeltRates r = belt_rates(cfg, 20.0);
             const int32_t steps = (cfg.belt.dir >= 0 ? 1 : -1) * int32_t(std::lround(a.carry_mm / mmps));
             des_step_enable(&hw, 1);
-            e = belt_move(hw, steps, vmax, vmax * 2);
+            e = belt_move(hw, steps, r.vmax, r.acc);
             des_step_stop(&hw);
             if (!e.empty()) { printf("  belt: %s - stopped\n", e.c_str()); break; }
             p.x += float(std::abs(steps) * mmps);
-            printf("  carried %.1f mm downstream: marker now at table (%.1f, %.1f) mm\n", std::abs(steps) * mmps, p.x,
-                   p.y);
+            printf("  carried %.1f mm downstream: marker now at table (%.1f, %.1f) mm\n", std::abs(steps) * mmps, p.x, p.y);
         }
         if (!wait_enter("  touch the marker centre with the gripper tip (between the fingers), Enter:")) break;
         if (!ex.read_positions(pos)) { printf("  servo read failed - again\n"); i--; continue; }
         float grip = 0;
         JointAngles j = arm_from_counts(cfg.arm, pos, grip);
         Vec3 tip = arm_fk(cfg.arm, j);
-        printf("  tip at arm (%.1f, %.1f, %.1f) mm (q %.1f %.1f %.1f %.1f)\n", tip.x, tip.y, tip.z, j.q[0], j.q[1],
-               j.q[2], j.q[3]);
+        printf("  tip at arm (%.1f, %.1f, %.1f) mm (q %.1f %.1f %.1f %.1f)\n", tip.x, tip.y, tip.z, j.q[0], j.q[1], j.q[2], j.q[3]);
         arm_pts.push_back(tip);
         tab_pts.push_back(p);
     }
@@ -899,39 +634,32 @@ static int run_calib_arm(des_hw_t &hw, const AppConfig &cfg, const Args &a)
     if (!f.ok) { fprintf(stderr, "calib-arm: %s\n", f.err.c_str()); return 2; }
     for (size_t i = 0; i < f.resid.size(); i++)
         printf("  point %zu: table (%.1f, %.1f) residual %.2f mm\n", i + 1, tab_pts[i].x, tab_pts[i].y, f.resid[i]);
-    printf("== arm base at table (%.1f, %.1f) mm, arm +x points %.1f deg from table +x; residual rms %.2f, max %.2f mm\n",
-           f.base_xy.x, f.base_xy.y, f.base_yaw * 180 / kPi, f.rms, f.max);
+    printf("== arm base at table (%.1f, %.1f) mm, arm +x points %.1f deg from table +x; residual rms %.2f, max %.2f mm\n", f.base_xy.x, f.base_xy.y, f.base_yaw * 180 / kPi, f.rms, f.max);
     if (a.marker_h >= 0) printf("   belt surface %.1f mm above the arm base plate (marker %.1f mm)\n", f.belt_z, a.marker_h);
     else printf("   belt_z not fitted (give --marker-h to fit it)\n");
     if (f.max > 3)
         printf("   max residual > 3 mm: a marker moved, a touch was off, or joint zeros / link lengths are wrong\n");
-    std::string out = a.out.empty() ? cfg.calib_loaded : a.out;
+    const std::string out = calib_out(cfg, a, CalibDefault::Arm);
     std::string e = save_arm_calib(out, f, a.marker_h >= 0);
-    printf("saved %s: %s. Torque is still OFF: des_tool arm torque-on before moving.\n", out.c_str(),
-           e.empty() ? "ok" : e.c_str());
+    printf("saved %s: %s. Torque is still OFF: des_tool arm torque-on before moving.\n", out.c_str(), e.empty() ? "ok" : e.c_str());
     return e.empty() ? 0 : 1;
 }
-
-// ---------------------------------------------------------------- measure
 // One frame (or -n frames of still parts) -> locate -> measure every gear / rack. For accuracy work with real
 // parts: compare with the caliper values, report the repeatability, keep the raw frame to re-run offline.
 static int run_measure(des_hw_t *hw, const AppConfig &cfg, const Args &a)
 {
-    cv::Mat bgra, gray;
+    cv::Mat bgr, bgra, gray;   // bgr: --image original / camera frame, so --dump needs no BGRA round trip
     int frames = a.n > 0 ? int(a.n) : 1;
-    std::unique_ptr<CameraRig> cam;
-    if (!a.image.empty()) {
-        cv::Mat img = cv::imread(a.image, cv::IMREAD_COLOR);
-        if (img.empty()) { fprintf(stderr, "cannot read %s\n", a.image.c_str()); return 1; }
-        cv::cvtColor(img, bgra, cv::COLOR_BGR2BGRA);
-        cv::cvtColor(img, gray, cv::COLOR_BGR2GRAY);
-        frames = 1;
-    } else {
-        cam.reset(new CameraRig(hw));
-        if (open_camera(*cam, cfg, a)) return 1;
+    const bool from_camera = a.image.empty();
+    CameraRig cam(hw);
+    if (from_camera) {
+        if (open_camera(cam, cfg, a)) return 1;
         CapturedFrame f;
-        for (int i = 0; i < 30; i++)   // exposure settles
-            if (!cam->next(f, false).empty()) return 1;
+        if (!capture_frames(cam, 30, f).empty()) return 1;   // exposure settles
+    } else {
+        if (!read_image(a.image, bgr, gray)) { fprintf(stderr, "cannot read %s\n", a.image.c_str()); return 1; }
+        cv::cvtColor(bgr, bgra, cv::COLOR_BGR2BGRA);
+        frames = 1;
     }
     Locator loc(cfg.locate);
     RepeatStats st;
@@ -939,13 +667,14 @@ static int run_measure(des_hw_t *hw, const AppConfig &cfg, const Args &a)
     double sum_ms = 0;
     for (int i = 0; i < frames && !g_stop; i++) {
         float mm_per_row = 0;
-        if (cam) {
+        if (from_camera) {
             CapturedFrame f;
-            std::string err = cam->next(f, true);
+            std::string err = cam.next(f, true);
             if (!err.empty()) { fprintf(stderr, "%s\n", err.c_str()); return 1; }
             // copy out of the DMA ring (it is rewritten a few frames later)
             bgra = cv::Mat(f.height, f.width, CV_8UC4, const_cast<uint8_t *>(f.bgra), size_t(f.stride)).clone();
             cv::cvtColor(bgra, gray, cv::COLOR_BGRA2GRAY);
+            bgr = cv::Mat();
             mm_per_row = float((f.step_pos_end - f.step_pos) * cfg.belt.mm_per_step * cfg.belt.dir / f.height);
         }
         double t0 = now_s();
@@ -962,20 +691,18 @@ static int run_measure(des_hw_t *hw, const AppConfig &cfg, const Args &a)
     if (frames > 1) st.print();
     if (!a.out.empty()) printf("raw frame %s: %s\n", a.out.c_str(), cv::imwrite(a.out, gray) ? "ok" : "FAILED");
     if (!a.dump.empty() && !bgra.empty()) {
-        cv::Mat bgr;
-        cv::cvtColor(bgra, bgr, cv::COLOR_BGRA2BGR);
+        if (bgr.empty()) cv::cvtColor(bgra, bgr, cv::COLOR_BGRA2BGR);
         draw_parts(bgr, last, cfg.px_to_table);
         printf("report %s: %s\n", a.dump.c_str(), cv::imwrite(a.dump, bgr) ? "ok" : "FAILED");
     }
     return 0;
 }
-
 static int run_ik(const AppConfig &cfg, const Args &a)
 {
-    if (a.pos.size() < 2) { usage_tool(); return 1; }
-    Vec2 p{float(a.pos[0]), float(a.pos[1])};
-    float z = a.pos.size() > 2 ? float(a.pos[2]) : cfg.arm.z_grasp;
-    float axis = a.pos.size() > 3 ? float(a.pos[3]) * kPi / 180 : 0.f;
+    if (a.npos < 2) { usage_tool(); return 1; }
+    Vec2 p{a.pos[0], a.pos[1]};
+    float z = a.npos > 2 ? a.pos[2] : cfg.arm.z_grasp;
+    float axis = a.npos > 3 ? a.pos[3] * kPi / 180 : 0.f;
     Vec3 pa = table_to_arm(cfg.arm, p, z);
     JointAngles j;
     const char *why = arm_ik(cfg.arm, pa, table_axis_to_arm(cfg.arm, axis), j);
@@ -989,11 +716,9 @@ static int run_ik(const AppConfig &cfg, const Args &a)
     printf("fk check: (%.2f, %.2f, %.2f)\n", b.x, b.y, b.z);
     return why ? 2 : 0;
 }
-
 int main(int argc, char **argv)
 {
     if (print_version_if_requested(argc, argv, "des_tool")) return 0;
-
     Args a;
     if (!parse(argc, argv, a)) { usage_tool(); return 1; }
     if (a.config.empty()) {   // 没给 -c：环境里的 DES_CONFIG（des.env export 的），否则当前目录的 des_app.json
@@ -1005,29 +730,16 @@ int main(int argc, char **argv)
         usage_tool();
         return 1;
     }
-
     AppConfig cfg;
     std::string err = load_config(a.config, cfg);
     if (!err.empty()) fprintf(stderr, "config: %s (using defaults)\n", err.c_str());
-    if (!cfg.calib_loaded.empty()) printf("config: camera calibration from %s\n", cfg.calib_loaded.c_str());
-    if (!cfg.flat_loaded.empty()) printf("config: flat field (crops) from %s\n", cfg.flat_loaded.c_str());
-    else if (a.mode != "calib-cam") printf("config: no %s, camera mapping is the uncalibrated placeholder\n",
-                                            cfg.calib_file.c_str());
+    print_config_summary(cfg, a.mode != "calib-cam");
     if (a.mode == "ik") return run_ik(cfg, a);
     if (a.mode == "calib-cam" && !a.image.empty()) return run_calib(nullptr, cfg, a);
     if (a.mode == "measure" && !a.image.empty()) return run_measure(nullptr, cfg, a);
-
     des_hw_t hw;
-    int rc = des_hw_open(&hw);
-    if (rc) {
-        fprintf(stderr, "PL: %s\n", des_strerror(rc));
-        return 1;
-    }
-    printf("PL des_regs VERSION %u\n", hw.version);
-    signal(SIGINT, on_sigint);
-    signal(SIGTERM, on_sigint);
-    if (a.rt && cfg.camera.realtime) go_realtime();
-
+    if (app_bootstrap(hw, cfg, a)) return 1;
+    int rc;
     if (a.mode == "probe") rc = run_probe(hw, cfg, a);
     else if (a.mode == "locate") rc = run_locate(hw, cfg, a);
     else if (a.mode == "track") rc = run_track(hw, cfg, a);

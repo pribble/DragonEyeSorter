@@ -70,16 +70,6 @@ public:
      */
     virtual int WaitFinish() = 0;
 
-    /**
-     * @brief 自动曝光，通过直方图计算正确的曝光
-     * @deprecated 不再使用
-     * @param histogram 直方图
-     * @return int
-     */
-    virtual int AutoExposure(const int (&histogram)[256]) {
-        return 0;
-    }
-
     // 当前前缓存在外部申请，之后可能由camera 或者display 申请
 
     /**

@@ -1,21 +1,13 @@
 /* desreg: DragonEyeSorter PL register tool (/dev/mem), built on hw/des_hw.
- *   desreg                         status
- *   desreg r <off> | w <off> <val> raw register access (offset inside PL_BASE window)
- *   desreg led on|off|auto
- *   desreg lat [n]                 PS->PL read interval, measured with the PL free-running counter
- *   desreg cmdlat [n]              command response: PS issues a 6-servo SYNC WRITE -> first start bit on the bus
- *                                  (ids 100..105: nobody answers, nothing moves; test report)
- *   desreg steplat [n]             command response: PS issues a 10-step move -> first step pulse (polls STEPS)
- *   desreg steptgt                 stepper target rewrite while moving: TARGET = POS stops at once (v9+); a target behind ramps down past it
- *   desreg ping <id>               servo PING
- *   desreg sread <id> <addr> <n>   servo READ DATA (e.g. 0x38 2 = position, 0x2E 2 = current, 0x3F 1 = temp)
- *   desreg swrite <id> <addr> <b..> servo WRITE DATA (bytes)
- *   desreg sync <pos> <ms> <id...> servo SYNC WRITE target position / time to several ids
- *   desreg step status | vel <steps/s> [acc] | move <target> [vmax] [acc] | stop | halt | off | zero
- *   desreg vis                     PL vision statistics (v6)
- *   desreg pwm <ch> <us> | pwm off             flap servo pulse width (v7)
- *   desreg io | io estop-clr | io enc-zero | io ir1-clr | io watch [sec]   e-stop latch, IR1 / LIMIT1, encoder (v11)
- *   desreg vis <mode> [thr] [edge_thr] [full|x0 y0 x1 y1]   mode 0 camera 1 gray 2 gauss 3 binary 4 sobel 5 edges
+ *   desreg                       status;  r <off> | w <off> <val>   raw access in the PL_BASE window;  led on|off|auto
+ *   lat [n]                      PS->PL read interval (PL free-running counter)
+ *   cmdlat [n]                   PS issues a 6-servo SYNC WRITE (ids 100..105, nothing moves) -> first start bit on the bus
+ *   steplat [n]                  PS issues a 10-step move -> first step pulse (polls STEPS)
+ *   steptgt                      stepper target rewrite while moving: TARGET = POS stops at once (v9+); behind ramps down past
+ *   ping <id> | sread <id> <addr> <n> | swrite <id> <addr> <b..> | sync <pos> <ms> <id...>   servo bus (READ 0x38 2 = pos)
+ *   step status | vel <steps/s> [acc] | move <target> [vmax] [acc] | stop | halt | off | zero
+ *   vis [mode [thr] [edge_thr] [full|x0 y0 x1 y1]]   PL vision statistics / settings (v6; modes 0 camera .. 5 edges)
+ *   pwm <ch> <us> | pwm off      flap servo pulse width (v7);   io [estop-clr|enc-zero|ir1-clr|watch [sec]]  (v11)
  * Do not use the write commands while des_app is running (single-master servo bus / stepper).
  */
 #include <stdio.h>
@@ -26,8 +18,16 @@
 #include "des_hw.h"
 
 static des_hw_t hw;
-
 static uint32_t rd(uint32_t off) { return des_rd(&hw, off); }
+
+/* min / avg / max of a FREE_CNT delta series (the three latency subcommands use the same shape) */
+typedef struct { uint32_t min, max; double sum; } stat_t;
+static void stat_add(stat_t *s, uint32_t v)
+{
+    if (v < s->min) s->min = v;
+    if (v > s->max) s->max = v;
+    s->sum += v;
+}
 
 static int status(void)
 {
@@ -40,80 +40,70 @@ static int status(void)
     printf("SCRATCH      0x%08x\n", rd(DES_REG_SCRATCH));
     printf("FREE_CNT     %u\n", rd(DES_REG_FREE_CNT));
     printf("LED_CTRL     0x%08x\n", rd(DES_REG_LED_CTRL));
-    if (integrated) {
-        des_frame_t f;
-        des_frame_read(&hw, &f);
-        printf("FRAME_CNT    %u\n", f.cnt);
-        printf("FRAME_PERIOD %u ticks = %.3f ms = %.2f fps\n", f.period, f.period * 1e3 / DES_FREE_CNT_HZ,
-               f.period ? (double)DES_FREE_CNT_HZ / f.period : 0.0);
-        printf("SERVO frames %u, timeouts %u, rx errors %u\n",
-               rd(DES_SB_CNT_FRAMES), rd(DES_SB_CNT_TIMEOUT), rd(DES_SB_CNT_RX_ERR));
-        des_capture_t c;
-        if (des_capture_read(&hw, &c) == DES_OK)
-            printf("CAPTURE      seq %u, frame %u, start->done %.3f ms, belt pos %d -> %d\n", c.seq, c.frame,
-                   (c.t1 - c.t0) * 1e3 / DES_FREE_CNT_HZ, c.pos0, c.pos1);
-        uint32_t s = des_step_status(&hw);
-        printf("STEPPER      pos %d, status 0x%x%s%s%s", des_step_pos(&hw), s,
-               s & DES_ST_STATUS_MOVING ? " moving" : "", s & DES_ST_STATUS_HALTED ? " halted" : "",
-               s & DES_ST_STATUS_ENABLED ? " enabled" : "");
-        if (des_step_brake_steps(&hw) >= 0) printf(", brake %d steps", des_step_brake_steps(&hw));
-        printf("\n");
-    }
+    if (!integrated) return 0;
+    des_frame_t f;
+    des_frame_read(&hw, &f);
+    printf("FRAME_CNT    %u\n", f.cnt);
+    printf("FRAME_PERIOD %u ticks = %.3f ms = %.2f fps\n", f.period, f.period * 1e3 / DES_FREE_CNT_HZ,
+           f.period ? (double)DES_FREE_CNT_HZ / f.period : 0.0);
+    printf("SERVO frames %u, timeouts %u, rx errors %u\n", rd(DES_SB_CNT_FRAMES), rd(DES_SB_CNT_TIMEOUT),
+           rd(DES_SB_CNT_RX_ERR));
+    des_capture_t c;
+    if (des_capture_read(&hw, &c) == DES_OK)
+        printf("CAPTURE      seq %u, frame %u, start->done %.3f ms, belt pos %d -> %d\n", c.seq, c.frame,
+               (c.t1 - c.t0) * 1e3 / DES_FREE_CNT_HZ, c.pos0, c.pos1);
+    uint32_t s = des_step_status(&hw);
+    printf("STEPPER      pos %d, status 0x%x%s%s%s", des_step_pos(&hw), s, s & DES_ST_STATUS_MOVING ? " moving" : "",
+           s & DES_ST_STATUS_HALTED ? " halted" : "", s & DES_ST_STATUS_ENABLED ? " enabled" : "");
+    if (des_step_brake_steps(&hw) >= 0) printf(", brake %d steps", des_step_brake_steps(&hw));
+    printf("\n");
     return 0;
 }
 
 static int latency(int n)
 {
-    uint32_t prev = des_now(&hw), min = 0xffffffffu, max = 0;
-    double sum = 0;
+    uint32_t prev = des_now(&hw);
+    stat_t st = { 0xffffffffu, 0, 0 };
     for (int i = 0; i < n; i++) {
         uint32_t now = des_now(&hw);
-        uint32_t d = now - prev;
+        stat_add(&st, now - prev);
         prev = now;
-        if (d < min) min = d;
-        if (d > max) max = d;
-        sum += d;
     }
     double ns = 1e9 / DES_FREE_CNT_HZ;
-    printf("back-to-back read interval over %d reads: min %.0f ns, avg %.0f ns, max %.0f ns\n",
-           n, min * ns, sum / n * ns, max * ns);
+    printf("back-to-back read interval over %d reads: min %.0f ns, avg %.0f ns, max %.0f ns\n", n, st.min * ns,
+           st.sum / n * ns, st.max * ns);
     return 0;
 }
 
-/* command response latency: from the PS deciding to send (FREE_CNT read) to the first start bit of a 6-servo SYNC
- * WRITE on the bus (PL TX_T0), including the writes of the frame into the PL buffer. Servo ids 100..105 so that no
- * servo on the bus moves. */
+/* command response: PS decides to send (FREE_CNT) -> first start bit of a 6-servo SYNC WRITE on the bus (PL TX_T0),
+ * including the frame writes; servo ids 100..105 (nobody answers / moves). */
 static int cmdlat(int n)
 {
     const uint8_t ids[6] = { 100, 101, 102, 103, 104, 105 };
     uint16_t pos[6], ms[6];
-    for (int i = 0; i < 6; i++) { pos[i] = 2048; ms[i] = 500; }
-    uint32_t min = 0xffffffffu, max = 0;
-    double sum = 0, wire = 0;
+    for (int i = 0; i < 6; i++) pos[i] = 2048, ms[i] = 500;
+    stat_t st = { 0xffffffffu, 0, 0 };
+    double wire = 0;
     for (int i = 0; i < n; i++) {
         uint32_t t0 = des_now(&hw);
         int rc = des_servo_sync_pos(&hw, ids, pos, ms, 6);
         if (rc) { printf("SYNC WRITE failed: %s\n", des_strerror(rc)); return 5; }
-        uint32_t d = rd(DES_SB_TX_T0) - t0;
-        if (d < min) min = d;
-        if (d > max) max = d;
-        sum += d;
+        stat_add(&st, rd(DES_SB_TX_T0) - t0);
         wire += rd(DES_SB_TX_T1) - rd(DES_SB_TX_T0);
     }
     printf("command -> first start bit on the bus, %d x 6-servo SYNC WRITE: min %.2f us, avg %.2f us, max %.2f us; "
-           "frame on the wire %.1f us\n", n, des_ticks_us(min), des_ticks_us((uint32_t)(sum / n)),
-           des_ticks_us(max), des_ticks_us((uint32_t)(wire / n)));
+           "frame on the wire %.1f us\n", n, des_ticks_us(st.min), des_ticks_us((uint32_t)(st.sum / n)),
+           des_ticks_us(st.max), des_ticks_us((uint32_t)(wire / n)));
     return 0;
 }
 
-/* stepper command response: from the move command to the first step (STEPS changes), polled back to back
- * (~0.4 us resolution). Moves of +-10 steps (~0.1 mm of belt). */
+/* stepper response: move command -> first step pulse (STEPS changes), polled back to back (~0.4 us); +-10 steps. */
 static int steplat(int n)
 {
     des_step_enable(&hw, 1);
     usleep(20000);
-    uint32_t min = 0xffffffffu, max = 0, lost = 0;
-    double sum = 0;
+    stat_t st = { 0xffffffffu, 0, 0 };
+    uint32_t lost = 0;
     for (int i = 0; i < n; i++) {
         int32_t p = des_step_pos(&hw);
         uint32_t s0 = rd(DES_ST_STEPS), t0 = des_now(&hw), t = t0;
@@ -123,22 +113,19 @@ static int steplat(int n)
             if (t - t0 > DES_FREE_CNT_HZ / 10) break;   /* 100 ms: no step at all */
         }
         if (t - t0 > DES_FREE_CNT_HZ / 10) { lost++; continue; }
-        uint32_t d = t - t0;
-        if (d < min) min = d;
-        if (d > max) max = d;
-        sum += d;
+        stat_add(&st, t - t0);
         for (int g = 0; g < 200 && (des_step_status(&hw) & DES_ST_STATUS_MOVING); g++) usleep(1000);
     }
     if (lost == (uint32_t)n) { printf("no step pulse within 100 ms (halted? see desreg step status)\n"); return 5; }
-    printf("move command -> first step pulse, %d runs: min %.2f us, avg %.2f us, max %.2f us%s\n", n,
-           des_ticks_us(min), des_ticks_us((uint32_t)(sum / (n - lost))), des_ticks_us(max),
+    printf("move command -> first step pulse, %d runs: min %.2f us, avg %.2f us, max %.2f us%s\n", n, des_ticks_us(st.min),
+           des_ticks_us((uint32_t)(st.sum / (n - lost))), des_ticks_us(st.max),
            lost ? " (some runs gave no step)" : "");
     return 0;
 }
 
-/* stepper TARGET rewrite while moving (belt "stop at"): slow move (100 steps/s, 10 ms per step) so that a target
- * written microseconds after reading POS equals POS. v9+: stops at once with AT_TARGET; v8 and older stay MOVING.
- * Then a target behind the travel at speed: must ramp down past it (not stop abruptly). */
+/* stepper TARGET rewrite while moving (belt "stop at"): slow move (100 steps/s, 10 ms per step) so a target written
+ * microseconds after reading POS equals POS. v9+: stops at once with AT_TARGET; v8 and older stay MOVING. Then a
+ * target behind the travel at speed: must ramp down past it (not stop abruptly). */
 static int steptgt(void)
 {
     des_step_enable(&hw, 1);
@@ -178,8 +165,7 @@ static int steptgt(void)
     if (ms < 50 || past < 50) rc = 6;   /* 4000 -> 0 at 20000 steps/s^2 = 200 ms, ~400 steps */
     return rc;
 }
-
-/* run one servo transaction and print timing / reply like the original tool */
+/* one servo transaction: print on-wire time / reply exactly like the original tool */
 static int sb_print(const uint8_t *body, int n, int expect_reply, des_sb_result_t *out)
 {
     des_sb_result_t r;
@@ -195,12 +181,10 @@ static int sb_print(const uint8_t *body, int n, int expect_reply, des_sb_result_
            r.status & 0x20 ? " overload" : "", r.status & 0x04 ? " over-temp" : "", r.status & 0x01 ? " voltage" : "");
     return rc == DES_OK ? 0 : 4;
 }
-
 int main(int argc, char **argv)
 {
     int orc = des_hw_open(&hw);
     if (orc == DES_E_OPEN) { perror("open/mmap /dev/mem"); return 1; }
-
     const char *cmd = argc > 1 ? argv[1] : "";
     int rc = 0;
     int read_only = argc == 1 || !strcmp(cmd, "r") || !strcmp(cmd, "lat") || (!strcmp(cmd, "vis") && argc == 2);
@@ -211,8 +195,7 @@ int main(int argc, char **argv)
     } else if (argc == 1) {
         rc = status();
     } else if (!strcmp(cmd, "r") && argc == 3) {
-        uint32_t off = strtoul(argv[2], NULL, 0);
-        printf("0x%08x\n", rd(off));
+        printf("0x%08x\n", rd(strtoul(argv[2], NULL, 0)));
     } else if (!strcmp(cmd, "w") && argc == 4) {
         uint32_t off = strtoul(argv[2], NULL, 0), v = strtoul(argv[3], NULL, 0);
         des_wr(&hw, off, v);
@@ -221,15 +204,11 @@ int main(int argc, char **argv)
         uint32_t v = !strcmp(argv[2], "on") ? 3 : !strcmp(argv[2], "off") ? 1 : 0;
         des_wr(&hw, DES_REG_LED_CTRL, v);
         printf("LED_CTRL <- %u\n", v);
-    } else if (!strcmp(cmd, "lat")) {
-        rc = latency(argc > 2 ? atoi(argv[2]) : 100000);
-    } else if (!strcmp(cmd, "cmdlat")) {
-        rc = cmdlat(argc > 2 ? atoi(argv[2]) : 200);
-    } else if (!strcmp(cmd, "steplat")) {
-        rc = steplat(argc > 2 ? atoi(argv[2]) : 100);
-    } else if (!strcmp(cmd, "steptgt")) {
-        rc = steptgt();
-    } else if (!strcmp(cmd, "ping") && argc == 3) {
+    } else if (!strcmp(cmd, "lat")) rc = latency(argc > 2 ? atoi(argv[2]) : 100000);
+    else if (!strcmp(cmd, "cmdlat")) rc = cmdlat(argc > 2 ? atoi(argv[2]) : 200);
+    else if (!strcmp(cmd, "steplat")) rc = steplat(argc > 2 ? atoi(argv[2]) : 100);
+    else if (!strcmp(cmd, "steptgt")) rc = steptgt();
+    else if (!strcmp(cmd, "ping") && argc == 3) {
         uint8_t b[3] = { (uint8_t)strtoul(argv[2], NULL, 0), 2, 0x01 };
         rc = sb_print(b, 3, 1, NULL);
     } else if (!strcmp(cmd, "sread") && argc == 5) {
@@ -254,11 +233,7 @@ int main(int argc, char **argv)
         if (nid > 11) nid = 11;
         uint8_t ids[11];
         uint16_t p[11], t[11];
-        for (int i = 0; i < nid; i++) {
-            ids[i] = (uint8_t)strtoul(argv[4 + i], NULL, 0);
-            p[i] = (uint16_t)pos;
-            t[i] = (uint16_t)ms;
-        }
+        for (int i = 0; i < nid; i++) ids[i] = (uint8_t)strtoul(argv[4 + i], NULL, 0), p[i] = pos, t[i] = ms;
         rc = des_servo_sync_pos(&hw, ids, p, t, nid);
         printf("sync %d servos -> pos %u in %u ms: %s, on wire %.1f us\n", nid, pos, ms, des_strerror(rc),
                des_ticks_us(rd(DES_SB_TX_T1) - rd(DES_SB_TX_T0)));
@@ -315,29 +290,22 @@ int main(int argc, char **argv)
                 fprintf(stderr, "%s\n", e == DES_E_BUSY ? "des_vision statistics never stable (frame starts every few us?)"
                                                         : "bitstream before v6: no des_vision");
                 rc = 2;
-            }
-            else printf("seq %u mode %d full %d thr %d lanes %d | area %u bbox x %d..%d y %d..%d centroid (%.1f, %.1f) "
-                        "edges %u | %u pixel clocks/frame\n", v.seq, v.mode, v.full, v.thr, v.lanes, v.area, v.x0, v.x1,
-                        v.y0, v.y1, v.cx, v.cy, v.edges, v.cycles);
+            } else printf("seq %u mode %d full %d thr %d lanes %d | area %u bbox x %d..%d y %d..%d centroid (%.1f, %.1f) "
+                          "edges %u | %u pixel clocks/frame\n", v.seq, v.mode, v.full, v.thr, v.lanes, v.area, v.x0, v.x1,
+                          v.y0, v.y1, v.cx, v.cy, v.edges, v.cycles);
         }
     } else if (!strcmp(cmd, "step") && argc >= 3) {
         const char *s = argv[2];
-        if (!strcmp(s, "vel") && argc >= 4) {
-            des_step_vel(&hw, atof(argv[3]), argc > 4 ? atof(argv[4]) : 20000.0);
-        } else if (!strcmp(s, "move") && argc >= 4) {
+        if (!strcmp(s, "vel") && argc >= 4) des_step_vel(&hw, atof(argv[3]), argc > 4 ? atof(argv[4]) : 20000.0);
+        else if (!strcmp(s, "move") && argc >= 4)
             des_step_move(&hw, (int32_t)strtol(argv[3], NULL, 0), argc > 4 ? atof(argv[4]) : 8000.0,
                           argc > 5 ? atof(argv[5]) : 20000.0);
-        } else if (!strcmp(s, "stop")) {
-            des_step_stop(&hw);
-        } else if (!strcmp(s, "halt")) {
-            des_step_halt(&hw);
-        } else if (!strcmp(s, "off")) {
-            des_step_enable(&hw, 0);
-        } else if (!strcmp(s, "zero")) {
-            des_step_zero(&hw);
-        }
-        printf("stepper pos %d, speed %.0f steps/s, steps %u, status 0x%x\n", des_step_pos(&hw),
-               des_step_speed(&hw), rd(DES_ST_STEPS), des_step_status(&hw));
+        else if (!strcmp(s, "stop")) des_step_stop(&hw);
+        else if (!strcmp(s, "halt")) des_step_halt(&hw);
+        else if (!strcmp(s, "off")) des_step_enable(&hw, 0);
+        else if (!strcmp(s, "zero")) des_step_zero(&hw);
+        printf("stepper pos %d, speed %.0f steps/s, steps %u, status 0x%x\n", des_step_pos(&hw), des_step_speed(&hw),
+               rd(DES_ST_STEPS), des_step_status(&hw));
     } else {
         fprintf(stderr, "usage: see header of desreg.c\n");
         rc = 1;

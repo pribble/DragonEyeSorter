@@ -16,9 +16,14 @@
 # 目录：src/ 我们自己的源码（产品运行时与运维工具共用，按角色分 app / hw / sched / measure / ui / vision）、
 #       tools/ 底层命令行（desreg / canplc）、tests/ 自动断言测试、kernel/ 驱动、vendor/ 非我们写的。
 #       两个入口：src/app/main.cpp -> des_app（产品运行时 run / live），
-#                 src/app/tool_main.cpp -> des_tool（人工运维 probe / locate / … / ik）。
+#                 src/app/tool_main.cpp -> des_tool（人工运维 13 个模式）。
 #       上板脚本不在这里：唯一源是 ../scripts/deploy/out/（与部署清单同一份，见那里的 README）。
 #       **头文件平铺**（全仓库无跨目录 include），靠下面的 INC 解析 —— 各目录 basename 必须唯一。
+#
+# 源文件用 wildcard 自动收集：**增删 .cpp / 改名不用改本文件**。三个例外是入口、des_tool 专用件和 tools/ +
+# tests/ 的各个独立二进制（每个二进制自己列源）。
+#   - 共享件：src/{app,sched,measure,ui,vision}/*.cpp（去掉入口与 OPS_SRC） + src/hw/*.c/*.cpp
+#   - OPS_SRC：只链进 des_tool 的标定 / 测量报告 / 运维辅助，产品二进制里不能出现
 #
 # Targets: desreg (C, no deps), test_scheduler (C++, no deps), test_calib / test_measure / test_npu (C++, need SDK),
 #          test_belt_hil (board, PL v5+), test_can / canplc (SocketCAN), test_modbus (loopback TCP), des_app / des_tool (C++, need SDK), all, clean.
@@ -56,27 +61,27 @@ OPENCV := $(OPENCV_LIB)
 RPATH  := -Wl,-rpath,/opt/armnn_lib/lib:/opt/ffmpeg_opencv4.7.0_aarch64/lib
 
 # 头文件搜索路径（平铺 include）。kernel/ 只为了 src/vision/mipi_camera.cpp 拿到唯一一份 ioctl 头，
-# vendor/third_party 是 nlohmann json.hpp（app / measure / ui / vision 都用）。
-INC := -Isrc/app -Isrc/hw -Isrc/sched -Isrc/measure -Isrc/ui -Isrc/vision -Ikernel -Ivendor/third_party
+# vendor/third_party 是 nlohmann json.hpp（app / measure / ui / vision 都用），tests 放共享断言宏。
+INC := -Isrc/app -Isrc/hw -Isrc/sched -Isrc/measure -Isrc/ui -Isrc/vision -Ikernel -Itests -Ivendor/third_party
 
-SCHED_SRC := src/sched/tracker.cpp src/sched/picker.cpp src/sched/arm.cpp src/sched/flap.cpp
-# 相机取帧复用厂家 demo 改造件（MIT）；src/vision 只放编进二进制的 4 个 .cpp，未编的参考件在 vendor/demo/
-VISION_SRC := src/vision/mipi_camera.cpp src/vision/logger_forward.cpp src/vision/flow_common_types.cpp src/vision/executor.cpp
-# 产品运行时与运维工具共用的源码（不含两个入口 main.cpp / tool_main.cpp）：编译一次成 build/obj 下的 .o
-APP_SRC := src/app/camera_rig.cpp src/app/locate.cpp src/app/config.cpp \
-           src/app/live.cpp src/app/runner.cpp src/app/belt_ctl.cpp src/app/arm_exec.cpp \
-           src/app/part_log.cpp src/app/net_feed.cpp src/app/img_writer.cpp src/app/collector.cpp src/hw/modbus_tcp.cpp \
-           src/app/npu_cls.cpp src/app/npu_async.cpp src/app/arm_manual.cpp \
-           src/measure/measure.cpp src/measure/track_measure.cpp src/measure/roi_crop.cpp src/measure/flat_field.cpp \
-           src/ui/hdmi_out.cpp src/ui/scale34.cpp src/ui/text_ft.cpp src/ui/ui_input.cpp src/ui/hmi.cpp
-# 只有 des_tool 用：标定（会写 calib.json）与人工测量报告；这两个对象不要链进产品 des_app
-OPS_SRC := src/measure/calib.cpp src/measure/measure_tool.cpp
+# ---------------------------------------------------------------- sources (wildcard)
 ENTRY_APP := src/app/main.cpp
 ENTRY_TOOL := src/app/tool_main.cpp
-SHARED_SRC := src/app/cli_common.cpp $(APP_SRC) $(SCHED_SRC) $(VISION_SRC)
+# des_tool 专用（不链进产品 des_app）：标定（会写 calib.json）、人工测量报告、运维命令行辅助
+OPS_SRC := $(wildcard src/measure/calib.cpp src/measure/measure_tool.cpp src/app/tool_util.cpp)
+SCHED_SRC := $(wildcard src/sched/*.cpp)
+VISION_SRC := $(wildcard src/vision/*.cpp)
+# 产品运行时与运维工具共用的源码（不含两个入口、不含 OPS_SRC）：编译一次成 $(OBJ) 下的 .o
+APP_SRC := $(filter-out $(ENTRY_APP) $(ENTRY_TOOL) $(OPS_SRC), \
+             $(wildcard src/app/*.cpp) $(wildcard src/measure/*.cpp) $(wildcard src/ui/*.cpp) \
+             $(wildcard src/hw/*.cpp) $(wildcard src/sched/*.cpp) $(wildcard src/vision/*.cpp))
+APP_C := $(wildcard src/hw/*.c)
+# 测试/工具复用 measure/ 下的共享件（去掉 OPS_SRC）
+MEASURE_SRC := $(filter-out $(OPS_SRC), $(wildcard src/measure/*.cpp))
+
 OBJ := $(BUILD)/obj
-SHARED_OBJ := $(addprefix $(OBJ)/,$(notdir $(SHARED_SRC:.cpp=.o)))
-OPS_OBJ := $(addprefix $(OBJ)/,$(notdir $(OPS_SRC:.cpp=.o)))
+APP_OBJ := $(addprefix $(OBJ)/, $(notdir $(APP_SRC:.cpp=.o)) $(notdir $(APP_C:.c=.o)))
+OPS_OBJ := $(addprefix $(OBJ)/, $(notdir $(OPS_SRC:.cpp=.o)))
 APP_MAIN_OBJ := $(OBJ)/$(notdir $(ENTRY_APP:.cpp=.o))
 TOOL_MAIN_OBJ := $(OBJ)/$(notdir $(ENTRY_TOOL:.cpp=.o))
 SDK_INC := -I$(ARMNN)/include -I$(OPENCV)/include/opencv4 -I$(FREETYPE_INC)
@@ -100,80 +105,75 @@ all: $(BUILD)/desreg $(BUILD)/test_scheduler $(BUILD)/test_modbus $(BUILD)/test_
 $(BUILD):
 	-@mkdir $(BUILD)
 
-# 共享对象：一个源文件一个 .o（各目录 basename 唯一，所以 build/obj 平铺不冲突），-MMD -MP 生成头文件依赖；
-# des_app / des_tool 只链各自入口 + 这批对象，test_* 的配方保持原样（它们自己列源，不依赖这里）。
+# 共享对象：一个源文件一个 .o（各目录 basename 唯一，所以 $(OBJ) 平铺不冲突），-MMD -MP 生成头文件依赖。
 $(OBJ):
 	-@mkdir $(BUILD)
 	-@mkdir $(subst /,\,$(OBJ))
 
 vpath %.cpp src/app src/sched src/measure src/ui src/vision src/hw
+vpath %.c src/hw
 $(OBJ)/%.o: %.cpp | $(OBJ)
 	$(CXX) $(CXXFLAGS) $(INC) $(SDK_INC) -MMD -MP -c -o $@ $<
+$(OBJ)/%.o: %.c | $(OBJ)
+	$(CC) $(CFLAGS) $(INC) -MMD -MP -c -o $@ $<
 
 -include $(wildcard $(OBJ)/*.d)
 
 $(BUILD)/desreg: tools/desreg.c src/hw/des_hw.c src/hw/des_hw.h src/hw/des_regs.h | $(BUILD)
 	$(CC) $(CFLAGS) $(INC) -o $@ tools/desreg.c src/hw/des_hw.c
 
-$(BUILD)/test_scheduler: tests/test_scheduler.cpp $(SCHED_SRC) $(wildcard src/sched/*.hpp) | $(BUILD)
+$(BUILD)/test_scheduler: tests/test_scheduler.cpp $(SCHED_SRC) $(wildcard src/sched/*.hpp) $(wildcard tests/*.hpp) | $(BUILD)
 	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_scheduler.cpp $(SCHED_SRC)
 
-$(BUILD)/test_measure: tests/test_measure.cpp src/measure/measure.cpp src/measure/track_measure.cpp \
-    src/measure/roi_crop.cpp src/measure/flat_field.cpp src/app/part_log.cpp src/app/net_feed.cpp $(SCHED_SRC) \
-    $(wildcard src/measure/*measure*.hpp src/measure/roi_crop.hpp src/measure/flat_field.hpp src/app/part_log.hpp src/sched/*.hpp) | check-sdk $(BUILD)
-	$(CXX) $(CXXFLAGS) $(INC) -I$(OPENCV)/include/opencv4 -o $@ tests/test_measure.cpp src/measure/measure.cpp \
-	    src/measure/track_measure.cpp src/measure/roi_crop.cpp src/measure/flat_field.cpp src/app/part_log.cpp src/app/net_feed.cpp $(SCHED_SRC) \
+# 测量：measure/ 下除 OPS_SRC 外的全部共享件 + 零件记录（轨迹测量要写进 PartRecord 的类型）
+$(BUILD)/test_measure: tests/test_measure.cpp $(MEASURE_SRC) src/app/part_log.cpp src/app/util.cpp $(SCHED_SRC) \
+    $(wildcard src/measure/*.hpp src/app/part_log.hpp src/sched/*.hpp tests/*.hpp) | check-sdk $(BUILD)
+	$(CXX) $(CXXFLAGS) $(INC) -I$(OPENCV)/include/opencv4 -o $@ tests/test_measure.cpp $(MEASURE_SRC) \
+	    src/app/part_log.cpp src/app/util.cpp $(SCHED_SRC) \
 	    -L$(OPENCV)/lib -Wl,-rpath-link,$(OPENCV)/lib $(RPATH) -lopencv_imgcodecs -lopencv_imgproc -lopencv_core -lpthread
 
 # Modbus-TCP slave over loopback (no SDK; also builds with WSL g++)
-$(BUILD)/test_modbus: tests/test_modbus.cpp src/hw/modbus_tcp.cpp src/hw/modbus_tcp.hpp src/hw/modbus_map.h | $(BUILD)
+$(BUILD)/test_modbus: tests/test_modbus.cpp src/hw/modbus_tcp.cpp $(wildcard src/hw/modbus_tcp.hpp) | $(BUILD)
 	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_modbus.cpp src/hw/modbus_tcp.cpp -lpthread
 
-$(BUILD)/canplc: tools/canplc.c src/hw/can_link.c src/hw/can_link.h src/hw/can_proto.h | $(BUILD)
-	$(CC) $(CFLAGS) $(INC) -o $@ tools/canplc.c src/hw/can_link.c
+$(BUILD)/canplc: tools/canplc.c $(wildcard src/hw/can_link.c src/hw/can_link.h src/hw/can_proto.h) | $(BUILD)
+	$(CC) $(CFLAGS) $(INC) -o $@ tools/canplc.c $(wildcard src/hw/can_link.c)
 
-$(BUILD)/test_can: tests/test_can.c src/hw/can_link.c src/hw/can_link.h src/hw/can_proto.h | $(BUILD)
-	$(CC) $(CFLAGS) $(INC) -o $@ tests/test_can.c src/hw/can_link.c
+$(BUILD)/test_can: tests/test_can.c $(wildcard src/hw/can_link.c src/hw/can_link.h src/hw/can_proto.h) | $(BUILD)
+	$(CC) $(CFLAGS) $(INC) -o $@ tests/test_can.c $(wildcard src/hw/can_link.c)
 
 # servo bus: idle time a servo needs after its reply before the next frame (board, servos wired; stop des_app)
-$(BUILD)/test_servo_gap: tests/test_servo_gap.c $(BUILD)/des_hw.o | $(BUILD)
-	$(CC) $(CFLAGS) $(INC) -o $@ tests/test_servo_gap.c $(BUILD)/des_hw.o
+$(BUILD)/test_servo_gap: tests/test_servo_gap.c $(OBJ)/des_hw.o | $(OBJ) $(BUILD)
+	$(CC) $(CFLAGS) $(INC) -o $@ tests/test_servo_gap.c $(OBJ)/des_hw.o
 
 # hardware-in-the-loop: needs the board (PL v5+), no motor
-$(BUILD)/test_belt_hil: tests/test_belt_hil.cpp src/app/belt_ctl.cpp src/app/belt_ctl.hpp $(SCHED_SRC) $(BUILD)/des_hw.o | $(BUILD)
-	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_belt_hil.cpp src/app/belt_ctl.cpp $(SCHED_SRC) \
-	    $(BUILD)/des_hw.o
-
-# shared objects: one rule each, so parallel make (-j) never has two recipes writing the same .o
-$(BUILD)/des_hw.o: src/hw/des_hw.c src/hw/des_hw.h src/hw/des_regs.h | $(BUILD)
-	$(CC) $(CFLAGS) $(INC) -c -o $@ src/hw/des_hw.c
-$(BUILD)/can_link.o: src/hw/can_link.c src/hw/can_link.h src/hw/can_proto.h | $(BUILD)
-	$(CC) $(CFLAGS) $(INC) -c -o $@ src/hw/can_link.c
+$(BUILD)/test_belt_hil: tests/test_belt_hil.cpp src/app/belt_ctl.cpp src/app/belt_ctl.hpp src/app/util.cpp $(SCHED_SRC) $(OBJ)/des_hw.o | $(OBJ) $(BUILD)
+	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_belt_hil.cpp src/app/belt_ctl.cpp src/app/util.cpp $(SCHED_SRC) $(OBJ)/des_hw.o -lpthread
 
 # check-sdk / check-board are order-only (after |): they run first but, being phony, must not force a relink
-# 产品运行时（run / live）与运维工具（11 个模式）共用同一批对象，只有入口不同；des_tool 额外链标定 / 测量报告对象。
-$(BUILD)/des_app: $(APP_MAIN_OBJ) $(SHARED_OBJ) $(BUILD)/des_hw.o $(BUILD)/can_link.o | check-sdk check-board $(BUILD)
+# 产品运行时（run / live）与运维工具（13 个模式）共用同一批对象，只有入口不同；des_tool 额外链标定 / 测量报告对象。
+$(BUILD)/des_app: $(APP_MAIN_OBJ) $(APP_OBJ) | check-sdk check-board $(BUILD)
 	$(CXX) $(CXXFLAGS) $(INC) $(SDK_INC) \
-	    -o $@ $(APP_MAIN_OBJ) $(SHARED_OBJ) $(BUILD)/des_hw.o $(BUILD)/can_link.o \
+	    -o $@ $(APP_MAIN_OBJ) $(APP_OBJ) \
 	    -L$(ARMNN)/lib -L$(OPENCV)/lib -L$(BOARD_LIBS) -Wl,-rpath-link,$(ARMNN)/lib:$(OPENCV)/lib:$(BOARD_LIBS) $(RPATH) \
 	    $(OPENCV_LIBS) -larmnn -larmnnOnnxParser -lfreetype -lfmt -lpthread
 
-$(BUILD)/des_tool: $(TOOL_MAIN_OBJ) $(SHARED_OBJ) $(OPS_OBJ) $(BUILD)/des_hw.o $(BUILD)/can_link.o | check-sdk check-board $(BUILD)
+$(BUILD)/des_tool: $(TOOL_MAIN_OBJ) $(APP_OBJ) $(OPS_OBJ) | check-sdk check-board $(BUILD)
 	$(CXX) $(CXXFLAGS) $(INC) $(SDK_INC) \
-	    -o $@ $(TOOL_MAIN_OBJ) $(SHARED_OBJ) $(OPS_OBJ) $(BUILD)/des_hw.o $(BUILD)/can_link.o \
+	    -o $@ $(TOOL_MAIN_OBJ) $(APP_OBJ) $(OPS_OBJ) \
 	    -L$(ARMNN)/lib -L$(OPENCV)/lib -L$(BOARD_LIBS) -Wl,-rpath-link,$(ARMNN)/lib:$(OPENCV)/lib:$(BOARD_LIBS) $(RPATH) \
 	    $(OPENCV_LIBS) -larmnn -larmnnOnnxParser -lfreetype -lfmt -lpthread
 
 # NPU part classifier on the board vs the PC reference (train/eval_onnx.py --refs)
-$(BUILD)/test_npu: tests/test_npu.cpp src/app/npu_cls.cpp src/app/npu_cls.hpp $(VISION_SRC) | check-sdk $(BUILD)
+$(BUILD)/test_npu: tests/test_npu.cpp $(wildcard src/app/npu*.cpp src/app/npu*.hpp) src/app/util.cpp $(VISION_SRC) | check-sdk $(BUILD)
 	$(CXX) $(CXXFLAGS) $(INC) -I$(ARMNN)/include -I$(OPENCV)/include/opencv4 \
-	    -o $@ tests/test_npu.cpp src/app/npu_cls.cpp $(VISION_SRC) \
+	    -o $@ tests/test_npu.cpp $(wildcard src/app/npu*.cpp) src/app/util.cpp $(VISION_SRC) \
 	    -L$(ARMNN)/lib -L$(OPENCV)/lib -Wl,-rpath-link,$(ARMNN)/lib:$(OPENCV)/lib $(RPATH) \
 	    -lopencv_imgcodecs -lopencv_imgproc -lopencv_core -larmnn -larmnnOnnxParser -lfmt -lpthread
 
-$(BUILD)/test_calib: tests/test_calib.cpp src/measure/calib.cpp src/measure/calib.hpp src/sched/geom.hpp | check-sdk $(BUILD)
+$(BUILD)/test_calib: tests/test_calib.cpp src/measure/calib.cpp src/measure/calib.hpp src/app/util.cpp src/sched/geom.hpp | check-sdk $(BUILD)
 	$(CXX) $(CXXFLAGS) $(INC) -I$(OPENCV)/include/opencv4 \
-	    -o $@ tests/test_calib.cpp src/measure/calib.cpp \
+	    -o $@ tests/test_calib.cpp src/measure/calib.cpp src/app/util.cpp \
 	    -L$(OPENCV)/lib -Wl,-rpath-link,$(OPENCV)/lib $(RPATH) $(OPENCV_LIBS) -lpthread
 
 clean:

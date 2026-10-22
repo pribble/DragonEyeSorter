@@ -19,28 +19,14 @@
     T &operator=(const T &) = delete; \
     T &operator=(T &&) = delete;
 #endif
-#ifndef DISBALE_COPY
-#define DISBALE_COPY(T)    \
-    T(const T &) = delete; \
-    T &operator=(T &&) = delete;
-#endif
 
 struct Size
 {
     uint32_t m_width;
     uint32_t m_height;
 
-    Size() : Size(0, 0) {}
-
     Size(uint32_t width, uint32_t height) :
             m_width{width}, m_height{height} {}
-
-    Size(const Size& other)
-            : Size(other.m_width, other.m_height) {}
-
-    ~Size() = default;
-
-    Size &operator=(const Size& other) = default;
 };
 
 /**

@@ -18,20 +18,10 @@ __logger_initliazer::__logger_initliazer()
 }
 
 void __logger_initliazer::set_log_level(int log_level_int) {
-    if (log_level_int < 0 || log_level_int > 6) {
-    } else {
+    if (log_level_int >= 0 && log_level_int <= 6) {
         __log_level_int = log_level_int;
     }
 }
-
-// const char *__logger_initliazer::__log_level_str[7] = {
-//     "VERBOSE",
-//     "DEBUG",
-//     "INFO",
-//     "WARN",
-//     "ERROR",
-//     "CRITICAL",
-//     "FATAL"};
 
 const char *__logger_initliazer::__log_level_str[7] = {
     "V",
