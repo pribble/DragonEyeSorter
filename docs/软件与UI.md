@@ -18,10 +18,10 @@ PS（双核 A35 + Linux）做：NPU 推理调度、视觉定位 (x, y, θ)、跟
 **布局**：相机画面等比缩到 **1440×780**（源图上下各裁 20 行 ≈ 4mm 皮带边缘），**不被任何界面遮挡**；右侧 **480×780 状态栏**（帧率、PL 帧号、定位 / 测量 / NPU 耗时、跟踪数、抓取 / 挡板 / 复检、运行状态）；底部 **1920×300 操作条**。
 
 **显示循环**：1080p60 要求每帧挤进 16.7ms。瓶颈是 A35 的 NEON 运算（64 位宽，128 位指令拆两拍），相机 / 显示缓冲换 writecombine / nocached 映射只会更慢。做法：
-- 缩放用 `ui/scale34`：横向每 4 像素出 3 个（`vld4` 按整像素分组，查表拼 BGR），纵向每 4 行出 3 行（中间行先平均）；与逐像素参考实现 0 字节差。
+- 缩放用 `ui/display`（`scale34_bgra_to_bgr`）：横向每 4 像素出 3 个（`vld4` 按整像素分组，查表拼 BGR），纵向每 4 行出 3 行（中间行先平均）；与逐像素参考实现 0 字节差。
 - 状态栏 / 操作条由核 1 工作线程渲染（约 8~10Hz），核 0 只贴图 + 画光标；两块显示缓冲各自记着上次贴的那份图，内容变了才重贴，光标画过处单独补贴（无残影）。
 - 大块内容先在普通内存画好再按行 `memcpy` 进缓冲（宽写）；`putText` 线宽 2 很贵，状态文字 10Hz 重画、其余帧只贴图，框上标签用线宽 1。
-- `scale34` 的目标必须是普通内存（CmaBuf 默认即是），对 nocached（设备型）映射会因非对齐 16 字节存储报 Bus error。
+- `display`（3/4 缩放）的目标必须是普通内存（CmaBuf 默认即是），对 nocached（设备型）映射会因非对齐 16 字节存储报 Bus error。
 - 每帧耗时与丢帧见 [测试与验证](测试与验证.md)。
 
 **显示通路**：`/dev/fb0` 是厂家 `vdmafb`，但本比特流真正扫描输出的是 **`vdma@0x8020_0000`**：`V_SIZE` 1080、行跨度 5760（**24bpp BGR**）、`START_1` 指向 fb0 显存，1920×1080 @ 60.6Hz。相机是 32bpp BGRA，不能直接翻页 → 每帧由 CPU 转一次 BGRA→BGR 进两块 CMA 显示缓冲之一，再切 VDMA 帧存。
@@ -38,7 +38,7 @@ PS（双核 A35 + Linux）做：NPU 推理调度、视觉定位 (x, y, θ)、跟
   - 带速、齿轮外径名义 / 公差、齿轮孔径名义 / 公差、尺寸判废开关、置信度门限、存图模式（−/+ 按钮）、PL 显示模式 / 二值阈值；**立即生效**（工作线程改跟踪表规则 / 存储 / Runner 带速）并存 `ui_params.json`（启动时载入，覆盖 des_app.json）。
   - **运行控制**：启动 / 停止 / 暂停 / 恢复 / 复位报警（run 模式，与 PLC 的 CAN 命令同一套规则 `Runner::command`）。
 - **记录**：最近 9 件（时间、件号、类别、置信度、去向、原因、尺寸），点一行看该件裁切图 + 全部测量值。
-- **机械臂**（第 5 页，`app/arm_manual`；命令行对应 `des_tool.sh arm`）：手动调试 6 个舵机，**只在产线不在运行、急停未按、机械臂没在抓取时可用**，且要先点「解锁」，离开页面自动上锁。
+- **机械臂**（第 5 页，`app/arm_io`；命令行对应 `des_tool.sh arm`）：手动调试 6 个舵机，**只在产线不在运行、急停未按、机械臂没在抓取时可用**，且要先点「解锁」，离开页面自动上锁。
   - 关节表：每行一个关节（位置计数、按 `arm.joints` 零位 / 每度计数换算的角度、目标、电流、温度、状态）；`-` / `+` 按步长（1° / 5° / 15°）和动作时间（0.5 / 1 / 2 s）微调，夹在**软限位**内，用单舵机 SYNC WRITE 发（不等应答）。
   - 页面显示时约 4Hz 轮询位置（每 4 次带电流 / 温度），离开即停；单独线程、单独 `ArmExec`，与生产抓取线程共用总线（`hw/des_hw` 的 `des_sb_xfer` 有互斥锁）。
   - 姿态管理：解锁 / 上锁、扭矩开 / 关（关之前托住机械臂）；「记录当前姿态」追加到 `data/arm_teach.csv`；「设为初始姿态」把当前 6 个计数写进 `arm_home.json`（板上生成，启动时覆盖 `arm.home_deg` 与夹爪计数）；「复位」= 6 个关节一起回初始姿态（单帧 SYNC WRITE，≥2 s）。
@@ -46,7 +46,7 @@ PS（双核 A35 + Linux）做：NPU 推理调度、视觉定位 (x, y, θ)、跟
 
 **输入**：evdev（`app/ui_input`），USB 鼠标 / 键盘 / 触摸屏热插拔（每 2s 扫描 `/dev/input`；⚠ 真鼠标热插拔待实测）。**脚本输入**：往 `/tmp/des_ui` 写 `click X Y` / `move X Y` / `wheel N` / `key CODE` / `snap`（存下一帧到 `/tmp/des_snap_N.png`）——远程测试、演示脚本用（板上没有 uinput）。
 
-**中文**：板上自带文泉驿正黑（`/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttc`）+ `libfreetype.so.6`（`app/text_ft`，字形缓存）。交叉编译依赖 `FREETYPE_INC` / `BOARD_LIBS` / `ARMNN_LIB` / `OPENCV_LIB`（见 [环境与上手](环境与上手.md)）。
+**中文**：板上自带文泉驿正黑（`/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttc`）+ `libfreetype.so.6`（`app/ui_text`，字形缓存）。交叉编译依赖 `FREETYPE_INC` / `BOARD_LIBS` / `ARMNN_LIB` / `OPENCV_LIB`（见 [环境与上手](环境与上手.md)）。
 
 ## 工业总线
 
@@ -79,7 +79,7 @@ PS（双核 A35 + Linux）做：NPU 推理调度、视觉定位 (x, y, θ)、跟
 
 ### Modbus-TCP（板子 = 从站，端口 502）
 
-`des_app run` 起一个 Modbus-TCP 从站（`des_app.json` 的 `plc.modbus_port`，0 = 关），最多 4 个客户端同时连。实现：[ps/src/hw/modbus_tcp.cpp](../ps/src/hw/modbus_tcp.cpp)（自写，poll 线程，MBAP 分帧，支持 FC 03 / 04 / 06 / 16，异常码 01 功能不支持 / 02 地址越界 / 03 数量或长度不对）；寄存器表 [ps/src/hw/modbus_map.h](../ps/src/hw/modbus_map.h)。写入只排队，由控制循环（每帧一次，≤17ms）按 CAN 的同一套规则执行，结果写回 RESULT、SEQ 加 1。地址从 0 起（按 1 起算的组态软件显示 40001.. / 30001..），32 位值高字在前。
+`des_app run` 起一个 Modbus-TCP 从站（`des_app.json` 的 `plc.modbus_port`，0 = 关），最多 4 个客户端同时连。实现：[ps/src/hw/modbus_tcp.cpp](../ps/src/hw/modbus_tcp.cpp)（自写，poll 线程，MBAP 分帧，支持 FC 03 / 04 / 06 / 16，异常码 01 功能不支持 / 02 地址越界 / 03 数量或长度不对）；寄存器表 [ps/src/hw/modbus_tcp.hpp](../ps/src/hw/modbus_tcp.hpp)。写入只排队，由控制循环（每帧一次，≤17ms）按 CAN 的同一套规则执行，结果写回 RESULT、SEQ 加 1。地址从 0 起（按 1 起算的组态软件显示 40001.. / 30001..），32 位值高字在前。
 
 | 保持寄存器（FC 03 读 / 06、16 写） | 含义 |
 |---|---|
@@ -111,7 +111,7 @@ PS（双核 A35 + Linux）做：NPU 推理调度、视觉定位 (x, y, θ)、跟
 **已实现（`src/app/part_log`）**：每件判定后一行 CSV（`/root/des/data/log/<日期>/parts_<会话>.csv`，43 列）+ 零件裁切图（`img/<会话>_<件号>_<类别>.jpg`，与 NPU 输入同一个裁切函数 `roi_crop`，默认只存挡板 / 复检件）。关键列：时间、件号、帧号、类别 / 置信度、去向 / 出口 / 原因、测量值、带坐标 / 姿态、PL 粗测、图片名、NPU 投票次数 / 推理耗时 / 帧完成→结果延迟、配方号、零件颜色（色调 / 饱和度 / 颜色类）；完整列定义见 `src/app/part_log`。后台线程写盘，工作线程不等 SD 卡，队列满就丢弃并计数。列与将来 SQLite 表一致。
 **无 RTC**：记录时间 = 本机时钟 + PC 端「PLC」经 CAN TIME 帧（0x104）下发的偏移，不改系统时间。
 
-**网口实时上传**（拓展 5「千兆网数据上传」，`src/app/net_feed`）：`storage.feed_port`（默认 9500）> 0 时板子监听该端口，电脑端 `python pc/feed/des_feed.py [--host <板子 IP>]` 连上后实时收到每件记录（与 SD 卡 CSV 同一行）和存下的零件图，存到 `received/<会话>/parts.csv + img/`，断线自动重连。板子是服务端 → 电脑不用开入站防火墙。每个客户端队列有上限，慢或断开的客户端只丢帧计数，**永不阻塞存储和产线**；帧格式见 `net_feed.hpp` 文件头。
+**网口实时上传**（拓展 5「千兆网数据上传」，`src/app/part_log` 的 `NetFeed`）：`storage.feed_port`（默认 9500）> 0 时板子监听该端口，电脑端 `python pc/feed/des_feed.py [--host <板子 IP>]` 连上后实时收到每件记录（与 SD 卡 CSV 同一行）和存下的零件图，存到 `received/<会话>/parts.csv + img/`，断线自动重连。板子是服务端 → 电脑不用开入站防火墙。每个客户端队列有上限，慢或断开的客户端只丢帧计数，**永不阻塞存储和产线**；帧格式见 `part_log.hpp` 文件头。
 
 **出数**：`pc/report/part_stats.py` 读这些 CSV → 节拍、处置 / 去向、NPU 耗时与延迟分布、已知类别时的准确率 / 混淆矩阵、尺寸统计 + Cpk、同一件重复性与卡尺误差、PL 粗测对比（Markdown + JSON，直接贴进测试报告）。采集整帧训练图前在 SD 卡上新建数据分区（见 [开发环境与构建](开发环境与构建.md)）。
 
