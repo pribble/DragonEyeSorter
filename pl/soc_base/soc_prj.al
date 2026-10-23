@@ -211,7 +211,7 @@
                     <Attr Name="CompileOrder" Val="38"/>
                 </FileInfo>
             </File>
-            <File Path="src/ui_isp/image_cut/image_cut.v">
+            <File Path="src/ui_isp/image_cut.v">
                 <FileInfo>
                     <Attr Name="UsedInSyn" Val="true"/>
                     <Attr Name="UsedInP&R" Val="true"/>
@@ -299,7 +299,7 @@
                     <Attr Name="CompileOrder" Val="49"/>
                 </FileInfo>
             </File>
-            <File Path="src/ui_isp/Saturation_adj/Saturation_adj.v">
+            <File Path="src/ui_isp/Saturation_adj.v">
                 <FileInfo>
                     <Attr Name="UsedInSyn" Val="true"/>
                     <Attr Name="UsedInP&R" Val="true"/>
@@ -307,7 +307,7 @@
                     <Attr Name="CompileOrder" Val="50"/>
                 </FileInfo>
             </File>
-            <File Path="src/ui_isp/Contrast_adjustment/contrast_adj.v">
+            <File Path="src/ui_isp/contrast_adj.v">
                 <FileInfo>
                     <Attr Name="UsedInSyn" Val="true"/>
                     <Attr Name="UsedInP&R" Val="true"/>
@@ -315,7 +315,7 @@
                     <Attr Name="CompileOrder" Val="51"/>
                 </FileInfo>
             </File>
-            <File Path="src/ui_isp/Brightness_adjustment/Brightness_adjustment.v">
+            <File Path="src/ui_isp/Brightness_adjustment.v">
                 <FileInfo>
                     <Attr Name="UsedInSyn" Val="true"/>
                     <Attr Name="UsedInP&R" Val="true"/>
@@ -331,7 +331,7 @@
                     <Attr Name="CompileOrder" Val="53"/>
                 </FileInfo>
             </File>
-            <File Path="src/ui_isp/image_correction/image_correction.v">
+            <File Path="src/ui_isp/image_correction.v">
                 <FileInfo>
                     <Attr Name="UsedInSyn" Val="true"/>
                     <Attr Name="UsedInP&R" Val="true"/>
@@ -339,7 +339,7 @@
                     <Attr Name="CompileOrder" Val="54"/>
                 </FileInfo>
             </File>
-            <File Path="src/ui_isp/BLC/BLC.v">
+            <File Path="src/ui_isp/BLC.v">
                 <FileInfo>
                     <Attr Name="UsedInSyn" Val="true"/>
                     <Attr Name="UsedInP&R" Val="true"/>
@@ -347,7 +347,7 @@
                     <Attr Name="CompileOrder" Val="55"/>
                 </FileInfo>
             </File>
-            <File Path="src/ui_isp/data96_128/data96_128.v">
+            <File Path="src/ui_isp/data96_128.v">
                 <FileInfo>
                     <Attr Name="UsedInSyn" Val="true"/>
                     <Attr Name="UsedInP&R" Val="true"/>
@@ -355,7 +355,7 @@
                     <Attr Name="CompileOrder" Val="56"/>
                 </FileInfo>
             </File>
-            <File Path="src/ui_isp/data128_96/data128_96.v">
+            <File Path="src/ui_isp/data128_96.v">
                 <FileInfo>
                     <Attr Name="UsedInSyn" Val="true"/>
                     <Attr Name="UsedInP&R" Val="true"/>
