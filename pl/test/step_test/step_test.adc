@@ -1,2 +1,0 @@
-set_pin_assignment	{ I_sysclk    }	{ LOCATION = H16; IOSTANDARD = LVCMOS33; PULLTYPE = PULLUP; }
-set_pin_assignment	{ O_step_pul  }	{ LOCATION = Y12; IOSTANDARD = LVCMOS33; DRIVESTRENGTH = 8; PULLTYPE = NONE; }

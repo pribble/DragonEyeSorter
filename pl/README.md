@@ -19,10 +19,8 @@ pl/
 │   ├── src/{ui_isp,MIPI_V2,hdmi_tx,write_fdma}/  # 厂家明文 RTL（2026-10 已零行为重构；gamma 只留 2.2 一张表）
 │   ├── src/constraint/  #   管脚 io.adc（CEP = BANK11 3.3V）、时序 timing.sdc
 │   └── soc_prj.al       #   TD 工程入口
-├── sim/                 # testbench 与仿真入口（run_sim.sh 单目标 / run_all.sh 全量 8 项；
-│                        #   equiv/ 厂家 RTL golden-vs-工作区逐拍等价回归 36 项）
-└── test/                # 独立验证工程（单独编小比特流验证单点硬件，不并入产品版图）
-    └── step_test/       # 步进驱动器点动：100MHz 分频方波驱动 TB6600
+└── sim/                 # testbench 与仿真入口（run_sim.sh 单目标 / run_all.sh 全量 8 项；
+                         #   equiv/ 厂家 RTL golden-vs-工作区逐拍等价回归 36 项）
 ```
 
 ## 工程组织

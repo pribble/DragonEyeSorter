@@ -42,7 +42,7 @@
 | [../README.md](../README.md) | 项目门面：一句话、快速上手、当前进度、文档入口 |
 | [../AGENTS.md](../AGENTS.md) | 给 AI 的常驻说明：事实纪律、按任务读的路由表、红线、提交纪律（细则全在本文档地图的各篇里） |
 | [log/README.md](log/README.md) | log 的格式、主题索引与沿革归属 |
-| [pl/README.md](../pl/README.md) | PL 目录布局、工程组织、资源预算；[soc_base](../pl/soc_base/README.md) 底板工程与对厂家的改动、[soc_prj_Runs](../pl/soc_base/soc_prj_Runs/README.md) TD 运行目录最小集合、[step_test](../pl/test/step_test/README.md) 步进验证工程 |
+| [pl/README.md](../pl/README.md) | PL 目录布局、工程组织、资源预算；[soc_base](../pl/soc_base/README.md) 底板工程与对厂家的改动、[soc_prj_Runs](../pl/soc_base/soc_prj_Runs/README.md) TD 运行目录最小集合 |
 | [ps/README.md](../ps/README.md) | PS 代码地图、四层产物、构建与命令参考；[kernel](../ps/kernel/README.md) mipicam 内核模块；[vendor](../ps/vendor/README.md) 非自研代码边界（含厂家 demo） |
 | [scripts/README.md](../scripts/README.md) | `bootbin/` 打包、`sd_image/` 烧卡、`sdk_fix_sonames.sh`；[deploy](../scripts/deploy/README.md) 板端部署清单与上板 |
 | [train/README.md](../train/README.md) | 合成数据、训练、导出 + UINT8 量化、评估与上板核对 |
