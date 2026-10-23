@@ -335,9 +335,12 @@ void Hmi::page_params(Canvas &c)
         else if (i == 0) val = fmt("%.0f", p_.belt_speed);
         else val = fmt("%.2f", i == 1 ? p_.gear_od : i == 2 ? p_.gear_od_tol : i == 3 ? p_.gear_bore
                                      : i == 4 ? p_.gear_bore_tol : p_.min_conf);
-        if (i == 5) c.wide_button(y, val, p_.size_rule, A_TOGGLE, 20);
-        else if (i == 7) c.wide_button(y, val, false, A_IMAGES, 20);
-        else c.stepper(y, val, A_DEC, A_INC, i, d.unit);
+        if (i == 5 || i == 7) {   // toggles: the hint right of the button as for the steppers (lost in 3e01d7c)
+            c.wide_button(y, val, i == 5 && p_.size_rule, i == 5 ? A_TOGGLE : A_IMAGES, 20);
+            c.text(d.unit, 772, y + 6, 16, DIM);
+        } else {
+            c.stepper(y, val, A_DEC, A_INC, i, d.unit);
+        }
     }
     const int x0 = 1180;   // run control: same rules as the PLC's CAN commands
     c.text("运行控制", x0, 8, 20, WHITE);

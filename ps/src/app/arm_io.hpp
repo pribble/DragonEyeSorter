@@ -75,7 +75,8 @@ struct ArmManualView {
     bool shown = false, allowed = false, unlocked = false;
     int torque = -1;           // last torque command: -1 none, 0 off, 1 on
     std::array<ArmJointView, 6> j;
-    char msg[160] = {0};       // result of the last command (C string for the HMI, whole UTF-8 characters only)
+    char msg[256] = {0};       // result of the last command (C string for the HMI, whole UTF-8 characters only;
+                               // the Reset refusals are ~200 bytes of UTF-8 Chinese)
     int taught = 0;            // poses written to the teach file in this session
     std::array<int, 6> home{{-1, -1, -1, -1, -1, -1}};   // ready pose (counts)
     bool home_taught = false;  // from arm_home.json (else the config default, which Reset will not go to)
