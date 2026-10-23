@@ -27,8 +27,8 @@ struct Args {
     int vmax = -1, exp_us = -1, gain = -1;
     bool rt = true;
     double belt = 0;
-    std::array<float, 4> pos{};   // plain numbers after the sub-command (goto / pick / ik); extras are ignored
-    uint8_t npos = 0;             // valid entries in pos (0..4)
+    std::array<float, 5> pos{};   // plain numbers after the sub-command (goto / pick / ik); extras are ignored
+    uint8_t npos = 0;             // valid entries in pos (0..5)
     std::string cls;           // collect: class label
     int every = 6, maxpp = 10, full = 0;
     int steps = 0;                // calib-belt: long move (0 = to ~75 % of the view)

@@ -703,9 +703,10 @@ static int run_ik(const AppConfig &cfg, const Args &a)
     Vec2 p{a.pos[0], a.pos[1]};
     float z = a.npos > 2 ? a.pos[2] : cfg.arm.z_grasp;
     float axis = a.npos > 3 ? a.pos[3] * kPi / 180 : 0.f;
+    const float tilt = a.npos > 4 ? a.pos[4] * kPi / 180 : 0.f;   // lean the tool away from the base (reach scans)
     Vec3 pa = table_to_arm(cfg.arm, p, z);
     JointAngles j;
-    const char *why = arm_ik(cfg.arm, pa, table_axis_to_arm(cfg.arm, axis), j);
+    const char *why = arm_ik(cfg.arm, pa, table_axis_to_arm(cfg.arm, axis), j, tilt);
     printf("table (%.1f, %.1f, z %.1f) -> arm (%.1f, %.1f, %.1f)\n", p.x, p.y, z, pa.x, pa.y, pa.z);
     printf("q = %.1f %.1f %.1f %.1f %.1f deg  %s\n", j.q[0], j.q[1], j.q[2], j.q[3], j.q[4], why ? why : "ok");
     if (why) return 2;
