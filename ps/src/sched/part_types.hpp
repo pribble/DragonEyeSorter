@@ -53,7 +53,7 @@ struct PartMeasure {
 struct SizeRule {
     bool enabled = false;           // ⚠ turn on once the camera height and calibration are real
     int gear_teeth = 30;            // spec (28-tooth parts = 规格混料)
-    float gear_od = 32, gear_od_tol = 0.15f;   // recipe example in 齿轮齿条_测量功能与数据.md: 32.00±0.15, 50.0±0.5
+    float gear_od = 32, gear_od_tol = 0.2f;    // 2026-10-24 user: ±0.2 (one gear flipped over reads 0.12 apart)
     float gear_bore = 6, gear_bore_tol = 0.3f;
     float gear_max_ecc = 0.3f;
     float rack_len = 50, rack_len_tol = 1.0f;
@@ -71,7 +71,7 @@ struct Recipe {
     int id = 1;                     // 1..255 (CAN RECIPE carries one byte)
     std::string name;
     int gear_teeth = 30;
-    float gear_od = 32, gear_od_tol = 0.15f;
+    float gear_od = 32, gear_od_tol = 0.2f;
     float gear_bore = 6, gear_bore_tol = 0.3f;
     float gear_max_ecc = 0.3f;
     float rack_len = 50, rack_len_tol = 1.0f;

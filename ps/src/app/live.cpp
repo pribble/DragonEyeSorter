@@ -41,7 +41,7 @@ struct TrackView {
     TrackState st = TrackState::New;
     Disposition disp = Disposition::None;
     float s = 0, y = 0, len = 0, wid = 0, axis = 0;
-    char meas[16] = {0};   // measurement summary for the label (empty = not measured)
+    char meas[48] = {0};   // measurement summary for the label (empty = not measured)
 };
 
 // One processed frame, immutable once published (no strings; the status line lives in the panel).
@@ -321,8 +321,19 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
                 TrackView tv;
                 tv.id = t.id; tv.st = t.state; tv.disp = t.disp;
                 tv.s = t.s; tv.y = t.y; tv.len = t.len; tv.wid = t.wid; tv.axis = t.axis;
-                if (t.meas.valid && t.meas.kind == 'g')
-                    snprintf(tv.meas, sizeof tv.meas, "OD%.2f z%d%s", t.meas.size, t.meas.teeth, t.meas.teeth_judged ? "" : "?");
+                // z = spec tooth count from the pitch (a 30-tooth gear with 2 teeth gone stays z30); the defects found
+                // are listed after it. Off the axis the teeth are not judged and the count is not shown (it reads
+                // 28..30 at random there, 2026-10-24: users took z29 -> z30 near the centre for a vanishing defect).
+                if (t.meas.valid && t.meas.kind == 'g' && t.meas.teeth_judged) {
+                    int n = snprintf(tv.meas, sizeof tv.meas, "OD%.2f z%d", t.meas.size, t.meas.teeth);
+                    if (t.meas.missing_teeth && n < int(sizeof tv.meas))
+                        n += snprintf(tv.meas + n, sizeof tv.meas - n, " miss%d", t.meas.missing_teeth);
+                    if (t.meas.short_teeth && n < int(sizeof tv.meas))
+                        n += snprintf(tv.meas + n, sizeof tv.meas - n, " short%d", t.meas.short_teeth);
+                    if (t.meas.flash_gaps && n < int(sizeof tv.meas))
+                        snprintf(tv.meas + n, sizeof tv.meas - n, " flash%d", t.meas.flash_gaps);
+                } else if (t.meas.valid && t.meas.kind == 'g')
+                    snprintf(tv.meas, sizeof tv.meas, "OD%.2f off-axis", t.meas.size);
                 else if (t.meas.valid)
                     snprintf(tv.meas, sizeof tv.meas, "L%.2f p%.3f%s", t.meas.size, t.meas.pitch, t.meas.teeth_judged ? "" : "?");
                 s->tracks.push_back(tv);

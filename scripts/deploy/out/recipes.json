@@ -1,15 +1,15 @@
 {
-  "comment": "产品配方（与 des_app.json 同目录部署到 /root/des/）。当前配方的规格（齿数 / 外径 / 孔径 / 偏心及公差）交给尺寸判定（des_app.json 的 measure.rule，enabled 开了才生效）；没写的键沿用 measure.rule。启动用 des_app.json 的 \"recipe\"，界面上一次选的（ui_params.json）优先；运行中由 PLC（CAN 0x102 RECIPE）或界面参数页切换，只在非运行状态接受（停机换型）。齿条已取消（2026-10-18），全部为 1 模齿轮：外径 = 齿数 + 2（mm）。规格来源：10_项目文档/齿轮采购方案_第二批.md。20 / 36 齿为第二批计划规格，到货后按卡尺实测改外径；公差 ⚠ 待用户确认。",
+  "comment": "产品配方（与 des_app.json 同目录部署到 /root/des/）。当前配方的规格（齿数 / 外径 / 孔径 / 偏心及公差）交给尺寸判定（des_app.json 的 measure.rule，enabled 开了才生效）；没写的键沿用 measure.rule。启动用 des_app.json 的 \"recipe\"，界面上一次选的（ui_params.json）优先；运行中由 PLC（CAN 0x102 RECIPE）或界面参数页切换，只在非运行状态接受（停机换型）。齿条已取消（2026-10-18），全部为 1 模齿轮：外径 = 齿数 + 2（mm）。规格来源：10_项目文档/齿轮采购方案_第二批.md。20 / 36 齿为第二批计划规格，到货后按卡尺实测改外径。外径公差 ±0.2（2026-10-24 用户定：同一齿轮翻面差 0.12、挪灯后偏置要重定，±0.15 太紧）；孔径 ±0.3、偏心 ≤0.3 沿用。",
   "recipes": [
-    {"id": 1, "name": "齿轮 30 齿 孔 6", "gear_teeth": 30, "gear_od": 32.0, "gear_od_tol": 0.15,
+    {"id": 1, "name": "齿轮 30 齿 孔 6", "gear_teeth": 30, "gear_od": 32.0, "gear_od_tol": 0.2,
      "gear_bore": 6.0, "gear_bore_tol": 0.3, "gear_max_ecc": 0.3},
-    {"id": 2, "name": "齿轮 28 齿 孔 6", "gear_teeth": 28, "gear_od": 30.0, "gear_od_tol": 0.15,
+    {"id": 2, "name": "齿轮 28 齿 孔 6", "gear_teeth": 28, "gear_od": 30.0, "gear_od_tol": 0.2,
      "gear_bore": 6.0, "gear_bore_tol": 0.3, "gear_max_ecc": 0.3},
-    {"id": 3, "name": "齿轮 30 齿 孔 8", "gear_teeth": 30, "gear_od": 32.0, "gear_od_tol": 0.15,
+    {"id": 3, "name": "齿轮 30 齿 孔 8", "gear_teeth": 30, "gear_od": 32.0, "gear_od_tol": 0.2,
      "gear_bore": 8.0, "gear_bore_tol": 0.3, "gear_max_ecc": 0.3},
-    {"id": 4, "name": "齿轮 20 齿 孔 6", "gear_teeth": 20, "gear_od": 22.0, "gear_od_tol": 0.15,
+    {"id": 4, "name": "齿轮 20 齿 孔 6", "gear_teeth": 20, "gear_od": 22.0, "gear_od_tol": 0.2,
      "gear_bore": 6.0, "gear_bore_tol": 0.3, "gear_max_ecc": 0.3},
-    {"id": 5, "name": "齿轮 36 齿 孔 6", "gear_teeth": 36, "gear_od": 38.0, "gear_od_tol": 0.15,
+    {"id": 5, "name": "齿轮 36 齿 孔 6", "gear_teeth": 36, "gear_od": 38.0, "gear_od_tol": 0.2,
      "gear_bore": 6.0, "gear_bore_tol": 0.3, "gear_max_ecc": 0.3}
   ]
 }

@@ -41,7 +41,7 @@
                            { "name": "orange", "hue_lo": 10,  "hue_hi": 35,  "sat_lo": 60 },
                            { "name": "blue",   "hue_lo": 180, "hue_hi": 260, "sat_lo": 50 },
                            { "name": "red",    "hue_lo": 340, "hue_hi": 10,  "sat_lo": 60 } ],
-               "rule": { "enabled": false, "gear_teeth": 30, "gear_od": 32, "gear_od_tol": 0.15,
+               "rule": { "enabled": true, "gear_teeth": 30, "gear_od": 32, "gear_od_tol": 0.2,
                          "gear_bore": 6, "gear_bore_tol": 0.3, "gear_max_ecc": 0.3,
                          "rack_len": 50, "rack_len_tol": 1.0, "ng_outlet": "scrap",
                          "defect_recheck": true, "unjudged_recheck": true, "require": false } },
