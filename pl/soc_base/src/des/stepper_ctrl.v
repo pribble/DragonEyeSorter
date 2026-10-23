@@ -1,30 +1,17 @@
-// Step/dir generator with trapezoidal ramps for a TB6600-class driver (common-cathode inputs, FPGA 3.3V direct drive).
-// pul_n is active-low (the STEP_PUL pin is active-high: system_top inverts it for the common-cathode wiring,
-// STEP_COMMON_CATHODE = 1); ENA- low releases the motor, so ENA is driven high while enabled. Keep v <= 50k steps/s
-// (5 us pulses need a 10 us period).
-// Speed is a phase increment per clock in Q0.32 steps (v[steps/s] = inc * CLK_HZ / 2^32); PS converts units.
-// Every ACC_DIV clocks the speed moves by ACC_INC toward its target. Position mode decelerates when the
-// remaining distance is <= the steps spent accelerating (symmetric ramp), then stops exactly at TARGET.
-// TARGET may be rewritten while moving (belt "stop at" for picking). If it ends up behind the direction of
-// travel (written too late), the move ramps down and stops past it instead of freezing (STATUS AT_TARGET = 0).
-// Rewriting TARGET to exactly the current position while moving stops right there (STATUS AT_TARGET = 1).
-//
-// Register block (byte offsets inside the 0x200 window):
-//   0x00 CTRL     W: b0 ENABLE, b1 START (pulse), b2 STOP (ramp down, pulse), b3 HALT (immediate, pulse),
-//                    b4 MODE (0 velocity, 1 position), b5 ZERO_POS (pulse), b6 VEL_DIR (velocity mode)
-//                 R: b0 ENABLE, b4 MODE, b6 VEL_DIR
-//   0x04 STATUS   R: b0 MOVING, b1 DIR, b2 AT_TARGET, b3 HALTED (estop or HALT), b4 ENABLED
-//   0x08 TARGET   RW signed absolute position (steps), position mode
-//   0x0C VMAX_INC RW cruise speed (Q0.32 steps/clock)
-//   0x10 ACC_INC  RW speed change per ramp tick
-//   0x14 VMIN_INC RW start / stop speed
-//   0x18 POS      R  signed position (steps)
-//   0x1C CUR_INC  R  current speed
-//   0x20 STEPS    R  total steps emitted
-//   0x24 BRAKE    R  steps needed to ramp down from the current speed (= steps spent accelerating)
+// stepper_ctrl: step/dir generator with trapezoidal ramps for TB6600-class drivers.
+// FPGA 3.3V direct drive, common-cathode wiring (PUL high active: system_top inverts pul_n;
+// ENA high = energised, ENA- low releases). Keep v <= 50k steps/s (5us pulses need 10us period).
+// Speed = phase increment per clock, Q0.32 steps: v[steps/s] = inc * CLK_HZ / 2^32 (PS converts).
+// Ramp tick = ACC_DIV clocks (10kHz @75MHz): speed moves by ACC_INC toward target each tick
+// (add/sub only, no mult/div in synthesis). Position mode brakes when remaining <= accel_steps.
+// TARGET rewritable mid-move: == POS stops in place (AT_TARGET=1); behind travel ramps past it
+// (AT_TARGET=0, never freezes). estop/HALT stops pulses immediately, sets HALTED.
+// Regs (0x200 window): 0x00 CTRL b0 EN b1 START(p) b2 STOP(p) b3 HALT(p) b4 MODE b5 ZERO_POS(p) b6 VEL_DIR
+// (R: b0/b4/b6); 0x04 STATUS b0 MOVING b1 DIR b2 AT_TARGET b3 HALTED b4 ENABLED; 0x08 TARGET (signed);
+// 0x0C VMAX_INC; 0x10 ACC_INC; 0x14 VMIN_INC; 0x18 POS (signed); 0x1C CUR_INC; 0x20 STEPS; 0x24 BRAKE.
 module stepper_ctrl #(
     parameter integer CLK_HZ   = 75_000_000,
-    parameter integer ACC_DIV  = 7500,              // ramp tick = 10 kHz at 75 MHz
+    parameter integer ACC_DIV  = 7500,
     parameter integer PULSE_US = 5,
     parameter integer DIR_SETUP_US = 10
 ) (
@@ -34,14 +21,17 @@ module stepper_ctrl #(
     input  wire [31:0] wdata,
     input  wire [7:0]  raddr,
     output reg  [31:0] rdata,
-    input  wire        estop,           // 1 = stop pulses immediately
+    input  wire        estop,
     output wire        pul_n,
     output wire        dir_n,
-    output wire        ena_o,           // pin level: 1 = driver energised, 0 = released (TB6600 ENA- low = off-line)
-    output wire [31:0] pos_o            // current position, for the camera capture latch
+    output wire        ena_o,
+    output wire [31:0] pos_o
 );
     localparam integer PULSE_CLK = CLK_HZ / 1_000_000 * PULSE_US;
     localparam integer SETUP_CLK = CLK_HZ / 1_000_000 * DIR_SETUP_US;
+    localparam integer ACCW   = $clog2(ACC_DIV);
+    localparam integer PULSEW = $clog2(PULSE_CLK + 1);
+    localparam integer SETUPW = $clog2(SETUP_CLK + 1);
 
     reg        enable = 0, mode = 0, vel_dir = 0;
     reg signed [31:0] target = 0;
@@ -49,22 +39,17 @@ module stepper_ctrl #(
     reg signed [31:0] pos = 0;
     reg [31:0] steps_total = 0;
 
-    reg [31:0] cur_inc = 0;
-    reg [31:0] phase = 0;
+    reg [31:0] cur_inc = 0, phase = 0, accel_steps = 0;
     reg        moving = 0, dir = 0, halted = 0, stopping = 0;
-    reg [31:0] accel_steps = 0;
-    reg [15:0] acc_cnt = 0;
-    reg [15:0] pulse_cnt = 0;
-    reg [15:0] setup_cnt = 0;
-    reg        start_req = 0, stop_req = 0, halt_req = 0, zero_req = 0;
+    reg [ACCW-1:0]   acc_cnt = 0;
+    reg [PULSEW-1:0] pulse_cnt = 0;
+    reg [SETUPW-1:0] setup_cnt = 0;
+    reg start_req = 0, stop_req = 0, halt_req = 0, zero_req = 0;
 
-    // remaining distance in position mode (always >= 0 while moving toward target)
     wire signed [31:0] dist = dir ? (pos - target) : (target - pos);
-    wire [31:0] remaining = dist[31] ? 32'd0 : dist;
+    wire [31:0] remaining = dist[31] ? 0 : dist;
     wire at_target = (pos == target);
-
-    // speed target for this tick
-    wire overshoot = mode && dist[31];          // target now behind the direction of travel
+    wire overshoot = mode && dist[31];
     wire decel_pos = mode && (remaining <= accel_steps);
     wire want_down = stopping || decel_pos || overshoot;
 
@@ -72,17 +57,11 @@ module stepper_ctrl #(
     wire step_now = moving && (setup_cnt == 0) && phase_next[32] && !(mode && !overshoot && remaining == 0);
 
     always @(posedge clk) begin
-        // ---------- register writes ----------
         start_req <= 0; stop_req <= 0; halt_req <= 0; zero_req <= 0;
         if (wr) case (waddr)
             8'h00: begin
-                enable  <= wdata[0];
-                mode    <= wdata[4];
-                vel_dir <= wdata[6];
-                start_req <= wdata[1];
-                stop_req  <= wdata[2];
-                halt_req  <= wdata[3];
-                zero_req  <= wdata[5];
+                enable  <= wdata[0]; mode <= wdata[4]; vel_dir <= wdata[6];
+                start_req <= wdata[1]; stop_req <= wdata[2]; halt_req <= wdata[3]; zero_req <= wdata[5];
             end
             8'h08: target   <= wdata;
             8'h0C: vmax_inc <= wdata;
@@ -92,8 +71,6 @@ module stepper_ctrl #(
         endcase
 
         if (zero_req && !moving) pos <= 0;
-
-        // ---------- pulse output timing ----------
         if (pulse_cnt != 0) pulse_cnt <= pulse_cnt - 1'b1;
         if (setup_cnt != 0) setup_cnt <= setup_cnt - 1'b1;
 
@@ -101,45 +78,31 @@ module stepper_ctrl #(
             if (moving) halted <= 1'b1;
             moving <= 0; stopping <= 0; cur_inc <= 0; phase <= 0; accel_steps <= 0;
         end else if (start_req && !moving) begin
-            halted <= 0;
-            stopping <= 0;
-            accel_steps <= 0;
-            phase <= 32'hFFFF_FFFF;   // first step right after the DIR setup time, not one start-speed period later
-            acc_cnt <= 0;
-            cur_inc <= vmin_inc;
-            setup_cnt <= SETUP_CLK;
-            if (mode) begin
-                dir <= (target < pos);
-                moving <= (target != pos);
-            end else begin
-                dir <= vel_dir;
-                moving <= 1'b1;
-            end
+            halted <= 0; stopping <= 0; accel_steps <= 0; acc_cnt <= 0;
+            phase <= 32'hFFFF_FFFF;  // first step right after DIR setup, not one vmin period later
+            cur_inc <= vmin_inc; setup_cnt <= SETUP_CLK;
+            if (mode) begin dir <= (target < pos); moving <= (target != pos); end
+            else begin dir <= vel_dir; moving <= 1'b1; end
         end else if (moving) begin
             if (stop_req) stopping <= 1'b1;
-
-            // ramp tick
             if (acc_cnt == ACC_DIV - 1) begin
                 acc_cnt <= 0;
-                // TARGET rewritten to exactly the current position mid-move: step_now emits nothing more, so the
-                // last-step exit below never fires -> stop here. Only pos == target: a target BEHIND the travel
-                // (remaining also reads 0 then) must keep ramping down past it (overshoot), not stop abruptly.
+                // TARGET == POS mid-move: step_now emits nothing so the last-step exit never
+                // fires -> stop here. A target BEHIND travel (remaining also 0) ramps past instead.
                 if (mode && at_target) begin moving <= 0; cur_inc <= 0; end
                 else if (want_down) begin
                     if (cur_inc > vmin_inc + acc_inc) cur_inc <= cur_inc - acc_inc;
                     else begin
                         cur_inc <= vmin_inc;
-                        // ramped down: stop
                         if (stopping || overshoot) begin moving <= 0; stopping <= 0; end
                     end
-                end else if (cur_inc < vmax_inc) begin
+                end else if (cur_inc < vmax_inc)
                     cur_inc <= (vmax_inc - cur_inc > acc_inc) ? cur_inc + acc_inc : vmax_inc;
-                end else if (cur_inc > vmax_inc) begin
+                else if (cur_inc > vmax_inc)
                     cur_inc <= (cur_inc - vmax_inc > acc_inc) ? cur_inc - acc_inc : vmax_inc;
-                end
             end else acc_cnt <= acc_cnt + 1'b1;
 
-            // step generation
+            // phase advance + step emission merged: accel_steps follows ramp direction per step
             if (setup_cnt == 0) phase <= phase_next[31:0];
             if (step_now) begin
                 pulse_cnt <= PULSE_CLK;
@@ -147,7 +110,7 @@ module stepper_ctrl #(
                 pos <= dir ? pos - 1 : pos + 1;
                 if (!want_down && cur_inc < vmax_inc) accel_steps <= accel_steps + 1'b1;
                 else if (want_down && accel_steps != 0) accel_steps <= accel_steps - 1'b1;
-                if (mode && remaining == 1) begin moving <= 0; cur_inc <= 0; end    // last step
+                if (mode && remaining == 1) begin moving <= 0; cur_inc <= 0; end
             end
         end
     end

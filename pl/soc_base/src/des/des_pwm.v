@@ -1,76 +1,60 @@
-// des_pwm.v — hobby-servo PWM for the belt-end flaps (MG996R, 两级翻板: 复检 vs NG, 返修 vs 报废)
-// (赛题领域 3 中级「NG 不良品输出 IO 控制；不良品实时分拣触发」).
-//
-// NCH channels, one period of PERIOD_US (default 20 ms = 50 Hz) for all, pulse width per channel in microseconds
-// (0 = no pulse: the servo holds without torque on most hobby servos). A new width written by the PS takes effect
-// at the start of the next period, so no truncated or doubled pulse ever reaches the servo. Pins are driven directly
-// (3.3 V LVCMOS; MG996R signal threshold ~2 V).
-//
-// Registers (byte offsets in the 0x400 window, register clock):
-//   0x00 CTRL    RW [NCH-1:0] channel enable (b8 drove the lamp in v7..v9, dropped in v10)
-//   0x04 PERIOD  RW period in us (default 20000, minimum 2600)
-//   0x08 CH0_US  RW pulse width in us (500..2500 typical)
-//   0x0C CH1_US  RW
-//   0x10 CNT     R  periods started (the PS can wait for its new width to be in force: CNT advanced by 2)
-//   0x14 ID      R  0x50574D31 'PWM1'
+// des_pwm.v — 2-channel 50 Hz flap-servo PWM (docs/PL设计.md §导流挡板 des_pwm); widths take effect
+// at the next period start; reads are combinational (AXI bridge samples next edge, v7).
+// Regs (0x400): 0x00 CTRL[1:0] en / 0x04 PERIOD us (min 2600) / 0x08 CH0_US / 0x0C CH1_US (max 2550) /
+//   0x10 CNT / 0x14 ID 0x50574D31.
 module des_pwm #(
-    parameter integer CLK_HZ = 75_000_000,
-    parameter integer NCH    = 2
+    parameter integer CLK_HZ = 75_000_000
 ) (
-    input  wire           clk,
-    input  wire           wr,
-    input  wire [7:0]     waddr,
-    input  wire [31:0]    wdata,
-    input  wire [7:0]     raddr,
-    output reg  [31:0]    rdata,
-    output reg  [NCH-1:0] pwm
+    input  wire        clk,
+    input  wire        wr,
+    input  wire [7:0]  waddr,
+    input  wire [31:0] wdata,
+    input  wire [7:0]  raddr,
+    output reg  [31:0] rdata,
+    output reg  [1:0]  pwm
 );
     localparam integer CLK_PER_US = CLK_HZ / 1_000_000;
 
-    reg [NCH-1:0] en = {NCH{1'b0}};
-    reg [15:0]    period_us = 16'd20000;
-    reg [11:0]    width_w [0:NCH-1];   // written by the PS
-    reg [11:0]    width_a [0:NCH-1];   // in force this period
-    reg [31:0]    periods = 32'd0;
-    reg [7:0]     div = 8'd0;          // clocks within the current microsecond
-    reg [15:0]    us = 16'd0;          // microsecond within the current period
-    integer i;
-    initial for (i = 0; i < NCH; i = i + 1) begin width_w[i] = 12'd0; width_a[i] = 12'd0; end
+    reg [1:0]  en = 2'd0;
+    reg [15:0] period_us = 16'd20000;
+    reg [23:0] width_w = 24'd0;   // PS-written pulse widths, {ch1, ch0}, 12 bits each
+    reg [23:0] width_a = 24'd0;   // widths in force this period
+    reg [31:0] periods = 32'd0;
+    reg [6:0]  div = 7'd0;        // clocks within the current microsecond (75 max)
+    reg [15:0] us = 16'd0;        // microseconds within the current period
 
     always @(posedge clk) begin
         if (wr) begin
             case (waddr[7:2])
-                6'h00: en <= wdata[NCH-1:0];
+                6'h00: en <= wdata[1:0];
                 6'h01: period_us <= (wdata[15:0] < 16'd2600) ? 16'd2600 : wdata[15:0];
-                default:
-                    for (i = 0; i < NCH; i = i + 1)
-                        if (waddr[7:2] == 6'h02 + i) width_w[i] <= (wdata > 32'd2550) ? 12'd2550 : wdata[11:0];
+                6'h02: width_w[11:0]  <= (wdata > 32'd2550) ? 12'd2550 : wdata[11:0];
+                6'h03: width_w[23:12] <= (wdata > 32'd2550) ? 12'd2550 : wdata[11:0];
             endcase
         end
         // microsecond tick
         if (div == CLK_PER_US - 1) begin
-            div <= 8'd0;
+            div <= 7'd0;
             if (us >= period_us - 1'b1) begin
                 us <= 16'd0;
                 periods <= periods + 1'b1;
-                for (i = 0; i < NCH; i = i + 1) width_a[i] <= width_w[i];   // new widths only at a period start
+                width_a <= width_w;   // new widths only at a period start
             end else begin
                 us <= us + 1'b1;
             end
         end else begin
             div <= div + 1'b1;
         end
-        for (i = 0; i < NCH; i = i + 1) pwm[i] <= en[i] && (us < width_a[i]);
+        pwm[0] <= en[0] && (us < width_a[11:0]);
+        pwm[1] <= en[1] && (us < width_a[23:12]);
     end
 
-    // read data must be combinational: the AXI bridge (fvdma_ctrl) presents the address and takes the data at the
-    // next clock edge (a registered mux returned the previous address's data on the board, v7)
     always @* begin
         case (raddr[7:2])
-            6'h00: rdata = {24'd0, {(8 - NCH){1'b0}}, en};
+            6'h00: rdata = {30'd0, en};
             6'h01: rdata = {16'd0, period_us};
-            6'h02: rdata = {20'd0, width_w[0]};
-            6'h03: rdata = (NCH > 1) ? {20'd0, width_w[1]} : 32'd0;
+            6'h02: rdata = {20'd0, width_w[11:0]};
+            6'h03: rdata = {20'd0, width_w[23:12]};
             6'h04: rdata = periods;
             6'h05: rdata = 32'h50574D31;
             default: rdata = 32'hDEADBEEF;

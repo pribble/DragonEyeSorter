@@ -1,6 +1,6 @@
 # pl/soc_base/ — PL 工程（soc_prj，TD 6.2.1）
 
-厂家 NPU demo `soc_prj` 底板 + 我们的全部改动；**仓库里这一份即可直接编译**：TD 6.2.1 打开 `soc_prj.al` → 综合 / 布局布线 → `soc_prj.bit`。**板端与源码均为 v12**（v12 = v11 + PS CAN0 引到 F20 / F19；版本与上板证据见下「板端版本台账」）；各模块上板状态与验证记录见 [docs/PL设计.md](../../docs/PL设计.md)。
+厂家 NPU demo `soc_prj` 底板 + 我们的全部改动；**仓库里这一份即可直接编译**：TD 6.2.1 打开 `soc_prj.al` → 综合 / 布局布线 → `soc_prj.bit`。**板端与源码均为 v13**（v13 = v12 PL 重构后全量重编，`BOOT.bin` `48c6bc7b…`；寄存器 `VERSION` 仍 12；版本与上板证据见下「板端版本台账」）；各模块上板状态与验证记录见 [docs/PL设计.md](../../docs/PL设计.md)。
 
 来源：米联客 / 安路 NPU 演示套件 `demo.zip → demo/soc_prj/`（2025-12 版）。TD 统一 6.2.1（与厂家比特流同版本，原样重编逐位一致已验证）；其他版本打开会提示格式升级。
 
@@ -13,6 +13,9 @@
 | v10 | — | —（des_pwm 去光源输出，**未单独编译 / 未上板**） | — | — |
 | v11 | 10-18 | `89fb03c8…`（比特流 `d643f655…`）；`BOOT.bin.prev` = v9 `e3a9d500…` | 75MHz +0.137ns / 像素 +0.103ns / HDMI −0.066ns | 21 项全过 |
 | v12 | 10-19 | `a026ead4…`；`BOOT.bin.prev` = v11 `89fb03c8…` | 75MHz +0.102ns / 像素 +0.102ns / HDMI +0.041ns | 0 失败 |
+| v13 | 10-23 | `48c6bc7b…`（比特流 `6afcb26f…`）；`BOOT.bin.prev` = v12 `a026ead4…` | 75MHz +0.292ns / 像素 +0.116ns / HDMI +0.055ns；自研 0 违例（NPU 软核域内 −0.340 新增，见 log） | 0 失败 |
+
+v13 为本次 PL 重构后全量重编版；PL 寄存器 `VERSION` 仍读 12（重构未改寄存器接口）。
 
 v12 上板记录原在 PL设计「基线」段，10-20 文档收敛移入本表；逐次明细见 [docs/log](../../docs/log/README.md)。
 
@@ -23,7 +26,7 @@ v12 上板记录原在 PL设计「基线」段，10-20 文档收敛移入本表�
 - `design_0/ip/` — 例化 IP 的包装与 RTL（多数为安路闭源加密文件）
 - `al_ip/` — 安路 IP 参数（PLL、NPU_SOFT 等）
 - `src/` — 明文 RTL：`system_top.v`、`hdmi_tx/`、`MIPI_V2/`（`mipi_rx/` + `src/` 只剩 `csi_unpacket.v` 与 `design_top_wrapper.v`）、`write_fdma/`、`ui_isp/`、`pwm.v`
-- `src/des/` — **自研模块**：des_regs、servo_bus、stepper_ctrl、des_vision、des_pwm、des_io、awb_seq_div（已登记进 `soc_prj.al`）
+- `src/des/` — **自研模块**：des_regs、servo_bus、stepper_ctrl、des_vision、des_pwm、des_io、awb_seq_div（已登记进 `soc_prj.al`）；`des_common.vh`（同步 / 去抖公共模块，被 des_regs / des_io 引用，纯 `include` 无需单独登记）
 - `src/constraint/` — 管脚 `io.adc`（CEP = BANK11 3.3V）、时序 `timing.sdc`
 - `soc_prj_Runs/syn_1/soc_prj.prj` 与 `soc_prj_Runs/phy_1/soc_prj.prj` — 综合 / 布局布线工程文件（`*_Runs/` 被 ignore，改动要 `git add -f`）
 
@@ -64,7 +67,7 @@ v12 上板记录原在 PL设计「基线」段，10-20 文档收敛移入本表�
 | `des_vision`（0x3xx） | 插在 ISP 输出与帧写模块之间（`ud_*` 改走 `vis_*`） | PL 硬件灰度 / 滤波 / 边缘 / 粗测 |
 | `awb_seq_div`（改 `src/ui_isp/awb_1_1/awb.v`） | 两个 50 级流水线除法器 IP 换成背靠背逐位除法器（每 49 时钟一个增益，增益不随帧复位）；对照仿真 `run_sim.sh awb` | 省约 4k LUT + 5k FF，布线 5h 不通 → 23 分钟通过 |
 | `des_pwm`（0x4xx） | `FLAP1_PWM` = PIN18 Y6、`FLAP2_PWM` = PIN20 Y8；`stepper_ctrl` 启动预置相位（首脉冲 1.94ms → 10.6µs）；光源输出已去掉（`CTRL` b8、`lamp` 端口、`LAMP_EN` = PIN17 Y7 释放） | 导流挡板两级 PWM；光源改人工开关 / 调光 |
-| `des_io`（0x5xx） | 急停去抖 + 锁存（锁存期间步进停住）、对射 / 限位去抖 + 边沿捕获（时间戳 / 带位置 / 编码器计数）、编码器 4 倍频 + 滤波 + Z 相 + 测速；取代未接入的 `io_sync` | 现场输入采样放 PL |
+| `des_io`（0x5xx） | 急停去抖 + 锁存（锁存期间步进停住）、对射 / 限位去抖 + 边沿捕获（时间戳 / 带位置 / 编码器计数）、编码器 4 倍频 + 滤波 + Z 相 + 测速；取代未接入的 `io_sync`（`src/des/io_sync.v` 已删除，无例化） | 现场输入采样放 PL |
 | `timing.sdc` | `clk_mipi` 挂到实际字节时钟 `…/U_io_clk_div_1.clkdivout`（8.0ns） | 厂家原约束挂在不存在的硬核 MIPI 引脚上（虚拟时钟），像素时钟域从未做过时序分析，`tuser` 边沿检测漏帧 |
 | `des_vision` / `des_pwm` 读数据 | 改组合逻辑读（桥接逻辑在同一时钟取数，打拍的会读回上一个地址） | 寄存器读回正确 |
 | `stepper_ctrl` | 运动中把 `TARGET` 改成恰好等于 `POS` 时就地停；目标在身后仍减速停 | 皮带「停在此处」写法不再卡死 |

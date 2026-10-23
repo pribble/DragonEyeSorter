@@ -14,7 +14,8 @@ pl/
 │   │   ├── des_vision.v         # ISP 后图像路径（灰度 / 高斯 / Sobel / 二值 + ROI）@+0x300（已上板）
 │   │   ├── des_pwm.v            # 导流挡板 PWM @+0x400（已上板；光源改手动后去掉输出）
 │   │   ├── des_io.v             # 急停 / 对射 / 限位 / 编码器 @+0x500（已上板）
-│   │   └── awb_seq_div.v        # ISP 白平衡逐位除法器（替代厂家除法器 IP，省约 4k LUT）
+│   │   ├── awb_seq_div.v        # ISP 白平衡逐位除法器（替代厂家除法器 IP，省约 4k LUT）
+│   │   └── des_common.vh        # 同步 / 去抖公共模块（被 des_regs / des_io 纯 include 引用，不占寄存器地址）
 │   ├── src/constraint/  #   管脚 io.adc（CEP = BANK11 3.3V）、时序 timing.sdc
 │   └── soc_prj.al       #   TD 工程入口
 ├── sim/                 # testbench（run_sim.sh 入口：des_axi / servo_bus / stepper / vision / vision2 / pwm / io / awb）
@@ -31,7 +32,7 @@ pl/
 ## 资源预算（依据官方 P&R 报告，本机厂家资料，不入库）
 
 - 官方 demo 基线：**LUT6 79%（41,524 / 52,480）、slice 85.8%（45,034 / 52,480）、ERAM 92.5%、DSP 59.6%（143 / 240）**，WNS −4.12ns，违规集中在跨时钟域。（slice 与 LUT6 是两个口径，引用时说清。）
-- 自研模块全部加入后：slice 约 82%、ERAM 261/280（剩 19 块）。
+- 自研模块全部加入后：slice 83.31%（43,719 / 52,480）、ERAM 261/280（剩 19 块）、DSP 65%；自研各域时序 0 违例。
 - 自研 P0 模块预算 ≤4000 LUT / ≤10 ERAM：总线 UART 用小 FIFO、PL 内不做乘除法（加减速表 PS 算）、加自研跨域路径后须补 `set_clock_groups`。
 - 超支砍单顺序：形态学 / CCL → overlay、tensor_pack；亚像素与视觉定位已在 PS 实现，不再占 PL。
 

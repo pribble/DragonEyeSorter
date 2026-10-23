@@ -6,7 +6,7 @@
 
 在官方 NPU demo 工程 `soc_prj`（MIPI RX + ISP + VDMA + HDMI + NPU 软核，已过 P&R）上叠加自研模块；顶层 `src/system_top.v`，PS 与 AXI 互联在块设计 `design_0`。
 
-**板端当前 v12（最新）**：v12 = v11 + PS CAN0 引到 F20 / F19；`pl_check.sh` 回归通过。逐版改动与上板记录见 [pl/soc_base/README](../pl/soc_base/README.md) 与 [log/](log/README.md)。
+**板端当前 v13（最新）**：v13 = v12 PL 重构后全量重编（`BOOT.bin` `48c6bc7b…`）；`pl_check.sh` 21 项回归通过；寄存器 `VERSION` 仍 12（接口未变）。逐版改动与上板记录见 [pl/soc_base/README](../pl/soc_base/README.md) 与 [log/](log/README.md)。
 
 **CAN 管脚（最新版已引到）**：底板 CAN 收发器接 PL 管脚 F20（TX）/ F19（RX），LVCMOS33、RX 上拉；RS485 接 L17 / N16 / N15（硬件手册 p21），尚未引出（要先定 PL UART 还是 PS UART 经 EMIO）。官方 demo 块设计没开 PS CAN（`CAN0_Available=0`，收发脚未约束）→ 最新版把 PS 硬核 `can0_tx_out` / `can0_rx_in` 经块设计引到 `system_top`，再到 F20 / F19。单节点验证：无人应答时发送错误计数按 CAN 规则累加、进 ERROR-PASSIVE 不进 BUS-OFF → 收发回路已通（明细见 log）；双节点实测等 J11 插头。注意：① ipms_canfd 驱动的错误帧把 ACK 位置码 0x19 写进 data[2]，candump 会显示成 bit-error，别被误导；② 驱动只支持 FD 模式，`ip link … fd off` 直接 EINVAL，收发经典帧不受影响（`can_up.sh` 照用）；③ 底板 B2B 管脚表（20250526）把 CAN / HDMI 管脚写反，以硬件手册 + 实测为准。
 
@@ -15,7 +15,7 @@
 - **明文可改（在用）**：`ui_isp/` 整套 ISP、`write_fdma/`（帧写 DDR）、`MIPI_V2/`、`hdmi_tx/`、厂家 AXI `pwm.v`（3 个实例，输出只当 lock 状态位）、AXI4-Lite 寄存器桥模板 `fvdma_ctrl`。
 - **加密（改不了）**：15 个 `pragma protect` 文件（NPU 软核、VDMA、时序发生器、AXI 互连、HDMI、MIPI D-PHY、`wfifo.v`），清单见 [pl/soc_base/README](../pl/soc_base/README.md)。
 - **已删（未例化的厂家源码）**：厂商图像算子 7 个、RAW8 老解包与第二套 AWB 7 个、白平衡流水线除法器 1.3MB；理由与验证见 [log/2026-10-17](log/2026-10-17-清理未用的厂家PL源码.md)。
-- **我们的贡献点**：运动控制（步进脉冲 + 加减速、舵机总线主机、QEI、帧锁存、IO 同步）、图像处理（二值 / 形态学 / CCL / 投影测量 / ROI 缩放 / 张量打包）、AXI 寄存器堆。
+- **我们的贡献点**：运动控制（步进脉冲 + 加减速、舵机总线主机、QEI、帧锁存、IO 同步）、图像处理（二值 / 形态学 / CCL / 投影测量 / ROI 缩放 / 张量打包）、AXI 寄存器堆、同步 / 去抖公共原语（`pl/soc_base/src/des/des_common.vh`，被 `des_regs` / `des_io` 纯 `include` 引用，不占寄存器地址）。
 
 ## 模块清单
 
@@ -47,9 +47,10 @@
 ### 资源
 
 - 官方 demo 基线见 [pl/README](../pl/README.md) 资源预算（LUT6 79% / slice 85.8% / ERAM 92.5% / DSP 59.6%，WNS −4.12ns；NPU 软核独占 2.24 万 LUT + 156 ERAM；LUT6 与 slice 是两个口径）。
-- 现约 slice 82%（全量重编 82.41%），ERAM 261/280（剩 19 块）；自研 `des_vision` 约 1k LUT + 2 ERAM + 13 DSP，`servo_bus` / `stepper_ctrl` 各数百 LUT。单个新模块控制在几百 LUT 以内，不再加大模块；仍不够时 `des_vision` 用 `LANES=2`（滤波逻辑减半）。
+- 现 slice 83.31%（43,719 / 52,480，全量重编），ERAM 261/280（剩 19 块），DSP 65%；自研各域时序 0 违例；自研 `des_vision` 约 1k LUT + 2 ERAM + 13 DSP，`servo_bus` / `stepper_ctrl` 各数百 LUT。单个新模块控制在几百 LUT 以内，不再加大模块；仍不够时 `des_vision` 用 `LANES=2`（滤波逻辑减半）。
 - ISP 白平衡两个「每时钟出一个商」的流水线除法器改为背靠背逐位除（`pl/soc_base/src/des/awb_seq_div.v`，改 `ui_isp/awb_1_1/awb.v`）：每 49 时钟一个新增益、增益差 ≤1 步、不再每帧开头复位；对照仿真 `run_sim.sh awb` 逐拍一致，省约 4k LUT + 2k 加法链 + 5k FF。
 - NPU 软核里的 YOLO 后处理 / 缩放单元理论上可省（我们是 ROI 分类 + PS 预处理），但 ArmNN Alnpu 后端依赖不确定，不动。
+- 重构（精简注释与内联逻辑、复用 `des_common.vh`、删除未接入的 `io_sync.v`）：各文件净减 284 行（逐文件明细见 [log/2026-10-23-PL重构](log/2026-10-23-PL重构.md)）；**寄存器偏移、位域与复位值未变**，与 `ps/src/hw/des_regs.h` 同一次提交。
 
 ## 寄存器通道（已实现）
 
@@ -158,7 +159,7 @@
 
 ### 现场输入 `des_io`（`PL_BASE + 0x500`）
 
-[pl/soc_base/src/des/des_io.v](../pl/soc_base/src/des/des_io.v)，取代从未接入的 `io_sync.v`：
+[pl/soc_base/src/des/des_io.v](../pl/soc_base/src/des/des_io.v)（从未接入的 `io_sync.v` 已删除、无例化）：
 
 - **急停**（PIN15）：按下保持 1ms 才算（去抖），**锁存**；锁存信号接步进 `estop`（不发脉冲、拒绝启动）。清除只能由 PS 写 `CTRL.b0`，按钮仍按着时清除无效；PS 在任何状态都能读到（`Runner` 进急停态；复位报警时清锁存）。常闭触点硬件断电不变。
 - **IR1 对射**（PIN9）/ **LIMIT1**（PIN12）：去抖 20µs；IR1 每次「挡光」边沿锁存自由计数器、步进位置、编码器计数 → 跟踪误差 = 预测前沿 vs 实测前沿。极性可配（`CFG`）。

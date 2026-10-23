@@ -7,7 +7,7 @@ D=../soc_base/src/des
 T=$(mktemp -d)
 case "${1:-des_axi}" in
   des_axi)
-    iverilog -g2005 -o "$T/sim" tb_des_axi.v $D/des_regs.v \
+    iverilog -g2005 -I"$D" -o "$T/sim" tb_des_axi.v $D/des_regs.v \
       ../soc_base/design_0/ip/design_0_fvdma_ctrl_0/RTL/fvdma_ctrl_300e9b49f7b5.v
     ;;
   servo_bus)
@@ -17,10 +17,10 @@ case "${1:-des_axi}" in
     iverilog -g2005 -o "$T/sim" tb_stepper_ctrl.v $D/stepper_ctrl.v
     ;;
   io)
-    iverilog -g2005 -o "$T/sim" tb_des_io.v $D/des_io.v
+    iverilog -g2005 -I"$D" -o "$T/sim" tb_des_io.v $D/des_io.v
     ;;
   pwm)
-    iverilog -g2005 -o "$T/sim" tb_des_pwm.v $D/des_pwm.v
+    iverilog -g2005 -I"$D" -o "$T/sim" tb_des_pwm.v $D/des_pwm.v
     ;;
   vision)
     iverilog -g2012 -o "$T/sim" tb_des_vision.v $D/des_vision.v   # the testbench uses join_none

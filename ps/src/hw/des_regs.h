@@ -10,7 +10,8 @@
 #define DES_REG_ID           0x000u    /* R  : 0x44455301 */
 #define DES_REG_VERSION      0x004u    /* R  : 1 register channel (v1 reads 0x20261010 here), 2 integrated,
                                           3 SOF fix, 4 INCK 27 MHz (60 fps), 5 capture latch, 6 des_vision,
-                                          7 des_pwm + AWB divider, 8 read mux / clk_mipi, 9 stepper TARGET == POS */
+                                          7 des_pwm + AWB divider, 8 read mux / clk_mipi, 9 stepper TARGET == POS,
+                                          10 des_pwm w/o lamp, 11 des_io, 12 PS CAN0 pins (no register change) */
 #define DES_REG_SCRATCH      0x008u    /* RW */
 #define DES_REG_FREE_CNT     0x00Cu    /* R  : 75 MHz free-running counter */
 #define DES_REG_LED_CTRL     0x010u    /* RW : b0 override LED1, b1 LED1 value */
