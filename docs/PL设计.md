@@ -6,7 +6,7 @@
 
 在官方 NPU demo 工程 `soc_prj`（MIPI RX + ISP + VDMA + HDMI + NPU 软核，已过 P&R）上叠加自研模块；顶层 `src/system_top.v`，PS 与 AXI 互联在块设计 `design_0`。
 
-**板端当前 v13（最新）**：v13 = v12 PL 重构后全量重编（`BOOT.bin` `48c6bc7b…`）；`pl_check.sh` 21 项回归通过；寄存器 `VERSION` 仍 12（接口未变）。逐版改动与上板记录见 [pl/soc_base/README](../pl/soc_base/README.md) 与 [log/](log/README.md)。
+**板端当前 v14（最新）**：v14 = 二次重构源码（`c1b94b5`）后全量重编 + 上板（`BOOT.bin` `a72e00f7…`，比特流 `a8a29533…`）；`pl_check.sh` 21 项回归通过、2min soak 0 error；寄存器 `VERSION` 仍 12（接口未变）。HDMI 串行域 1 个 −0.164ns 端点属厂家路径，TMDS 视觉待复核 ⚠。逐版改动与上板记录见 [pl/soc_base/README](../pl/soc_base/README.md) 与 [log/](log/README.md)。
 
 **CAN 管脚（最新版已引到）**：底板 CAN 收发器接 PL 管脚 F20（TX）/ F19（RX），LVCMOS33、RX 上拉；RS485 接 L17 / N16 / N15（硬件手册 p21），尚未引出（要先定 PL UART 还是 PS UART 经 EMIO）。官方 demo 块设计没开 PS CAN（`CAN0_Available=0`，收发脚未约束）→ 最新版把 PS 硬核 `can0_tx_out` / `can0_rx_in` 经块设计引到 `system_top`，再到 F20 / F19。单节点验证：无人应答时发送错误计数按 CAN 规则累加、进 ERROR-PASSIVE 不进 BUS-OFF → 收发回路已通（明细见 log）；双节点实测等 J11 插头。注意：① ipms_canfd 驱动的错误帧把 ACK 位置码 0x19 写进 data[2]，candump 会显示成 bit-error，别被误导；② 驱动只支持 FD 模式，`ip link … fd off` 直接 EINVAL，收发经典帧不受影响（`can_up.sh` 照用）；③ 底板 B2B 管脚表（20250526）把 CAN / HDMI 管脚写反，以硬件手册 + 实测为准。
 
@@ -47,8 +47,8 @@
 ### 资源
 
 - 官方 demo 基线见 [pl/README](../pl/README.md) 资源预算（LUT6 79% / slice 85.8% / ERAM 92.5% / DSP 59.6%，WNS −4.12ns；NPU 软核独占 2.24 万 LUT + 156 ERAM；LUT6 与 slice 是两个口径）。
-- 现 slice 83.31%（43,719 / 52,480，全量重编），ERAM 261/280（剩 19 块），DSP 65%；自研各域时序 0 违例；自研 `des_vision` 约 1k LUT + 2 ERAM + 13 DSP，`servo_bus` / `stepper_ctrl` 各数百 LUT。单个新模块控制在几百 LUT 以内，不再加大模块；仍不够时 `des_vision` 用 `LANES=2`（滤波逻辑减半）。
-- 二次重构（源码级；TD 6.2.1 综合前后，非 P&R）：LUT 58,100→58,122、FF 39,305→39,244、slice 44,097→44,126、ERAM 261/280、DSP 156/240，基本持平；自研模块 LUT 1,851→1,774、FF 3,685→3,624；**未重编比特流**，板端 P&R 仍为上一条 v13 数字（明细与返工过程见 [log/2026-10-23-PL二次重构](log/2026-10-23-PL二次重构.md)）。
+- 现 slice 83.26%（43,694 / 52,480，v14 全量重编），ERAM 261/280（剩 19 块），DSP 65%；自研 75M / 像素 / 150M / PS AXI 域时序 0 违例；自研 `des_vision` 约 1k LUT + 2 ERAM + 13 DSP，`servo_bus` / `stepper_ctrl` 各数百 LUT。单个新模块控制在几百 LUT 以内，不再加大模块；仍不够时 `des_vision` 用 `LANES=2`（滤波逻辑减半）。
+- 二次重构（`c1b94b5`，零行为精简，源文件净减 372 行）：TD 6.2.1 综合 LUT 58,100→58,122、FF 39,305→39,244、自研模块 LUT 1,851→1,774 / FF 3,685→3,624（持平）；源码已全量重编并上板（v14，`pl_check.sh` 21 项 0 失败）：P&R slice 83.26%（43,694）、ERAM 261/280、DSP 156/240，自研 75M / 像素 / 150M / PS AXI 域 0 违例，只剩 HDMI 串行域 1 个 −0.164ns（TMDS 视觉待复核 ⚠）与 NPU 域内 −0.399ns/152 端点（均厂家 IP 内部；v13 为 +0.055 / −0.340/60）；板端 v14（[log/2026-10-23-PL二次重构](log/2026-10-23-PL二次重构.md) · [后全量重编与上板](log/2026-10-23-PL二次重构后全量重编.md)）。
 - ISP 白平衡两个「每时钟出一个商」的流水线除法器改为背靠背逐位除（`pl/soc_base/src/des/awb_seq_div.v`，改 `ui_isp/awb_1_1/awb.v`）：每 49 时钟一个新增益、增益差 ≤1 步、不再每帧开头复位；对照仿真 `run_sim.sh awb` 逐拍一致，省约 4k LUT + 2k 加法链 + 5k FF。
 - NPU 软核里的 YOLO 后处理 / 缩放单元理论上可省（我们是 ROI 分类 + PS 预处理），但 ArmNN Alnpu 后端依赖不确定，不动。
 - 重构（自研 RTL 两轮零行为精简；最近一轮见 [log/2026-10-23-PL二次重构](log/2026-10-23-PL二次重构.md)）：行数 / 字节与综合资源前后对比见该 log；**寄存器偏移、位域与复位值未变**，与 `ps/src/hw/des_regs.h` 同一次提交。
