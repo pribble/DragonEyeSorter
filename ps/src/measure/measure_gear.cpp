@@ -44,6 +44,17 @@ GearMeasure measure_gear(const cv::Mat &gray, cv::Rect roi, const Homography &h,
     meas::runs_above(s.prof, mid, true, s.runs);
     if (s.runs.size() < 6) { g.err = "no tooth structure"; return g; }
     float w_med = 0, tip_med = 0, pitch0 = 0;
+    // Mean of the one-pitch spacings around the median estimate p0: the median sits on the half-bin grid of the
+    // tooth centres, and the double spacings over missing teeth push it up a step -> 720 / 24.5 rounds a 30-tooth
+    // gear to 29, the phase grid drifts and every defect count goes wild (2026-10-24, real gears with teeth
+    // missing, ~1 frame in 20).
+    auto refine_pitch = [](const std::vector<float> &v, float p0) {
+        double sum = 0;
+        int n = 0;
+        for (float x : v)
+            if (std::fabs(x - p0) < 0.25f * p0) { sum += x; n++; }
+        return n >= 3 ? float(sum / n) : p0;
+    };
     auto spacing_of = [&](size_t i) { return s.centers[(i + 1) % s.runs.size()] + (i + 1 == s.runs.size() ? NB : 0) - s.centers[i]; };
     auto stats = [&] {
         s.widths.clear();
@@ -69,7 +80,7 @@ GearMeasure measure_gear(const cv::Mat &gray, cv::Rect roi, const Homography &h,
         fprintf(stderr, "\n");
     }
     if (pitch0 > 0) {
-        const float P = float(NB) / std::max(1L, std::lround(NB / pitch0));
+        const float P = float(NB) / std::max(1L, std::lround(NB / refine_pitch(s.spacing, pitch0)));
         s.ph.resize(s.runs.size());
         for (size_t i = 0; i < s.runs.size(); i++) s.ph[i] = 2 * kPi * (s.runs[i].a + 0.5f * (w_med - 1)) / P;
         meas::filter_phase(s.ph, s.runs, s.kept, g.flash_gaps);
@@ -87,7 +98,8 @@ GearMeasure measure_gear(const cv::Mat &gray, cv::Rect roi, const Homography &h,
     s.single.clear();
     for (size_t i = 0; i < s.runs.size(); i++)
         if (teeth_in(i) == 1 && teeth_in((i + 1) % s.runs.size()) == 1) s.single.push_back(spacing_of(i));
-    const float pitch_bins = s.single.empty() ? pitch0 : meas::median(s.single);
+    const float pitch_bins = s.single.empty() ? refine_pitch(s.spacing, pitch0)
+                                              : refine_pitch(s.single, meas::median(s.single));
     const int z = pitch_bins > 0 ? int(std::lround(NB / pitch_bins)) : present;
     g.teeth = z;
     g.missing_teeth = std::max(0, z - present);

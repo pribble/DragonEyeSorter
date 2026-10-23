@@ -40,7 +40,8 @@ using Poly = std::vector<Vec2>;
 
 // gear outline: 3600 samples of R(theta); tip[k] = tip radius of tooth k (rr = missing), fill[k] = floor of the gap
 // after tooth k (0 = none; negative = a blob of that height standing in the middle of the gap only)
-static Poly gear(Vec2 c, int z, float ra, float rr, float phi, std::vector<float> tip, std::vector<float> fill)
+static Poly gear(Vec2 c, int z, float ra, float rr, float phi, std::vector<float> tip, std::vector<float> fill,
+                 std::vector<float> jit = {})   // jit[k]: angular offset of tooth k (rad), moulding / edge noise
 {
     if (tip.empty()) tip.assign(z, ra);
     if (fill.empty()) fill.assign(z, 0.f);
@@ -52,6 +53,7 @@ static Poly gear(Vec2 c, int z, float ra, float rr, float phi, std::vector<float
         int k = int(std::floor(rel / p + 0.5f));
         float a = rel - k * p;   // in [-p/2, p/2)
         k = ((k % z) + z) % z;
+        if (!jit.empty()) a -= jit[k];
         float t = tip[k], r;
         float aa = std::fabs(a);
         if (aa <= 0.13f * p) r = t;
@@ -234,6 +236,30 @@ int main()
         CHECK(g.missing_teeth == 1, "missing %d", g.missing_teeth);
         CHECK(g.flash_gaps == 3, "flash %d", g.flash_gaps);
         CHECK(std::fabs(g.od - 32 - GROW) < TOL, "OD with defects %.3f", g.od);
+    }
+    {   // B2: two (and three) teeth missing, every rotation in half-bin steps: the pitch must not be read off the
+        //     spacing median (0.5-degree bins; the double spacings over the gaps push it up half a bin -> 720 / 24.5
+        //     rounds to 29 teeth and every defect count goes wild; 2026-10-24 real gears, 1 frame in 20)
+        int bad = 0, n = 0;
+        for (int miss = 2; miss <= 3; miss++)
+            for (int k = 0; k < 24; k++) {
+                Vec2 c{180, 90};
+                std::vector<float> tip(30, 16.f);
+                tip[3] = tip[17] = 13.75f;
+                if (miss == 3) tip[18] = 13.75f;
+                std::vector<float> jit(30);
+                for (int i = 0; i < 30; i++) jit[i] = 0.008f * std::sin(2.7f * i + 1.3f * k + miss);   // +-0.46 deg
+                Scene s = render(gear(c, 30, 16, 13.75f, 0.01f + k * kPi / 720, tip, {}, jit), circle(c, 3), 1.f);
+                GearMeasure g = measure_gear(s.img, s.roi, h, cfg);
+                n++;
+                if (!(g.ok && g.teeth == 30 && g.missing_teeth == miss && g.short_teeth == 0 && g.flash_gaps == 0)) {
+                    if (bad++ < 3)
+                        printf("[gear30 -%d rot %d] teeth %d short %d missing %d flash %d\n", miss, k, g.teeth, g.short_teeth,
+                               g.missing_teeth, g.flash_gaps);
+                }
+            }
+        printf("[gear30 two / three missing] %d of %d rotations wrong\n", bad, n);
+        CHECK(bad == 0, "missing teeth over rotations: %d of %d wrong", bad, n);
     }
     {   // C: spec mix-up — 28 teeth (OD 30), must not be read as 30 with two missing
         Vec2 c{60, 110};
