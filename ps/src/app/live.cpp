@@ -469,13 +469,18 @@ void draw(cv::Mat &img, const Snapshot &s, const Homography &hinv, double belt_m
         ORect r{{float(t.s + belt_mm), t.y}, t.len / 2, t.wid / 2, t.axis};
         const auto c = r.corners();
         cv::Point poly[4];
-        int top = 1 << 30, left = 1 << 30;
+        int top = 1 << 30, left = 1 << 30, bottom = -(1 << 30), right = -(1 << 30);
         for (int i = 0; i < 4; i++) {
             const Vec2 p = hinv.map(c[i]);
             poly[i] = to_screen(p.x, p.y);
             top = std::min(top, poly[i].y);
             left = std::min(left, poly[i].x);
+            bottom = std::max(bottom, poly[i].y);
+            right = std::max(right, poly[i].x);
         }
+        // tracks ride on to the belt end (tail_x) long after leaving the picture: drawing them anyway cost ~0.1 ms
+        // each (10-23: 36 tracks, overlay 4.9 ms, display down to 40 fps)
+        if (right < 0 || left >= kVidW || bottom < 0 || top >= kVidH) continue;
         cv::Scalar col = color_of(t);
         for (int i = 0; i < 4; i++) cv::line(vid, poly[i], poly[(i + 1) & 3], col, 2, cv::LINE_8);
         snprintf(text, sizeof text, "#%d %s %s", t.id,
