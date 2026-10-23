@@ -61,8 +61,10 @@ std::string capture_gray_avg(CameraRig &cam, int discard, cv::Mat &sum, cv::Mat 
     for (int i = 0; i < 4; i++) {
         if (!(err = cam.next(f, true)).empty()) return err;
         bgra = cv::Mat(f.height, f.width, CV_8UC4, const_cast<uint8_t *>(f.bgra), size_t(f.stride)); cv::cvtColor(bgra, g, cv::COLOR_BGRA2GRAY);
-        if (sum.empty()) sum = cv::Mat::zeros(g.size(), CV_32F);
-        else sum.setTo(0);
+        if (i == 0) {   // reset once per call (3e01d7c reset it every frame: only the last frame / 4 came out)
+            sum.create(g.size(), CV_32F);
+            sum.setTo(0);
+        }
         cv::accumulate(g, sum);
     }
     sum.convertTo(gray, CV_8U, 0.25);

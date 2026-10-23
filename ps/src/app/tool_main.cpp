@@ -525,7 +525,10 @@ static int run_calib_flat(des_hw_t &hw, const AppConfig &cfg, const Args &a)
         int c0, c1;
         span(g, c0, c1);
         if (c0 < 0) {
-            e = "no white sheet in view at stop " + std::to_string(k);
+            // where the view is dim the leading edge can read a few px short of the downstream edge (10-24: column
+            // 4 at the last stops), so the sheet may leave the view before `last` fires: that is the end, not an error
+            if (k < 2) e = "no white sheet in view at stop " + std::to_string(k);
+            else printf("stop %2d: the sheet has left the view\n", k);
             break;
         }
         fb.add(g);
