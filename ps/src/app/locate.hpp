@@ -1,4 +1,4 @@
-// locate.hpp — part localization on the PS (docs/视觉与检测.md "视觉定位与角度"): white POM parts on a black matte belt. Downsampled gray -> threshold (Otsu, clamped) -> opening -> external contours -> minAreaRect,
+// locate.hpp — part localization on the PS (docs/视觉与检测.md "视觉定位与角度"): white POM parts on a black matte belt. Downsampled gray -> threshold (Otsu, clamped; or relative to the white level of the view, LocateConfig::rel_thresh) -> opening -> external contours -> minAreaRect,
 // then mapped to table mm through the camera homography. Gives (x, y, axis, len, wid) per blob; the NPU class is attached later by matching boxes (cls stays -1 here).
 #pragma once
 #include <array>
@@ -23,6 +23,8 @@ public:
 private:
     LocateConfig cfg_;
     std::vector<uint8_t> gray_, bin_;
+    std::vector<uint8_t> thr_;   // per-pixel threshold of the small image (rel_thresh mode), built on first use
+    int thr_w_ = 0, thr_h_ = 0;
     int gw_ = 0, gh_ = 0;
     std::vector<std::array<float, 8>> rects_px_;   // 4 corners (x0,y0..x3,y3) per blob, small-image px
     std::vector<std::array<float, 8>> rects_full_; // the same in full-resolution image px

@@ -126,10 +126,10 @@ $(BUILD)/test_scheduler: tests/test_scheduler.cpp $(SCHED_SRC) $(wildcard src/sc
 	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_scheduler.cpp $(SCHED_SRC)
 
 # 测量：measure/ 下除 OPS_SRC 外的全部共享件 + 零件记录（轨迹测量要写进 PartRecord 的类型）
-$(BUILD)/test_measure: tests/test_measure.cpp $(MEASURE_SRC) src/app/part_log.cpp src/app/util.cpp $(SCHED_SRC) \
-    $(wildcard src/measure/*.hpp src/app/part_log.hpp src/sched/*.hpp tests/*.hpp) | check-sdk $(BUILD)
+$(BUILD)/test_measure: tests/test_measure.cpp $(MEASURE_SRC) src/app/part_log.cpp src/app/util.cpp src/app/locate.cpp $(SCHED_SRC) \
+    $(wildcard src/measure/*.hpp src/app/part_log.hpp src/app/locate.hpp src/app/config.hpp src/sched/*.hpp tests/*.hpp) | check-sdk $(BUILD)
 	$(CXX) $(CXXFLAGS) $(INC) -I$(OPENCV)/include/opencv4 -o $@ tests/test_measure.cpp $(MEASURE_SRC) \
-	    src/app/part_log.cpp src/app/util.cpp $(SCHED_SRC) \
+	    src/app/part_log.cpp src/app/util.cpp src/app/locate.cpp $(SCHED_SRC) \
 	    -L$(OPENCV)/lib -Wl,-rpath-link,$(OPENCV)/lib $(RPATH) -lopencv_imgcodecs -lopencv_imgproc -lopencv_core -lpthread
 
 # Modbus-TCP slave over loopback (no SDK; also builds with WSL g++)

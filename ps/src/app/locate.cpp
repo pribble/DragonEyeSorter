@@ -4,6 +4,7 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
+#include "flat_field.hpp"
 #include "util.hpp"
 namespace des {
 std::vector<Detection> Locator::run(const uint8_t *bgra, int width, int height, int stride, const Homography &h, LocateTiming *timing)
@@ -23,7 +24,21 @@ std::vector<Detection> Locator::run(const uint8_t *bgra, int width, int height, 
     const uint64_t t1 = mono_us();
     cv::Mat gm(gh_, gw_, CV_8UC1, gray_.data()), bm(gh_, gw_, CV_8UC1, bin_.data());
     int th = cfg_.thresh;
-    if (th <= 0) {
+    if (cfg_.rel_thresh > 0 && cfg_.flat && cfg_.flat->ok()) {
+        if (thr_w_ != gw_ || thr_h_ != gh_) {   // threshold map at small-image resolution, once
+            thr_.resize(gray_.size());
+            const float sx = float(cfg_.flat->width) / width, sy = float(cfg_.flat->height) / height;
+            for (int y = 0; y < gh_; y++)
+                for (int x = 0; x < gw_; x++) {
+                    const float w = cfg_.flat->white_at((x * s + 0.5f * (s - 1)) * sx, (y * s + 0.5f * (s - 1)) * sy);
+                    thr_[size_t(y) * gw_ + x] = uint8_t(std::clamp(int(cfg_.rel_thresh * w + 0.5f), cfg_.rel_floor, 254));
+                }
+            thr_w_ = gw_;
+            thr_h_ = gh_;
+        }
+        for (size_t i = 0; i < gray_.size(); i++) bin_[i] = gray_[i] > thr_[i] ? 255 : 0;
+        th = thr_[size_t(gh_ / 2) * gw_ + gw_ / 2];   // reported: the centre's threshold
+    } else if (th <= 0) {
         th = int(cv::threshold(gm, bm, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU));
         if (th < cfg_.min_thresh) {   // nothing on the belt: Otsu splits the noise, clamp it
             th = cfg_.min_thresh;

@@ -18,6 +18,7 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
+#include "locate.hpp"
 #include "measure.hpp"
 #include "part_log.hpp"
 #include "roi_crop.hpp"
@@ -604,6 +605,41 @@ int main()
         const std::string fn = "/tmp/des_flat_test.json";
         FlatField back;
         CHECK(save_flat(fn, f, "test").empty() && load_flat(fn, back).empty() && back.gw == 48 && back.gh == 27 && std::fabs(back.white_at(700, 300) - f.white_at(700, 300)) < 0.01f, "flat.json round trip");
+    }
+    {   // locator, threshold relative to the white level (LocateConfig::rel_thresh): white 176 in the centre .. 40 %
+        // at the left / right edges; belt 0.3 of white, a belt-seam glare at 0.5 of white near the centre, two
+        // parts at 0.95 of white towards the dark left edge (2026-10-24: the glare passed the fixed 60 floor)
+        auto v = [](float x) { const float d = (x - 959.5f) / 960; return 0.4f + 0.6f * (1 - d * d); };
+        auto f = std::make_shared<FlatField>();
+        f->gw = 48; f->gh = 27; f->ref = 176;
+        for (int j = 0; j < 27; j++)
+            for (int i = 0; i < 48; i++) f->white.push_back(176 * v((i + 0.5f) * 40 - 0.5f));
+        cv::Mat g(1080, 1920, CV_8UC1);
+        for (int y = 0; y < 1080; y++)
+            for (int x = 0; x < 1920; x++) {
+                float k = 0.3f;
+                if (x >= 760 && x < 860 && y >= 500 && y < 530) k = 0.5f;   // glare 15 x 4.5 mm
+                const float d1 = std::hypot(x - 300.f, y - 540.f), d2 = std::hypot(x - 150.f, y - 300.f);
+                if (d1 < 107 || d2 < 107) k = 0.95f;                           // 32 mm discs
+                g.at<uint8_t>(y, x) = uint8_t(std::lround(176 * v(float(x)) * k));
+            }
+        cv::Mat bgra;
+        cv::cvtColor(g, bgra, cv::COLOR_GRAY2BGRA);
+        Homography hl;
+        hl.h = {S, 0, 0, 0, S, 0, 0, 0, 1};
+        LocateConfig lc;   // Otsu clamped at 60 (the old behaviour)
+        std::vector<Detection> old = Locator(lc).run(bgra.data, 1920, 1080, int(bgra.step), hl);
+        lc.rel_thresh = 0.65f;
+        lc.flat = f;
+        std::vector<Detection> rel = Locator(lc).run(bgra.data, 1920, 1080, int(bgra.step), hl);
+        int parts = 0, glare = 0;
+        for (const Detection &d : rel) {
+            if (std::fabs(d.len - 32) < 3 && std::fabs(d.wid - 32) < 3) parts++;
+            if (std::fabs(d.p.x - 810 * S) < 10 && std::fabs(d.p.y - 515 * S) < 10) glare++;
+        }
+        printf("[locate rel] Otsu/60: %zu blobs, relative: %zu blobs (%d parts, %d glare)\n", old.size(), rel.size(), parts, glare);
+        CHECK(old.size() == 3, "the old threshold should pick the glare up too (%zu blobs)", old.size());
+        CHECK(rel.size() == 2 && parts == 2 && glare == 0, "relative threshold: %zu blobs, %d parts, %d glare", rel.size(), parts, glare);
     }
     return test_summary();
 }

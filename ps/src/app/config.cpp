@@ -66,7 +66,8 @@ std::string load_config(const std::string &path, AppConfig &cfg)
         CameraConfig &cam = cfg.camera; sec_gets(j, "camera", "vmax", cam.vmax, "buffers", cam.buffers, "realtime", cam.realtime, "exposure_us",
                  cam.exposure_us, "gain_db10", cam.gain_db10);
         LocateConfig &loc = cfg.locate; sec_gets(j, "locate", "scale", loc.scale, "thresh", loc.thresh, "min_thresh", loc.min_thresh, "open_iter",
-                 loc.open_iter, "border_px", loc.border_px, "min_area_mm2", loc.min_area_mm2, "max_area_mm2", loc.max_area_mm2);
+                 loc.open_iter, "border_px", loc.border_px, "min_area_mm2", loc.min_area_mm2, "max_area_mm2", loc.max_area_mm2,
+                 "rel_thresh", loc.rel_thresh, "rel_floor", loc.rel_floor);
         if (j.contains("px_to_table")) {   // frozen error text: a wrong length is not a type error (CONTRACT §1)
             const json &h = j["px_to_table"];
             if (h.size() != 9) return "px_to_table needs 9 numbers (row-major 3x3)";
@@ -211,7 +212,7 @@ std::string load_config(const std::string &path, AppConfig &cfg)
         if (std::ifstream ff{fp}) {
             auto flat = std::make_shared<FlatField>(); std::string e = load_flat(fp, *flat);
             if (!e.empty()) return e;
-            cfg.measure.flat = flat; cfg.flat_loaded = fp;
+            cfg.measure.flat = flat; cfg.locate.flat = flat; cfg.flat_loaded = fp;
         }
     }
     {   // ready pose taught on the HMI arm page (「设为初始姿态」): counts of the six servos, over arm.home_deg

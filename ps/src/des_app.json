@@ -4,8 +4,9 @@
   "camera_comment": "exposure_us：驱动默认几乎整帧（约 16.6ms），50mm/s 时拖影约 0.8mm、白色零件过曝 → 10-18 定 3000；10-20 实测 3000 时白齿轮顶面 86% 像素饱和（255）、外径被光晕撑大 → 改 800（顶面约 190~200 不饱和、皮带约 30，50mm/s 拖影 0.04mm；同灯光档位下 700µs 无频闪横纹）。画面暗就把光源调亮，不加长曝光；灯若是 PWM 调光，调暗后短曝光会出横纹。gain_db10 单位 0.1dB，0 = 驱动默认。命令行 --exp / --gain 优先",
   "camera": { "vmax": 2276, "buffers": 4, "realtime": true, "exposure_us": 800, "gain_db10": 0 },
 
+  "locate_comment": "rel_thresh：像素亮度超过「该位置白纸亮度（flat.json）× rel_thresh」才算零件（下限 rel_floor）；零件顶面约为白纸的 0.97~1.02，2026-10-24 新灯位下皮带约 0.3、皮带接缝反光最多 0.52 → 0.65 两边都有余量。没有 flat.json 或 rel_thresh 0 时退回 Otsu + min_thresh（旧灯光下用，接缝反光 72~83 会越过 60）。换灯 / 重采平场后复核",
   "locate": { "scale": 4, "thresh": 0, "min_thresh": 60, "open_iter": 1, "border_px": 2,
-              "min_area_mm2": 40, "max_area_mm2": 3000 },
+              "min_area_mm2": 40, "max_area_mm2": 3000, "rel_thresh": 0.65, "rel_floor": 25 },
 
   "px_to_table_comment": "未标定时的占位：视野宽 300mm / 1920px，x 沿图像向右（皮带前进方向），y 沿图像向上（右手系，z 朝上），原点 = 左边缘中点。用 des_tool calib-cam 标定后由 calib.json 覆盖",
   "px_to_table": [0.15625, 0, 0,  0, -0.15625, 84.375,  0, 0, 1],

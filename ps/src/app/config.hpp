@@ -23,6 +23,14 @@ struct LocateConfig {
     int border_px = 2;           // blob within this many (small-image) px of the edge = partial
     float min_area_mm2 = 40;     // smaller blobs are dirt
     float max_area_mm2 = 3000;   // larger blobs are several touching parts (merged)
+    // Threshold relative to the white level of the view (flat.json, des_tool calib-flat): a part's top face is about
+    // as bright as the white sheet wherever it is, the belt and its glare are not (2026-10-24, lights high and
+    // straight down: belt 53 / seam glare up to 83 in the centre against white 171, parts 0.9..1.0 of white; the
+    // fixed 60 floor let the seam through as parts, the view edges are too dark for a higher fixed one).
+    // > 0 and a flat field loaded: pixel is part when gray > max(rel_thresh * white, rel_floor); else Otsu / thresh.
+    float rel_thresh = 0;
+    int rel_floor = 25;
+    std::shared_ptr<const FlatField> flat;   // set by load_config from flat_file (the same field as the crops)
 };
 struct BeltConfig {
     double mm_per_step = 0.0207; // ruler, 10-16: 4 turns (12800 steps) = ~265 mm (effective roller ~21 mm); des_tool calib-belt
