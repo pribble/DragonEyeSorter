@@ -22,7 +22,8 @@ struct PartResult {
 std::vector<PartResult> measure_parts(const cv::Mat &gray, const std::vector<Detection> &dets, const AppConfig &cfg, float belt_mm_per_row = 0);
 std::string describe(const PartResult &r);  // fitted circles / rack outline + labels, and an r(theta) inset per gear (right edge)
 void draw_parts(cv::Mat &bgr, const std::vector<PartResult> &res, const Homography &px_to_table);
-// repeatability of still parts over frames: mean / sigma / range of every measured quantity per part
+// repeatability of still parts over frames: mean / sigma / range of every measured quantity per part, and how often
+// each tooth-defect verdict (judged? short / missing / flash counts) came out
 class RepeatStats {
 public: void add(const std::vector<PartResult> &res);
     void print() const;
@@ -31,6 +32,7 @@ private: struct Acc {
         char kind = 0;
         int fails = 0;
         std::vector<std::vector<double>> v;  // one sample list per quantity
+        std::vector<std::pair<std::string, int>> verdicts;   // "short 0 missing 1 flash 0" -> frames
     };
     std::vector<Acc> parts_;
 };

@@ -148,6 +148,13 @@ void RepeatStats::add(const std::vector<PartResult> &res)
         if (r.kind == 'g') {
             const double q[] = {r.g.od, r.g.root_d, r.g.bore_d, r.g.ecc, double(r.g.teeth)};
             for (int i = 0; i < 5; i++) a->v[i].push_back(q[i]);
+            char k[64];
+            if (r.g.teeth_judged)
+                snprintf(k, sizeof k, "short %d missing %d flash %d", r.g.short_teeth, r.g.missing_teeth, r.g.flash_gaps);
+            else snprintf(k, sizeof k, "not judged");
+            auto it = std::find_if(a->verdicts.begin(), a->verdicts.end(), [&](const auto &e) { return e.first == k; });
+            if (it == a->verdicts.end()) a->verdicts.push_back({k, 1});
+            else it->second++;
         } else {
             const double q[] = {r.r.length, r.r.height, r.r.pitch, double(r.r.teeth)};
             for (int i = 0; i < 4; i++) a->v[i].push_back(q[i]);
@@ -170,6 +177,7 @@ void RepeatStats::print() const
             const double sd = s.size() > 1 ? std::sqrt(sq / (s.size() - 1)) : 0;
             printf("   %-7s mean %9.4f  sigma %.4f  range %.4f (%.4f .. %.4f)\n", a.kind == 'g' ? kGearQ[i] : kRackQ[i], m, sd, hi - lo, lo, hi);
         }
+        for (const auto &e : a.verdicts) printf("   verdict %-28s %d frame(s)\n", e.first.c_str(), e.second);
     }
 }
 }  // namespace des
