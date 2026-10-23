@@ -174,7 +174,8 @@ std::string load_config(const std::string &path, AppConfig &cfg)
                 }
             if (const json *r = ji::sec(*c, "rule")) {
                 SizeRule &s = cfg.tracker.size; get_spec(*r, s);
-                ji::gets(*r, "enabled", s.enabled, "defect_recheck", s.defect_recheck, "require", s.require);
+                ji::gets(*r, "enabled", s.enabled, "defect_recheck", s.defect_recheck, "unjudged_recheck", s.unjudged_recheck,
+                         "require", s.require);
                 std::string outlet = "scrap"; ji::get(*r, "ng_outlet", outlet); s.ng_outlet = index_of(cfg.outlets, outlet);
                 if (s.ng_outlet < 0) return path + ": measure.rule.ng_outlet \"" + outlet + "\" is not in outlets";
             }

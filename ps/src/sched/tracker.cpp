@@ -72,6 +72,12 @@ void Tracker::apply_size(Track &t) const
         if (r.require) { t.disp = Disposition::Recheck; t.dest = 0; t.set_why("not measured"); }
         return;
     }
+    if (r.unjudged_recheck && !m.teeth_judged) {   // off-axis: neither the teeth nor the OD can be trusted
+        t.disp = Disposition::Recheck;
+        t.dest = 0;
+        t.set_why("off-axis: teeth not judged");
+        return;
+    }
     char buf[48] = "";
     if (m.kind == 'g') {
         if (m.teeth_judged && m.teeth != r.gear_teeth) snprintf(buf, sizeof buf, "spec: %d teeth", m.teeth);

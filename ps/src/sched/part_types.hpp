@@ -59,6 +59,9 @@ struct SizeRule {
     float rack_len = 50, rack_len_tol = 1.0f;
     int ng_outlet = 1;              // flap outlet for size / spec NG (index into outlets, 1 = scrap)
     bool defect_recheck = true;     // class says OK but the measurement found tooth defects -> recheck
+    bool unjudged_recheck = true;   // class says OK but the teeth could not be judged (too far off the camera axis:
+                                    // the side wall fills the far gaps, good gears read 3..14 missing teeth and the
+                                    // OD is off too, 2026-10-24) -> recheck, before any size check
     bool require = false;           // no measurement by decide_x -> recheck
 };
 // Product recipe (配方): the part spec the size rule checks against; changeover = switch which spec is good, e.g.

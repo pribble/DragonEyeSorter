@@ -143,7 +143,9 @@ static void test_size_rule()
         {0, meas_gear(30, 32.5f, 0.05f, 0, true), Disposition::Flap, 1, "OD out of tolerance"},
         {0, meas_gear(30, 32.0f, 0.5f, 0, true), Disposition::Flap, 1, "eccentric bore"},
         {0, meas_gear(30, 32.0f, 0.05f, 1, true), Disposition::Recheck, 0, "NPU OK, measured short tooth"},
-        {0, meas_gear(30, 32.0f, 0.05f, 1, false), Disposition::Pick, 0, "short tooth not judged (far off-axis)"},
+        {0, meas_gear(30, 32.0f, 0.05f, 0, false), Disposition::Recheck, 0, "NPU OK, teeth not judged (far off-axis)"},
+        {0, meas_gear(30, 32.5f, 0.05f, 0, false), Disposition::Recheck, 0, "off-axis OD is not trusted for scrap"},
+        {0, meas_gear(28, 30.0f, 0.05f, 0, false), Disposition::Recheck, 0, "off-axis tooth count is not a spec NG"},
         {0, meas_rack(48.0f), Disposition::Flap, 1, "48 mm rack"},
         {0, meas_rack(50.1f), Disposition::Pick, 0, "50 mm rack"},
         // racks are cut at whole teeth (pitch 3.125 mm, 16 teeth = 50.0): hand-cut 16-tooth parts scatter a few
@@ -154,6 +156,11 @@ static void test_size_rule()
         {2, meas_gear(30, 32.0f, 0.05f, 0, true), Disposition::Flap, 2, "NPU flash stays NPU flash"},
         {0, PartMeasure{}, Disposition::Pick, 0, "not measured, require off"},
     }, "size rule:");
+    cfg.size.unjudged_recheck = false;   // old behaviour: unjudged parts keep the class decision
+    check_size_cases(cfg, {
+        {0, meas_gear(30, 32.0f, 0.05f, 0, false), Disposition::Pick, 0, "teeth not judged, unjudged_recheck off"},
+        {2, meas_gear(30, 32.0f, 0.05f, 0, false), Disposition::Flap, 2, "NPU flash, teeth not judged"},
+    }, "size rule (unjudged_recheck off):");
 }
 
 // Recipes (recipes.json): changeover to the 28-tooth gear swaps which gears are good; the bore-8 recipe rejects bore 6
