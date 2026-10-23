@@ -18,7 +18,8 @@
   "belt": { "mm_per_step": 0.0207, "dir": -1, "run_speed": 50, "accel": 400,
             "adapt": { "enabled": true, "min_mm_s": 15, "change_frac": 0.05 } },
 
-  "tracker": { "fov_x0": 0, "fov_x1": 300, "edge_margin": 10, "decide_x": 270, "tail_x": 600,
+  "tracker_comment": "decide_x：零件中心过这条线时定去向（挡板 1 要在零件进入摆杆扫过区之前合好 → 中线零件 50mm/s 下最晚约 x 208、60mm/s 约 x 203（画面中心约 x 187 测完后即可判），启动日志「[run] gate」行给出各带速下的最晚判定位置）；tail_x：带尾（10-22 实测约 813，复检箱）",
+  "tracker": { "fov_x0": 0, "fov_x1": 300, "edge_margin": 10, "decide_x": 195, "tail_x": 813,
                "gate_s": 12, "gate_y": 12, "min_hits": 3, "max_miss_new": 2, "max_miss": 8,
                "min_conf": 0.5, "pick_unclassified": false, "unclassified_bin": 0 },
 
@@ -67,10 +68,12 @@
     "bins_deg": [[120, 40, -100, -30, 0], [-120, 40, -100, -30, 0]]
   },
 
-  "flaps_comment": "侧边导流挡板（des_pwm 通道 = 挡板序号，MG996R）：after_pick_mm = 拦截点（合上的摆杆与零件摆放带中线的交点）在抓取线下游多远；没有挡板的去向（复检）走到带尾。零件到拦截点前 prepare_mm 合上、过后 clear_mm 打开；合上期间会碰到别的件则这件改走复检。TODO 装好后用 desreg pwm 实测开 / 合脉宽、点动皮带标拦截点，再开 enabled",
-  "flaps": { "enabled": false, "prepare_mm": 110, "clear_mm": 190, "gap_mm": 40,
-             "gates": [ { "after_pick_mm": 70,  "outlet": "scrap",  "open_us": 1000, "closed_us": 1900 },
-                        { "after_pick_mm": 170, "outlet": "rework", "open_us": 1000, "closed_us": 1900 } ] },
+  "flaps_comment": "侧边导流挡板（平摆，des_pwm 通道 = 挡板序号，MG996R；10_项目文档/侧边导流挡板方案.md §2c）：pivot_xy = 转轴台面坐标（对侧带边 y≈-150）、len_mm = 摆杆长、closed_deg / open_deg = 合上 / 打开角度（从上游方向朝皮带中线量）、hold_mm = 零件碰到摆杆后保持合上的带行程（0 = 按摆杆斜面滑出估算，装好后看零件实际滑出再填）；move_ms = 开合渐变时间（软起停）、stagger_ms = 两块错开起步、margin_mm = 各项判断留的余量。零件在进入扫过区前合好、来不及 / 够不着 / 有别的件（含去抓取线的良品）会进扫过区则这件改走复检；合上后后面来了件则提前打开。TODO 装好后：量转轴位置 / 摆杆长 / 角度填进来，desreg pwm 实测开 / 合脉宽，点动皮带核对碰件点，再开 enabled",
+  "flaps": { "enabled": false, "move_ms": 300, "stagger_ms": 120, "margin_mm": 10,
+             "gates": [ { "outlet": "scrap",  "pivot_xy": [438, -150], "len_mm": 230, "closed_deg": 55, "open_deg": -20,
+                          "hold_mm": 0, "open_us": 1000, "closed_us": 1900 },
+                        { "outlet": "rework", "pivot_xy": [613, -150], "len_mm": 210, "closed_deg": 65, "open_deg": 25,
+                          "hold_mm": 0, "open_us": 1000, "closed_us": 1900 } ] },
 
   "storage_comment": "本地存储（赛题硬性项②）：每件判定后一行 CSV（<dir>/<日期>/parts_<会话>.csv）+ 零件裁切图（images: none / ng = 翻板和复检件 / all）。dir 不写就是 data/log、按本文件所在目录解析（生产配置 → /root/des/data/log；把这份配置连同程序拷到别的目录部署时，数据就落在那个目录，不污染生产数据），写绝对路径则原样用。板子没有 RTC，日期目录按系统时钟，测试前先对时",
   "plc_comment": "Modbus-TCP 从站（产线 PLC / 组态软件经网口读状态、下命令；寄存器表 hw/modbus_tcp.hpp，规则同 CAN）。0 = 关",
