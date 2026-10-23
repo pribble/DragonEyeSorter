@@ -148,7 +148,13 @@ f637f3849b13d8b42b528ee2d589c87ab11cef9d5317aa092aa277cc2e708716  pl/soc_base/so
 ## 9. 复现命令（仓库根目录）
 
 ```bash
-bash pl/sim/equiv/audit/run_final_verify.sh          # 全量：36 项等价 + 审计/契约/lint/编码/工程文件/des 8 项 + 自检
-bash pl/sim/equiv/audit/run_x_tests.sh               # 只跑 verifier 的对抗等价 test
+bash pl/sim/equiv/audit/run_final_verify.sh          # 全量：36 项等价 + 8 项功能仿真逐字节 + 审计/契约/lint/编码/工程文件 + 自检
+EQUIV_ONLY='x_*' bash pl/sim/equiv/run_all_equiv.sh  # 只跑对抗等价 test（原 run_x_tests.sh 已并入）
 python3 pl/sim/equiv/audit/audit_system_top.py       # 顶层结构审计（--golden-file 可做变异自检）
+bash pl/sim/equiv/audit/selftest_audit.sh            # 结构审计「能失败」自检（run_final_verify 已包含）
+bash pl/sim/equiv/audit/selftest_equiv.sh            # run_equiv.sh 依赖前缀语义自检
 ```
+
+> 第三轮（2026-10-24 晚）pl/sim 精简后，本报告涉及的 `run_x_tests.sh`、`gen_lint_stubs.py`、
+> `lint_sys_stubs.v` 等一次性脚本已删除（能力并入 `run_all_equiv.sh` / `lint_compare.py`），
+> 删除清单与保留理由见 [README.md](README.md)。

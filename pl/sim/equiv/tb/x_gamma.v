@@ -4,6 +4,7 @@
 // 覆盖：随机 96bit + 极值(0x00/0xFF/棋盘)、随机 valid 缺口、tuser/tlast 错位、随机 O_tready、
 //       连续写满后突然停顿再排空、一次中途复位。
 module tb_x_gamma;
+    `include "equiv_tb_common.vh"
     reg clk = 0;
     reg rst_n = 0;
     always #5 clk = ~clk;
@@ -22,21 +23,8 @@ module tb_x_gamma;
         .O_tready(O_tready)
     );
 
-    integer fd;
-    integer cyc = 0;
     integer traced = 0;
-    reg [1023:0] trace_file;
-    initial begin
-        if (!$value$plusargs("TRACE=%s", trace_file)) begin
-            $display("x_gamma: no TRACE= plusarg");
-            $finish;
-        end
-        fd = $fopen(trace_file, "w");
-        if (fd == 0) begin
-            $display("x_gamma: cannot open trace file");
-            $finish;
-        end
-    end
+    initial equiv_trace_open;
     always @(posedge clk) begin
         cyc = cyc + 1;
         traced = traced + 1;
@@ -120,8 +108,6 @@ module tb_x_gamma;
             $display("x_gamma: trace lines %0d != cycles %0d", traced, cyc);
             $finish;
         end
-        $display("EQUIV_CYCLES %0d", cyc);
-        $display("EQUIV_DONE");
-        $finish;
+        equiv_finish(cyc);
     end
 endmodule

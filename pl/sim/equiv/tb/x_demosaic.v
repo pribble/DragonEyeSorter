@@ -9,6 +9,7 @@
 // 激励：多帧、极值数据、随机 valid 缺口、随机 tlast/tuser 边界、随机 O_tready、中途复位后再来一帧。
 // TD blk_mem_gen_*/RTL/ram_*.v 是明文 wrapper（不改），其 DR1_LOGIC_ERAM 原语由共享桩 vendor_eram.v 提供。
 module tb_x_demosaic;
+    `include "equiv_tb_common.vh"
     reg clk = 0;
     reg rst_n = 0;
     always #5 clk = ~clk;
@@ -70,21 +71,8 @@ module tb_x_demosaic;
     );
 
     // ================= trace: every output of both instances =================
-    integer fd;
-    integer cyc = 0;
     integer traced = 0;
-    reg [1023:0] trace_file;
-    initial begin
-        if (!$value$plusargs("TRACE=%s", trace_file)) begin
-            $display("x_demosaic: no TRACE= plusarg");
-            $finish;
-        end
-        fd = $fopen(trace_file, "w");
-        if (fd == 0) begin
-            $display("x_demosaic: cannot open trace file");
-            $finish;
-        end
-    end
+    initial equiv_trace_open;
     always @(posedge clk) begin
         cyc = cyc + 1;
         traced = traced + 1;
@@ -206,9 +194,7 @@ module tb_x_demosaic;
             $display("x_demosaic: trace lines %0d != cycles %0d", traced, cyc);
             $finish;
         end
-        $display("EQUIV_CYCLES %0d", cyc);
-        $display("EQUIV_DONE");
-        $finish;
+        equiv_finish(cyc);
     end
 
     initial begin

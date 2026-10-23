@@ -9,9 +9,7 @@
 //   * 复位对抗：上电复位、周期中途复位、1 拍复位、连续随机复位（固定 LFSR，确定性）
 // 逐拍记录全部输出，跑 EQUIV_CYCLES + EQUIV_DONE；golden vs 新必须逐字节一致。
 module tb_x_pwm;
-    integer fd;
-    integer cyc = 0;
-    reg [1023:0] tf;
+    `include "equiv_tb_common.vh"
 
     reg clk = 0;
     always #5 clk = ~clk;
@@ -31,11 +29,7 @@ module tb_x_pwm;
     // 确定性伪随机（32-bit LFSR，固定种子 32'h1ACE_B00C）
     reg [31:0] lfsr = 32'h1ACE_B00C;
 
-    initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin $display("cannot open trace"); $finish; end
-    end
+    initial equiv_trace_open;
 
     always @(posedge clk) begin
         cyc <= cyc + 1;
@@ -69,10 +63,7 @@ module tb_x_pwm;
             rst_g <= ~(lfsr[17:15] == 3'b000);
         end
         if (cyc == 12000) begin
-            $display("EQUIV_CYCLES %0d", cyc);
-            $display("EQUIV_DONE");
-            $fclose(fd);
-            $finish;
+            equiv_finish(cyc);
         end
     end
 endmodule

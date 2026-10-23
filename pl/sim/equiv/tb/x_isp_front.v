@@ -7,6 +7,7 @@
 //   raw10_unpacket_4lane（随机 csi burst + frame_start/end）
 // 每拍写全部 DUT 全部输出；覆盖随机 valid 缺口、tlast/tuser 边界与错位、随机 ready、中途复位。
 module tb_x_isp_front;
+    `include "equiv_tb_common.vh"
     reg clk = 0;
     reg rst_n = 0;
     always #5 clk = ~clk;
@@ -167,21 +168,8 @@ module tb_x_isp_front;
     );
 
     // =========================================================== trace
-    integer fd;
-    integer cyc = 0;
     integer traced = 0;
-    reg [1023:0] trace_file;
-    initial begin
-        if (!$value$plusargs("TRACE=%s", trace_file)) begin
-            $display("x_isp_front: no TRACE= plusarg");
-            $finish;
-        end
-        fd = $fopen(trace_file, "w");
-        if (fd == 0) begin
-            $display("x_isp_front: cannot open trace file");
-            $finish;
-        end
-    end
+    initial equiv_trace_open;
     always @(posedge clk) begin
         cyc = cyc + 1;
         traced = traced + 1;
@@ -421,8 +409,6 @@ module tb_x_isp_front;
             $display("x_isp_front: trace lines %0d != cycles %0d", traced, cyc);
             $finish;
         end
-        $display("EQUIV_CYCLES %0d", cyc);
-        $display("EQUIV_DONE");
-        $finish;
+        equiv_finish(cyc);
     end
 endmodule

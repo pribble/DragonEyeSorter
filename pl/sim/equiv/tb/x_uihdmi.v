@@ -4,9 +4,7 @@
 // 覆盖：像素数据随机/边界码（0x000000/0xFFFFFF/单 bit 游走）、DE/VS/HS 各种组合
 //       （含消隐期、全 0/全 1 长时间、中途复位、复位时输入仍在变）。
 module tb_x_uihdmi;
-    integer fd;
-    integer cyc = 0;
-    reg [1023:0] tf;
+    `include "equiv_tb_common.vh"
 
     reg pixel_clk = 0;
     always #10 pixel_clk = ~pixel_clk;   // 50MHz
@@ -29,11 +27,7 @@ module tb_x_uihdmi;
     reg [31:0] lfsr = 32'h1234_ABCD;
     reg [5:0]  pix_cnt = 6'd0;
 
-    initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin $display("cannot open trace"); $finish; end
-    end
+    initial equiv_trace_open;
 
     always @(negedge pixel_clk) begin
         cyc <= cyc + 1;
@@ -64,10 +58,7 @@ module tb_x_uihdmi;
             endcase
         end
         if (cyc == 5000) begin
-            $display("EQUIV_CYCLES %0d", cyc);
-            $display("EQUIV_DONE");
-            $fclose(fd);
-            $finish;
+            equiv_finish(cyc);
         end
     end
 endmodule

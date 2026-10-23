@@ -9,6 +9,7 @@
 //   P3 帧中额外 tuser / 行中错位 tlast（对抗边界）；P4 中途复位后继续两帧；结尾排空。
 // 逐拍 trace isp_top 全部输出（128bit 数据 + tlast/tuser/tvalid/I_tready，含 x/z 原样）。
 module tb_x_isp_top;
+    `include "equiv_tb_common.vh"
     localparam integer BEATS  = 480;   // 1920 px / 4 per beat
     localparam integer HBLANK = 72;    // horizontal blanking beats (real 1080p: (2200-1920)/4 = 70)
     localparam integer LINES  = 6;
@@ -41,21 +42,8 @@ module tb_x_isp_top;
     );
 
     // ================= trace =================
-    integer fd;
-    integer cyc = 0;
     integer traced = 0;
-    reg [1023:0] trace_file;
-    initial begin
-        if (!$value$plusargs("TRACE=%s", trace_file)) begin
-            $display("x_isp_top: no TRACE= plusarg");
-            $finish;
-        end
-        fd = $fopen(trace_file, "w");
-        if (fd == 0) begin
-            $display("x_isp_top: cannot open trace file");
-            $finish;
-        end
-    end
+    initial equiv_trace_open;
     always @(posedge clk) begin
         cyc = cyc + 1;
         traced = traced + 1;
@@ -168,8 +156,6 @@ module tb_x_isp_top;
             $display("x_isp_top: trace lines %0d != cycles %0d", traced, cyc);
             $finish;
         end
-        $display("EQUIV_CYCLES %0d", cyc);
-        $display("EQUIV_DONE");
-        $finish;
+        equiv_finish(cyc);
     end
 endmodule

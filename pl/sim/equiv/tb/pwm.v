@@ -2,9 +2,7 @@
 // pwm.v 等价回归：实际使用的 3 个实例都是默认参数（50MHz / 2Hz / 50%），
 // 另加一组缩小周期的实例覆盖完整周期 / 复位中途 / 占空比 <50% 的行为。
 module tb_pwm;
-    integer fd;
-    integer cyc = 0;
-    reg [1023:0] tf;
+    `include "equiv_tb_common.vh"
 
     reg clk = 0;
     reg rst_a = 0;
@@ -18,11 +16,7 @@ module tb_pwm;
 
     always #5 clk = ~clk;
 
-    initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin $display("cannot open trace"); $finish; end
-    end
+    initial equiv_trace_open;
 
     always @(posedge clk) begin
         cyc <= cyc + 1;
@@ -41,9 +35,6 @@ module tb_pwm;
         repeat (250000) @(posedge clk);                    // long run: 2Hz instance several periods
         rst_a = 0; repeat (4) @(posedge clk); rst_a = 1;
         repeat (50000) @(posedge clk);
-        $display("EQUIV_CYCLES %0d", cyc);
-        $display("EQUIV_DONE");
-        $fclose(fd);
-        $finish;
+        equiv_finish(cyc);
     end
 endmodule

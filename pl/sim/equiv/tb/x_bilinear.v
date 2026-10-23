@@ -5,6 +5,7 @@
 //       tlast/tuser 边界与错位、随机 valid 缺口、随机 O_tready、两次中途复位。
 // trace 每拍写出 两个 DUT 的全部输出；golden 与新版各跑一遍必须逐字节一致。
 module tb_x_bilinear;
+    `include "equiv_tb_common.vh"
     reg clk = 0;
     reg rst_n = 0;
     always #5 clk = ~clk;
@@ -40,21 +41,8 @@ module tb_x_bilinear;
     );
 
     // ---- trace
-    integer fd;
     integer traced = 0;
-    integer cyc = 0;
-    reg [1023:0] trace_file;
-    initial begin
-        if (!$value$plusargs("TRACE=%s", trace_file)) begin
-            $display("x_bilinear: no TRACE= plusarg");
-            $finish;
-        end
-        fd = $fopen(trace_file, "w");
-        if (fd == 0) begin
-            $display("x_bilinear: cannot open trace file");
-            $finish;
-        end
-    end
+    initial equiv_trace_open;
     always @(posedge clk) begin
         cyc = cyc + 1;
         traced = traced + 1;
@@ -158,8 +146,6 @@ module tb_x_bilinear;
             $display("x_bilinear: trace lines %0d != cycles %0d", traced, cyc);
             $finish;
         end
-        $display("EQUIV_CYCLES %0d", cyc);
-        $display("EQUIV_DONE");
-        $finish;
+        equiv_finish(cyc);
     end
 endmodule

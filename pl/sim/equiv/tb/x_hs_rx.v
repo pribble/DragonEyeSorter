@@ -6,9 +6,7 @@
 //   * 3 个时钟不同相位 + 中途复位（复位与时钟沿不同相位）
 // 逐拍 trace O_hs_valid / O_hs_data / O_lane_error。
 module tb_x_hs_rx;
-    integer fd;
-    integer cyc = 0;
-    reg [1023:0] tf;
+    `include "equiv_tb_common.vh"
 
     reg hs_clk = 0, hs_clk_x2 = 0, hs_clk_x4 = 0, lp_clk = 0;
     always #10 hs_clk    = ~hs_clk;      // 50MHz
@@ -38,11 +36,7 @@ module tb_x_hs_rx;
 
     reg [31:0] lfsr = 32'h5EED_0BAD;
 
-    initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin $display("cannot open trace"); $finish; end
-    end
+    initial equiv_trace_open;
 
     always @(posedge hs_clk) begin
         cyc <= cyc + 1;
@@ -70,10 +64,7 @@ module tb_x_hs_rx;
             lane_lp_invert <= lfsr[7:4];
         end
         if (cyc == 16000) begin
-            $display("EQUIV_CYCLES %0d", cyc);
-            $display("EQUIV_DONE");
-            $fclose(fd);
-            $finish;
+            equiv_finish(cyc);
         end
     end
 endmodule

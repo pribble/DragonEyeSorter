@@ -3,9 +3,7 @@
 // 覆盖：4 条 lane 的 bit 反转连线（I_tmds_channel_x[0..9] 逐位重排）、
 //       随机码字 + 固定边界码字（全 0/全 1/单 bit 游走）、中途复位、双时钟相位。
 module tb_x_hdmi_phy;
-    integer fd;
-    integer cyc = 0;
-    reg [1023:0] tf;
+    `include "equiv_tb_common.vh"
 
     reg pixel_clk = 0;
     always #10 pixel_clk = ~pixel_clk;
@@ -26,11 +24,7 @@ module tb_x_hdmi_phy;
     reg [31:0] lfsr = 32'hF00D_5EED;
     reg [3:0] bit_walk = 4'd0;
 
-    initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin $display("cannot open trace"); $finish; end
-    end
+    initial equiv_trace_open;
 
     always @(negedge serial_clk) begin
         cyc <= cyc + 1;
@@ -51,10 +45,7 @@ module tb_x_hdmi_phy;
             ch0 <= lfsr[9:0]; ch1 <= lfsr[19:10]; ch2 <= lfsr[29:20]; chc <= lfsr[9:0] ^ lfsr[19:10];
         end
         if (cyc == 3999) begin
-            $display("EQUIV_CYCLES %0d", cyc);
-            $display("EQUIV_DONE");
-            $fclose(fd);
-            $finish;
+            equiv_finish(cyc);
         end
     end
 endmodule

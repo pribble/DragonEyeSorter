@@ -3,9 +3,7 @@
 // 覆盖：4 种合法 BAYER_MODE（u0 用参数默认值 BGGR）+ 未知模式字符串（golden 输出 X 的边界行为）、
 // 每拍随机 3x3 矩阵/ypos/tvalid、tuser/tlast 随机、随机 O_tready、中途复位、数据极值。
 module tb_bilinear;
-    integer fd;
-    integer cyc = 0;
-    reg [1023:0] tf;
+    `include "equiv_tb_common.vh"
     integer seed = 32'h2a5b_7c19;
 
     reg clk = 0;
@@ -105,9 +103,7 @@ module tb_bilinear;
     endtask
 
     initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin $display("cannot open trace"); $finish; end
+        equiv_trace_open;
 
         @(negedge clk); rst_n = 0;
         rand_stream(4, 30);
@@ -124,9 +120,6 @@ module tb_bilinear;
 
         repeat (6) @(negedge clk);
         #200;
-        $display("EQUIV_CYCLES %0d", cyc);
-        $display("EQUIV_DONE");
-        $fclose(fd);
-        $finish;
+        equiv_finish(cyc);
     end
 endmodule

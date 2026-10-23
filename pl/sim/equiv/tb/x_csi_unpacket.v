@@ -5,9 +5,7 @@
 //       x 态注入（I_hs_data 全 x / 部分 x）、复位中途打断（含复位期间输入抖动）。
 // 逐拍 trace 全部输出（含 x/z）；golden vs 新必须逐字节一致。
 module tb_x_csi_unpacket;
-    integer fd;
-    integer cyc = 0;
-    reg [1023:0] tf;
+    `include "equiv_tb_common.vh"
 
     reg clk = 0;
     always #5 clk = ~clk;
@@ -53,11 +51,7 @@ module tb_x_csi_unpacket;
         end
     endtask
 
-    initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin $display("cannot open trace"); $finish; end
-    end
+    initial equiv_trace_open;
 
     always @(posedge clk) begin
         cyc <= cyc + 1;
@@ -117,10 +111,7 @@ module tb_x_csi_unpacket;
             end
         end
         if (cyc == 26000) begin
-            $display("EQUIV_CYCLES %0d", cyc);
-            $display("EQUIV_DONE");
-            $fclose(fd);
-            $finish;
+            equiv_finish(cyc);
         end
     end
 

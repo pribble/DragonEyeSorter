@@ -5,6 +5,7 @@
 //       phase2 随机 valid 缺口（<50 拍，考验 signal_delay 行寄存）、phase3 中途复位后继续。
 // 逐拍 trace 全部输出；golden 与新版必须逐字节一致。
 module tb_x_awb;
+    `include "equiv_tb_common.vh"
     localparam integer BEATS = 480;   // 1920 / 4
     localparam integer HBLANK = 74;
     localparam integer LINES = 4;
@@ -27,21 +28,8 @@ module tb_x_awb;
         .O_tready(O_tready)
     );
 
-    integer fd;
-    integer cyc = 0;
     integer traced = 0;
-    reg [1023:0] trace_file;
-    initial begin
-        if (!$value$plusargs("TRACE=%s", trace_file)) begin
-            $display("x_awb: no TRACE= plusarg");
-            $finish;
-        end
-        fd = $fopen(trace_file, "w");
-        if (fd == 0) begin
-            $display("x_awb: cannot open trace file");
-            $finish;
-        end
-    end
+    initial equiv_trace_open;
     always @(posedge clk) begin
         cyc = cyc + 1;
         traced = traced + 1;
@@ -137,8 +125,6 @@ module tb_x_awb;
             $display("x_awb: trace lines %0d != cycles %0d", traced, cyc);
             $finish;
         end
-        $display("EQUIV_CYCLES %0d", cyc);
-        $display("EQUIV_DONE");
-        $finish;
+        equiv_finish(cyc);
     end
 endmodule

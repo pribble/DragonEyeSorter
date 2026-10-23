@@ -5,9 +5,7 @@
 // 覆盖：三组 DR1 实例（不同参考时钟频率/相位、独立复位序列）：
 //       复位中途（不同相位）、复位期间时钟继续、1 拍复位、长复位、稳定后的频率/相位关系。
 module tb_x_rx_clk_gen;
-    integer fd;
-    integer cyc = 0;
-    reg [1023:0] tf;
+    `include "equiv_tb_common.vh"
 
     reg mipi_clk_a = 0;   // 参考时钟 A：周期 10ns
     always #5 mipi_clk_a = ~mipi_clk_a;
@@ -24,11 +22,7 @@ module tb_x_rx_clk_gen;
     rx_clk_gen #(.DEVICE("DR1")) u_b (.I_mipi_clk_p(mipi_clk_b), .I_rst(rst_b), .O_clk(ob),  .O_clk_x2(ob2), .O_clk_x4(ob4));
     rx_clk_gen #(.DEVICE("DR1")) u_c (.I_mipi_clk_p(mipi_clk_a), .I_rst(rst_c), .O_clk(oc),  .O_clk_x2(oc2), .O_clk_x4(oc4));
 
-    initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin $display("cannot open trace"); $finish; end
-    end
+    initial equiv_trace_open;
 
     // 在 a/b 的下降沿采样（覆盖两个时钟域）
     always @(negedge mipi_clk_a or negedge mipi_clk_b) begin
@@ -50,9 +44,6 @@ module tb_x_rx_clk_gen;
         repeat (141) @(posedge mipi_clk_a);
         rst_c = 0; repeat (11) @(posedge mipi_clk_a); rst_c = 1;   // 长复位
         repeat (500) @(posedge mipi_clk_a);
-        $display("EQUIV_CYCLES %0d", cyc);
-        $display("EQUIV_DONE");
-        $fclose(fd);
-        $finish;
+        equiv_finish(cyc);
     end
 endmodule

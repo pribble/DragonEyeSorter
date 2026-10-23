@@ -3,9 +3,7 @@
 // rx_clk_gen 的 DR1 时钟分频原语用行为桩，加密 data_lane / channel_aligner 用行为桩，
 // 验证 wrapper 的时钟分发、LP lane0 交换与 hs_rx 端口直连。
 module tb_mipi_dphy;
-    integer fd;
-    integer cyc = 0;
-    reg [1023:0] tf;
+    `include "equiv_tb_common.vh"
 
     reg        mipi_clk = 0;
     reg        lp_clk   = 0;
@@ -46,14 +44,7 @@ module tb_mipi_dphy;
     always #2 mipi_clk = ~mipi_clk;
     always #9 lp_clk   = ~lp_clk;
 
-    initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin
-            $display("cannot open trace");
-            $finish;
-        end
-    end
+    initial equiv_trace_open;
 
     always @(posedge mipi_clk) begin
         #1;
@@ -82,9 +73,6 @@ module tb_mipi_dphy;
         repeat (3) @(negedge mipi_clk);
         rst = 1'b0;
         repeat (400) @(negedge mipi_clk);
-        $display("EQUIV_CYCLES %0d", cyc);
-        $display("EQUIV_DONE");
-        $fclose(fd);
-        $finish;
+        equiv_finish(cyc);
     end
 endmodule

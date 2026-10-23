@@ -3,9 +3,7 @@
 // 明文 hdmi_tx_phy_wrapper + lane_lvds_10_1（DR1 ODDR 原语用桩）走真实链路。
 // 激励：pixel/serial 双时钟域、de/vs/hs 模式化、数据极值、中途复位。
 module tb_uihdmi_tx;
-    integer fd;
-    integer cyc = 0;
-    reg [1023:0] tf;
+    `include "equiv_tb_common.vh"
 
     reg         pixel_clk = 0;
     reg         serial_clk = 0;
@@ -35,14 +33,7 @@ module tb_uihdmi_tx;
     always #5 pixel_clk  = ~pixel_clk;   // 100MHz
     always #1 serial_clk = ~serial_clk;  // 500MHz（5x）
 
-    initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin
-            $display("cannot open trace");
-            $finish;
-        end
-    end
+    initial equiv_trace_open;
 
     always @(posedge serial_clk) begin
         #1;
@@ -75,9 +66,6 @@ module tb_uihdmi_tx;
         repeat (3) @(negedge pixel_clk);
         rst = 1'b0;
         repeat (420) @(negedge pixel_clk);
-        $display("EQUIV_CYCLES %0d", cyc);
-        $display("EQUIV_DONE");
-        $fclose(fd);
-        $finish;
+        equiv_finish(cyc);
     end
 endmodule

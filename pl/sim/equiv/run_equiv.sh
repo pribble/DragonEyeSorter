@@ -12,6 +12,8 @@
 #       @ <path>           桩文件（加密模块等），两种构建都用工作区这一份
 #       % <path>           仅 golden 侧依赖（本轮被删除/特化的模块）：从 git rev 取、只编进 golden；
 #                          新版源码不引用它。典型：gamma 特化后删除的 8 个未用 LUT。
+#       * <path>           仅新版侧依赖（本轮新增的文件）：只编进新版、不从 golden 抽；
+#                          工作区文件必须存在。golden 版没有该文件时用它，避免 FAIL golden file not in rev。
 #       ~ <path>           仅 golden 侧依赖，且编译 golden 前用 strip_comments.py 去掉注释：
 #                          厂家文件有 iverilog 不认的注释病（如 top_demosaic.v 的 `/*//input`），
 #                          注释不影响行为，去掉后 golden 仍语义等价。
@@ -48,7 +50,7 @@ trap cleanup EXIT
 mkdir -p "$TMP/gold"
 
 trim() { printf '%s' "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'; }
-paths=(); gonly=(); gstrip=(); stubs=(); opts=()
+paths=(); gonly=(); gstrip=(); newonly=(); stubs=(); opts=()
 while IFS= read -r raw || [ -n "$raw" ]; do
   line=$(printf '%s' "$raw" | sed -e '1s/^\xEF\xBB\xBF//' | tr -d '\r')
   line=${line%%#*}
@@ -58,12 +60,13 @@ while IFS= read -r raw || [ -n "$raw" ]; do
     +*) opts+=("$(trim "${line#+}")") ;;
     @*) stubs+=("$REPO/$(trim "${line#@}")") ;;
     %*) gonly+=("$(trim "${line#%}")") ;;
+    \**) newonly+=("$(trim "${line#\*}")") ;;
     ~*) gstrip+=("$(trim "${line#"~"}")") ;;
     *)  paths+=("$line") ;;
   esac
 done < "$MAN"
 
-if [ ${#paths[@]} -eq 0 ] && [ ${#gonly[@]} -eq 0 ] && [ ${#gstrip[@]} -eq 0 ]; then
+if [ ${#paths[@]} -eq 0 ] && [ ${#gonly[@]} -eq 0 ] && [ ${#gstrip[@]} -eq 0 ] && [ ${#newonly[@]} -eq 0 ]; then
   echo "FAIL $NAME: manifest has no RTL deps"; exit 2
 fi
 
@@ -91,6 +94,10 @@ done
 for p in ${gonly[@]+"${gonly[@]}"}; do
   extract_golden "$p"
 done
+for p in ${newonly[@]+"${newonly[@]}"}; do  # 仅新版侧：不抽 golden，只放进新版构建
+  [ -f "$REPO/$p" ] || { echo "FAIL $NAME: new-side file missing: $p"; exit 2; }
+  nfiles+=("$REPO/$p")
+done
 for p in ${gstrip[@]+"${gstrip[@]}"}; do
   if [ -n "${gdst[$p]:-}" ]; then
     dst="${gdst[$p]}"          # 同一文件已作为普通依赖抽过 golden：直接清洗那个副本
@@ -105,25 +112,48 @@ for p in ${gstrip[@]+"${gstrip[@]}"}; do
   mv "$TMP/strip.tmp" "$dst"
 done
 
-compile() { # $1=out, shift=sources
-  local out=$1; shift
+compile() { # $1=out $2=log, shift=sources；-I tb 目录供各 TB `include "equiv_tb_common.vh"`
+  local out=$1 log=$2; shift 2
   if [ ${#opts[@]} -gt 0 ]; then
-    iverilog -g2012 -o "$out" "${opts[@]}" "$TB" "$@" > "$TMP/compile.log" 2>&1
+    iverilog -g2012 -I"$HERE/tb" -o "$out" "${opts[@]}" "$TB" "$@" > "$log" 2>&1
   else
-    iverilog -g2012 -o "$out" "$TB" "$@" > "$TMP/compile.log" 2>&1
+    iverilog -g2012 -I"$HERE/tb" -o "$out" "$TB" "$@" > "$log" 2>&1
   fi
 }
-compile "$TMP/gold.out" "${gfiles[@]}" ${stubs[@]+"${stubs[@]}"} || {
-  echo "FAIL $NAME: golden compile error"; sed -n '1,25p' "$TMP/compile.log"; exit 1; }
-compile "$TMP/new.out" "${nfiles[@]}" ${stubs[@]+"${stubs[@]}"} || {
-  echo "FAIL $NAME: new compile error"; sed -n '1,25p' "$TMP/compile.log"; exit 1; }
+# 两侧编译互不依赖，并行跑（单 test 墙钟约减半）；跨 test 并行度由 run_all_equiv.sh 的 EQUIV_JOBS 控制
+compile "$TMP/gold.out" "$TMP/compile.gold.log" "${gfiles[@]}" ${stubs[@]+"${stubs[@]}"} &
+CGPID=$!
+compile "$TMP/new.out" "$TMP/compile.new.log" "${nfiles[@]}" ${stubs[@]+"${stubs[@]}"} &
+CNPID=$!
+wait "$CGPID"; GRC=$?
+wait "$CNPID";  NRC=$?
+if [ $GRC -ne 0 ]; then
+  echo "FAIL $NAME: golden compile error"; sed -n '1,25p' "$TMP/compile.gold.log"; exit 1
+fi
+if [ $NRC -ne 0 ]; then
+  echo "FAIL $NAME: new compile error"; sed -n '1,25p' "$TMP/compile.new.log"; exit 1
+fi
 
 run() { # $1=exe, $2=trace, $3=log
-  vvp -n "$1" +TRACE="$2" > "$3" 2>&1 || { echo "FAIL $NAME: run error ($3)"; tail -n 20 "$3"; return 1; }
-  grep -q "EQUIV_DONE" "$3" || { echo "FAIL $NAME: tb did not finish ($3)"; tail -n 20 "$3"; return 1; }
+  vvp -n "$1" +TRACE="$2" > "$3" 2>&1
 }
-run "$TMP/gold.out" "$TMP/gold.trace" "$TMP/gold.log" || exit 1
-run "$TMP/new.out"  "$TMP/new.trace"  "$TMP/new.log"  || exit 1
+# golden / 新版各自独立进程、独立 trace，同样并行跑
+run "$TMP/gold.out" "$TMP/gold.trace" "$TMP/gold.log" &
+RGPID=$!
+run "$TMP/new.out"  "$TMP/new.trace"  "$TMP/new.log" &
+RNPID=$!
+wait "$RGPID"; GRRC=$?
+wait "$RNPID"; NRRC=$?
+if [ $GRRC -ne 0 ]; then
+  echo "FAIL $NAME: golden run error"; tail -n 20 "$TMP/gold.log"; exit 1
+fi
+if [ $NRRC -ne 0 ]; then
+  echo "FAIL $NAME: new run error"; tail -n 20 "$TMP/new.log"; exit 1
+fi
+grep -q "EQUIV_DONE" "$TMP/gold.log" || {
+  echo "FAIL $NAME: golden tb did not finish"; tail -n 20 "$TMP/gold.log"; exit 1; }
+grep -q "EQUIV_DONE" "$TMP/new.log" || {
+  echo "FAIL $NAME: new tb did not finish"; tail -n 20 "$TMP/new.log"; exit 1; }
 
 CYCLES=$(grep -o 'EQUIV_CYCLES [0-9]*' "$TMP/new.log" | tail -n1 | awk '{print $2}')
 CGOLD=$(grep -o 'EQUIV_CYCLES [0-9]*' "$TMP/gold.log" | tail -n1 | awk '{print $2}')

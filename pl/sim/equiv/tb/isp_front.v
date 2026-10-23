@@ -5,10 +5,8 @@
 // 覆盖要点：image_correction 先长行（越过 480 列边界）再短行（累积越过 1081 行边界）；
 // image_cut 小尺寸实例走 h/v 计数器回绕；参数化模块各带 1~2 组非实际参数实例。
 module tb_isp_front;
+    `include "equiv_tb_common.vh"
 
-    integer      fd;
-    integer      cyc = 0;
-    reg [1023:0] tf;
     integer      seed = 32'h1357_9BDF;   // 固定种子：两侧激励必须逐拍一致
 
     reg clk = 1'b0;
@@ -364,11 +362,7 @@ module tb_isp_front;
     // ------------------------------------------------------------------
     // trace：每拍一行，自增 cycle + 全部实例全部输出（x/z 原样）
     // ------------------------------------------------------------------
-    initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin $display("cannot open trace"); $finish; end
-    end
+    initial equiv_trace_open;
 
     always @(posedge clk) begin
         cyc <= cyc + 1;
@@ -382,10 +376,7 @@ module tb_isp_front;
     initial begin
         repeat (24300) @(posedge clk);
         #1;
-        $display("EQUIV_CYCLES %0d", cyc);
-        $display("EQUIV_DONE");
-        $fclose(fd);
-        $finish;
+        equiv_finish(cyc);
     end
 
 endmodule

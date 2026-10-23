@@ -4,9 +4,7 @@
 // 覆盖：上电复位保持、随机 VS 边沿与 1~2 拍毛刺、长帧高/低电平、复位中途打断、
 //       复位与 VS 边沿不同相位、以及输入 x 态传播。trace 逐拍打印两个配置的全部输出。
 module tb_fs_cap;
-    integer fd;
-    integer cyc = 0;
-    reg [1023:0] tf;
+    `include "equiv_tb_common.vh"
 
     reg clk = 0;
     reg rstn = 0;
@@ -52,9 +50,7 @@ module tb_fs_cap;
     integer i, k, run;
 
     initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin $display("cannot open trace"); $finish; end
+        equiv_trace_open;
 
         // 上电复位保持，VS 保持低
         rstn = 0; rstn2 = 0; vs = 0; vs2 = 0;
@@ -117,9 +113,6 @@ module tb_fs_cap;
         vs = 1; repeat (3) tick();
         vs = 0; repeat (10) tick();
 
-        $display("EQUIV_CYCLES %0d", cyc);
-        $display("EQUIV_DONE");
-        $fclose(fd);
-        $finish;
+        equiv_finish(cyc);
     end
 endmodule

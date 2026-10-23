@@ -6,11 +6,9 @@
 //       连续多次传输（busy 沿）、中途复位/短复位、FDMA 侧 ready/wvalid 背压。
 // 逐拍 trace DUT 全部输出（含 AXI 主口全部信号与 x 态）。
 module tb_x_uiFDMA;
+    `include "equiv_tb_common.vh"
     localparam IDW = 6, ADW = 33, DAW = 64;
 
-    integer fd;
-    integer cyc = 0;
-    reg [1023:0] tf;
 
     reg aclk = 0;
     always #5 aclk = ~aclk;
@@ -200,11 +198,7 @@ module tb_x_uiFDMA;
         f_rready <= lfsr2[14];
     end
 
-    initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin $display("cannot open trace"); $finish; end
-    end
+    initial equiv_trace_open;
 
     // 逐拍写全部输出（两行/拍，避免格式串过长）
     always @(negedge aclk) begin
@@ -219,10 +213,7 @@ module tb_x_uiFDMA;
                   m_arid, m_araddr, m_arlen, m_arsize, m_arburst, m_arlock, m_arcache,
                   m_arprot, m_arqos, m_arvalid, m_rready, m_rlast, m_rvalid, m_rid);
         if (cyc == 12000) begin
-            $display("EQUIV_CYCLES %0d", cyc);
-            $display("EQUIV_DONE");
-            $fclose(fd);
-            $finish;
+            equiv_finish(cyc);
         end
     end
 

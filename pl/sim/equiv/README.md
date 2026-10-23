@@ -16,6 +16,19 @@ golden rev 在 [baseline.rev](baseline.rev)（本次重构的基线 = 重构前 
 `EQUIV_KEEP=1` 保留临时目录（golden 源文件 / trace / 编译日志）便于排查。
 依赖：WSL + Icarus Verilog 12 + `python3`（与 `pl/sim/run_sim.sh` 同环境；python3 只用于 `~` 依赖的注释清洗）。
 
+并行与过滤（`run_all_equiv.sh`，默认并行、输出顺序与逐项判定和串行版一致）：
+
+| 环境变量 | 含义 |
+|---|---|
+| `EQUIV_JOBS=N` | 并行度，默认 `nproc`；`1` = 串行（排查/对比基线用） |
+| `EQUIV_ONLY='x_*'` | 只跑匹配的 test（shell 通配，可空格分隔多个模式） |
+
+串行/并行结果都按 `tests/*.f` 字典序逐项打印 `PASS/FAIL`，失败汇总行与退出码不变，
+因此日志可与上一轮基线直接 diff；每个 test 的临时目录同样受 `EQUIV_KEEP` 控制。
+
+`pl/sim/run_all.sh`（8 项功能仿真）同样支持 `SIM_JOBS`（默认 `nproc`，`1` = 串行），
+输出行顺序与 PASS/FAIL 判定不变。
+
 ## testbench 约定（各域 owner 自己写）
 
 `tb/<test>.v`：顶层模块名必须叫 `tb_<test>`。
@@ -23,12 +36,18 @@ golden rev 在 [baseline.rev](baseline.rev)（本次重构的基线 = 重构前 
   自增 cycle 计数 + 被测模块**全部输出**（x/z 原样打印）；
 - 激励确定（固定 `$random` 种子或固定向量）；结束时打印 `EQUIV_CYCLES <n>` 和 `EQUIV_DONE` 再 `$finish`；
 - 只比接口行为，不比内部实现；**不要为"迁就"某一侧改共用 TB**。
+- 公共样板 `tb/equiv_tb_common.vh`（`include` 写在 module 内）提供 `fd` / `tf` / `cyc` 与
+  `equiv_trace_open` / `equiv_finish(<counter>)`：把「打开 `TRACE=` 指定的 trace」和
+  「打印 `EQUIV_CYCLES`/`EQUIV_DONE` + fclose + finish」的样板收敛到一处；**每拍 trace 格式字符串、
+  激励、cycle 计数增量仍在各 TB 原地**。`run_equiv.sh` 编译时自动 `-I tb 目录`，不需要改 manifest。
 
 `tests/<test>.f`：依赖清单，每行一个，`#` 起注释：
 - `pl/soc_base/src/...` — RTL 依赖：golden 从 git rev 取、新版取工作区（两侧都编）；
 - `@ pl/sim/equiv/stubs/xxx.v` — 加密模块 / 硬宏的行为桩，两种构建都用工作区这一份；
 - `% pl/soc_base/src/...` — **仅 golden 侧**依赖：从 git rev 取、只编进 golden（给本轮删除/特化的文件用，
   例如 gamma 特化后删掉的 8 个 LUT）；
+- `* pl/soc_base/src/...` — **仅新版侧**依赖：只编进新版、不从 golden 抽（给本轮新增的文件用；
+  工作区必须存在，golden rev 里没有也不报错）；
 - `~ pl/soc_base/src/...` — 两侧都编（同普通路径），但 golden 副本先做**注释清洗**
   （`strip_comments.py`，字节级、块注释到第一个 `*/`）。厂家文件有 iverilog 不认的注释病
   （`top_demosaic.v` 的 `/*//input`），注释不参与仿真语义；同一文件可同时写普通行和 `~` 行；
@@ -53,13 +72,27 @@ golden rev 在 [baseline.rev](baseline.rev)（本次重构的基线 = 重构前 
 | 帧写 | `fs_cap`、`uiFDMA`、`uidbuf_write`、`wfifo`、`x_fs_cap`、`x_uiFDMA`、`x_uidbuf_write` | 帧写 DDR；`wfifo` 是明文（非加密），uidbuf_write 直接用真实 wfifo |
 
 `x_` 前缀是独立验证者写的对抗性 test（不同种子 / 更长激励 / 独立桩），与各域 owner 的 test 互不替代：
-两者都要过。本次 36 项全部 PASS（明细与 cycle 数见
-[log/2026-10-24-PL厂家RTL重构](../../../docs/log/2026-10-24-PL厂家RTL重构.md)）。
+两者都要过。第三轮重构后 36 项全部 PASS（golden = `1f7c232`，明细与 cycle 数见
+[log/2026-10-24-PL第三轮重构](../../../docs/log/2026-10-24-PL第三轮重构.md)；上一轮见
+[厂家 RTL 重构 log](../../../docs/log/2026-10-24-PL厂家RTL重构.md)）。
+
+## 本轮 TB 精简（2026-10-24 第三轮）
+
+36 个 TB 原来各自重复「声明 trace 句柄 / 打开 `TRACE=` / 打印 `EQUIV_CYCLES`+`EQUIV_DONE` 再 fclose+finish」
+这套样板；本轮抽到 `tb/equiv_tb_common.vh`（tb 目录 5,366 → 5,046 行，含新增 40 行公共 include），
+每拍 trace 格式字符串、激励序列、cycle 计数增量一律原地不动。验收证据（`audit/check_tb_trace.sh` 可复跑）：
+- 36/36 等价回归 PASS，36 项 `EQUIV_CYCLES` 与改前完全一致；
+- 35/36 的 golden trace 与「旧 TB + 同 golden rev」基线 **sha256/行数逐字节相同**；
+- 唯一差异 `pwm`：cycles 306514 相同、共享的 306514 行逐字节相同，新 trace 末尾多 1 行
+  （`306514 1 0`）。原因是**旧 TB 的竞争**：最后 1 个 posedge 后立刻 `$finish`，与 trace always 块的
+  `$fdisplay` 在同一 active 区竞争，旧编译产物丢了尾行，旧 TB 本身不确定；新 TB 的收尾 task 调用让尾行
+  稳定写出。**按新 TB 的确定版保留**（golden vs 新版两侧都 306515 行逐字节一致），不人为复现旧 race。
 
 ## audit/ — 可复现审计脚本与证据
 
 `audit/` 放端口/参数契约、system_top 结构、编码、lint、工程文件一致性的检查脚本（`audit/evidence/`
-是运行产物、不入库），`audit/VERIFY_platform_20261024.md` 是平台域终验报告。常用：
+是运行产物、不入库），`audit/VERIFY_platform_20261024.md` 是平台域终验报告。完整清单与
+「本轮删除/保留登记」见 [audit/README.md](audit/README.md)。常用：
 
 ```bash
 python3 pl/sim/equiv/check_contracts.py                 # ISP 域端口/参数契约（允许 gamma 参数特化）
@@ -67,11 +100,15 @@ python3 pl/sim/equiv/audit/check_contracts_platform.py  # 平台域契约
 python3 pl/sim/equiv/audit/audit_system_top.py          # system_top 结构等价审计
 python3 pl/sim/equiv/audit/check_encoding.py            # 全仓 UTF-8 无 BOM
 python3 pl/sim/equiv/audit/check_prj_files.py           # 三份 TD 工程文件与磁盘一致性
-bash    pl/sim/equiv/audit/check_run_all_vs_baseline.sh # 8 项功能仿真 vs 基线逐字节
-bash    pl/sim/equiv/audit/run_final_verify.sh          # 终验一键：36 项 + lint + 审计
+python3 pl/sim/equiv/audit/lint_compare.py              # golden vs 工作区 verilator lint 对比
+bash    pl/sim/equiv/audit/check_run_all_vs_baseline.sh # 8 项功能仿真 vs 本轮基线逐字节
+bash    pl/sim/equiv/audit/check_tb_trace.sh capture|verify # TB 重构：生成/比对 trace 基线
+bash    pl/sim/equiv/audit/selftest_equiv.sh            # run_equiv.sh 依赖前缀语义自测
+bash    pl/sim/equiv/audit/run_final_verify.sh          # 终验一键：36 项 + 8 项 + lint + 审计
 ```
 
 ## 与 `run_sim.sh` 的分工
 
-- `pl/sim/run_sim.sh` / `run_all.sh`：des 自研模块的功能 testbench，日志是行为基线，**冻结不改**；
+- `pl/sim/run_sim.sh` / `run_all.sh`：des 自研模块的功能 testbench，**8 个日志是本轮行为基线、冻结不改**
+  （重构前后必须与 `pl/soc_base/soc_prj_Runs/_round3/sim_baseline/<target>.log` 逐字节相同）；
 - 本目录：厂家 RTL 的 golden-vs-新逐拍等价。两者都要过。

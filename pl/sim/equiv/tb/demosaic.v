@@ -5,9 +5,7 @@
 //   dut_b: IMG 1920x8, data_complete_delay=50 —— 实际宽度（480 组/行），zhenghe valid_width 两分支、11 位地址满回绕
 // 激励：干净多帧（数据极值 0x00/0xFF/0xAA/0x55/递增）、随机 tvalid 空泡、随机 tuser/tlast 边界、随机 O_tready、中途复位。
 module tb_demosaic;
-    integer fd;
-    integer cyc = 0;
-    reg [1023:0] tf;
+    `include "equiv_tb_common.vh"
     integer seed = 32'h3c9e_51b7;
 
     reg clk = 0;
@@ -127,9 +125,7 @@ module tb_demosaic;
     endtask
 
     initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin $display("cannot open trace"); $finish; end
+        equiv_trace_open;
 
         // 1) 上电复位
         @(negedge clk); rst_n = 1'b0;
@@ -162,9 +158,6 @@ module tb_demosaic;
 
         repeat (8) @(negedge clk);
         #200;
-        $display("EQUIV_CYCLES %0d", cyc);
-        $display("EQUIV_DONE");
-        $fclose(fd);
-        $finish;
+        equiv_finish(cyc);
     end
 endmodule

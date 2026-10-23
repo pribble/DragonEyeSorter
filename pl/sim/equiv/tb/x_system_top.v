@@ -7,9 +7,7 @@
 //       led 心跳/override、STEP 共阴反相、SERVO 开漏、FLAP PWM、CAN 环回、HDMI/相机时钟输出、
 //       现场 IO 输入抖动。逐拍 trace system_top 全部输出（含 inout 的 z 态）。
 module tb_x_system_top;
-    integer fd;
-    integer cyc = 0;
-    reg [1023:0] tf;
+    `include "equiv_tb_common.vh"
 
     reg clk_hs = 0;
     always #4 clk_hs = ~clk_hs;      // D-PHY 参考时钟 / HS RX 时钟（桩直通）
@@ -55,11 +53,7 @@ module tb_x_system_top;
     reg [31:0] lfsr = 32'hC001_D00D;
     reg [9:0]  slow = 10'd0;
 
-    initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin $display("cannot open trace"); $finish; end
-    end
+    initial equiv_trace_open;
 
     always @(negedge clk_hs) begin
         cyc  <= cyc + 1;
@@ -83,10 +77,7 @@ module tb_x_system_top;
             data_lp_n  <= lfsr[19:16];
         end
         if (cyc == 200000) begin
-            $display("EQUIV_CYCLES %0d", cyc);
-            $display("EQUIV_DONE");
-            $fclose(fd);
-            $finish;
+            equiv_finish(cyc);
         end
     end
 endmodule

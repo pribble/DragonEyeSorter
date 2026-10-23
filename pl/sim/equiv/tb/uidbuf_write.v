@@ -10,10 +10,9 @@
 // 随机 VS 帧同步，PS 侧 camera_start/camera_clear 闭环 + 随机干扰，运行中随机复位。
 // trace 在 ui_clk 与 W_clk 两个时钟沿都采样（tag U/W），逐拍打印全部输出。
 module tb_uidbuf_write;
-    integer fd;
+    `include "equiv_tb_common.vh"
     integer ucyc = 0;
     integer wcyc = 0;
-    reg [1023:0] tf;
 
     reg ui_clk = 0;
     reg wclk   = 0;
@@ -304,17 +303,12 @@ module tb_uidbuf_write;
     end
 
     initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin $display("cannot open trace"); $finish; end
+        equiv_trace_open;
         rstn = 0;
         cam_start = 0;
         cam_clear = 0;
         repeat (10) @(posedge ui_clk);
         repeat (24000) @(posedge ui_clk);
-        $display("EQUIV_CYCLES %0d", ucyc);
-        $display("EQUIV_DONE");
-        $fclose(fd);
-        $finish;
+        equiv_finish(ucyc);
     end
 endmodule

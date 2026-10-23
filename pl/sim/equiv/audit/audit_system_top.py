@@ -15,7 +15,10 @@
         - 空连接（()），或
         - 一个 bit 数常量且该端口是输入 → 视为「悬空/未用清理」，仍报告供人确认；
         - 一个裸信号名，该信号在 golden 中除声明与该连接外无其它引用（死网）。
-  其余删除按 HARD 处理。
+        端口连接被**改成常量/空连接**时，若 golden 侧连接的是同样的死网（判据同上），
+        也记 SOFT-DEADNET（死网从未驱动/观察，等价清理）；新版用参数组成的常量表达式
+        （如 {AXI_ADDR_WIDTH{1'b0}}）按常量处理。
+  其余删除/变化按 HARD 处理。
 退出码：0 = 仅 SOFT 差异或无差异；1 = 有 HARD 差异。
 
 用法：
@@ -455,19 +458,31 @@ def is_const_expr(expr):
     return bool(expr) and re.fullmatch(r"[0-9]+'[sS]?[bBoOdDhH][0-9a-fA-F_]+|[0-9]+", expr) is not None
 
 
+def is_dead_net_expr(expr, use_count):
+    """golden 侧裸信号名，且全文件出现 <= 3 次（声明 1 + 端口名 1 + 连接 1）→ 死网。"""
+    return (bool(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$]*", expr))
+            and use_count.get(expr, 0) <= 3)
+
+
+def is_const_conn(expr, param_ids):
+    """新版连接表达式是否只由常量与参数组成（没有真实信号引用）；空连接也算常量。"""
+    if expr == "":
+        return True
+    return {v for k, v in tokenize(expr) if k == "id"} <= param_ids
+
+
 def classify_dropped_conn(expr, use_count, is_input=True):
     if expr == "":
         return "SOFT-EMPTY", "空连接删除（原来就是 ()）"
     if is_const_expr(expr):
         return ("HARD", "常量输入连接被删除（引脚将悬空）") if is_input else \
                ("SOFT-CONST", "常量连接删除（输出无观察者）")
-    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$]*", expr) and use_count.get(expr, 0) <= 3:
-        # 出现次数 <= 3 ≈ 声明 1 次 + 端口名 1 次 + 连接表达式 1 次 → golden 中无其它引用（死网）
+    if is_dead_net_expr(expr, use_count):
         return "SOFT-DEADNET", "悬空/未用网删除（golden 中仅声明+该连接出现）"
     return "HARD", "删除了仍在使用/有驱动的连接"
 
 
-def instance_diff(gold_insts, new_insts, use_count):
+def instance_diff(gold_insts, new_insts, use_count, param_ids):
     hard = 0
     soft = []
     gmap = {(i["module"], i["inst"]): i for i in gold_insts}
@@ -499,8 +514,17 @@ def instance_diff(gold_insts, new_insts, use_count):
             print(f"  INST {key[0]}/{key[1]} PORT ADD:  .{port}({nconn[port]})")
             hard += 1
         for port in sorted(set(gconn) & set(nconn)):
-            if gconn[port] != nconn[port]:
-                print(f"  INST {key[0]}/{key[1]} PORT CHANGE: .{port} golden({gconn[port]}) new({nconn[port]})")
+            gexpr, nexpr = gconn[port], nconn[port]
+            if gexpr == nexpr:
+                continue
+            if is_dead_net_expr(gexpr, use_count) and is_const_conn(nexpr, param_ids):
+                why = "死网连接改为常量/空连接（golden 中仅声明+该连接）"
+                print(f"  INST {key[0]}/{key[1]} PORT CHANGE: .{port} "
+                      f"golden({gexpr}) new({nexpr}) -> SOFT-DEADNET: {why}")
+                soft.append((f"{key[0]}/{key[1]}", port, gexpr, "SOFT-DEADNET"))
+            else:
+                print(f"  INST {key[0]}/{key[1]} PORT CHANGE: .{port} "
+                      f"golden({gexpr}) new({nexpr})")
                 hard += 1
     return hard, soft
 
@@ -568,7 +592,12 @@ def main():
     # 例化细粒度：golden 里每个标识符的 token 出现次数（用于死网判定：声明+该连接=2）
     gtok = tokenize(gtext)
     gsig_uses = Counter(v for k, v in gtok if k == "id")
-    ihard, isoft = instance_diff(gf.insts, nf.insts, gsig_uses)
+    gparam_ids = {p["name"] for p in gmod["params"]}
+    # 模块体里也有 parameter/localparam（parse_module 只收模块头），常量连接判定要一并算参数
+    gparam_ids |= set(re.findall(
+        r"\b(?:parameter|localparam)\s+(?:integer\s+|signed\s+|\[[^\]]*\]\s*)*([A-Za-z_]\w*)\s*=",
+        gtext))
+    ihard, isoft = instance_diff(gf.insts, nf.insts, gsig_uses, gparam_ids)
     hard += ihard
 
     verdict = "STRUCT_AUDIT EQUIVALENT" if hard == 0 else "STRUCT_AUDIT DIFF"
@@ -589,7 +618,7 @@ def main():
                "decls_removed": removed, "decls_added": added,
                "decls_changed": [list(c) for c in changed],
                "decls_removed_used": decl_removed_used,
-               "soft_port_drops": isoft}
+               "soft_items": isoft}
         Path(args.json).write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
         print(f"(json -> {args.json})")
     sys.exit(0 if hard == 0 else 1)

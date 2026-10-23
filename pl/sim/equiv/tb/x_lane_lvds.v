@@ -3,9 +3,7 @@
 // 覆盖：pixel/serial 双时钟频率关系、10bit 数据移位/ODDR 相位、中途复位（不同相位）、
 //       连续数据突发与长时间空闲、DEVICE 实际值 DR1（ODDR 原语用桩，两侧共用）。
 module tb_x_lane_lvds;
-    integer fd;
-    integer cyc = 0;
-    reg [1023:0] tf;
+    `include "equiv_tb_common.vh"
 
     reg pixel_clk = 0;
     always #10 pixel_clk = ~pixel_clk;   // 50MHz 像素时钟
@@ -23,11 +21,7 @@ module tb_x_lane_lvds;
 
     reg [31:0] lfsr = 32'h1BAD_D00D;
 
-    initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin $display("cannot open trace"); $finish; end
-    end
+    initial equiv_trace_open;
 
     always @(negedge serial_clk) begin
         cyc <= cyc + 1;
@@ -43,10 +37,7 @@ module tb_x_lane_lvds;
         if (cyc == 3500) data_in <= 10'h3FF;
         if (cyc == 3800) data_in <= 10'h000;
         if (cyc == 3999) begin
-            $display("EQUIV_CYCLES %0d", cyc);
-            $display("EQUIV_DONE");
-            $fclose(fd);
-            $finish;
+            equiv_finish(cyc);
         end
     end
 endmodule

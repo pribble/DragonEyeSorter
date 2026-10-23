@@ -2,9 +2,7 @@
 // hdmi_tx_phy_wrapper 等价回归（工程唯一配置 DEVICE="DR1"）：
 // 验证 4 路 TMDS 通道的位反序映射与 4 个 lane 例化，ODDR 原语用行为桩。
 module tb_hdmi_phy;
-    integer fd;
-    integer cyc = 0;
-    reg [1023:0] tf;
+    `include "equiv_tb_common.vh"
 
     reg         pixel_clk  = 0;
     reg         serial_clk = 0;
@@ -38,14 +36,7 @@ module tb_hdmi_phy;
     always #5 pixel_clk  = ~pixel_clk;
     always #1 serial_clk = ~serial_clk;
 
-    initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin
-            $display("cannot open trace");
-            $finish;
-        end
-    end
+    initial equiv_trace_open;
 
     always @(posedge serial_clk) begin
         #1;
@@ -78,9 +69,6 @@ module tb_hdmi_phy;
         repeat (2) @(negedge pixel_clk);
         rst = 1'b0;
         repeat (240) @(negedge pixel_clk);
-        $display("EQUIV_CYCLES %0d", cyc);
-        $display("EQUIV_DONE");
-        $fclose(fd);
-        $finish;
+        equiv_finish(cyc);
     end
 endmodule

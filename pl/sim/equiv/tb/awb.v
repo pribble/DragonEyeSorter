@@ -13,6 +13,7 @@
 //   * 两个参数实例：256x8（一行 64 beat）与 192x6（一行 48 beat，恰好 DELAY_CYCLE-3 = 47 的边界）。
 // I_tlast 不被 awb 使用（端口保留），恒 0，不参与 trace。
 module tb_awb;
+    `include "equiv_tb_common.vh"
     localparam integer WA = 256, HA = 8;   // 实例 A：IMG_WIDTH_4x = 64
     localparam integer WB = 192, HB = 6;   // 实例 B：IMG_WIDTH_4x = 48
 
@@ -41,13 +42,7 @@ module tb_awb;
         .O_tready(o_tready));
 
     // ---------------- trace：每拍写全部输出（x/z 原样）
-    integer fd, cyc = 0;
-    reg [1023:0] tf;
-    initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "awb.trace";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin $display("cannot open trace"); $finish; end
-    end
+    initial equiv_trace_open;
     always @(posedge clk) begin
         cyc <= cyc + 1;
         $fdisplay(fd, "%0d %b %b %h %b %b %b %b %h %b %b",
@@ -208,9 +203,6 @@ module tb_awb;
         for (f = 0; f < 10; f = f + 1) frame(NBA, -1, -1);
 
         idle(20);
-        $display("EQUIV_CYCLES %0d", cyc);
-        $display("EQUIV_DONE");
-        $fclose(fd);
-        $finish;
+        equiv_finish(cyc);
     end
 endmodule

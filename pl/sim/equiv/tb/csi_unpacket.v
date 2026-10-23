@@ -2,9 +2,7 @@
 // csi_unpacket 等价回归：帧开始 / 帧结束 / RAW10 长包头、valid 空档与背靠背、
 // 中途复位、随机与极值数据。逐拍 trace 全部输出（x/z 原样）。
 module tb_csi_unpacket;
-    integer fd;
-    integer cyc = 0;
-    reg [1023:0] tf;
+    `include "equiv_tb_common.vh"
 
     reg        clk      = 0;
     reg        rst_n    = 0;
@@ -29,14 +27,7 @@ module tb_csi_unpacket;
 
     always #5 clk = ~clk;
 
-    initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin
-            $display("cannot open trace");
-            $finish;
-        end
-    end
+    initial equiv_trace_open;
 
     always @(posedge clk) begin
         #1;
@@ -114,9 +105,6 @@ module tb_csi_unpacket;
         send(32'hxxxx_xxxx, 1, 1);
         repeat (20) @(negedge clk);
 
-        $display("EQUIV_CYCLES %0d", cyc);
-        $display("EQUIV_DONE");
-        $fclose(fd);
-        $finish;
+        equiv_finish(cyc);
     end
 endmodule

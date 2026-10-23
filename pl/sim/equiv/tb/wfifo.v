@@ -9,10 +9,9 @@
 // 再随机读写；不同实例在不同时刻被异步复位（含写满/排空中途）。
 // trace 在 clkw / clkr 两个时钟沿都采样，tag W/R 区分，逐拍打印全部输出（x/z 原样）。
 module tb_wfifo;
-    integer fd;
+    `include "equiv_tb_common.vh"
     integer wcyc = 0;
     integer rcyc = 0;
-    reg [1023:0] tf;
 
     reg clkw = 0;
     reg clkr = 0;
@@ -160,13 +159,8 @@ module tb_wfifo;
     end
 
     initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin $display("cannot open trace"); $finish; end
+        equiv_trace_open;
         repeat (15000) @(posedge clkw);
-        $display("EQUIV_CYCLES %0d", wcyc);
-        $display("EQUIV_DONE");
-        $fclose(fd);
-        $finish;
+        equiv_finish(wcyc);
     end
 endmodule

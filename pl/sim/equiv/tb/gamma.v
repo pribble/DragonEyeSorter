@@ -4,9 +4,7 @@
 // 激励：4 像素 × RGB × 256 全码值扫描、随机 96bit 数据流、valid/ready 随机背压、
 // tlast/tuser 随机、两处中途异步复位、0/255 极值；固定种子，两侧逐拍 trace 必须完全相同。
 module tb_gamma;
-    integer fd;
-    integer cyc = 0;
-    reg [1023:0] tf;
+    `include "equiv_tb_common.vh"
 
     reg clk = 0;
     reg rst_n = 0;
@@ -37,11 +35,7 @@ module tb_gamma;
 
     always #5 clk = ~clk;
 
-    initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin $display("cannot open trace"); $finish; end
-    end
+    initial equiv_trace_open;
 
     // 逐拍记录被测模块全部输出（x/z 原样打印；I_tready 也是输出，含在 compare 里）
     always @(posedge clk) begin
@@ -142,9 +136,6 @@ module tb_gamma;
         // ---- 收尾：排空流水线 ----
         drv(96'd0, 1'b0, 1'b0, 1'b0, 1'b0);
         repeat (10) @(negedge clk);
-        $display("EQUIV_CYCLES %0d", cyc);
-        $display("EQUIV_DONE");
-        $fclose(fd);
-        $finish;
+        equiv_finish(cyc);
     end
 endmodule

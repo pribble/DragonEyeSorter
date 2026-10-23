@@ -4,9 +4,7 @@
 //       VS 毛刺（1~2 拍）、长高/长低、随机 VS、复位中途打断、与 VS 边沿同拍拉复位；
 //       输入 x 态（I_vs = x）传播。逐拍 trace 三个实例全部输出。
 module tb_x_fs_cap;
-    integer fd;
-    integer cyc = 0;
-    reg [1023:0] tf;
+    `include "equiv_tb_common.vh"
 
     reg clk = 0;
     always #5 clk = ~clk;
@@ -21,11 +19,7 @@ module tb_x_fs_cap;
 
     reg [31:0] lfsr = 32'h7E57_C0DE;
 
-    initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin $display("cannot open trace"); $finish; end
-    end
+    initial equiv_trace_open;
 
     always @(negedge clk) begin
         cyc <= cyc + 1;
@@ -59,10 +53,7 @@ module tb_x_fs_cap;
         if (cyc == 2200) rstn2 <= 1'b0;
         if (cyc == 2203) rstn2 <= 1'b1;
         if (cyc == 2999) begin
-            $display("EQUIV_CYCLES %0d", cyc);
-            $display("EQUIV_DONE");
-            $fclose(fd);
-            $finish;
+            equiv_finish(cyc);
         end
     end
 endmodule

@@ -8,9 +8,7 @@
 //   * 参考时钟中途抖动（换相位继续跑）、复位中途（复位期间输入变化）
 // 逐拍 trace 全部输出。
 module tb_x_mipi_dphy;
-    integer fd;
-    integer cyc = 0;
-    reg [1023:0] tf;
+    `include "equiv_tb_common.vh"
 
     reg mipi_clk_p = 0;
     always #4 mipi_clk_p = ~mipi_clk_p;      // 125MHz D-PHY 参考时钟
@@ -41,11 +39,7 @@ module tb_x_mipi_dphy;
 
     reg [31:0] lfsr = 32'h0D15_EA5E;
 
-    initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin $display("cannot open trace"); $finish; end
-    end
+    initial equiv_trace_open;
 
     always @(posedge mipi_clk_p) begin
         cyc <= cyc + 1;
@@ -78,10 +72,7 @@ module tb_x_mipi_dphy;
             end
         end
         if (cyc == 4000) begin
-            $display("EQUIV_CYCLES %0d", cyc);
-            $display("EQUIV_DONE");
-            $fclose(fd);
-            $finish;
+            equiv_finish(cyc);
         end
     end
 endmodule

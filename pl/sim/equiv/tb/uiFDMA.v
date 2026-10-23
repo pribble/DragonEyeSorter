@@ -189,9 +189,7 @@ endmodule
 
 
 module tb_uiFDMA;
-    integer fd;
-    integer cyc = 0;
-    reg [1023:0] tf;
+    `include "equiv_tb_common.vh"
 
     reg clk = 0;
     reg aresetn = 0;
@@ -426,9 +424,7 @@ module tb_uiFDMA;
     end
 
     initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin $display("cannot open trace"); $finish; end
+        equiv_trace_open;
         // 复位期间输入也保持随机（覆盖复位下的输入无关性）
         fdma_waddr = 0;  fdma_wareq = 0; fdma_wsize = 0; fdma_wdata = 0; fdma_wready = 0;
         fdma_raddr = 0; fdma_rareq = 0; fdma_rsize = 0; fdma_rready = 0;
@@ -436,9 +432,6 @@ module tb_uiFDMA;
         repeat (8) @(negedge clk);
         aresetn = 1;
         repeat (15000) @(negedge clk);
-        $display("EQUIV_CYCLES %0d", cyc);
-        $display("EQUIV_DONE");
-        $fclose(fd);
-        $finish;
+        equiv_finish(cyc);
     end
 endmodule

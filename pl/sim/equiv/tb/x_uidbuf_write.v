@@ -10,9 +10,7 @@
 //       写指针回绕/O_W_sync_cnt 回绕、irq 60 拍窗口、中途复位与复位时输入抖动。
 // 逐拍 trace 三个实例全部输出。
 module tb_x_uidbuf_write;
-    integer fd;
-    integer cyc = 0;
-    reg [1023:0] tf;
+    `include "equiv_tb_common.vh"
 
     reg ui_clk = 0;
     always #5 ui_clk = ~ui_clk;          // 100MHz AXI/寄存器时钟
@@ -181,11 +179,7 @@ module tb_x_uidbuf_write;
         end
     end
 
-    initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin $display("cannot open trace"); $finish; end
-    end
+    initial equiv_trace_open;
 
     always @(negedge ui_clk) begin
         cyc <= cyc + 1;
@@ -199,10 +193,7 @@ module tb_x_uidbuf_write;
                   c_sync, c_full, c_waddr, c_wareq, c_wsize, c_wdata_o, c_wready,
                   c_wbuf_o, c_wirq, c_cam_done);
         if (cyc == 40000) begin
-            $display("EQUIV_CYCLES %0d", cyc);
-            $display("EQUIV_DONE");
-            $fclose(fd);
-            $finish;
+            equiv_finish(cyc);
         end
     end
 

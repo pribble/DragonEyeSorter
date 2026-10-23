@@ -3,9 +3,7 @@
 // 验证 valid 归约（&）、lane 数据反序合并、invert 连线与 lane_error 直通。
 // 激励：多时钟域、lane 引脚 / invert 位变化、复位中途拉低。
 module tb_hs_rx;
-    integer fd;
-    integer cyc = 0;
-    reg [1023:0] tf;
+    `include "equiv_tb_common.vh"
 
     reg        clk        = 0;
     reg        clk_x2     = 0;
@@ -46,14 +44,7 @@ module tb_hs_rx;
     always #1.25 clk_x4 = ~clk_x4;
     always #7    lp_clk = ~lp_clk;
 
-    initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin
-            $display("cannot open trace");
-            $finish;
-        end
-    end
+    initial equiv_trace_open;
 
     always @(posedge clk) begin
         #1;
@@ -80,9 +71,6 @@ module tb_hs_rx;
         repeat (3) @(negedge clk);
         rst = 1'b0;
         repeat (180) @(negedge clk);
-        $display("EQUIV_CYCLES %0d", cyc);
-        $display("EQUIV_DONE");
-        $fclose(fd);
-        $finish;
+        equiv_finish(cyc);
     end
 endmodule

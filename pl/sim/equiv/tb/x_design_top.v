@@ -6,9 +6,7 @@
 //       O_imx334_clk_24m；CSI 包流（由 data_lane 桩按 CSI-2 包序列产生）。
 // 逐拍 trace 全部输出；golden vs 新必须逐字节一致。
 module tb_x_design_top;
-    integer fd;
-    integer cyc = 0;
-    reg [1023:0] tf;
+    `include "equiv_tb_common.vh"
 
     reg sys_clk = 0;
     always #7 sys_clk = ~sys_clk;        // 156MHz 参考（周期 14ns）
@@ -46,11 +44,7 @@ module tb_x_design_top;
 
     reg [31:0] lfsr = 32'hBAD0_F00D;
 
-    initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin $display("cannot open trace"); $finish; end
-    end
+    initial equiv_trace_open;
 
     // 在 mipi_clk 下降沿采样（DUT 内部时钟由它分频产生，下降沿时全部同步输出已稳定）
     always @(negedge mipi_clk) begin
@@ -66,10 +60,7 @@ module tb_x_design_top;
             data_hs_p <= lfsr[11:8];
         end
         if (cyc == 30000) begin
-            $display("EQUIV_CYCLES %0d", cyc);
-            $display("EQUIV_DONE");
-            $fclose(fd);
-            $finish;
+            equiv_finish(cyc);
         end
     end
 endmodule

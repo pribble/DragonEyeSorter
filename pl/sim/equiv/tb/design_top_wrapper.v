@@ -4,9 +4,7 @@
 // raw10_unpacket_4lane / image_correction / isp_top 用行为桩（isp 域并发重构，隔离）。
 // 验证：PLL 时钟/锁定→复位链、hs_rx 时钟域 CSI 解析、RAW10/图像修正/ISP 各级连线。
 module tb_design_top_wrapper;
-    integer fd;
-    integer cyc = 0;
-    reg [1023:0] tf;
+    `include "equiv_tb_common.vh"
 
     reg         sys_clk   = 0;   // 156M 参考（行为上按 50MHz 周期驱动）
     reg         clk_hs    = 0;
@@ -43,14 +41,7 @@ module tb_design_top_wrapper;
     always #10 sys_clk = ~sys_clk;   // 20ns
     always #2  clk_hs  = ~clk_hs;    // 4ns
 
-    initial begin
-        if (!$value$plusargs("TRACE=%s", tf)) tf = "trace.txt";
-        fd = $fopen(tf, "w");
-        if (fd == 0) begin
-            $display("cannot open trace");
-            $finish;
-        end
-    end
+    initial equiv_trace_open;
 
     always @(posedge clk_hs) begin
         #1;
@@ -74,9 +65,6 @@ module tb_design_top_wrapper;
         data_lp_p = 4'h0;
         data_lp_n = 4'h0;
         repeat (3000) @(posedge clk_hs);
-        $display("EQUIV_CYCLES %0d", cyc);
-        $display("EQUIV_DONE");
-        $fclose(fd);
-        $finish;
+        equiv_finish(cyc);
     end
 endmodule
