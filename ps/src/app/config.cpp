@@ -126,13 +126,20 @@ std::string load_config(const std::string &path, AppConfig &cfg)
                 }
         }
         ji::gets(j, "bins", cfg.bins, "outlets", cfg.outlets, "label_list", cfg.label_list); FlapConfig &fcp = cfg.flaps;
-        if (const json *c = sec_gets(j, "flaps", "enabled", fcp.enabled, "prepare_mm", fcp.prepare_mm, "clear_mm",
-                                     fcp.clear_mm, "gap_mm", fcp.gap_mm))
+        if (const json *c = sec_gets(j, "flaps", "enabled", fcp.enabled, "move_ms", fcp.move_ms, "stagger_ms",
+                                     fcp.stagger_ms, "margin_mm", fcp.margin_mm))
             if (c->contains("gates")) {
                 fcp.gates.clear();
                 for (const json &gj : (*c)["gates"]) {
                     FlapConfig::Gate g;
-                    ji::gets(gj, "after_pick_mm", g.after_pick_mm, "outlet", g.outlet_name, "open_us", g.open_us, "closed_us", g.closed_us);
+                    float closed_deg = rad2deg(g.geom.closed), open_deg = rad2deg(g.geom.open);
+                    ji::gets(gj, "outlet", g.outlet_name, "len_mm", g.geom.len, "closed_deg", closed_deg, "open_deg",
+                             open_deg, "hold_mm", g.hold_mm, "open_us", g.open_us, "closed_us", g.closed_us);
+                    ji::vec2(gj, "pivot_xy", g.geom.pivot);
+                    g.geom.closed = deg2rad(closed_deg);
+                    g.geom.open = deg2rad(open_deg);
+                    if (std::fabs(closed_deg - open_deg) >= 180)
+                        return path + ": flaps.gates: |closed_deg - open_deg| must be < 180 (convex swept sector)";
                     g.outlet = index_of(cfg.outlets, g.outlet_name);
                     if (g.outlet < 0) return path + ": flaps.gates outlet \"" + g.outlet_name + "\" is not in outlets";
                     if (g.outlet == 0) return path + ": flaps.gates: the recheck outlet is the belt end, not a gate";
@@ -255,9 +262,8 @@ std::string load_config(const std::string &path, AppConfig &cfg)
     cfg.picker.tangential_first = cfg.arm.max_tilt_deg > 0; cfg.picker.gates.clear();
     // side gates exist for the picker only once mounted
     if (cfg.flaps.enabled)
-        for (const FlapConfig::Gate &g : cfg.flaps.gates)
-            cfg.picker.gates.push_back({cfg.picker.pick_x + g.after_pick_mm, g.outlet});
-    cfg.picker.gate_prepare = cfg.flaps.prepare_mm; cfg.picker.gate_clear = cfg.flaps.clear_mm;
-    cfg.picker.gate_gap = cfg.flaps.gap_mm; cfg.npu.model = resolve(dir, cfg.npu.model); return load_rules(resolve(dir, cfg.label_list), cfg);
+        for (const FlapConfig::Gate &g : cfg.flaps.gates) cfg.picker.gates.push_back({g.geom, g.outlet, g.hold_mm});
+    cfg.picker.gate_move_s = cfg.flaps.move_s(); cfg.picker.gate_margin = cfg.flaps.margin_mm;
+    cfg.npu.model = resolve(dir, cfg.npu.model); return load_rules(resolve(dir, cfg.label_list), cfg);
 }
 }  // namespace des

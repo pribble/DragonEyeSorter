@@ -46,6 +46,19 @@ std::string Runner::start()
             printf("[run] Modbus-TCP slave on port %d\n", mb_->port());
         }
     }
+    // side gates: where a 32 mm part on the belt centre line meets each one, and how early it must be decided
+    const double v = speed_mm_s_ > 0 ? speed_mm_s_ : cfg_.belt.run_speed;
+    for (size_t g = 0; g < cfg_.flaps.gates.size(); g++) {
+        const FlapConfig::Gate &G = cfg_.flaps.gates[g];
+        const float r = 16, m = cfg_.flaps.margin_mm;
+        const XRange c = gate_closed_range(G.geom, 0, r), s = gate_sweep_range(G.geom, 0, r + m);
+        const double latest = s.x0 - v * cfg_.flaps.move_s();
+        printf("[run] gate %zu (%s%s): part at y 0 meets it at x %.0f, sweep x %.0f..%.0f, hold %.0f mm; "
+               "decide by x %.0f at %.0f mm/s (decide_x %.0f)%s\n", g + 1, G.outlet_name.c_str(),
+               cfg_.flaps.enabled ? "" : ", disabled", c.x0, s.x0, s.x1,
+               G.hold_mm > 0 ? G.hold_mm : gate_slide_mm(G.geom, 0), latest, v, cfg_.tracker.decide_x,
+               c.hit && s.hit && latest > cfg_.tracker.decide_x ? "" : "  <- WARNING: parts reach it undecided");
+    }
     prev_status_ = des_step_status(hw_);
     belt_.enable(true);
     arm_thread_ = std::thread(&Runner::arm_loop, this);
@@ -257,7 +270,9 @@ void Runner::cycle(Tracker &tr, Picker &pk)
         }
     // Newly decided part: counts + PART frame (decision time; a later failed pick is counted as recheck)
     auto report_part = [&](const Track &t) {
-        if (t.state == TrackState::New || t.state == TrackState::Tracking || t.disp == Disposition::None) { return; } if (!reported_.insert(t.id).second) return;
+        if (t.state == TrackState::New || t.state == TrackState::Tracking || t.disp == Disposition::None) return;
+        if (!cfg_.picker.gates.empty() && t.disp == Disposition::Flap && !t.flap_final) return;   // gate not final yet
+        if (!reported_.insert(t.id).second) return;
         counts_.total++; if (t.disp == Disposition::Flap) counts_.ng++;
         else if (t.disp == Disposition::Recheck) counts_.recheck++;
         canp_part_t p;
@@ -271,6 +286,7 @@ void Runner::cycle(Tracker &tr, Picker &pk)
     };
     if (state_ == CANP_ST_RUN) {
         jog_dir_ = 0; Picker::Input in = picker_input(&belt_, hw_, cfg_.belt);
+        in.cruise_mm_s = speed_mm_s_ > 0 ? speed_mm_s_ : cfg_.belt.run_speed;
         in.arm_idle = !arm_busy_; in.arm_clear = arm_clear_;
         Picker::Output out = pk.tick(tr, in);
         // one pass over the tracks: speed adaptation (nearest decided pick ahead) + newly decided parts
@@ -288,27 +304,33 @@ void Runner::cycle(Tracker &tr, Picker &pk)
                 adapt_changes_++;  }
         }
         belt_.apply(out.belt);
-        // side diverter gates follow the picker's flap events (des_pwm channel = gate; no-op before v7 or when disabled)
-        if (cfg_.flaps.enabled && !cfg_.flaps.gates.empty()) {
-            const FlapSequencer::State &fs = flaps_.update(out.flaps, in.belt_mm); const int n = int(std::min<size_t>(cfg_.flaps.gates.size(), 2));
-            for (int ch = 0; ch < n; ch++)
-                if (fs.us[ch] != flap_us_[ch]) {
-                    des_pwm_set(hw_, ch, fs.us[ch]); flap_us_[ch] = fs.us[ch];
-                }
-            if (!pwm_enabled_) pwm_enabled_ = des_pwm_enable(hw_, n == 2 ? 3u : 1u) == DES_OK;
-        }
+        flap_events_ = out.flaps;   // the gates follow them below (capacity reused: no allocation per cycle)
         if (out.have_job) {
             ArmJob job{out.job, arm_cfg_}; arm_busy_ = true;
             arm_clear_ = out.job.flying;   // intercept: the belt keeps running while the gripper is down
             jobs_.push_force(std::move(job));
         }
     } else if (state_ == CANP_ST_IDLE && jog_dir_ != 0) {
+        flap_events_.clear();
         belt_.jog(jog_dir_);   // manual jog from the HMI (Runner::jog)
         for (const Track &t : tr.tracks()) report_part(t);
     } else {
         if (state_ != CANP_ST_IDLE) { jog_dir_ = 0; } BeltPlan hold;   // not running: ramp the belt down if it moves; a pick in progress finishes on its own
         hold.kind = BeltPlan::Hold; belt_.apply(hold);
         for (const Track &t : tr.tracks()) report_part(t);
+        flap_events_.clear();
+    }
+    // side diverter gates (des_pwm channel = gate), in every state: open from the start, a gate closed for a part
+    // keeps it until the belt has carried that part past its release (no-op before v7 or when disabled)
+    if (cfg_.flaps.enabled && !cfg_.flaps.gates.empty()) {
+        const FlapSequencer::State &fs = flaps_.update(flap_events_, belt_.belt_mm(), now);
+        const int n = int(std::min<size_t>(cfg_.flaps.gates.size(), 2));
+        for (int ch = 0; ch < n; ch++)
+            if (fs.us[ch] != flap_us_[ch]) {
+                des_pwm_set(hw_, ch, fs.us[ch]);
+                flap_us_[ch] = fs.us[ch];
+            }
+        if (!pwm_enabled_) pwm_enabled_ = des_pwm_enable(hw_, n == 2 ? 3u : 1u) == DES_OK;
     }
     while (reported_.size() > 2000) reported_.erase(reported_.begin());
     if (now - last_status_ >= 0.1) {

@@ -238,34 +238,86 @@ static void test_speed_adapt()
     CHECK(adapt_speed(c, 50, 100, 4) == 50, "disabled: base");
 }
 
-// two-stage flaps follow the picker's flap events: set prepare_mm ahead, held until clear_mm past, rest = recheck
+// gate geometry of the 10-22 layout (10_项目文档/侧边导流挡板方案.md §2c): gate 1 pivot on the far edge opposite the arm,
+// 230 mm paddle closed at 55 deg / open at -20 deg; checked against the hand-computed numbers of that section
+static bool near(double a, double b, double tol) { return std::fabs(a - b) <= tol; }
+
+static GateGeom gate_geom(float px, float len, float closed_deg, float open_deg)
+{
+    GateGeom g;
+    g.pivot = {px, -150};
+    g.len = len;
+    g.closed = deg2rad(closed_deg);
+    g.open = deg2rad(open_deg);
+    return g;
+}
+
+static void test_gate_geometry()
+{
+    const GateGeom g = gate_geom(438, 230, 55, -20);
+    CHECK(near(g.tip(g.closed).x, 438 - 230 * std::cos(deg2rad(55)), 1e-3) && near(g.tip(g.closed).y, 38.4f, 0.1),
+          "closed tip (%.1f, %.1f)", g.tip(g.closed).x, g.tip(g.closed).y);
+    XRange c = gate_closed_range(g, 10, 0);   // a point at y 10 meets the closed paddle at x = 438 - 160 / tan 55
+    CHECK(c.hit && near(c.x0, 438 - 160 / std::tan(deg2rad(55)), 0.05), "closed paddle at y 10: x %.2f", c.x0);
+    c = gate_closed_range(g, 10, 16);         // a 32 mm disc touches it 16 / sin 55 earlier
+    CHECK(c.hit && near(c.x0, 438 - 160 / std::tan(deg2rad(55)) - 16 / std::sin(deg2rad(55)), 0.05),
+          "32 mm disc meets it at x %.2f", c.x0);
+    XRange s = gate_sweep_range(g, 10, 0);    // the tip first reaches y 10 at sin a = 160 / 230
+    const float a10 = std::asin(160.f / 230.f);
+    CHECK(s.hit && near(s.x0, 438 - 230 * std::cos(a10), 0.05) && near(s.x1, c.x0 + 16 / std::sin(deg2rad(55)), 0.05),
+          "sweep at y 10: x %.2f .. %.2f", s.x0, s.x1);
+    CHECK(!gate_closed_range(g, 60, 10).hit && !gate_reaches(g, 60, 0) && gate_reaches(g, 25, 10),
+          "the paddle reaches y 25 (margin 10) but not y 60");
+    CHECK(near(gate_slide_mm(g, 10), (160 / std::sin(deg2rad(55))) / std::cos(deg2rad(55)), 0.1),
+          "slide estimate %.1f mm", gate_slide_mm(g, 10));
+    // a disc behind the pivot (downstream, beside the edge) is not in the sector
+    CHECK(gate_sweep_dist(g, {470, -100}) > 0 && gate_sweep_dist(g, {350, -100}) == 0.f, "sector membership");
+}
+
+// sequencer: events with close / release belt travel -> ramped pulse widths (smoothstep over move_ms), stagger
 static void test_flaps()
 {
-    FlapConfig fc;   // prepare 110, clear 190
+    FlapConfig fc;   // move 300 ms, stagger 120 ms
     fc.gates.resize(2);
     fc.gates[0].outlet = 1; fc.gates[0].open_us = 1000; fc.gates[0].closed_us = 1900;
     fc.gates[1].outlet = 2; fc.gates[1].open_us = 1100; fc.gates[1].closed_us = 1800;
     FlapSequencer fs(fc);
-    // part 1 -> gate 0 (meets it at belt 300), part 3 -> belt end (recheck), part 2 -> gate 1 (at 700)
-    std::vector<FlapEvent> ev = {{1, 1, 300.0, 0}, {3, 0, 650.0, -1}, {2, 2, 700.0, 1}};
-    auto at = [&](double b) { return fs.update(ev, b); };
-    FlapSequencer::State s = at(100);
-    CHECK(s.us[0] == 1000 && s.us[1] == 1100 && s.track_id[0] == -1 && s.track_id[1] == -1, "rest: both gates open");
-    s = at(191);
-    CHECK(s.track_id[0] == 1 && s.us[0] == 1900 && s.us[1] == 1100, "gate 0 closes 110 mm ahead of part 1: %d %d %d",
-          s.track_id[0], s.us[0], s.us[1]);
-    s = at(489);
-    CHECK(s.track_id[0] == 1, "gate 0 held while part 1 slides off");
-    ev.erase(ev.begin());   // part 1 left the belt: its event is gone, the gate still waits until clear_mm
-    s = at(489.5);
-    CHECK(s.track_id[0] == 1, "held after the event vanished");
-    s = at(490);
-    CHECK(s.track_id[0] == -1 && s.us[0] == 1000, "gate 0 reopens 190 mm past");
-    s = at(600);
-    CHECK(s.track_id[1] == 2 && s.us[1] == 1800 && s.us[0] == 1000, "gate 1 for part 2; the recheck part closes none");
-    s = at(900);
-    CHECK(s.track_id[0] == -1 && s.track_id[1] == -1 && fs.served == 2, "all open, served %llu",
-          (unsigned long long)fs.served);
+    std::vector<FlapEvent> ev;
+    FlapEvent e1;   // part 1 -> gate 0: close from belt 100, release at 400
+    e1.track_id = 1; e1.outlet = 1; e1.gate = 0; e1.belt_mm = 200; e1.close_b = 100; e1.release_b = 400;
+    FlapEvent e2;   // part 2 -> gate 1: close from belt 100 too (same moment: the stagger delays it)
+    e2.track_id = 2; e2.outlet = 2; e2.gate = 1; e2.belt_mm = 260; e2.close_b = 100; e2.release_b = 500;
+    ev = {e1, e2};
+    FlapSequencer::State st = fs.update(ev, 0, 10.0);
+    CHECK(st.us[0] == 1000 && st.us[1] == 1100 && !st.moving[0] && st.track_id[0] == -1, "start: both open at once");
+    st = fs.update(ev, 99, 10.1);
+    CHECK(st.us[0] == 1000 && st.track_id[0] == -1, "not before close_b");
+    st = fs.update(ev, 100, 11.0);   // gate 0 starts its ramp at t 11.0; gate 1 must wait 120 ms
+    CHECK(st.track_id[0] == 1 && st.track_id[1] == 2 && st.us[0] == 1000 && st.us[1] == 1100 && st.moving[0],
+          "both latched, ramps begin at the start value (%d %d)", st.us[0], st.us[1]);
+    st = fs.update(ev, 101, 11.06);
+    CHECK(st.us[1] == 1100, "gate 1 waits for the stagger (%d)", st.us[1]);
+    st = fs.update(ev, 102, 11.15);  // gate 0 half way: smoothstep(0.5) = 0.5; gate 1 started at 11.15
+    CHECK(near(st.us[0], 1450, 1) && st.us[1] == 1100, "half way %d, gate 1 just started %d", st.us[0], st.us[1]);
+    st = fs.update(ev, 103, 11.20);  // gate 0 at u = 2/3: 1000 + 900 * (3 u^2 - 2 u^3)
+    CHECK(near(st.us[0], 1000 + 900 * (3 * 4.0 / 9 - 2 * 8.0 / 27), 1), "smoothstep at 2/3: %d", st.us[0]);
+    st = fs.update(ev, 104, 11.30);
+    CHECK(st.us[0] == 1900 && !st.moving[0] && st.us[1] > 1100 && st.us[1] < 1800, "gate 0 closed, gate 1 moving");
+    st = fs.update(ev, 105, 11.45);
+    CHECK(st.us[1] == 1800, "gate 1 closed 300 ms after its delayed start (%d)", st.us[1]);
+    ev[0].release_b = 300;           // another part is coming: part 1's gate opens earlier
+    st = fs.update(ev, 299, 12.0);
+    CHECK(st.track_id[0] == 1 && st.us[0] == 1900, "still closed before the new release");
+    st = fs.update(ev, 300, 12.1);
+    CHECK(st.track_id[0] == -1 && st.us[0] == 1900 && st.moving[0], "early release: opening ramp starts");
+    st = fs.update(ev, 301, 12.4);
+    CHECK(st.us[0] == 1000, "open again (%d)", st.us[0]);
+    ev.erase(ev.begin() + 1);        // part 2's track vanished: gate 1 keeps its release
+    st = fs.update(ev, 450, 13.0);
+    CHECK(st.track_id[1] == 2 && st.us[1] == 1800, "vanished event: held until its release");
+    st = fs.update(ev, 500, 13.1);
+    CHECK(st.track_id[1] == -1, "released at 500");
+    CHECK(fs.served == 2, "served %llu", (unsigned long long)fs.served);
 }
 
 // intercept ("flying") picks: belt at 50 mm/s (1 mm per tick), arm base 150 mm beside the belt centre at the pick line
@@ -348,34 +400,120 @@ static void test_picker_flying()
           d.stopped_for);
 }
 
-// a lone NG part is routed to its gate; with no gates configured it rides to the belt end
+// gate decisions on a simulated belt (1 mm per tick, planned at 50 mm/s). Test layout scaled to the 0..300 mm view:
+// gate A (outlet 1) upstream of the pick line 470, gate B (outlet 2) downstream of it; tracks kept to x 900.
+struct GateRun {
+    Picker::Output out;
+    PickerConfig pc;
+    Picker::Stats stats;
+    FlapEvent ng;                      // the NG part's (parts[0]) event at the end
+    std::string why;
+    bool final = false;                // its gate decision is final (committed or re-routed)
+};
+static GateRun run_gates(const std::vector<SimPart> &parts, double until_b, float decide_x = 270)
+{
+    std::mt19937 rng(11);
+    TrackerConfig tc = tracker_cfg();
+    tc.tail_x = 900;
+    tc.decide_x = decide_x;
+    Tracker tr(tc);
+    GateRun r;
+    PickerConfig &pc = r.pc;
+    pc.pick_x = 470; pc.tail_x = 900;
+    pc.gates = {{gate_geom(520, 230, 55, -20), 1, 0}, {gate_geom(700, 210, 65, 25), 2, 0}};
+    Picker pk(pc);
+    for (uint32_t f = 0; f < 3000; f++) {
+        const double B = f;
+        if (B > until_b) break;
+        tr.update(observe(parts, B, f, rng));
+        Picker::Input in;
+        in.belt_mm = B; in.brake_mm = 2; in.belt_stopped = false; in.cruise_mm_s = 50;
+        r.out = pk.tick(tr, in);
+        tr.retire(B);
+    }
+    r.stats = pk.stats;
+    for (const FlapEvent &e : r.out.flaps) {
+        const Track *t = tr.find(e.track_id);
+        if (t && std::fabs(t->s - parts[0].s) < 8) { r.ng = e; r.why = t->why; r.final = t->flap_final; }
+    }
+    return r;
+}
+
 static void test_gate_events()
 {
-    std::mt19937 rng(7);
-    for (int with_gates = 1; with_gates >= 0; with_gates--) {
+    // a lone NG part (gear_short -> outlet 1): gate A, closed before it enters the sweep, released after its slide
+    {
+        GateRun r = run_gates({{-20, 0, 32, 32, 0.f, 1}}, 400);
+        const GateGeom &g = r.pc.gates[0].geom;
+        const float meet = gate_closed_range(g, 0, 16).x0, in = gate_sweep_range(g, 0, 26).x0;
+        CHECK(r.ng.gate == 0 && r.ng.outlet == 1, "lone NG: gate %d outlet %d (%s)", r.ng.gate, r.ng.outlet, r.why.c_str());
+        CHECK(near(r.ng.belt_mm, meet + 20, 1.5) && near(r.ng.close_b, in + 20 - 50 * r.pc.gate_move_s, 1.5),
+              "meets at belt %.1f (%.1f), closes from %.1f (%.1f)", r.ng.belt_mm, meet + 20, r.ng.close_b,
+              in + 20 - 50 * r.pc.gate_move_s);
+        CHECK(near(r.ng.release_b - r.ng.belt_mm, gate_slide_mm(g, 0) + 10, 2), "hold %.1f mm",
+              r.ng.release_b - r.ng.belt_mm);
+        CHECK(r.final && r.stats.flap_conflicts == 0 && r.stats.gate_late == 0, "committed, no conflict");
+    }
+    // no gates: the same part rides to the belt end
+    {
+        std::mt19937 rng(7);
         Tracker tr(tracker_cfg());
         PickerConfig pc;
         pc.pick_x = 400; pc.tail_x = 800;
-        if (with_gates) pc.gates = {{470, 1}, {570, 2}};
         Picker pk(pc);
-        const std::vector<SimPart> parts = {{-30, 5, 28, 28, 0.f, 1}};   // gear_short -> outlet 1 (scrap)
+        const std::vector<SimPart> parts = {{-30, 5, 28, 28, 0.f, 1}};
         Picker::Output out;
-        double B = 0;
-        for (uint32_t f = 0; f < 400; f++, B += 1) {
-            tr.update(observe(parts, B, f, rng));
+        for (uint32_t f = 0; f < 400 && out.flaps.empty(); f++) {
+            tr.update(observe(parts, f, f, rng));
             Picker::Input in;
-            in.belt_mm = B; in.brake_mm = 2; in.belt_stopped = false;
+            in.belt_mm = f; in.brake_mm = 2; in.belt_stopped = false;
             out = pk.tick(tr, in);
-            if (!out.flaps.empty()) break;
         }
-        CHECK(out.flaps.size() == 1, "%s: %zu flap events", with_gates ? "gates" : "no gates", out.flaps.size());
-        if (out.flaps.size() != 1) continue;
-        const FlapEvent &e = out.flaps[0];
-        const Track *t = tr.find(e.track_id);
-        const float x = with_gates ? 470.f : 800.f;
-        CHECK(e.outlet == 1 && e.gate == (with_gates ? 0 : -1) && t && std::fabs(e.belt_mm - (x - t->s)) < 1e-3,
-              "%s: outlet %d gate %d belt %.1f", with_gates ? "gates" : "no gates", e.outlet, e.gate, e.belt_mm);
-        CHECK(pk.stats.flap_conflicts == 0, "lone part: no conflict");
+        CHECK(out.flaps.size() == 1 && out.flaps[0].gate == -1 && out.flaps[0].outlet == 1,
+              "no gates: belt end (%zu events)", out.flaps.size());
+    }
+    // an OK part 70 mm behind would cross gate A's sector on its way to the pick line: the NG part goes to recheck
+    {
+        GateRun r = run_gates({{-20, 0, 32, 32, 0.f, 1}, {-90, 5, 32, 32, 0.f, 0}}, 400);
+        CHECK(r.ng.gate == -1 && r.ng.outlet == 0 && r.why == "gate conflict" && r.stats.flap_conflicts >= 1,
+              "OK part behind: NG -> recheck (gate %d, %s)", r.ng.gate, r.why.c_str());
+    }
+    // the same OK part behind does not matter for gate B (downstream of the pick line, where OK parts stop)
+    {
+        GateRun r = run_gates({{-20, 0, 32, 32, 0.f, 2}, {-90, 5, 32, 32, 0.f, 0}}, 540);
+        CHECK(r.ng.gate == 1 && r.final && r.stats.flap_conflicts == 0,
+              "gate B ignores parts stopping upstream (gate %d final %d, %s)", r.ng.gate, r.final, r.why.c_str());
+    }
+    // two NG parts for gate A 40 mm apart: one closing serves both
+    {
+        GateRun r = run_gates({{-20, 0, 32, 32, 0.f, 1}, {-60, 0, 32, 32, 0.f, 3}}, 400, 200);
+        int on_a = 0;
+        for (const FlapEvent &e : r.out.flaps) on_a += e.gate == 0;
+        CHECK(on_a == 2 && r.stats.flap_conflicts == 0, "two parts for gate A share a closing (%d on gate A)", on_a);
+    }
+    // decided too late (decide_x past the latest closing point) -> recheck
+    {
+        GateRun r = run_gates({{-20, 0, 32, 32, 0.f, 1}}, 360, 330);
+        CHECK(r.ng.gate == -1 && r.why == "gate too late" && r.stats.gate_late == 1, "late decision: %s",
+              r.why.c_str());
+    }
+    // a part beside the paddle's reach (y 60 > closed tip y 38) -> recheck
+    {
+        GateRun r = run_gates({{-20, 60, 32, 32, 0.f, 1}}, 300);
+        CHECK(r.ng.gate == -1 && r.why == "beyond gate reach" && r.stats.gate_unreachable == 1, "out of reach: %s",
+              r.why.c_str());
+    }
+    // committed, then a part shows up 330 mm behind (not in view when the gate committed): it opens early, not later
+    // than that part's way into the sweep allows, and not before the NG part met the paddle
+    {
+        GateRun r = run_gates({{-20, 0, 32, 32, 0.f, 1}, {-350, 0, 32, 32, 0.f, 3}}, 420);
+        const GateGeom &g = r.pc.gates[0].geom;
+        const double move = 50 * r.pc.gate_move_s;
+        const double latest = (gate_sweep_range(g, 0, 26).x0 + 350) - move - 10;
+        const double meet = gate_closed_range(g, 0, 16).x0 + 20, full = meet + gate_slide_mm(g, 0) + 10;
+        const double min_rel = meet + 0.5 * (full - meet);
+        CHECK(r.ng.gate == 0 && r.ng.release_b < full - 50 && near(r.ng.release_b, std::max(latest, min_rel), 2),
+              "early release %.1f (latest %.1f, minimum %.1f, full hold %.1f)", r.ng.release_b, latest, min_rel, full);
     }
 }
 
@@ -385,7 +523,7 @@ static void test_picker()
     Tracker tr(tracker_cfg());
     PickerConfig pc;
     pc.pick_x = 400; pc.tail_x = 600; pc.reach_y0 = -80; pc.reach_y1 = 80;
-    pc.gates = {{470, 1}, {570, 2}};   // side gates: scrap, rework
+    pc.gates = {{gate_geom(560, 210, 65, 25), 1, 0}, {gate_geom(660, 210, 65, 25), 2, 0}};   // scrap, rework
     Picker pk(pc);
     std::vector<SimPart> parts = {
         {-30, 5, 30, 30, 0.f, 0},          // gear_ok
@@ -732,6 +870,7 @@ int main()
     test_size_rule();
     test_recipes();
     test_votes();
+    test_gate_geometry();
     test_flaps();
     test_speed_adapt();
     test_gate_events();

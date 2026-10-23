@@ -276,8 +276,10 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
         const Vec2 axis = cfg.px_to_table.map({0.5f * f.width, 0.5f * f.height});
         s->tracks.clear();
         for (const Track &t : tr.tracks()) {   // one pass: records, snapshot view, PL ROI candidate
+            // a Flap part's record waits until its gate is decided for good (else it may still go to recheck)
+            const bool gate_pending = !cfg.picker.gates.empty() && t.disp == Disposition::Flap && !t.flap_final;
             if (t.state != TrackState::New && t.state != TrackState::Tracking && t.disp != Disposition::None &&
-                logged.insert(t.id).second) {
+                !gate_pending && logged.insert(t.id).second) {
                 PartRecord rec;
                 rec.wall_ms = wall_now_ms();   // + offset from the PLC's TIME frame / Modbus (no RTC on the board)
                 rec.t_s = plog.now_s();

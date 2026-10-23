@@ -87,6 +87,7 @@ private:
     int active_recipe_ = 0;
     std::vector<uint16_t> ir_;   // Modbus input-register image, reused every cycle
     FlapSequencer flaps_;
+    std::vector<FlapEvent> flap_events_;   // the picker's last flap events (empty when the line is not running)
     int flap_us_[2] = {-1, -1};  // last written pulse widths
     bool pwm_enabled_ = false;
     std::thread arm_thread_;

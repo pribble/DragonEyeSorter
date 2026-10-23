@@ -30,6 +30,8 @@ struct Track {
     Disposition disp = Disposition::None;
     int dest = 0;
     int8_t gate = -2;       // picker cache: PickerConfig::gates index (-2 = unresolved, -1 = belt end)
+    bool flap_final = false;   // picker: a Flap part's gate is decided for good (committed, or no gate for it);
+                               // records / PART reports of Flap parts wait for it when gates are configured
     char why[40] = "";      // disposition reason (UI / log): set_why() copies at most 39 chars
     float s = 0, y = 0;     // fused belt coordinate / lateral position (mm)
     float axis = 0;         // fused long-side direction (rad)
