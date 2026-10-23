@@ -1,311 +1,266 @@
-
 `timescale 1ns / 1ns
+/*******************************MILIANKE*******************************
+*Company : MiLianKe Electronic Technology Co., Ltd.
+*WebSite : https://www.milianke.com      TechWeb : https://www.uisrc.com
+*Description : 摄像头帧写 DDR 主控：VS 帧同步 -> FIFO 缓冲 -> FDMA 分块写
+*Copyright : Copyright (c) MiLianKe, All rights reserved.  Revision 3.1
+*2026 PL refactor: 行为逐拍不变；删除未用 write_cnt / W_wren_ri / wirq 冗余信号与
+*  注释掉的旧参数，状态机/地址步进/中断语义原样保留。
+*  注：W_rbusy 为厂家原版未驱动 wire（W_REQ 因此含 x），为保持与 golden 逐位等价
+*  原样保留；TD 综合会按 0 处理（既有时序行为不变）。
+*********************************************************************/
 
 module uidbuf_write#(
-parameter  integer                   VIDEO_ENABLE   = 1,//使能视频帧支持功能 
+parameter  integer                   VIDEO_ENABLE   = 1,//使能视频帧支持功能
 parameter  integer                   ENABLE_WRITE   = 1,//使能写通道
-parameter  integer                   ENABLE_READ    = 1,//使能读通道
+parameter  integer                   ENABLE_READ    = 1,//使能读通道（厂家原版未使用）
 
 parameter  integer                   AXI_DATA_WIDTH = 128,//AXI总线数据位宽
 parameter  integer                   AXI_ADDR_WIDTH = 32, //AXI总线地址位宽
 
 parameter  integer                   W_BUFDEPTH     = 2048, //写通道AXI设置FIFO缓存大小
 parameter  integer                   W_DATAWIDTH    = 32,  //写通道AXI设置数据位宽大小
-//parameter  [AXI_ADDR_WIDTH -1'b1: 0] W_BASEADDR     = 0, //写通道设置内存起始地址
-parameter  integer                   W_DSIZEBITS    = 24, //写通道设置缓存数据的增量地址大小，用于FDMA DBUF 计算帧缓存起始地址
-parameter  integer                   W_XSIZE        = 1920, //写通道设置X方向的数据大小，代表了每次FDMA 传输的数据长度
-parameter  integer                   W_XSTRIDE      = 1920, //写通道设置X方向的Stride值，主要用于图形缓存应用
-parameter  integer                   W_YSIZE        = 1080, //写通道设置Y方向值，代表了进行了多少次XSIZE传输
-parameter  integer                   W_XDIV         = 2 //写通道对X方向数据拆分为XDIV次传输，减少FIFO的使用
-//parameter  integer                   W_BUFSIZE      = 3 //写通道设置帧缓存大小，目前最大支持128帧，可以修改参数支持更缓存数
-
+parameter  integer                   W_DSIZEBITS    = 24, //写通道缓存数据增量地址位宽
+parameter  integer                   W_XSIZE        = 1920, //X 方向数据大小（每次 FDMA 传输长度）
+parameter  integer                   W_XSTRIDE      = 1920, //X 方向 Stride（图形缓存应用）
+parameter  integer                   W_YSIZE        = 1080, //Y 方向值（XSIZE 传输次数）
+parameter  integer                   W_XDIV         = 2 //X 方向拆分为 XDIV 次传输以省 FIFO
 )
 (
-//input wire [15:0] W_DSIZEBITS,
-input wire [AXI_ADDR_WIDTH-1:0] W_BASEADDR,     
+input wire [AXI_ADDR_WIDTH-1:0] W_BASEADDR,
 input wire [15:0] W_BUFSIZE,
 input wire                                  I_ui_clk, //和FDMA AXI总线时钟一致
 input wire                                  I_ui_rstn, //和FDMA AXI复位一致
 //sensor input -W_FIFO--------------
-input wire                                  I_W_clk, //用户写数据接口时钟 
+input wire                                  I_W_clk, //用户写数据接口时钟
 input wire                                  I_W_FS, //用户写数据接口同步信号，对于非视频帧一般设置为1
 input wire                                  I_W_wren, //用户写数据使能
-input wire     [W_DATAWIDTH-1'b1 : 0]       I_W_data, //用户写数据
-output reg     [7   :0]                     O_W_sync_cnt =0, //写通道BUF帧同步输出
-input  wire    [7   :0]                     I_W_buf, // 写通道BUF帧同步输入
+input wire     [W_DATAWIDTH-1 : 0]          I_W_data, //用户写数据
+output reg     [7   :0]                     O_W_sync_cnt = 0, //写通道BUF帧同步输出
+input  wire    [7   :0]                     I_W_buf, //写通道BUF帧同步输入（厂家原版未使用）
 output wire                                 O_W_full,
 
-//----------fdma signals write-------       
-output wire    [AXI_ADDR_WIDTH-1'b1: 0]     O_fdma_waddr, //FDMA写通道地址
+//----------fdma signals write-------
+output wire    [AXI_ADDR_WIDTH-1 : 0]       O_fdma_waddr, //FDMA写通道地址
 output wire                                 O_fdma_wareq, //FDMA写通道请求
-output wire    [15  :0]                     O_fdma_wsize, //FDMA写通道一次FDMA的传输大小                                     
-input  wire                                 I_fdma_wbusy, //FDMA处于BUSY状态，AXI总线正在写操作   
-output wire    [AXI_DATA_WIDTH-1'b1:0]      O_fdma_wdata, //FDMA写数据
+output wire    [15  :0]                     O_fdma_wsize, //FDMA写通道一次FDMA的传输大小
+input  wire                                 I_fdma_wbusy, //FDMA处于BUSY状态，AXI总线正在写操作
+output wire    [AXI_DATA_WIDTH-1 :0]        O_fdma_wdata, //FDMA写数据
 input  wire                                 I_fdma_wvalid, //FDMA 写有效
 output wire                                 O_fdma_wready, //FDMA写准备好，用户可以写数据
-output reg     [7   :0]                     O_fmda_wbuf =0, //FDMA的写帧缓存号输出
-output wire                                 O_fdma_wirq, //FDMA一次写完成的数据传输完成后，产生中断。   
+output reg     [7   :0]                     O_fmda_wbuf = 0, //FDMA的写帧缓存号输出
+output wire                                 O_fdma_wirq, //FDMA一次写传输完成中断
 
-input  wire                                 camera_start,//synthesis keep
-output wire                                 camera_done,//synthesis keep
-input  wire                                 camera_clear_intr,//synthesis keep
-output reg                                  O_W_start_tgl = 0 // DragonEyeSorter: toggles when a frame write starts
+input  wire                                 camera_start,
+output wire                                 camera_done,
+input  wire                                 camera_clear_intr,
+output reg                                  O_W_start_tgl = 0 //每帧写开始翻转一次
+);
 
-);    
-
-// 计算Log2
+//计算Log2
 function integer clog2;
   input integer value;
-  begin 
+  begin
     for (clog2=0; value>0; clog2=clog2+1)
       value = value>>1;
-    end 
+    end
   endfunction
 
+//FDMA写状态机状态值
+localparam S_IDLE       = 3'd0;
+localparam S_RST        = 3'd1;
+localparam S_DATA1      = 3'd2;
+localparam S_DATA2      = 3'd3;
+localparam S_FRAME_DONE = 3'd4;
 
-//FDMA读写状态机的状态值，一般4个状态值即可 
-localparam S_IDLE  =  3'd0;  
-localparam S_RST   =  3'd1;  
-localparam S_DATA1 =  3'd2;   
-localparam S_DATA2 =  3'd3; 
-localparam S_FRAME_DONE =  3'd4; 
-
-// 通过设置通道使能，可以优化代码的利用率
+//通过通道使能可以裁掉未使用的写通道逻辑
 generate  if(ENABLE_WRITE == 1)begin : FDMA_WRITE_ENABLE
 
-localparam WFIFO_DEPTH = W_BUFDEPTH; //写通道FIFO深度
-localparam W_WR_DATA_COUNT_WIDTH = clog2(WFIFO_DEPTH); //计算FIFO的写通道位宽
-localparam W_RD_DATA_COUNT_WIDTH = clog2(WFIFO_DEPTH*W_DATAWIDTH/AXI_DATA_WIDTH);//clog2(WFIFO_DEPTH/(AXI_DATA_WIDTH/W_DATAWIDTH))+1;
+localparam WFIFO_DEPTH            = W_BUFDEPTH;                                        //写通道FIFO深度
+localparam W_WR_DATA_COUNT_WIDTH  = clog2(WFIFO_DEPTH);                                //FIFO写侧计数位宽
+localparam W_RD_DATA_COUNT_WIDTH  = clog2(WFIFO_DEPTH*W_DATAWIDTH/AXI_DATA_WIDTH);      //FIFO读侧计数位宽
 
-wire [15:0] WYBUF_SIZE           = (W_BUFSIZE - 1'b1); //写通道需要完成多少次XSIZE操作
-localparam WY_BURST_TIMES       = (W_YSIZE*W_XDIV); //写通道需要完成的FDMA burst 操作次数，XDIV用于把XSIZE分解多次传输
-localparam FDMA_WX_BURST        = (W_XSIZE*W_DATAWIDTH/AXI_DATA_WIDTH)/W_XDIV; //FDMA BURST 一次的大小
-localparam WX_BURST_ADDR_INC    = (W_XSIZE*(W_DATAWIDTH/8))/W_XDIV; //FDMA每次burst之后的地址增加
-localparam WX_LAST_ADDR_INC     = (W_XSTRIDE-W_XSIZE)*(W_DATAWIDTH/8) + WX_BURST_ADDR_INC; //根据stride值计算出来最后一次地址
-
-wire  W_wren_ri = I_W_wren; 
+wire [15:0] WYBUF_SIZE       = (W_BUFSIZE - 1'b1);                        //写通道帧缓存数量-1
+localparam WY_BURST_TIMES    = (W_YSIZE*W_XDIV);                          //一帧需要的 FDMA burst 次数
+localparam FDMA_WX_BURST     = (W_XSIZE*W_DATAWIDTH/AXI_DATA_WIDTH)/W_XDIV;//一次 FDMA burst 拍数
+localparam WX_BURST_ADDR_INC = (W_XSIZE*(W_DATAWIDTH/8))/W_XDIV;          //一次 burst 后地址增量
+localparam WX_LAST_ADDR_INC  = (W_XSTRIDE-W_XSIZE)*(W_DATAWIDTH/8) + WX_BURST_ADDR_INC; //行末地址增量
 
 assign                                  O_fdma_wready = 1'b1;
-reg                                     O_fdma_wareq_r= 1'b0;
-reg                                     W_FIFO_Rst=0; 
+reg                                     O_fdma_wareq_r = 1'b0;
+reg                                     W_FIFO_Rst = 0;
 wire                                    W_FS;
-reg [2 :0]                              W_MS=0; //synthesis keep
-reg [W_DSIZEBITS-1'b1:0]                W_addr=0; 
-reg [15:0]                              W_bcnt=0; //synthesis keep
-wire[W_RD_DATA_COUNT_WIDTH-1'b1 :0]     W_rcnt;//synthesis keep
-reg                                     W_REQ=0; 
-reg [5 :0]                              wirq_dly_cnt =0;
-reg [3 :0]                              wdiv_cnt =0;
-reg [7 :0]                              wrst_cnt =0;
+reg [2 :0]                              W_MS = 0;
+reg [W_DSIZEBITS-1 :0]                  W_addr = 0;
+reg [15:0]                              W_bcnt = 0;
+wire [W_RD_DATA_COUNT_WIDTH-1 :0]       W_rcnt;
+reg                                     W_REQ = 0;
+reg [5 :0]                              wirq_dly_cnt = 0;
+reg [3 :0]                              wdiv_cnt = 0;
+reg [7 :0]                              wrst_cnt = 0;
 reg [7 :0]                              O_fmda_wbufn;
-
-wire wirq= O_fdma_wirq;
+reg [2:0]                               W_MS_r = 0;
 
 assign O_fdma_wsize = FDMA_WX_BURST;
-assign O_fdma_wirq = (wirq_dly_cnt>0); 
+assign O_fdma_wirq  = (wirq_dly_cnt > 0);
+assign O_fdma_wareq = O_fdma_wareq_r;
+assign O_fdma_waddr = W_BASEADDR + W_addr; //缓存号由高位地址实现（FPGA 内做乘法代价高）
 
-assign O_fdma_waddr = W_BASEADDR + W_addr ; //W_BASEADDR + {O_fmda_wbufn,W_addr};//由于FPGA逻辑做乘法比较复杂，因此通过设置高位地址实现缓存设置
-
-reg [2:0] W_MS_r =0;
 always @(posedge I_ui_clk) W_MS_r <= W_MS;
 
-//每次FDMA DBUF 完成一帧数据传输后，产生中断，这个中断持续60个周期的uiclk,这里的延迟必须足够ZYNQ IP核识别到这个中断
+//每次 FDMA 一帧数据传输完成后产生中断，持续 60 个 ui_clk（足够 PS 侧识别）
 always @(posedge I_ui_clk) begin
     if(I_ui_rstn == 1'b0)begin
         wirq_dly_cnt <= 6'd0;
-        O_fmda_wbuf <=0;
+        O_fmda_wbuf  <= 0;
     end
     else if((W_MS_r == S_DATA2) && (W_MS == S_IDLE))begin
         wirq_dly_cnt <= 60;
-        O_fmda_wbuf <= O_fmda_wbufn;
+        O_fmda_wbuf  <= O_fmda_wbufn;
     end
-    else if(wirq_dly_cnt >0)
+    else if(wirq_dly_cnt > 0)
         wirq_dly_cnt <= wirq_dly_cnt - 1'b1;
 end
 
-//帧同步，对于视频有效
-fs_cap #
-(
-.VIDEO_ENABLE(VIDEO_ENABLE)
-)
-fs_cap_W0
-(
- .I_clk(I_ui_clk),
- .I_rstn(I_ui_rstn),
- .I_vs(I_W_FS),
- .O_fs_cap(W_FS)
-);
+//帧同步：VIDEO_ENABLE=1 时取 VS 边沿脉冲
+fs_cap #(.VIDEO_ENABLE(VIDEO_ENABLE)) fs_cap_W0 (
+    .I_clk(I_ui_clk), .I_rstn(I_ui_rstn), .I_vs(I_W_FS), .O_fs_cap(W_FS));
 
-assign O_fdma_wareq = O_fdma_wareq_r;
-reg [7:0] W0_Fbuf ;//synthesis keep
-reg camera_done_d1 ,camera_done_d2 ;//synthesis keep
+reg [7:0] W0_Fbuf;                    //当前可写帧缓存号
+reg camera_done_d1, camera_done_d2;
 
- always @(posedge I_ui_clk)
-   camera_done_d2 <= camera_done_d1 ;
- assign   camera_done = camera_done_d2 ; //camera_done_d1 & (~camera_done_d2) ;
-//写通道状态机，采用4个状态值描述
+always @(posedge I_ui_clk) camera_done_d2 <= camera_done_d1;
+assign camera_done = camera_done_d2;
 
-reg camera_work_enable  = 0;
+reg camera_work_enable = 0;
+always @(posedge I_ui_clk) begin
+    if(!I_ui_rstn)       camera_work_enable <= 1'b0;
+    else if(camera_start) camera_work_enable <= 1'b1;
+    else if(camera_done)  camera_work_enable <= 1'b0;
+end
 
- always @(posedge I_ui_clk) begin
-    if(!I_ui_rstn)begin 
-	 camera_work_enable <= 0 ;
-	end
-	else if(camera_start)
-     camera_work_enable <= 1 ;
-    else if(camera_done)
-     camera_work_enable <= 0 ;	
-	end
-
- always @(posedge I_ui_clk) begin
+//写通道状态机：帧同步 -> FIFO 复位 -> 逐 burst 发送 FDMA 请求 -> 帧完成
+always @(posedge I_ui_clk) begin
     if(!I_ui_rstn)begin
-        W_MS         <= S_IDLE;
-        W_FIFO_Rst   <= 0;
-        W_addr       <= 0;
-        O_W_sync_cnt <= 0;
-        W_bcnt       <= 0;
-        wrst_cnt     <= 0;
-        wdiv_cnt     <= 0;
+        W_MS            <= S_IDLE;
+        W_FIFO_Rst      <= 0;
+        W_addr          <= 0;
+        O_W_sync_cnt    <= 0;
+        W_bcnt          <= 0;
+        wrst_cnt        <= 0;
+        wdiv_cnt        <= 0;
         O_fmda_wbufn    <= 0;
-        O_fdma_wareq_r <= 1'd0;
-        camera_done_d1 <= 0 ;
-    end   
+        O_fdma_wareq_r  <= 1'd0;
+        camera_done_d1  <= 0;
+    end
     else begin
       case(W_MS)
         S_IDLE:begin
-          camera_done_d1 <= 0 ;
-		  if(camera_work_enable)
-		   begin
-
-			//camera_done_d1 <= 0 ;
-			W_addr <= 0;
-			W_bcnt <= 0;
-			wrst_cnt <= 0;
-			wdiv_cnt <=0;
-			if(W_FS) begin //帧同步，对于非视频数据一般常量为1
-				W_MS <= S_RST;
-				O_W_start_tgl <= ~O_W_start_tgl;
-				if(O_W_sync_cnt < WYBUF_SIZE) //输出帧同步计数器
-					O_W_sync_cnt <= O_W_sync_cnt + 1'b1; 
-				else 
-					O_W_sync_cnt <= 0;  
-		   end	 
-		  else
-     		W_MS <= S_IDLE ;  
+          camera_done_d1 <= 0;
+          if(camera_work_enable)begin
+            W_addr   <= 0;
+            W_bcnt   <= 0;
+            wrst_cnt <= 0;
+            wdiv_cnt <= 0;
+            if(W_FS)begin //帧同步，对于非视频数据一般常量为1
+                W_MS          <= S_RST;
+                O_W_start_tgl <= ~O_W_start_tgl;
+                if(O_W_sync_cnt < WYBUF_SIZE) O_W_sync_cnt <= O_W_sync_cnt + 1'b1;
+                else                          O_W_sync_cnt <= 0;
+            end
           end
-       end
-       S_RST:begin//帧同步，对于非视频数据直接跳过,对于视频数据，会同步每一帧，并且复位数据FIFO
-           O_fmda_wbufn <= W0_Fbuf ; //I_W_buf;
+        end
+        S_RST:begin //视频模式复位数据FIFO；非视频模式直接跳过
+           O_fmda_wbufn <= W0_Fbuf;
            wrst_cnt <= wrst_cnt + 1'b1;
            if((VIDEO_ENABLE == 1) && (wrst_cnt < 40))
                 W_FIFO_Rst <= 1;
            else if((VIDEO_ENABLE == 1) && (wrst_cnt < 100))
                 W_FIFO_Rst <= 0;
-           else if(O_fdma_wirq == 1'b0) begin
+           else if(O_fdma_wirq == 1'b0)begin
                 W_MS <= S_DATA1;
            end
-       end
+        end
         S_DATA1:begin //发送写FDMA请求
-          if(I_fdma_wbusy == 1'b0 && W_REQ )begin
-             O_fdma_wareq_r  <= 1'b1; 
-          end 
-          else if(I_fdma_wbusy == 1'b1) begin
-             O_fdma_wareq_r  <= 1'b0;
-             W_MS    <= S_DATA2;
-          end          
-         end
-        S_DATA2:begin //写有效数据
+          if(I_fdma_wbusy == 1'b0 && W_REQ)begin
+             O_fdma_wareq_r <= 1'b1;
+          end
+          else if(I_fdma_wbusy == 1'b1)begin
+             O_fdma_wareq_r <= 1'b0;
+             W_MS <= S_DATA2;
+          end
+        end
+        S_DATA2:begin //等待FDMA完成后推进地址与计数
             if(I_fdma_wbusy == 1'b0)begin
-                if(W_bcnt == WY_BURST_TIMES - 1'b1) //判断是否传输完毕
-                    W_MS <= S_FRAME_DONE ; //S_IDLE;
+                if(W_bcnt == WY_BURST_TIMES - 1'b1) //一帧传输完毕
+                    W_MS <= S_FRAME_DONE;
                 else begin
-                    if(wdiv_cnt < W_XDIV - 1'b1)begin//如果对XSIZE做了分次传输，一个XSIZE也需要XDIV次FDMA完成传输
-                        W_addr <= W_addr +  WX_BURST_ADDR_INC;  //计算地址增量
+                    if(wdiv_cnt < W_XDIV - 1'b1)begin //XDIV 分次传输时先走 burst 增量
+                        W_addr   <= W_addr + WX_BURST_ADDR_INC;
                         wdiv_cnt <= wdiv_cnt + 1'b1;
-                     end
-                    else begin
-                        W_addr <= W_addr + WX_LAST_ADDR_INC; //计算最后一次地址增量，最后一次地址根据stride 计算
+                    end
+                    else begin //最后一次按 stride 计算行末地址增量
+                        W_addr   <= W_addr + WX_LAST_ADDR_INC;
                         wdiv_cnt <= 0;
                     end
                     W_bcnt <= W_bcnt + 1'b1;
-                    W_MS    <= S_DATA1;
-                end 
+                    W_MS   <= S_DATA1;
+                end
             end
-         end
-        S_FRAME_DONE:begin //写有效数据
-            camera_done_d1 <= 1 ;
+        end
+        S_FRAME_DONE:begin //帧完成，等 PS 清中断后切下一帧缓存
+            camera_done_d1 <= 1;
             if(camera_clear_intr) begin
-          		W_MS<=S_IDLE; 
-                if(W0_Fbuf < WYBUF_SIZE) //输出帧同步计数器
-                  W0_Fbuf <= W0_Fbuf + 1'b1; 
-                else 
-                  W0_Fbuf <= 0;  
+                W_MS <= S_IDLE;
+                if(W0_Fbuf < WYBUF_SIZE) W0_Fbuf <= W0_Fbuf + 1'b1;
+                else                     W0_Fbuf <= 0;
             end
-         end 
-         default: W_MS <= S_IDLE; 
-       endcase
+        end
+        default: W_MS <= S_IDLE;
+      endcase
     end
- end 
- 
- 
- 
+end
 
-//写通道的数据FIFO，采用了原语调用xpm_fifo_async fifo，当FIFO存储的数据阈值达到一定量，一般满足一次FDMA的burst即可发出请求
+//W_rbusy 为厂家原版未驱动 wire：保持悬空以维持 golden 的 x 语义（见文件头注）
 wire W_rbusy;
-always@(posedge I_ui_clk)     
-     W_REQ  <= (W_rcnt > FDMA_WX_BURST - 2)&&(~W_rbusy); 
-     
-reg [31:0] write_cnt ;//synthesis keep;
+always@(posedge I_ui_clk)
+     W_REQ <= (W_rcnt > FDMA_WX_BURST - 2) && (~W_rbusy);
 
-always@(posedge I_W_clk)
- if(W_FIFO_Rst)
-  write_cnt <= 0 ;
- else if(I_W_wren)
-  write_cnt <= write_cnt + 1 ;
-
-wfifo #( 
-.DATA_WIDTH_W(W_DATAWIDTH), 
-.DATA_WIDTH_R(AXI_DATA_WIDTH), 
-.ADDR_WIDTH_W(W_WR_DATA_COUNT_WIDTH), 
-.ADDR_WIDTH_R(W_RD_DATA_COUNT_WIDTH), 
-.AL_FULL_NUM(WFIFO_DEPTH-2), 
-.AL_EMPTY_NUM(2), 
-.SHOW_AHEAD_EN(1'b0) , 
+//写通道数据FIFO：写满一次 FDMA burst 的数据量后即可发请求
+wfifo #(
+.DATA_WIDTH_W(W_DATAWIDTH),
+.DATA_WIDTH_R(AXI_DATA_WIDTH),
+.ADDR_WIDTH_W(W_WR_DATA_COUNT_WIDTH),
+.ADDR_WIDTH_R(W_RD_DATA_COUNT_WIDTH),
+.AL_FULL_NUM(WFIFO_DEPTH-2),
+.AL_EMPTY_NUM(2),
+.SHOW_AHEAD_EN(1'b0),
 .OUTREG_EN ("NOREG")
-) 
+)
 u_wfifo(
 .rst((I_ui_rstn == 1'b0) || (W_FIFO_Rst == 1'b1)), //asynchronous port,active hight
 .clkw(I_W_clk),  //write clock
-.clkr(I_ui_clk),  //read clock
-.we(I_W_wren),  //write enable,active hight
-.di(I_W_data),  //write data
-.re(I_fdma_wvalid),  //read enable,active hight
-.dout(O_fdma_wdata),  //read data
-//.valid(),  //read data valid flag
-.full_flag(O_W_full),  //fifo full flag
-//.empty_flag(),  //fifo empty flag
-//.afull(),  //fifo almost full flag
-//.aempty(),  //fifo almost empty flag
-//.wrusedw(W_rcnt),  //stored data number in fifo
-.rdusedw(W_rcnt) //available data number for read      
-) ;
+.clkr(I_ui_clk), //read clock
+.we(I_W_wren),   //write enable,active hight
+.di(I_W_data),   //write data
+.re(I_fdma_wvalid), //read enable,active hight
+.dout(O_fdma_wdata),//read data
+.full_flag(O_W_full),//fifo full flag
+.rdusedw(W_rcnt) //available data number for read
+);
 
 end
 else begin : FDMA_WRITE_DISABLE
 
-//----------fdma signals write-------       
-assign O_fdma_waddr = 0;
-assign O_fdma_wareq = 0;
-assign O_fdma_wsize = 0;                                    
-assign O_fdma_wdata = 0;
+assign O_fdma_waddr  = 0;
+assign O_fdma_wareq  = 0;
+assign O_fdma_wsize  = 0;
+assign O_fdma_wdata  = 0;
 assign O_fdma_wready = 0;
-assign O_fdma_wirq = 0; 
-assign O_W_full = 0;
+assign O_fdma_wirq   = 0;
+assign O_W_full      = 0;
 
 end
 endgenerate
 
-
 endmodule
-
-

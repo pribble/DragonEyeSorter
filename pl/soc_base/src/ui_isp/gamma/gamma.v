@@ -1,16 +1,12 @@
 /*****************************************************************
-Company : Nanjing Weiku Robot Technology Co., Ltd.
-Brand   : VLKUS
-Technical forum:www.uisrc.com
-@Author      :   XiaoQingquan 
-@Time        :   2024/08/23 
-@Description :   ISP  gamma(伽马矫正)
+ 出处：南京维酷机器人科技（VLKUS）ui_isp/gamma/gamma.v（GB18030 原版 639 行）。
+ 2026-10 厂家 RTL 重构（用户批准的单配置特化）：本工程只用 GAMMA_10x=22（2.2 曲线，
+ isp_top 写死），故删除 0.8/1.2/1.4/1.6/1.8/2.0/2.4/2.6 八套 LUT 与 10 选 1 多路选择，
+ 只保留 4 像素 × RGB = 12 个 lut_2_2 实例。端口行为与原版逐拍一致。
 *****************************************************************/
-module gamma #(
-    parameter [4:0] GAMMA_10x = 22
-) (
-    input wire I_clk,
-    input wire I_rst_n,
+module gamma (
+    input  wire        I_clk,
+    input  wire        I_rst_n,
 
     input  wire        I_tlast,
     input  wire        I_tuser,
@@ -26,613 +22,135 @@ module gamma #(
 );
 
   /*****************************************************************
-                        24deta to RGB888                                        
-*****************************************************************/
+    24bit × 4 像素 → RGB888（每像素 24bit = {R[7:0], G[7:0], B[7:0]}）
+  *****************************************************************/
+  wire [7:0] rgb_r [3:0];
+  wire [7:0] rgb_g [3:0];
+  wire [7:0] rgb_b [3:0];
 
-  wire [23:0] I_tdata_r1 = I_tdata[23:0];
-  wire [23:0] I_tdata_r2 = I_tdata[47:24];
-  wire [23:0] I_tdata_r3 = I_tdata[71:48];
-  wire [23:0] I_tdata_r4 = I_tdata[95:72];
+  wire [11:0] lut_r [3:0];
+  wire [11:0] lut_g [3:0];
+  wire [11:0] lut_b [3:0];
 
-  wire [7:0] rgb888_r[3:0];
-  wire [7:0] rgb888_g[3:0];
-  wire [7:0] rgb888_b[3:0];
+  reg  [11:0] acc_r [3:0];
+  reg  [11:0] acc_g [3:0];
+  reg  [11:0] acc_b [3:0];
 
-  assign rgb888_r[0] = I_tdata_r1[16+:8];
-  assign rgb888_g[0] = I_tdata_r1[8+:8];
-  assign rgb888_b[0] = I_tdata_r1[0+:8];
+  reg  [20:0] x0_r [3:0];
+  reg  [20:0] x0_g [3:0];
+  reg  [20:0] x0_b [3:0];
 
-  assign rgb888_r[1] = I_tdata_r2[16+:8];
-  assign rgb888_g[1] = I_tdata_r2[8+:8];
-  assign rgb888_b[1] = I_tdata_r2[0+:8];
+  reg  [20:0] x1_r [3:0];
+  reg  [20:0] x1_g [3:0];
+  reg  [20:0] x1_b [3:0];
 
-  assign rgb888_r[2] = I_tdata_r3[16+:8];
-  assign rgb888_g[2] = I_tdata_r3[8+:8];
-  assign rgb888_b[2] = I_tdata_r3[0+:8];
+  reg  [7:0]  x2_r [3:0];
+  reg  [7:0]  x2_g [3:0];
+  reg  [7:0]  x2_b [3:0];
 
-  assign rgb888_r[3] = I_tdata_r4[16+:8];
-  assign rgb888_g[3] = I_tdata_r4[8+:8];
-  assign rgb888_b[3] = I_tdata_r4[0+:8];
+  reg  [3:0]  I_tlast_r;
+  reg  [3:0]  I_tuser_r;
+  reg  [3:0]  I_tvalid_r;
 
-  /*****************************************************************
-                    wire signals declaration                                       
-*****************************************************************/
-
-  wire [11:0] O_LUT_2_6_data_r[3:0];
-  wire [11:0] O_LUT_2_6_data_g[3:0];
-  wire [11:0] O_LUT_2_6_data_b[3:0];
-
-
-  wire [11:0] O_LUT_2_4_data_r[3:0];
-  wire [11:0] O_LUT_2_4_data_g[3:0];
-  wire [11:0] O_LUT_2_4_data_b[3:0];
-
-
-  wire [11:0] O_LUT_2_2_data_r[3:0];
-  wire [11:0] O_LUT_2_2_data_g[3:0];
-  wire [11:0] O_LUT_2_2_data_b[3:0];
-
-
-  wire [11:0] O_LUT_2_0_data_r[3:0];
-  wire [11:0] O_LUT_2_0_data_g[3:0];
-  wire [11:0] O_LUT_2_0_data_b[3:0];
-
-
-  wire [11:0] O_LUT_1_8_data_r[3:0];
-  wire [11:0] O_LUT_1_8_data_g[3:0];
-  wire [11:0] O_LUT_1_8_data_b[3:0];
-
-
-  wire [11:0] O_LUT_1_6_data_r[3:0];
-  wire [11:0] O_LUT_1_6_data_g[3:0];
-  wire [11:0] O_LUT_1_6_data_b[3:0];
-
-
-  wire [11:0] O_LUT_1_4_data_r[3:0];
-  wire [11:0] O_LUT_1_4_data_g[3:0];
-  wire [11:0] O_LUT_1_4_data_b[3:0];
-
-
-  wire [11:0] O_LUT_1_2_data_r[3:0];
-  wire [11:0] O_LUT_1_2_data_g[3:0];
-  wire [11:0] O_LUT_1_2_data_b[3:0];
-
-
-  wire [11:0] O_LUT_0_8_data_r[3:0];
-  wire [11:0] O_LUT_0_8_data_g[3:0];
-  wire [11:0] O_LUT_0_8_data_b[3:0];
-
-
-  wire [7:0] R_new[3:0];
-  wire [7:0] G_new[3:0];
-  wire [7:0] B_new[3:0];
-
-
-
-  /*****************************************************************
-                    reg signals declaration                                       
-*****************************************************************/
-
-  reg [11:0] acc_rgb888_r[3:0];
-  reg [11:0] acc_rgb888_g[3:0];
-  reg [11:0] acc_rgb888_b[3:0];
-
-
-  reg [3:0] I_tlast_r;
-  reg [3:0] I_tuser_r;
-  reg [3:0] I_tvalid_r;
-
-
-  reg [20:0] acc_rgb888_r_x0[3:0];
-  reg [20:0] acc_rgb888_g_x0[3:0];
-  reg [20:0] acc_rgb888_b_x0[3:0];
-
-
-  reg [20:0] acc_rgb888_r_x1[3:0];
-  reg [20:0] acc_rgb888_g_x1[3:0];
-  reg [20:0] acc_rgb888_b_x1[3:0];
-
-
-  reg [7:0] acc_rgb888_r_x2[3:0];
-  reg [7:0] acc_rgb888_g_x2[3:0];
-  reg [7:0] acc_rgb888_b_x2[3:0];
-
-
-  /*****************************************************************
-                       Gamma SIZE                                       
-*****************************************************************/
   genvar i;
   generate
-    for (i = 0; i < 4; i = i + 1) begin : LUT
-      lut_2_6 lut_2_6_R (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_2_6_data(rgb888_r[i]),
-          /*output [11:0]     */.O_LUT_2_6_data(O_LUT_2_6_data_r[i])
+    for (i = 0; i < 4; i = i + 1) begin : g_pixel
+      assign rgb_r[i] = I_tdata[24*i + 16 +: 8];
+      assign rgb_g[i] = I_tdata[24*i +  8 +: 8];
+      assign rgb_b[i] = I_tdata[24*i      +: 8];
+
+      lut_2_2 u_lut_r (
+          /*input  [7:0] */ .I_LUT_2_2_data(rgb_r[i]),
+          /*output [11:0]*/ .O_LUT_2_2_data(lut_r[i])
       );
-
-      lut_2_6 lut_2_6_G (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_2_6_data(rgb888_g[i]),
-          /*output [11:0]     */.O_LUT_2_6_data(O_LUT_2_6_data_g[i])
+      lut_2_2 u_lut_g (
+          /*input  [7:0] */ .I_LUT_2_2_data(rgb_g[i]),
+          /*output [11:0]*/ .O_LUT_2_2_data(lut_g[i])
       );
-      lut_2_6 lut_2_6_B (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_2_6_data(rgb888_b[i]),
-          /*output [11:0]     */.O_LUT_2_6_data(O_LUT_2_6_data_b[i])
+      lut_2_2 u_lut_b (
+          /*input  [7:0] */ .I_LUT_2_2_data(rgb_b[i]),
+          /*output [11:0]*/ .O_LUT_2_2_data(lut_b[i])
       );
-
-
-      lut_2_4 lut_2_4_R (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_2_4_data(rgb888_r[i]),
-          /*output [11:0]     */.O_LUT_2_4_data(O_LUT_2_4_data_r[i])
-      );
-
-      lut_2_4 lut_2_4_G (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_2_4_data(rgb888_g[i]),
-          /*output [11:0]     */.O_LUT_2_4_data(O_LUT_2_4_data_g[i])
-      );
-      lut_2_4 lut_2_4_B (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_2_4_data(rgb888_b[i]),
-          /*output [11:0]     */.O_LUT_2_4_data(O_LUT_2_4_data_b[i])
-      );
-
-
-
-      lut_2_2 lut_2_2_R (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_2_2_data(rgb888_r[i]),
-          /*output [11:0]     */.O_LUT_2_2_data(O_LUT_2_2_data_r[i])
-      );
-
-      lut_2_2 lut_2_2_G (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_2_2_data(rgb888_g[i]),
-          /*output [11:0]     */.O_LUT_2_2_data(O_LUT_2_2_data_g[i])
-      );
-      lut_2_2 lut_2_2_B (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_2_2_data(rgb888_b[i]),
-          /*output [11:0]     */.O_LUT_2_2_data(O_LUT_2_2_data_b[i])
-      );
-
-
-
-      lut_2_0 lut_2_0_R (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_2_0_data(rgb888_r[i]),
-          /*output [11:0]     */.O_LUT_2_0_data(O_LUT_2_0_data_r[i])
-      );
-
-      lut_2_0 lut_2_0_G (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_2_0_data(rgb888_g[i]),
-          /*output [11:0]     */.O_LUT_2_0_data(O_LUT_2_0_data_g[i])
-      );
-
-      lut_2_0 lut_2_0_B (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_2_0_data(rgb888_b[i]),
-          /*output [11:0]     */.O_LUT_2_0_data(O_LUT_2_0_data_b[i])
-      );
-
-
-
-
-      lut_1_8 lut_1_8_R (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_1_8_data(rgb888_r[i]),
-          /*output [11:0]     */.O_LUT_1_8_data(O_LUT_1_8_data_r[i])
-      );
-      lut_1_8 lut_1_8_G (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_1_8_data(rgb888_g[i]),
-          /*output [11:0]     */.O_LUT_1_8_data(O_LUT_1_8_data_g[i])
-      );
-
-      lut_1_8 lut_1_8_B (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_1_8_data(rgb888_b[i]),
-          /*output [11:0]     */.O_LUT_1_8_data(O_LUT_1_8_data_b[i])
-      );
-
-
-
-
-      lut_1_6 lut_1_6_R (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_1_6_data(rgb888_r[i]),
-          /*output [11:0]     */.O_LUT_1_6_data(O_LUT_1_6_data_r[i])
-      );
-
-      lut_1_6 lut_1_6_G (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_1_6_data(rgb888_g[i]),
-          /*output [11:0]     */.O_LUT_1_6_data(O_LUT_1_6_data_g[i])
-      );
-
-      lut_1_6 lut_1_6_B (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_1_6_data(rgb888_b[i]),
-          /*output [11:0]     */.O_LUT_1_6_data(O_LUT_1_6_data_b[i])
-      );
-
-
-
-
-      lut_1_4 lut_1_4_R (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_1_4_data(rgb888_r[i]),
-          /*output [11:0]     */.O_LUT_1_4_data(O_LUT_1_4_data_r[i])
-      );
-
-      lut_1_4 lut_1_4_G (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_1_4_data(rgb888_g[i]),
-          /*output [11:0]     */.O_LUT_1_4_data(O_LUT_1_4_data_g[i])
-      );
-
-      lut_1_4 lut_1_4_B (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_1_4_data(rgb888_b[i]),
-          /*output [11:0]     */.O_LUT_1_4_data(O_LUT_1_4_data_b[i])
-      );
-
-
-
-
-      lut_1_2 lut_1_2_R (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_1_2_data(rgb888_r[i]),
-          /*output [11:0]     */.O_LUT_1_2_data(O_LUT_1_2_data_r[i])
-      );
-
-      lut_1_2 lut_1_2_G (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_1_2_data(rgb888_g[i]),
-          /*output [11:0]     */.O_LUT_1_2_data(O_LUT_1_2_data_g[i])
-      );
-
-      lut_1_2 lut_1_2_B (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_1_2_data(rgb888_b[i]),
-          /*output [11:0]     */.O_LUT_1_2_data(O_LUT_1_2_data_b[i])
-      );
-
-
-
-
-      lut_0_8 lut_0_8_R (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_0_8_data(rgb888_r[i]),
-          /*output [11:0]     */.O_LUT_0_8_data(O_LUT_0_8_data_r[i])
-      );
-
-      lut_0_8 lut_0_8_G (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_0_8_data(rgb888_g[i]),
-          /*output [11:0]     */.O_LUT_0_8_data(O_LUT_0_8_data_g[i])
-      );
-
-      lut_0_8 lut_0_8_B (
-          /*input             */.I_clk         (I_clk),
-          /*input             */.I_rst_n       (I_rst_n),
-          /*input  [7:0]     */ .I_LUT_0_8_data(rgb888_b[i]),
-          /*output [11:0]     */.O_LUT_0_8_data(O_LUT_0_8_data_b[i])
-      );
-
     end
   endgenerate
-  /*****************************************************************
-                       select gamma                                      
-*****************************************************************/
-
-  always @(posedge I_clk or negedge I_rst_n) begin
-    if (!I_rst_n) begin
-      acc_rgb888_r[0] <= 12'd0;
-      acc_rgb888_g[0] <= 12'd0;
-      acc_rgb888_b[0] <= 12'd0;
-      acc_rgb888_r[1] <= 12'd0;
-      acc_rgb888_g[1] <= 12'd0;
-      acc_rgb888_b[1] <= 12'd0;
-      acc_rgb888_r[2] <= 12'd0;
-      acc_rgb888_g[2] <= 12'd0;
-      acc_rgb888_b[2] <= 12'd0;
-      acc_rgb888_r[3] <= 12'd0;
-      acc_rgb888_g[3] <= 12'd0;
-      acc_rgb888_b[3] <= 12'd0;
-    end else begin
-      case (GAMMA_10x)
-        5'd26: begin
-          acc_rgb888_r[0] <= O_LUT_2_6_data_r[0];
-          acc_rgb888_g[0] <= O_LUT_2_6_data_g[0];
-          acc_rgb888_b[0] <= O_LUT_2_6_data_b[0];
-          acc_rgb888_r[1] <= O_LUT_2_6_data_r[1];
-          acc_rgb888_g[1] <= O_LUT_2_6_data_g[1];
-          acc_rgb888_b[1] <= O_LUT_2_6_data_b[1];
-          acc_rgb888_r[2] <= O_LUT_2_6_data_r[2];
-          acc_rgb888_g[2] <= O_LUT_2_6_data_g[2];
-          acc_rgb888_b[2] <= O_LUT_2_6_data_b[2];
-          acc_rgb888_r[3] <= O_LUT_2_6_data_r[3];
-          acc_rgb888_g[3] <= O_LUT_2_6_data_g[3];
-          acc_rgb888_b[3] <= O_LUT_2_6_data_b[3];
-        end
-        5'd24: begin
-          acc_rgb888_r[0] <= O_LUT_2_4_data_r[0];
-          acc_rgb888_g[0] <= O_LUT_2_4_data_g[0];
-          acc_rgb888_b[0] <= O_LUT_2_4_data_b[0];
-          acc_rgb888_r[1] <= O_LUT_2_4_data_r[1];
-          acc_rgb888_g[1] <= O_LUT_2_4_data_g[1];
-          acc_rgb888_b[1] <= O_LUT_2_4_data_b[1];
-          acc_rgb888_r[2] <= O_LUT_2_4_data_r[2];
-          acc_rgb888_g[2] <= O_LUT_2_4_data_g[2];
-          acc_rgb888_b[2] <= O_LUT_2_4_data_b[2];
-          acc_rgb888_r[3] <= O_LUT_2_4_data_r[3];
-          acc_rgb888_g[3] <= O_LUT_2_4_data_g[3];
-          acc_rgb888_b[3] <= O_LUT_2_4_data_b[3];
-        end
-        5'd22: begin
-          acc_rgb888_r[0] <= O_LUT_2_2_data_r[0];
-          acc_rgb888_g[0] <= O_LUT_2_2_data_g[0];
-          acc_rgb888_b[0] <= O_LUT_2_2_data_b[0];
-          acc_rgb888_r[1] <= O_LUT_2_2_data_r[1];
-          acc_rgb888_g[1] <= O_LUT_2_2_data_g[1];
-          acc_rgb888_b[1] <= O_LUT_2_2_data_b[1];
-          acc_rgb888_r[2] <= O_LUT_2_2_data_r[2];
-          acc_rgb888_g[2] <= O_LUT_2_2_data_g[2];
-          acc_rgb888_b[2] <= O_LUT_2_2_data_b[2];
-          acc_rgb888_r[3] <= O_LUT_2_2_data_r[3];
-          acc_rgb888_g[3] <= O_LUT_2_2_data_g[3];
-          acc_rgb888_b[3] <= O_LUT_2_2_data_b[3];
-        end
-        5'd20: begin
-          acc_rgb888_r[0] <= O_LUT_2_0_data_r[0];
-          acc_rgb888_g[0] <= O_LUT_2_0_data_g[0];
-          acc_rgb888_b[0] <= O_LUT_2_0_data_b[0];
-          acc_rgb888_r[1] <= O_LUT_2_0_data_r[1];
-          acc_rgb888_g[1] <= O_LUT_2_0_data_g[1];
-          acc_rgb888_b[1] <= O_LUT_2_0_data_b[1];
-          acc_rgb888_r[2] <= O_LUT_2_0_data_r[2];
-          acc_rgb888_g[2] <= O_LUT_2_0_data_g[2];
-          acc_rgb888_b[2] <= O_LUT_2_0_data_b[2];
-          acc_rgb888_r[3] <= O_LUT_2_0_data_r[3];
-          acc_rgb888_g[3] <= O_LUT_2_0_data_g[3];
-          acc_rgb888_b[3] <= O_LUT_2_0_data_b[3];
-        end
-        5'd18: begin
-          acc_rgb888_r[0] <= O_LUT_1_8_data_r[0];
-          acc_rgb888_g[0] <= O_LUT_1_8_data_g[0];
-          acc_rgb888_b[0] <= O_LUT_1_8_data_b[0];
-          acc_rgb888_r[1] <= O_LUT_1_8_data_r[1];
-          acc_rgb888_g[1] <= O_LUT_1_8_data_g[1];
-          acc_rgb888_b[1] <= O_LUT_1_8_data_b[1];
-          acc_rgb888_r[2] <= O_LUT_1_8_data_r[2];
-          acc_rgb888_g[2] <= O_LUT_1_8_data_g[2];
-          acc_rgb888_b[2] <= O_LUT_1_8_data_b[2];
-          acc_rgb888_r[3] <= O_LUT_1_8_data_r[3];
-          acc_rgb888_g[3] <= O_LUT_1_8_data_g[3];
-          acc_rgb888_b[3] <= O_LUT_1_8_data_b[3];
-        end
-        5'd16: begin
-          acc_rgb888_r[0] <= O_LUT_1_6_data_r[0];
-          acc_rgb888_g[0] <= O_LUT_1_6_data_g[0];
-          acc_rgb888_b[0] <= O_LUT_1_6_data_b[0];
-          acc_rgb888_r[1] <= O_LUT_1_6_data_r[1];
-          acc_rgb888_g[1] <= O_LUT_1_6_data_g[1];
-          acc_rgb888_b[1] <= O_LUT_1_6_data_b[1];
-          acc_rgb888_r[2] <= O_LUT_1_6_data_r[2];
-          acc_rgb888_g[2] <= O_LUT_1_6_data_g[2];
-          acc_rgb888_b[2] <= O_LUT_1_6_data_b[2];
-          acc_rgb888_r[3] <= O_LUT_1_6_data_r[3];
-          acc_rgb888_g[3] <= O_LUT_1_6_data_g[3];
-          acc_rgb888_b[3] <= O_LUT_1_6_data_b[3];
-        end
-        5'd14: begin
-          acc_rgb888_r[0] <= O_LUT_1_4_data_r[0];
-          acc_rgb888_g[0] <= O_LUT_1_4_data_g[0];
-          acc_rgb888_b[0] <= O_LUT_1_4_data_b[0];
-          acc_rgb888_r[1] <= O_LUT_1_4_data_r[1];
-          acc_rgb888_g[1] <= O_LUT_1_4_data_g[1];
-          acc_rgb888_b[1] <= O_LUT_1_4_data_b[1];
-          acc_rgb888_r[2] <= O_LUT_1_4_data_r[2];
-          acc_rgb888_g[2] <= O_LUT_1_4_data_g[2];
-          acc_rgb888_b[2] <= O_LUT_1_4_data_b[2];
-          acc_rgb888_r[3] <= O_LUT_1_4_data_r[3];
-          acc_rgb888_g[3] <= O_LUT_1_4_data_g[3];
-          acc_rgb888_b[3] <= O_LUT_1_4_data_b[3];
-
-        end
-        5'd12: begin
-          acc_rgb888_r[0] <= O_LUT_1_2_data_r[0];
-          acc_rgb888_g[0] <= O_LUT_1_2_data_g[0];
-          acc_rgb888_b[0] <= O_LUT_1_2_data_b[0];
-          acc_rgb888_r[1] <= O_LUT_1_2_data_r[1];
-          acc_rgb888_g[1] <= O_LUT_1_2_data_g[1];
-          acc_rgb888_b[1] <= O_LUT_1_2_data_b[1];
-          acc_rgb888_r[2] <= O_LUT_1_2_data_r[2];
-          acc_rgb888_g[2] <= O_LUT_1_2_data_g[2];
-          acc_rgb888_b[2] <= O_LUT_1_2_data_b[2];
-          acc_rgb888_r[3] <= O_LUT_1_2_data_r[3];
-          acc_rgb888_g[3] <= O_LUT_1_2_data_g[3];
-          acc_rgb888_b[3] <= O_LUT_1_2_data_b[3];
-        end
-        5'd8: begin
-          acc_rgb888_r[0] <= O_LUT_0_8_data_r[0];
-          acc_rgb888_g[0] <= O_LUT_0_8_data_g[0];
-          acc_rgb888_b[0] <= O_LUT_0_8_data_b[0];
-          acc_rgb888_r[1] <= O_LUT_0_8_data_r[1];
-          acc_rgb888_g[1] <= O_LUT_0_8_data_g[1];
-          acc_rgb888_b[1] <= O_LUT_0_8_data_b[1];
-          acc_rgb888_r[2] <= O_LUT_0_8_data_r[2];
-          acc_rgb888_g[2] <= O_LUT_0_8_data_g[2];
-          acc_rgb888_b[2] <= O_LUT_0_8_data_b[2];
-          acc_rgb888_r[3] <= O_LUT_0_8_data_r[3];
-          acc_rgb888_g[3] <= O_LUT_0_8_data_g[3];
-          acc_rgb888_b[3] <= O_LUT_0_8_data_b[3];
-        end
-        default: begin
-          acc_rgb888_r[0] <= O_LUT_2_2_data_r[0];
-          acc_rgb888_g[0] <= O_LUT_2_2_data_g[0];
-          acc_rgb888_b[0] <= O_LUT_2_2_data_b[0];
-          acc_rgb888_r[1] <= O_LUT_2_2_data_r[1];
-          acc_rgb888_g[1] <= O_LUT_2_2_data_g[1];
-          acc_rgb888_b[1] <= O_LUT_2_2_data_b[1];
-          acc_rgb888_r[2] <= O_LUT_2_2_data_r[2];
-          acc_rgb888_g[2] <= O_LUT_2_2_data_g[2];
-          acc_rgb888_b[2] <= O_LUT_2_2_data_b[2];
-          acc_rgb888_r[3] <= O_LUT_2_2_data_r[3];
-          acc_rgb888_g[3] <= O_LUT_2_2_data_g[3];
-          acc_rgb888_b[3] <= O_LUT_2_2_data_b[3];
-        end
-      endcase
-    end
-  end
 
   /*****************************************************************
-                       Anti normalization                                      
-*****************************************************************/
-
-  genvar t;
+    gamma 查表结果打一拍（原版 acc_rgb888_* 级）
+  *****************************************************************/
+  genvar p;
   generate
-    for (t = 0; t < 4; t = t + 1) begin : Anti_normalization
+    for (p = 0; p < 4; p = p + 1) begin : g_pipe
       always @(posedge I_clk or negedge I_rst_n) begin
         if (!I_rst_n) begin
-          acc_rgb888_r_x0[t] <= 0;
-          acc_rgb888_g_x0[t] <= 0;
-          acc_rgb888_b_x0[t] <= 0;
+          acc_r[p] <= 12'd0;
+          acc_g[p] <= 12'd0;
+          acc_b[p] <= 12'd0;
+        end else begin
+          acc_r[p] <= lut_r[p];
+          acc_g[p] <= lut_g[p];
+          acc_b[p] <= lut_b[p];
+        end
+      end
+
+      // 反归一化 <<8，再减偏置 -2048；两级各打一拍（与原版 x0/x1 级一致）
+      always @(posedge I_clk or negedge I_rst_n) begin
+        if (!I_rst_n) begin
+          x0_r[p] <= 21'd0;
+          x0_g[p] <= 21'd0;
+          x0_b[p] <= 21'd0;
         end else if (I_tvalid_r[0]) begin
-          acc_rgb888_r_x0[t] <= acc_rgb888_r[t] << 8;
-          acc_rgb888_g_x0[t] <= acc_rgb888_g[t] << 8;
-          acc_rgb888_b_x0[t] <= acc_rgb888_b[t] << 8;
-        end else begin
-          acc_rgb888_r_x0[t] <= acc_rgb888_r_x0[t];
-          acc_rgb888_g_x0[t] <= acc_rgb888_g_x0[t];
-          acc_rgb888_b_x0[t] <= acc_rgb888_b_x0[t];
+          x0_r[p] <= acc_r[p] << 8;
+          x0_g[p] <= acc_g[p] << 8;
+          x0_b[p] <= acc_b[p] << 8;
         end
       end
 
-
-
       always @(posedge I_clk or negedge I_rst_n) begin
         if (!I_rst_n) begin
-          acc_rgb888_r_x1[t] <= 0;
-          acc_rgb888_g_x1[t] <= 0;
-          acc_rgb888_b_x1[t] <= 0;
+          x1_r[p] <= 21'd0;
+          x1_g[p] <= 21'd0;
+          x1_b[p] <= 21'd0;
         end else if (I_tvalid_r[1]) begin
-          acc_rgb888_r_x1[t] <= acc_rgb888_r_x0[t] - 2048;
-          acc_rgb888_g_x1[t] <= acc_rgb888_g_x0[t] - 2048;
-          acc_rgb888_b_x1[t] <= acc_rgb888_b_x0[t] - 2048;
-        end else begin
-          acc_rgb888_r_x1[t] <= acc_rgb888_r_x1[t];
-          acc_rgb888_g_x1[t] <= acc_rgb888_g_x1[t];
-          acc_rgb888_b_x1[t] <= acc_rgb888_b_x1[t];
+          x1_r[p] <= x0_r[p] - 2048;
+          x1_g[p] <= x0_g[p] - 2048;
+          x1_b[p] <= x0_b[p] - 2048;
         end
       end
 
-
-      // limit  RGB
+      // 饱和截断到 8bit（与原版 x2 级一致）
       always @(posedge I_clk or negedge I_rst_n) begin
         if (!I_rst_n) begin
-          acc_rgb888_r_x2[t] <= 0;
-          acc_rgb888_g_x2[t] <= 0;
-          acc_rgb888_b_x2[t] <= 0;
+          x2_r[p] <= 8'd0;
+          x2_g[p] <= 8'd0;
+          x2_b[p] <= 8'd0;
         end else if (I_tvalid_r[2]) begin
-          acc_rgb888_r_x2[t] <= (acc_rgb888_r_x1[t][20]) ? 8'd255 : (acc_rgb888_r_x1[t][19:12]);
-          acc_rgb888_g_x2[t] <= (acc_rgb888_g_x1[t][20]) ? 8'd255 : (acc_rgb888_g_x1[t][19:12]);
-          acc_rgb888_b_x2[t] <= (acc_rgb888_b_x1[t][20]) ? 8'd255 : (acc_rgb888_b_x1[t][19:12]);
-        end else begin
-          acc_rgb888_r_x2[t] <= acc_rgb888_r_x2[t];
-          acc_rgb888_g_x2[t] <= acc_rgb888_g_x2[t];
-          acc_rgb888_b_x2[t] <= acc_rgb888_b_x2[t];
+          x2_r[p] <= (x1_r[p][20]) ? 8'd255 : x1_r[p][19:12];
+          x2_g[p] <= (x1_g[p][20]) ? 8'd255 : x1_g[p][19:12];
+          x2_b[p] <= (x1_b[p][20]) ? 8'd255 : x1_b[p][19:12];
         end
       end
-
-
     end
   endgenerate
-  /*****************************************************************
-                        RGB�?                                       
-*****************************************************************/
 
-
-  assign R_new[0] = acc_rgb888_r_x2[0];
-  assign G_new[0] = acc_rgb888_g_x2[0];
-  assign B_new[0] = acc_rgb888_b_x2[0];
-
-  assign R_new[1] = acc_rgb888_r_x2[1];
-  assign G_new[1] = acc_rgb888_g_x2[1];
-  assign B_new[1] = acc_rgb888_b_x2[1];
-
-  assign R_new[2] = acc_rgb888_r_x2[2];
-  assign G_new[2] = acc_rgb888_g_x2[2];
-  assign B_new[2] = acc_rgb888_b_x2[2];
-
-  assign R_new[3] = acc_rgb888_r_x2[3];
-  assign G_new[3] = acc_rgb888_g_x2[3];
-  assign B_new[3] = acc_rgb888_b_x2[3];
-
-  /*****************************************************************
-                        同步信号                                       
-*****************************************************************/
-
-
+  // tlast / tuser / tvalid 与数据同深度打 4 拍（复位值、移位顺序与原版一致）
   always @(posedge I_clk or negedge I_rst_n) begin
-    if (!I_rst_n) {I_tlast_r, I_tuser_r, I_tvalid_r} <= 0;
+    if (!I_rst_n) {I_tlast_r, I_tuser_r, I_tvalid_r} <= 12'd0;
     else begin
-      I_tlast_r  <= {I_tlast_r[2:0], I_tlast};
-      I_tuser_r  <= {I_tuser_r[2:0], I_tuser};
+      I_tlast_r  <= {I_tlast_r[2:0],  I_tlast};
+      I_tuser_r  <= {I_tuser_r[2:0],  I_tuser};
       I_tvalid_r <= {I_tvalid_r[2:0], I_tvalid};
     end
   end
 
-
-  assign O_tlast = I_tlast_r[3];
-  assign O_tuser = I_tuser_r[3];
-  assign O_tvalid = I_tvalid_r[3];
-
-
   assign O_tdata = {
-    R_new[3],
-    G_new[3],
-    B_new[3],
-    R_new[2],
-    G_new[2],
-    B_new[2],
-    R_new[1],
-    G_new[1],
-    B_new[1],
-    R_new[0],
-    G_new[0],
-    B_new[0]
+      x2_r[3], x2_g[3], x2_b[3],
+      x2_r[2], x2_g[2], x2_b[2],
+      x2_r[1], x2_g[1], x2_b[1],
+      x2_r[0], x2_g[0], x2_b[0]
   };
-  assign I_tready = O_tready;
+  assign O_tlast  = I_tlast_r[3];
+  assign O_tuser  = I_tuser_r[3];
+  assign O_tvalid = I_tvalid_r[3];
+  assign I_tready = O_tready;            // 直通，无背压反压
 
 endmodule

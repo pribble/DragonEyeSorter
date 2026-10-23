@@ -1,20 +1,4 @@
-/*****************************************************************
-Company : MiLianKe Electronic Technology Co., Ltd.
-WebSite:https://www.milianke.com
-TechWeb:https://www.uisrc.com
-tmall-shop:https://milianke.tmall.com
-jd-shop:https://milianke.jd.com
-taobao-shop: https://milianke.taobao.com
-Description: 
-The reference demo provided by Milianke is only used for learning. 
-We cannot ensure that the demo itself is free of bugs, so users 
-should be responsible for the technical problems and consequences
-caused by the use of their own products.
-@Author      :   XiaoQingquan 
-@Time        :   2024/10 
-version:     :   
-@Description :   
-*****************************************************************/
+// 出处：MiLianKe（米联客，www.uisrc.com）ISP 参考设计；重构版，接口与逐拍行为不变。
 module Brightness_adjustment #(
     parameter  BRIGHTNESS_ADD   = 20,
     parameter  BRIGHTNESS_MINUS = 0
@@ -26,7 +10,7 @@ module Brightness_adjustment #(
     input                   I_tlast  ,
     input                   I_tuser  ,
     input  [95:0]           I_tdata  ,
-    input                   I_tvalid , 
+    input                   I_tvalid ,
     output                  I_tready ,
 
     output                  O_tlast  ,
@@ -36,94 +20,53 @@ module Brightness_adjustment #(
     input                   O_tready
 );
 
-/*****************************************************************
-                        24deta to RGB888                                        
-*****************************************************************/
-    reg             I_tlast_r    ;
-    reg             I_tuser_r    ;
-    reg             I_tvalid_r   ;
+    reg       I_tlast_r, I_tuser_r, I_tvalid_r;
+    reg [9:0] R_d[3:0], G_d[3:0], B_d[3:0];
+    wire [7:0] R[3:0], G[3:0], B[3:0];
 
-    wire [23:0] I_tdata_r1 = I_tdata[23:0] ;
-    wire [23:0] I_tdata_r2 = I_tdata[47:24];
-    wire [23:0] I_tdata_r3 = I_tdata[71:48];
-    wire [23:0] I_tdata_r4 = I_tdata[95:72];
+    // 4 像素通道折叠：每像素 RGB888 四路同构，仅数据切片不同
+    genvar i;
+    generate for (i = 0; i < 4; i = i + 1) begin: g_pixel
+        wire [7:0] r = I_tdata[24*i + 16 +: 8];
+        wire [7:0] g = I_tdata[24*i +  8 +: 8];
+        wire [7:0] b = I_tdata[24*i      +: 8];
 
-    wire [7:0]  rgb888_r[3:0];
-    wire [7:0]  rgb888_g[3:0];
-    wire [7:0]  rgb888_b[3:0];
-
-    reg  [9:0]  R_d[3:0];
-    reg  [9:0]  G_d[3:0];
-    reg  [9:0]  B_d[3:0];
-
-    wire  [7:0]  R[3:0];
-    wire  [7:0]  G[3:0];
-    wire  [7:0]  B[3:0];
-
-    assign   rgb888_r[0] = I_tdata_r1[16+:8];
-    assign   rgb888_g[0] = I_tdata_r1[8+:8] ;
-    assign   rgb888_b[0] = I_tdata_r1[0+:8] ;
-
-    assign   rgb888_r[1] = I_tdata_r2[16+:8];
-    assign   rgb888_g[1] = I_tdata_r2[8+:8] ;
-    assign   rgb888_b[1] = I_tdata_r2[0+:8] ;
-
-    assign   rgb888_r[2] = I_tdata_r3[16+:8];
-    assign   rgb888_g[2] = I_tdata_r3[8+:8] ;
-    assign   rgb888_b[2] = I_tdata_r3[0+:8] ;
-
-    assign   rgb888_r[3] = I_tdata_r4[16+:8];
-    assign   rgb888_g[3] = I_tdata_r4[8+:8] ;
-    assign   rgb888_b[3] = I_tdata_r4[0+:8] ;
-
-/*****************************************************************
-                    Calculation description                                          
-*****************************************************************/
-    genvar i ;
-    generate  for (i = 0;i<4 ;i=i+1 ) begin
-        
-    always @(posedge I_clk or negedge I_rst_n) begin
-        if(!I_rst_n) begin
-           {R_d[i],G_d[i],B_d[i]} <= 0;
+        // 亮度偏移按原版 32bit 表达式计算后截 10bit（参数可为负/超范围，语义保持不变）
+        always @(posedge I_clk or negedge I_rst_n) begin
+            if (!I_rst_n) begin
+                R_d[i] <= 10'd0;
+                G_d[i] <= 10'd0;
+                B_d[i] <= 10'd0;
+            end else if (I_tvalid) begin
+                R_d[i] <= r + BRIGHTNESS_ADD - BRIGHTNESS_MINUS;
+                G_d[i] <= g + BRIGHTNESS_ADD - BRIGHTNESS_MINUS;
+                B_d[i] <= b + BRIGHTNESS_ADD - BRIGHTNESS_MINUS;
+            end
         end
-        else if(I_tvalid)begin
-            R_d[i] <= rgb888_r[i] + BRIGHTNESS_ADD - BRIGHTNESS_MINUS;
-            G_d[i] <= rgb888_g[i] + BRIGHTNESS_ADD - BRIGHTNESS_MINUS;
-            B_d[i] <= rgb888_b[i] + BRIGHTNESS_ADD - BRIGHTNESS_MINUS;
-        end
-    end
 
-    assign R[i] = (R_d[i][9])?0:(R_d[i][8])?255:R_d[i][7:0];
-    assign G[i] = (G_d[i][9])?0:(G_d[i][8])?255:G_d[i][7:0];
-    assign B[i] = (B_d[i][9])?0:(B_d[i][8])?255:B_d[i][7:0];
-       end
-    endgenerate
+        // 10bit 结果按原厂规则钳位：bit9 → 0，bit8 → 255，否则取低 8bit
+        assign R[i] = (R_d[i][9]) ? 8'd0 : (R_d[i][8]) ? 8'd255 : R_d[i][7:0];
+        assign G[i] = (G_d[i][9]) ? 8'd0 : (G_d[i][8]) ? 8'd255 : G_d[i][7:0];
+        assign B[i] = (B_d[i][9]) ? 8'd0 : (B_d[i][8]) ? 8'd255 : B_d[i][7:0];
+    end endgenerate
 
-/*****************************************************************
-                        Signal synchronization                                           
-*****************************************************************/
-
-
+    // 控制信号同步 1 拍：原版 {I_tlast_r,I_tlast} 赋给 1bit 只取 LSB，等价于直接打一拍
     always @(posedge I_clk or negedge I_rst_n) begin
-        if(!I_rst_n)
-            {I_tlast_r,I_tuser_r,I_tvalid_r} <= 0;
+        if (!I_rst_n) {I_tlast_r, I_tuser_r, I_tvalid_r} <= 3'd0;
         else begin
-            I_tlast_r <= {I_tlast_r,I_tlast};
-            I_tuser_r <= {I_tuser_r,I_tuser};
-            I_tvalid_r <= {I_tvalid_r,I_tvalid};
+            I_tlast_r  <= I_tlast;
+            I_tuser_r  <= I_tuser;
+            I_tvalid_r <= I_tvalid;
         end
     end
 
-
-    assign  O_tlast  = I_tlast_r;   
-    assign  O_tuser  = I_tuser_r;   
-    assign  O_tvalid = I_tvalid_r;
-
-    assign O_tdata = {R[3],G[3],B[3],
-                      R[2],G[2],B[2],
-                      R[1],G[1],B[1],
-                      R[0],G[0],B[0]};
-
+    assign O_tlast  = I_tlast_r;
+    assign O_tuser  = I_tuser_r;
+    assign O_tvalid = I_tvalid_r;
+    assign O_tdata  = {R[3], G[3], B[3],
+                       R[2], G[2], B[2],
+                       R[1], G[1], B[1],
+                       R[0], G[0], B[0]};
     assign I_tready = O_tready;
 
 endmodule

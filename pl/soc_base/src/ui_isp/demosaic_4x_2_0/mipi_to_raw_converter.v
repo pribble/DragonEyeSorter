@@ -1,79 +1,44 @@
-/*****************************************************************
-Company : MiLianKe Electronic Technology Co., Ltd.
-WebSite:https://www.milianke.com
-TechWeb:https://www.uisrc.com
-tmall-shop:https://milianke.tmall.com
-jd-shop:https://milianke.jd.com
-taobao-shop: https://milianke.taobao.com
-Description: 
-The reference demo provided by Milianke is only used for learning. 
-We cannot ensure that the demo itself is free of bugs, so users 
-should be responsible for the technical problems and consequences
-caused by the use of their own products.
-@Author      :   XiaoQingquan 
-@Time        :   2024/11 
-version:     :   
-@Description :   
-*****************************************************************/
+// å‡ºå¤„ï¼šMilianke uisrc ISP demoï¼ˆui_isp/demosaic_4x_2_0/mipi_to_raw_converter.v, XiaoQingquan 2024/11ï¼‰
+// RAW10 -> æ¯åƒç´ å–é«˜ 8bit æ‰“åŒ…ï¼ˆæ¯ä¸ª 32bit å­—å« 4 ä¸ªåƒç´ ï¼‰ï¼Œæµæ§åˆ¶ä¿¡å·æ‰“ä¸€æ‹å¯¹é½ã€‚
 `timescale 1ns/1ns
 
-module mipi_to_raw_converter 
-(
-    input                          I_clk   ,
-    input                          I_rst_n ,
+module mipi_to_raw_converter (
+    input               I_clk   ,
+    input               I_rst_n ,
 
-    input   [39:0]                 I_raw_tdata ,
-    input   [ 9:0]                 I_raw_tdest ,
-    input                          I_raw_tlast ,
-    input                          I_raw_tvalid,
-    input                          I_raw_tuser ,
-    output                         I_raw_tready,
-    
-    // Êä³öRAW10Êı¾İ
-    output  [31:0]                 O_raw_tdata ,
-    output                         O_raw_tlast ,
-    output                         O_raw_tvalid,
-    output                         O_raw_tuser ,
-    input                          O_raw_tready
+    input      [39:0]   I_raw_tdata ,
+    input      [ 9:0]   I_raw_tdest ,
+    input               I_raw_tlast ,
+    input               I_raw_tvalid,
+    input               I_raw_tuser ,
+    output              I_raw_tready,
+
+    output     [31:0]   O_raw_tdata ,
+    output              O_raw_tlast ,
+    output              O_raw_tvalid,
+    output              O_raw_tuser ,
+    input               O_raw_tready
 );
-    reg            I_tlast_r0;
-    reg            I_tuser_r0;
 
-    reg            I_tvalid_r0;
-    reg    [31:0]  raw_data_r0;
-
-    ///´Ë´¦¶ÔÓÚÃ¿¸öRAW10È¡¸ß8Î»ÊÇÒòÎª¸ßÎ»Ëù°üº¬µÄÑÕÉ«Êı¾İ¸ü¶à¡£
-    always @(posedge I_clk or negedge I_rst_n) begin
-        if(!I_rst_n)
-            raw_data_r0 <= 0;
-        else if(I_raw_tvalid)begin
-            raw_data_r0 <= {I_raw_tdata[9:2], I_raw_tdata[19:12], I_raw_tdata[29:22], I_raw_tdata[39:32]};
-        end 
-    end
-
-
+    // æ¯ä¸ª RAW10 å–é«˜ 8 ä½ï¼ˆé«˜ä½åŒ…å«çš„é¢œè‰²ä¿¡æ¯æ›´å¤šï¼‰
+    reg  [31:0] raw_data_r0;
+    reg  [2:0]  ctrl_r0;    // {tlast, tuser, tvalid}ï¼Œä¸æ•°æ®åŒæ‹å¯¹é½
 
     always @(posedge I_clk or negedge I_rst_n) begin
-        if(!I_rst_n)begin
-            {I_tlast_r0,I_tuser_r0,I_tvalid_r0} <= 0;
+        if (!I_rst_n) begin
+            raw_data_r0 <= 32'd0;
+            ctrl_r0     <= 3'd0;
         end
         else begin
-            I_tlast_r0  <= I_raw_tlast;
-            I_tuser_r0  <= I_raw_tuser;
-            I_tvalid_r0 <= I_raw_tvalid;
+            if (I_raw_tvalid)
+                raw_data_r0 <= {I_raw_tdata[9:2], I_raw_tdata[19:12],
+                                I_raw_tdata[29:22], I_raw_tdata[39:32]};
+            ctrl_r0 <= {I_raw_tlast, I_raw_tuser, I_raw_tvalid};
         end
     end
-    
 
-    assign  O_raw_tlast  = I_tlast_r0;   
-    assign  O_raw_tuser  = I_tuser_r0;   
-    assign  O_raw_tvalid = I_tvalid_r0;
-
-    assign  O_raw_tdata  = raw_data_r0;
-    
-    assign  I_raw_tready = O_raw_tready;
-
+    assign O_raw_tdata = raw_data_r0;
+    assign {O_raw_tlast, O_raw_tuser, O_raw_tvalid} = ctrl_r0;
+    assign I_raw_tready = O_raw_tready;
 
 endmodule
-
-

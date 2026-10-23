@@ -25,82 +25,56 @@
 *6) _s state mechine
 *********************************************************************/
 /********************************************************************
-±¾IPÓÉÉÏº£°²Â·¿Æ¼¼Ìá¹©£¬Ã×Áª¿Í¸ù¾İ×Ô¼ºÊ¹ÓÃÏ°¹ß½Ó¿Ú²¿·ÖÔö¼ÓÁËRGBÊäÈë½Ó¿Ú·½Ê½£¬
-ºËĞÄ¹¦ÄÜÃèÊöÈçÏÂ£º
-HDMI Transmitter¹¤×÷ĞèÒªÁ½¸öÊ±ÖÓ£¬ÏñËØÊ±ÖÓpixel_clkºÍ´®ĞĞ·¢ËÍÊ±ÖÓserial_clk¡£Á½¸öÊ±ÖÓ¶¼ÊÇÍ¨¹ıPLLÉú³É£¬ÆäÖĞserial_clkµÄÆµÂÊÊÇpixel_clkÆµÂÊµÄÎå±¶¡£
-HDMI TransmitterµÄÈı¸ö½Ó¿ÚEDID_Read_interface¡¢Video_interfaceºÍAudio_interface¶¼ÊÇ¹¤×÷ÔÚpixel_clkÊ±ÖÓÓòÏÂ£¬Òò´ËÓÃ»§Âß¼­ĞèÒªÊ¹ÓÃpixel_clkÀ´Éú³ÉÒôÊÓÆµÊı¾İ¡£
-HDMI TransmitterµÄpixel_clkÆµÂÊºÍserial_clkÆµÂÊĞèÒª¸ù¾İÏÔÊ¾·Ö±æÂÊ½øĞĞ¼ÆËã¡£ÒÔ1080p60µÄ·Ö±æÂÊÎªÀı£¬ÓĞĞ§·Ö±æÂÊÎª1920x1080£¬ÔÚ¼ÆËãÆµÂÊµÄÊ±ºòĞèÒª¼ÓÉÏÏûÒşÇø£¬
-Í¼Ïñ×ÜµÄ³¤¿íÎª2200x1125£¬Ã¿Ãë60Ö¡£¬Òò´ËÏñËØÊ±ÖÓµÄÆµÂÊÎª£º
-F_pixel=Htotal¡ÁVtotal¡ÁFrameRate
-F_pixel=2200¡Á1125¡Á60=148500000Hz=148.5MHz
-´®ĞĞ·¢ËÍÊ±ÖÓserial_clkÆµÂÊÎªÏñËØÊ±ÖÓÆµÂÊµÄÎå±¶£¬Òò´Ë´®ĞĞ·¢ËÍÊ±ÖÓÆµÂÊÎª£º
-F_serial=5¡ÁF_pixel=5¡Á148.5MHz=742.5MHz
-
-1-×î¸ßÖ§³Ö1080p60ÏÔÊ¾·Ö±æÂÊ¡£
-2-Ö§³ÖÁ½Â·ÒôÆµÊäÈë¡£
-3-Ö§³ÖRGB444ºÍYUV444¡£
-4-Ö§³ÖÄÚ²¿ÊÓÆµ²âÊÔÔ´¡£
-5-Ö§³ÖEDID¶ÁÈ¡¡£
+æœ¬ IP ç”±ä¸Šæµ·å®‰è·¯ç§‘æŠ€æä¾›ï¼Œç±³è”å®¢å¢åŠ äº† RGB è¾“å…¥æ¥å£ã€‚HDMI TX éœ€è¦ pixel_clk ä¸
+5x çš„ serial_clk ä¸¤ä¸ªæ—¶é’Ÿï¼ˆå‡ç”± PLL äº§ç”Ÿï¼‰ï¼Œæœ€é«˜æ”¯æŒ 1080p60ï¼Œæ”¯æŒ RGB444/YUV444ã€
+ä¸¤è·¯éŸ³é¢‘ã€å†…éƒ¨æµ‹è¯•æºä¸ EDID è¯»å–ã€‚æœ¬å·¥ç¨‹åªä½¿ç”¨ DEVICE="DR1"ã€‚
 *********************************************************************/
-`timescale 1ns / 1ns //·ÂÕæÊ±¼ä¿Ì¶È/¾«¶È
+`timescale 1ns / 1ns //ä»¿çœŸæ—¶é—´åˆ»åº¦/ç²¾åº¦
 
-
-module uihdmi_tx#(
-    parameter DEVICE            = "DR1"//"EF2","EF3","EF4","SF1","EG","PH1A","PH1P","DR1","PH2A"
-)
-(
-    
-    input wire       I_pixel_clk, //ÏñËØÊ±ÖÓ
-    input wire       I_serial_clk,//´®ĞĞ·¢ËÍÊ±ÖÓ
-    input wire       I_rst, //Òì²½¸´Î»ĞÅºÅ£¬¸ßµçÆ½ÓĞĞ§
-    input wire[23:0] I_video_in_data,   //ÊÓÆµÊäÈëÊı¾İ
-    input wire       I_video_in_de,     //ÊäÈëdeÓĞĞ§
-    input wire       I_video_in_vs,     //ÊäÈëVS Ö¡Í¬²½
-    input wire       I_video_in_hs,     //ÊäÈëhS Ö¡Í¬²½
-    output           O_hdmi_clk_p, //HDMIÊä³öÊ±ÖÓP¶Ë
-    output    [2:0]  O_hdmi_tx_p  //HDMIÊä³öÊı¾İP¶Ë
-
+module uihdmi_tx #(
+    parameter DEVICE = "DR1"  //"EF2","EF3","EF4","SF1","EG","PH1A","PH1P","DR1","PH2A"
+)(
+    input  wire       I_pixel_clk,      //åƒç´ æ—¶é’Ÿ
+    input  wire       I_serial_clk,     //ä¸²è¡Œå‘é€æ—¶é’Ÿï¼ˆ5x åƒç´ æ—¶é’Ÿï¼‰
+    input  wire       I_rst,            //å¼‚æ­¥å¤ä½ä¿¡å·ï¼Œé«˜ç”µå¹³æœ‰æ•ˆ
+    input  wire[23:0] I_video_in_data,  //è§†é¢‘è¾“å…¥æ•°æ®
+    input  wire       I_video_in_de, I_video_in_vs, I_video_in_hs,
+    output wire       O_hdmi_clk_p,     //HDMI è¾“å‡ºæ—¶é’Ÿ P ç«¯
+    output wire[2:0]  O_hdmi_tx_p       //HDMI è¾“å‡ºæ•°æ® P ç«¯
 );
-reg [23:0] r_video_in_data;
-always @(posedge I_pixel_clk) r_video_in_data <= I_video_in_data;
-  
-  
-    wire[9:0]   S_ch0_tmds_code_data;               
-    wire[9:0]   S_ch1_tmds_code_data;               
-    wire[9:0]   S_ch2_tmds_code_data;               
-    wire[9:0]   S_clk_tmds_code_data;
+    // è¾“å…¥æ•°æ®å…ˆæ‰“ä¸€æ‹å†é€ TMDS æ§åˆ¶å™¨
+    reg [23:0] r_video_in_data;
 
-    hdmi_tx_controller_wrapper u_hdmi_tx_controller_wrapper(
-        .I_pixel_clk          (I_pixel_clk          ),
-        .I_rst                (I_rst                ),
-        .I_video_in_data      (r_video_in_data      ),
-        .I_video_in_vs        (I_video_in_vs        ),
-        .I_video_in_hs        (I_video_in_hs        ),
-        .I_video_in_de        (I_video_in_de        ),
-        .O_ch0_tmds_code_data ( S_ch0_tmds_code_data ),
-        .O_ch1_tmds_code_data ( S_ch1_tmds_code_data ),
-        .O_ch2_tmds_code_data ( S_ch2_tmds_code_data ),
-        .O_clk_tmds_code_data ( S_clk_tmds_code_data )
-    );
-    
-    hdmi_tx_phy_wrapper  #(
-        .DEVICE ( DEVICE )  //"EF2","EF3","EF4","SF1","EG","PH1A","PH1P","DR1"
-    )u_hdmi_tx_phy_wrapper(
-        .I_pixel_clk        ( I_pixel_clk          ),
-        .I_serial_clk       ( I_serial_clk         ),
-        .I_rst              ( I_rst                ),
+    always @(posedge I_pixel_clk)
+        r_video_in_data <= I_video_in_data;
 
-        .I_tmds_channel_0   ( S_ch0_tmds_code_data ),
-        .I_tmds_channel_1   ( S_ch1_tmds_code_data ),
-        .I_tmds_channel_2   ( S_ch2_tmds_code_data ),
-        .I_tmds_channel_clk ( S_clk_tmds_code_data ),
+    wire[9:0] S_ch0_tmds_code_data, S_ch1_tmds_code_data, S_ch2_tmds_code_data, S_clk_tmds_code_data;
 
-        .O_tmds_ch0_p       ( O_hdmi_tx_p[0]       ),
-        .O_tmds_ch1_p       ( O_hdmi_tx_p[1]       ),
-        .O_tmds_ch2_p       ( O_hdmi_tx_p[2]       ),
-        .O_tmds_clk_p       ( O_hdmi_clk_p         )
+    hdmi_tx_controller_wrapper u_hdmi_tx_controller_wrapper (
+        .I_pixel_clk          (I_pixel_clk),
+        .I_rst                (I_rst),
+        .I_video_in_data      (r_video_in_data),
+        .I_video_in_vs        (I_video_in_vs), .I_video_in_hs (I_video_in_hs),
+        .I_video_in_de        (I_video_in_de),
+        .O_ch0_tmds_code_data (S_ch0_tmds_code_data),
+        .O_ch1_tmds_code_data (S_ch1_tmds_code_data),
+        .O_ch2_tmds_code_data (S_ch2_tmds_code_data),
+        .O_clk_tmds_code_data (S_clk_tmds_code_data)
     );
 
-
-
+    hdmi_tx_phy_wrapper #(
+        .DEVICE (DEVICE)
+    ) u_hdmi_tx_phy_wrapper (
+        .I_pixel_clk        (I_pixel_clk),
+        .I_serial_clk       (I_serial_clk),
+        .I_rst              (I_rst),
+        .I_tmds_channel_0   (S_ch0_tmds_code_data),
+        .I_tmds_channel_1   (S_ch1_tmds_code_data),
+        .I_tmds_channel_2   (S_ch2_tmds_code_data),
+        .I_tmds_channel_clk (S_clk_tmds_code_data),
+        .O_tmds_ch0_p       (O_hdmi_tx_p[0]),
+        .O_tmds_ch1_p       (O_hdmi_tx_p[1]),
+        .O_tmds_ch2_p       (O_hdmi_tx_p[2]),
+        .O_tmds_clk_p       (O_hdmi_clk_p)
+    );
 endmodule

@@ -14,21 +14,6 @@ module isp_top (
     output I_tready
 );
 
-//   wire         axi4s_video_aclk;
-//   wire         I_rst_n;  //synthesis keep 
-//   wire         I_tlast;  //synthesis keep 
-//   wire         I_tuser;  //synthesis keep 
-//   wire [ 39:0] I_tdata;  //synthesis keep 
-//   wire         I_tvalid;  //synthesis keep 
-//   wire [  9:0] I_tdest;  //synthesis keep 
-//   wire         O_tready;  //synthesis keep 
-//   wire [127:0] O_tdata;  //synthesis keep 
-//   wire         O_tlast;  //synthesis keep 
-//   wire         O_tuser;  //synthesis keep 
-//   wire         O_tvalid;  //synthesis keep 
-//   wire         I_tready;  //synthesis keep 
-
-
   wire         BLC_O_tlast;  //synthesis keep 
   wire         BLC_O_tuser;  //synthesis keep 
   wire [ 39:0] BLC_O_tdata;  //synthesis keep 
@@ -84,21 +69,10 @@ module isp_top (
   assign Brightness_O_tready = O_tready;
   assign O_tdata  = Brightness_O_tdata_128;
   assign O_tlast  = Brightness_O_tlast    ;
-  assign O_tuser  = I_tuser    ;//´Ë´¦Ö±½Ó°ÑÊä³öµÄtuserµÈÓÚÊäÈëµÄtuser
+  // å®‰è·¯è¡Œé—´è·é—®é¢˜å¯¼è‡´åç»­ tuser ä¸å†åŒæ­¥ï¼Œä¸‹æ¸¸æŠŠå®ƒè¿‘ä¼¼ä¸ºå¸§åŒæ­¥ vsï¼Œç›´æ¥ç”¨æœ€åˆå§‹çš„ I_tuser
+  assign O_tuser  = I_tuser    ;
   assign O_tvalid = Brightness_O_tvalid   ;
 
-   //assign awb_O_tready = O_tready;
-   //assign O_tdata  = awb_O_tdata_128;
-   //assign O_tlast  = awb_O_tlast    ;
-   //assign O_tuser  = awb_O_tuser    ;
-   //assign O_tvalid = awb_O_tvalid   ;
-
-   //assign m_aixs_tready = O_tready     ;
-   //assign O_tdata       = m_aixs_tdata_r ;
-   //assign O_tlast       = m_aixs_tlast ;
-   //assign O_tuser       = m_aixs_tuser ;//´Ë´¦Ö±½Ó°ÑÊä³öµÄtuserµÈÓÚÊäÈëµÄtuser
-   //assign O_tvalid      = m_aixs_tvalid;
-  ////ÓÉÓÚ°²Â·µÄĞĞ¼ä¾àÎÊÌâ£¬ºóĞøµÄtuserÈ«¶¼²»ÔÙÍ¬²½£¬ÔÙºóĞøµÄËã·¨ÖĞ£¬°ÑËü½üËÆÎªvs£¬Ò²¾ÍÊÇÖ¡Í¬²½ĞÅºÅ£¬È«²¿ÓÃ×î³õÊ¼µÄI_tuser´úÌæ
   BLC #(
       .Black_level_offset_r0(50),
       .Black_level_offset_r1(50),
@@ -123,26 +97,26 @@ module isp_top (
   );
 
 demosaic #(
-    .IMG_HEIGHT          (1080),  // Í¼Ïñ¸ß¶È
-    .IMG_WIDTH           (1920),   // Í¼Ïñ¿í¶È
+    .IMG_HEIGHT          (1080),  // å›¾åƒé«˜åº¦
+    .IMG_WIDTH           (1920),   // å›¾åƒå®½åº¦
     .data_complete_delay (50  ),
     .BAYER_MODE          ("RGGB")
 )
 u_demosaic
 (
-    .I_clk   			(axi4s_video_aclk)	,   // Ê±ÖÓĞÅºÅ
-    .I_rst_n 			(I_rst_n)	,   // ¸´Î»ĞÅºÅ£¬µÍÓĞĞ§
-    .axi4s_video_tdata 	(BLC_O_tdata)	,  // AXI4-StreamÊÓÆµÊı¾İ
+    .I_clk   			(axi4s_video_aclk)	,   // æ—¶é’Ÿä¿¡å·
+    .I_rst_n 			(I_rst_n)	,   // å¤ä½ä¿¡å·ï¼Œä½æœ‰æ•ˆ
+    .axi4s_video_tdata 	(BLC_O_tdata)	,  // AXI4-Streamè§†é¢‘æ•°æ®
     .axi4s_video_tdest 	(BLC_O_tdest)	,
-    .axi4s_video_tlast 	(BLC_O_tlast)	,  // ĞĞ½áÊøĞÅºÅ
-    .axi4s_video_tvalid	(BLC_O_tvalid)	,  // Êı¾İÓĞĞ§ĞÅºÅ
-    .axi4s_video_tuser 	(BLC_O_tuser)	,  // Ö¡¿ªÊ¼ĞÅºÅ
-    .axi4s_video_tready	(BLC_O_tready)	,  // ´ÓÄ£¿é×¼±¸ºÃ½ÓÊÜÊı¾İ
-    .O_tlast  			(m_aixs_tlast)	,  // Êä³öĞĞ½áÊøĞÅºÅ
-    .O_tuser  			(m_aixs_tuser)	,  // Êä³öÖ¡¿ªÊ¼ĞÅºÅ
-    .O_tdata  			(m_aixs_tdata)	,  // Êä³öÊı¾İ
-    .O_tvalid 			(m_aixs_tvalid)	,  // Êä³öÊı¾İÓĞĞ§ĞÅºÅ
-    .O_tready   		(m_aixs_tready)	   // Êä³öÊı¾İ×¼±¸ºÃĞÅºÅ
+    .axi4s_video_tlast 	(BLC_O_tlast)	,  // è¡Œç»“æŸä¿¡å·
+    .axi4s_video_tvalid	(BLC_O_tvalid)	,  // æ•°æ®æœ‰æ•ˆä¿¡å·
+    .axi4s_video_tuser 	(BLC_O_tuser)	,  // å¸§å¼€å§‹ä¿¡å·
+    .axi4s_video_tready	(BLC_O_tready)	,  // ä»æ¨¡å—å‡†å¤‡å¥½æ¥å—æ•°æ®
+    .O_tlast  			(m_aixs_tlast)	,  // è¾“å‡ºè¡Œç»“æŸä¿¡å·
+    .O_tuser  			(m_aixs_tuser)	,  // è¾“å‡ºå¸§å¼€å§‹ä¿¡å·
+    .O_tdata  			(m_aixs_tdata)	,  // è¾“å‡ºæ•°æ®
+    .O_tvalid 			(m_aixs_tvalid)	,  // è¾“å‡ºæ•°æ®æœ‰æ•ˆä¿¡å·
+    .O_tready   		(m_aixs_tready)	   // è¾“å‡ºæ•°æ®å‡†å¤‡å¥½ä¿¡å·
 );
 
 data128_96 u_data128_96 (
@@ -191,9 +165,7 @@ data128_96 u_data128_96 (
         .O_tready(cut_O_tready)
     );
 	
-    gamma #(
-        .GAMMA_10x(22)
-    ) u_gamma (
+    gamma u_gamma (
         .I_clk   (axi4s_video_aclk),
         .I_rst_n (I_rst_n),
         .I_tlast (cut_O_tlast),
@@ -227,7 +199,7 @@ data128_96 u_data128_96 (
     );
 	
     contrast_adj #(
-        .contrast_level(140)  //¶Ô±È¶Èµ÷½ÚÒò×Ó£¬¶¨µãÊı±íÊ¾£¬128¶ÔÓ¦1.0
+        .contrast_level(140)  //å¯¹æ¯”åº¦è°ƒèŠ‚å› å­ï¼Œå®šç‚¹æ•°è¡¨ç¤ºï¼Œ128å¯¹åº”1.0
     ) u_contrast_adj (
         .I_clk   (axi4s_video_aclk),
         .I_rst_n (I_rst_n),

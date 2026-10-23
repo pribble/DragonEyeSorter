@@ -1,109 +1,69 @@
+// å‡ºå¤„ï¼šMilianke uisrc ISP demoï¼ˆui_isp/demosaic_4x_2_0/line_buffer_demosaic.v, XiaoQingquan 2024/10ï¼‰
+// å•è¡Œç¼“å†²ï¼šæŒ‰ 4 åƒç´ ç»„ï¼ˆ32bit æ•°æ® + tuser ä½ï¼‰å»¶è¿Ÿä¸€è¡Œè¾“å‡ºï¼›é¦–è¡Œå†™æ»¡åé”å®šè¯»ä½¿èƒ½ã€‚
 `timescale 1ns / 1ps
-/*****************************************************************
-Company : MiLianKe Electronic Technology Co., Ltd.
-WebSite:https://www.milianke.com
-TechWeb:https://www.uisrc.com
-tmall-shop:https://milianke.tmall.com
-jd-shop:https://milianke.jd.com
-taobao-shop: https://milianke.taobao.com
-Description: 
-The reference demo provided by Milianke is only used for learning. 
-We cannot ensure that the demo itself is free of bugs, so users 
-should be responsible for the technical problems and consequences
-caused by the use of their own products.
-@Author      :   XiaoQingquan 
-@Time        :   2024/10 
-version:     :   
-@Description :   
-*****************************************************************/
 
 module line_buffer_demosaic #(
-    parameter IMG_HEIGHT = 1080,   // Í¼Ïñ¸ß¶È²ÎÊı£¬Ä¬ÈÏÖµÎª1080
-    parameter IMG_WIDTH  = 1920    // Í¼Ïñ¿í¶È²ÎÊı£¬Ä¬ÈÏÖµÎª1920
+    parameter IMG_HEIGHT = 1080,   // å›¾åƒé«˜åº¦
+    parameter IMG_WIDTH  = 1920    // å›¾åƒå®½åº¦
 ) (
-    input              I_clk,      // ÊäÈëÊ±ÖÓĞÅºÅ
-    input              I_rst_n,    // ÊäÈë¸´Î»ĞÅºÅ£¬µÍµçÆ½ÓĞĞ§
-    input              I_tuser,    // ÊäÈëtuserĞÅºÅ£¬Ö¡ÆğÊ¼±êÖ¾ 
-    input  wire        I_valid,    // ÊäÈëÊı¾İÓĞĞ§ĞÅºÅ          
-    input  wire [32:0] I_data,     // ÊäÈëÊı¾İ×ÜÏß£¬¿í¶ÈÎª33Î»  
-    output wire        O_valid,    // Êä³öÊı¾İÓĞĞ§ĞÅºÅ          
-    output wire [32:0] O_data      // Êä³öÊı¾İ×ÜÏß£¬¿í¶ÈÎª33Î»  
+    input              I_clk  ,
+    input              I_rst_n,
+    input              I_tuser,    // å¸§èµ·å§‹
+    input              I_valid,
+    input       [32:0] I_data ,
+    output             O_valid,
+    output      [32:0] O_data
 );
 
-    // ¶¨Òå¶ÁÊ¹ÄÜĞÅºÅ
-    wire        rd_en;  // synthesis keep 
+    localparam IMG_WIDTH_4x = IMG_WIDTH >> 2;   // æ¯è¡Œçš„ 4 åƒç´ ç»„æ•°
 
-    // ¶¨ÒåµØÖ·¼ÆÊıÆ÷¼Ä´æÆ÷ºÍÊı¾İ¼Ä´æÆ÷
-    reg  [10:0] addra;     // Ğ´µØÖ·¼ÆÊıÆ÷               
-    reg  [10:0] addrb;     // ¶ÁµØÖ·¼ÆÊıÆ÷               
-    reg  [32:0] data_d0;   // ÑÓÊ±Ò»¸öÊ±ÖÓµÄÊı¾İ         
-    reg         valid_d0;  // ÑÓÊ±Ò»¸öÊ±ÖÓµÄÊı¾İÓĞĞ§ĞÅºÅ  
+    reg  [10:0] addra;          // å†™åœ°å€
+    reg  [10:0] addrb;          // è¯»åœ°å€
+    reg  [32:0] data_d0;        // æ•°æ®æ‰“ä¸€æ‹
+    reg         valid_d0;       // æœ‰æ•ˆæ‰“ä¸€æ‹
+    reg         tlast_lock_d0;  // é¦–æ¬¡å†™æ»¡ä¸€è¡Œåç½®ä½ï¼ˆè¯»ä¾§å¯¹é½ç”¨ï¼‰
 
-    // ¶¨Òå¾Ö²¿²ÎÊı£¬¼ÆËãÍ¼Ïñ¿í¶ÈµÄËÄ·ÖÖ®Ò»£¬ÓÃÓÚµØÖ·¼ÆÊı
-    localparam IMG_WIDTH_4x = (IMG_WIDTH >> 2);
+    wire rd_en = I_valid & tlast_lock_d0;
 
-    // Êı¾İºÍÓĞĞ§ĞÅºÅµÄ¼Ä´æ£¬ÑÓÊ±Ò»¸öÊ±ÖÓ
     always @(posedge I_clk or negedge I_rst_n) begin
         if (!I_rst_n) begin
-            data_d0  <= 0;            // ¸´Î»Ê±½«data_d0ÇåÁã
-            valid_d0 <= 0;            // ¸´Î»Ê±½«valid_d0ÇåÁã
-        end else begin
-            data_d0  <= I_data;       // Õı³£¹¤×÷Ê±£¬data_d0¸úËæI_data
-            valid_d0 <= I_valid;      // Õı³£¹¤×÷Ê±£¬valid_d0¸úËæI_valid
+            data_d0       <= 33'd0;
+            valid_d0      <= 1'b0;
+            addra         <= 11'd0;
+            addrb         <= 11'd0;
+            tlast_lock_d0 <= 1'b0;
+        end
+        else begin
+            // æ•°æ®/æœ‰æ•ˆå›ºå®šæ‰“ä¸€æ‹ï¼ˆä¸å— tuser å½±å“ï¼‰
+            data_d0  <= I_data;
+            valid_d0 <= I_valid;
+
+            if (I_tuser) begin
+                addra         <= 11'd0;
+                addrb         <= 11'd0;
+                tlast_lock_d0 <= 1'b0;
+            end
+            else begin
+                if (valid_d0)
+                    addra <= (addra == IMG_WIDTH_4x - 1) ? 11'd0 : addra + 1'b1;
+                if (addra == IMG_WIDTH_4x - 1)
+                    tlast_lock_d0 <= 1'b1;
+                if (rd_en)
+                    addrb <= (addrb == IMG_WIDTH_4x - 1) ? 11'd0 : addrb + 1'b1;
+            end
         end
     end
 
-    // Ğ´µØÖ·¼ÆÊıÆ÷addraµÄ¸üĞÂ
-    always @(posedge I_clk or negedge I_rst_n) begin
-        if (!I_rst_n || I_tuser) begin
-            addra <= 0;    // ¸´Î»»òÕßI_tuserÓĞĞ§Ê±£¬½«addraÇåÁã
-        end else if (valid_d0) begin
-            // µ±valid_d0ÓĞĞ§Ê±£¬¸üĞÂaddra
-            addra <= (addra == IMG_WIDTH_4x - 1) ? 0 : addra + 1'b1;
-            // Èç¹ûaddra´ïµ½×î´óÖµ£¨IMG_WIDTH_4x - 1£©£¬ÔòÇåÁã£¬·ñÔò¼Ó1
-        end
-    end
+    assign O_valid = valid_d0 & tlast_lock_d0;
 
-    // ĞĞ½áÊø±êÖ¾tlast_lock_d0µÄ¸üĞÂ
-    reg tlast_lock_d0;
-    always @(posedge I_clk or negedge I_rst_n) begin
-        if (!I_rst_n || I_tuser) begin
-            tlast_lock_d0 <= 1'b0;  // ¸´Î»»òÕßI_tuserÓĞĞ§Ê±£¬½«tlast_lock_d0ÇåÁã
-        end else if ((tlast_lock_d0 == 1'b0) & (addra == IMG_WIDTH_4x - 1)) begin
-            tlast_lock_d0 <= 1'b1;  // µ±µÚÒ»´Îaddra´ïµ½×î´óÖµÊ±£¬ÖÃÎ»tlast_lock_d0
-        end
-    end
-
-    // ¶ÁÊ¹ÄÜĞÅºÅrd_enµÄÉú³É
-    assign rd_en = (I_valid && tlast_lock_d0) ? 1'b1 : 1'b0;
-    // Ö»ÓĞµ±I_validÓĞĞ§ÇÒtlast_lock_d0ÖÃÎ»ºó£¬²Å²úÉú¶ÁÊ¹ÄÜĞÅºÅ
-
-    // ¶ÁµØÖ·¼ÆÊıÆ÷addrbµÄ¸üĞÂ
-    always @(posedge I_clk or negedge I_rst_n) begin
-        if (!I_rst_n || I_tuser) begin
-            addrb <= 0;    // ¸´Î»»òÕßI_tuserÓĞĞ§Ê±£¬½«addrbÇåÁã
-        end else begin
-            // µ±rd_enÓĞĞ§Ê±£¬¸üĞÂaddrb
-            addrb <= rd_en ? ((addrb == IMG_WIDTH_4x - 1) ? 0 : addrb + 1'b1) : addrb;
-            // Èç¹ûaddrb´ïµ½×î´óÖµ£¨IMG_WIDTH_4x - 1£©£¬ÔòÇåÁã£¬·ñÔò¼Ó1
-            // Èç¹ûrd_enÎŞĞ§£¬addrb±£³Ö²»±ä
-        end
-    end
-
-    // Êä³öÓĞĞ§ĞÅºÅO_validµÄÉú³É
-    assign O_valid = (valid_d0 && tlast_lock_d0) ? 1'b1 : 1'b0;
-    // Ö»ÓĞµ±valid_d0ÓĞĞ§ÇÒtlast_lock_d0ÖÃÎ»ºó£¬²ÅÊä³öÓĞĞ§Êı¾İ
-
-    // ÊµÀı»¯¿é´æ´¢Æ÷£¬ÓÃÓÚÊı¾İµÄ´æ´¢ºÍ¶ÁÈ¡
     blk_mem_gen_demosaic blk_mem_gen_demosaic_r0 (
-        .clka (I_clk  ),   // Ğ´¶Ë¿ÚÊ±ÖÓĞÅºÅ
-        .wea  (valid_d0),  // Ğ´Ê¹ÄÜĞÅºÅ
-        .addra(addra  ),   // Ğ´µØÖ·
-        .dia (data_d0),   // Ğ´Êı¾İ
-        .clkb (I_clk  ),   // ¶Á¶Ë¿ÚÊ±ÖÓĞÅºÅ
-        .addrb(addrb  ),   // ¶ÁµØÖ·
-        .dob(O_data )    // ¶ÁÊı¾İÊä³ö
+        .clka (I_clk   ),
+        .wea  (valid_d0),
+        .addra(addra   ),
+        .dia  (data_d0 ),
+        .clkb (I_clk   ),
+        .addrb(addrb   ),
+        .dob  (O_data  )
     );
 
 endmodule
-

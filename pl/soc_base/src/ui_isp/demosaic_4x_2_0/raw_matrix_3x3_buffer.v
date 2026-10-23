@@ -1,328 +1,204 @@
-/*****************************************************************
-Company : MiLianKe Electronic Technology Co., Ltd.
-WebSite:https://www.milianke.com
-TechWeb:https://www.uisrc.com
-tmall-shop:https://milianke.tmall.com
-jd-shop:https://milianke.jd.com
-taobao-shop: https://milianke.taobao.com
-Description: 
-The reference demo provided by Milianke is only used for learning. 
-We cannot ensure that the demo itself is free of bugs, so users 
-should be responsible for the technical problems and consequences
-caused by the use of their own products.
-@Author      :   XiaoQingquan 
-@Time        :   2025/01 
-version:     :   1.1
-@Description :   ¸ÃÄ£¿éÖ÷ÒªÊÇÓÃÓÚ3x3¾ØÕóµÄĞÎ³É£¬ÒÔ¼°¶ÔÍ¼Ïñ±ß½çÏñËØµÄ´¦Àí
-                 ÔÚÔ­»ù´¡ÉÏÓÅ»¯ÁËÊ±Ğò£¬°ÑÔ­À´µÄÒ»Ğ©Î´ÍêÈ«¶ÔÆëµÄĞÅºÅ½øĞĞ¶ÔÆë¡£
-*****************************************************************/
-
-
+// å‡ºå¤„ï¼šMilianke uisrc ISP demoï¼ˆui_isp/demosaic_4x_2_0/raw_matrix_3x3_buffer.v, XiaoQingquan 2025/01, v1.1ï¼‰
+// RAW10 è½¬ 32bit åƒç´ ç»„ -> è¡Œæ•´åˆï¼ˆzhengheï¼‰-> ä¸¤è¡Œç¼“å†² -> 3x3 çª—å£ + å›¾åƒè¾¹ç•Œåƒç´ å¤åˆ¶ã€‚
 module raw_matrix_3x3_buffer #(
-    parameter IMG_HEIGHT = 1080,  // Í¼Ïñ¸ß¶È
-    parameter IMG_WIDTH  = 1920,   // Í¼Ïñ¿í¶È
+    parameter IMG_HEIGHT          = 1080,   // å›¾åƒé«˜åº¦
+    parameter IMG_WIDTH           = 1920,   // å›¾åƒå®½åº¦
     parameter data_complete_delay = 50
-)
-(
-    input           I_clk   ,   // Ê±ÖÓĞÅºÅ
-    input           I_rst_n ,   // ¸´Î»ĞÅºÅ£¬µÍÓĞĞ§
+) (
+    input                   I_clk   ,
+    input                   I_rst_n ,
 
-    input [39:0]                         axi4s_video_tdata ,  // AXI4-StreamÊÓÆµÊı¾İ
-    input [9:0]                          axi4s_video_tdest ,
-    input                                axi4s_video_tlast ,  // ĞĞ½áÊøĞÅºÅ
-    input                                axi4s_video_tvalid,  // Êı¾İÓĞĞ§ĞÅºÅ
-    input                                axi4s_video_tuser ,  // Ö¡¿ªÊ¼ĞÅºÅ
-    output                               axi4s_video_tready,  // ´ÓÄ£¿é×¼±¸ºÃ½ÓÊÜÊı¾İ
+    input      [39:0]       axi4s_video_tdata ,
+    input      [ 9:0]       axi4s_video_tdest ,
+    input                   axi4s_video_tlast ,
+    input                   axi4s_video_tvalid,
+    input                   axi4s_video_tuser ,
+    output                  axi4s_video_tready,
 
-    output                               O_tlast         ,   // ĞĞ½áÊøĞÅºÅÊä³ö
-    output                               O_tuser         ,   // Ö¡¿ªÊ¼ĞÅºÅÊä³ö
-    output                               O_tvalid        ,   // Êı¾İÓĞĞ§ĞÅºÅÊä³ö
-    input                                O_tready        ,   // ÉÏÒ»¼¶Ä£¿é×¼±¸ºÃ½ÓÊÜÊı¾İ
+    output                  O_tlast ,
+    output                  O_tuser ,
+    output                  O_tvalid,
+    input                   O_tready,
 
-    output                               bayer_ypos      ,   // BayerÂË²¨Æ÷ĞĞÎ»ÖÃ
-    output  [95:0]                       matrix_last_line,   // ÉÏÒ»ĞĞ3x3¾ØÕóÊı¾İ
-    output  [95:0]                       matrix_cur_line ,   // µ±Ç°ĞĞ3x3¾ØÕóÊı¾İ
-    output  [95:0]                       matrix_next_line    // ÏÂÒ»ĞĞ3x3¾ØÕóÊı¾İ
+    output                  bayer_ypos      ,   // Bayer è¡Œä½ç½®ï¼ˆçª—å£ä¸­å¿ƒè¡Œçš„è¡Œå¥‡å¶ï¼‰
+    output     [95:0]       matrix_last_line,   // ä¸Šä¸€è¡Œ 3x3 çª—å£
+    output     [95:0]       matrix_cur_line ,   // å½“å‰è¡Œ 3x3 çª—å£
+    output     [95:0]       matrix_next_line    // ä¸‹ä¸€è¡Œ 3x3 çª—å£
 );
 
+    localparam N            = 3;                   // 3x3 çª—å£
+    localparam DATA_WIDTH   = 32;                  // æ¯æ‹ 4 ä¸ª RAW10 åƒç´ 
+    localparam IMG_WIDTH_4x = (IMG_WIDTH >> 2);    // æ¯è¡Œçš„ 4 åƒç´ ç»„æ•°
 
-/*********************************************************
-******************1.¹¦ÄÜÉùÃ÷*******************************
-*********************************************************/
-// ¼ÆËãÊı¾İµÄÎ»¿í
-function integer clog2b(
-    input integer depth
-);
-    begin
-        for(clog2b=0; depth>0; clog2b=clog2b+1)begin
-            depth = depth >> 1;
+    wire        zhenghe_tlast , zhenghe_tuser , zhenghe_tvalid;
+    wire [31:0] zhenghe_tdata ;
+    wire        raw_tlast , raw_tuser , raw_tvalid;
+    wire [31:0] raw_data  ;
+
+    // 3 è¡Œæ•°æ®ï¼ˆæ¯è¡Œ 32bit æ•°æ® + tuser ä½ï¼‰
+    wire                  valid [0:N-1];
+    wire [DATA_WIDTH:0]   data  [0:N-1];
+    wire [32:0]           data_d2;
+    reg  [32:0]           data_d0_d, data_d0, data_d1;
+    reg                   valid_d0, valid_d1;
+
+    reg  [95:0] matrix [0:N-1];          // 0=ä¸Šä¸€è¡Œ, 1=å½“å‰è¡Œ, 2=ä¸‹ä¸€è¡Œ
+    reg  [13:0] h_cnt;                   // è¡Œå†…åƒç´ ç»„è®¡æ•°
+    reg  [13:0] v_cnt, v_cnt_d;          // è¡Œè®¡æ•°ï¼ˆv_cnt_d æ‰“ä¸€æ‹ï¼‰
+    reg         ch_valid;                // çª—å£æ•°æ®æœ‰æ•ˆ
+    reg  [2:0]  tlast_pipe, tuser_pipe;  // tlast/tuser ä¸‰çº§å¯¹é½
+
+    assign data[0]  = {zhenghe_tuser, zhenghe_tdata};
+    assign valid[0] = zhenghe_tvalid;
+
+    assign axi4s_video_tready = O_tready;
+
+    assign matrix_last_line = matrix[0];
+    assign matrix_cur_line  = matrix[1];
+    assign matrix_next_line = matrix[2];
+
+    assign bayer_ypos = !v_cnt_d[0] & ch_valid;
+
+    mipi_to_raw_converter mipi_to_raw_converter_r0 (
+        .I_clk       (I_clk             ),
+        .I_rst_n     (I_rst_n           ),
+        .I_raw_tdata (axi4s_video_tdata ),
+        .I_raw_tdest (axi4s_video_tdest ),
+        .I_raw_tlast (axi4s_video_tlast ),
+        .I_raw_tvalid(axi4s_video_tvalid),
+        .I_raw_tuser (axi4s_video_tuser ),
+        .I_raw_tready(                  ),   // è¾“å‡ºæ’å¯æ¥æ”¶ï¼Œä¸éœ€åå‹
+        .O_raw_tdata (raw_data          ),
+        .O_raw_tlast (raw_tlast         ),
+        .O_raw_tuser (raw_tuser         ),
+        .O_raw_tvalid(raw_tvalid        ),
+        .O_raw_tready(1'b1              )
+    );
+
+    // è¡Œæ•´åˆï¼šæŒ‰è¡Œå†™ BRAMï¼Œå»¶è¿Ÿ data_complete_delay åæ•´è¡Œè¯»å‡º
+    zhenghe #(
+        .IMG_WIDTH          (IMG_WIDTH          ),
+        .IMG_HEIGHT         (IMG_HEIGHT         ),
+        .DATA_WIDTH         (32                 ),
+        .data_complete_delay(data_complete_delay)
+    ) zhenghe_d (
+        .I_clk   (I_clk           ),
+        .I_rst_n (I_rst_n         ),
+        .I_tlast (raw_tlast       ),
+        .I_tuser (raw_tuser       ),
+        .I_tdata (raw_data        ),
+        .I_tvalid(raw_tvalid      ),
+        .O_tlast (zhenghe_tlast   ),
+        .O_tuser (zhenghe_tuser   ),
+        .O_tdata (zhenghe_tdata   ),
+        .O_tvalid(zhenghe_tvalid  )
+    );
+
+    // è¡Œç¼“å†²ï¼šdata[0] å»¶è¿Ÿ 2 æ‹ã€data[1] å»¶è¿Ÿ 1 æ‹åä¸ data[2] å¯¹é½
+    genvar i;
+    generate
+        for (i = 1; i < N; i = i + 1) begin : two_line_buffer
+            line_buffer_demosaic #(
+                .IMG_HEIGHT(IMG_HEIGHT),
+                .IMG_WIDTH (IMG_WIDTH )
+            ) line_buffer_demosaic_r1 (
+                .I_clk   (I_clk                     ),
+                .I_rst_n (I_rst_n                   ),
+                .I_tuser (data[i-1][32] & valid[i-1]),
+                .I_valid (valid[i-1]                ),
+                .I_data  (data[i-1]                 ),
+                .O_valid (valid[i]                  ),
+                .O_data  (data[i]                   )
+            );
         end
-    end    
-endfunction
+    endgenerate
 
-/*********************************************************
-******************2.³£ÊıÉùÃ÷*******************************
-*********************************************************/
-localparam N = 3;  // ¾ØÕó´óĞ¡Îª3x3
-
-localparam DATA_WIDTH   = 32;  // Êı¾İÎ»¿í
-
-localparam IMG_WIDTH_4x = (IMG_WIDTH >> 2);  // Í¼Ïñ¿í¶È³ıÒÔ4£¬µÃµ½Ã¿¸öÊı¾İ¿éµÄÊıÁ¿
-
-/*********************************************************
-******************3.ĞÅºÅÉùÃ÷*******************************
-*********************************************************/
-// ¶¨ÒåÏßÍøĞÅºÅ
-wire                        zhenghe_tlast ;    // ºÏ²¢ºóµÄĞĞ½áÊøĞÅºÅ
-wire                        zhenghe_tuser ;    // ºÏ²¢ºóµÄÖ¡¿ªÊ¼ĞÅºÅ
-wire  [31:0]                zhenghe_tdata ;    // ºÏ²¢ºóµÄÊı¾İ
-wire                        zhenghe_tvalid;    // ºÏ²¢ºóµÄÊı¾İÓĞĞ§ĞÅºÅ
-
-wire  [DATA_WIDTH-1:0]      raw_data        ;  // Ô­Ê¼Êı¾İ
-wire                        raw_data_valid  ;  // Ô­Ê¼Êı¾İÓĞĞ§ĞÅºÅ
-
-wire                valid   [0:N-1] ;          // ÓĞĞ§ĞÅºÅÊı×é
-wire [DATA_WIDTH:0] data    [0:N-1] ;          // Êı¾İÊı×é£¨°üº¬tuserÎ»£©
-
-wire                O_raw_tlast_d0;            // ĞĞ½áÊøĞÅºÅ£¬ÑÓ³Ù0ÖÜÆÚ
-wire                O_raw_tuser_d0;            // Ö¡¿ªÊ¼ĞÅºÅ£¬ÑÓ³Ù0ÖÜÆÚ
-wire                I_raw_tready;              // Ä£¿é×¼±¸ºÃ½ÓÊÜÔ­Ê¼Êı¾İ
-wire [32:0]         next_line_data;            // ÏÂÒ»ĞĞÊı¾İ
-wire [32:0]         data_d2;                   // Êı¾İÑÓ³Ù2¸öÖÜÆÚ
-wire                next_line_start;           // ÏÂÒ»ĞĞµÄ¿ªÊ¼ĞÅºÅ
-wire                bayer_ypos_d0;             // BayerÎ»ÖÃ£¬ÑÓ³Ù0ÖÜÆÚ
-
-/*********************************************************
-******************4.¼Ä´æÆ÷ĞÅºÅÉùÃ÷*************************
-*********************************************************/
-// ¶¨Òå¼Ä´æÆ÷ĞÅºÅ
-reg [95:0]      matrix_cur_line_buffer       ; // µ±Ç°ĞĞµÄ3x3¾ØÕó»º³å
-reg [95:0]      matrix_last_line_buffer      ; // ÉÏÒ»ĞĞµÄ3x3¾ØÕó»º³å
-reg [95:0]      matrix_next_line_buffer      ; // ÏÂÒ»ĞĞµÄ3x3¾ØÕó»º³å
-reg             tlast_d0,tlast_d1,tlast_d2;     // ĞĞ½áÊøĞÅºÅÑÓ³Ù¼Ä´æÆ÷
-reg             tuser_d0,tuser_d1,tuser_d2;     // Ö¡¿ªÊ¼ĞÅºÅÑÓ³Ù¼Ä´æÆ÷
-reg             ch_valid;                       // Êı¾İÍ¨µÀÓĞĞ§ĞÅºÅ
-reg [13:0]      h_cnt;                          // Ë®Æ½ÏñËØ¼ÆÊıÆ÷
-reg [13:0]      v_cnt,v_cnt_d;                  // ´¹Ö±ÏñËØ¼ÆÊıÆ÷¼°ÆäÑÓ³Ù
-reg             next_line_data_valid;           // ÏÂÒ»ĞĞÊı¾İÓĞĞ§ĞÅºÅ
-reg             valid_d0,valid_d1;              // ÓĞĞ§ĞÅºÅÑÓ³Ù¼Ä´æÆ÷
-reg             bayer_ypos_d;                   // BayerÎ»ÖÃÑÓ³Ù¼Ä´æÆ÷
-reg  [32:0]     data_d0_d,data_d0;              // Êı¾İÑÓ³Ù¼Ä´æÆ÷
-reg  [32:0]     data_d1;
-
-/*********************************************************
-******************5.×éºÏÂß¼­******************************
-*********************************************************/
-// ½«Êı¾İºÍÓĞĞ§ĞÅºÅ½øĞĞÁ¬½Ó
-assign data[0]  = {zhenghe_tuser, zhenghe_tdata};  // ½«tuserºÍÊı¾İÆ´½Ó
-assign valid[0] = zhenghe_tvalid;                  // µÚÒ»¸öÓĞĞ§ĞÅºÅ
-
-// ½«×¼±¸ĞÅºÅÁ¬½Óµ½ÉÏ¼¶Ä£¿é
-assign axi4s_video_tready = O_tready;
-
-/*********************************************************/
-// ½«¾ØÕó»º³åÊä³ö
-assign matrix_last_line = matrix_last_line_buffer;
-assign matrix_cur_line  = matrix_cur_line_buffer ;
-assign matrix_next_line = matrix_next_line_buffer;
-
-// ¼ÆËãBayerÂË²¨Æ÷µÄĞĞÎ»ÖÃ
-assign bayer_ypos_d0 = !v_cnt_d[0] & ch_valid;
-
-/*********************************************************
-******************6.Ä£¿éÊµÀı»¯*****************************
-*********************************************************/
-// ÊµÀı»¯mipi_to_raw_converterÄ£¿é£¬½«MIPIĞ­ÒéµÄÊı¾İ×ª»»ÎªRAWÊı¾İ
-mipi_to_raw_converter mipi_to_raw_converter_r0(
-    .I_clk       (I_clk  ),              // Ê±ÖÓĞÅºÅ
-    .I_rst_n     (I_rst_n),              // ¸´Î»ĞÅºÅ£¬µÍÓĞĞ§
-    .I_raw_tdata (axi4s_video_tdata ),   // ÊäÈëÔ­Ê¼Êı¾İ
-    .I_raw_tdest (axi4s_video_tdest ),   // ÊäÈëÄ¿µÄµØµØÖ·
-    .I_raw_tlast (axi4s_video_tlast ),   // ÊäÈëĞĞ½áÊøĞÅºÅ
-    .I_raw_tvalid(axi4s_video_tvalid),   // ÊäÈëÊı¾İÓĞĞ§ĞÅºÅ
-    .I_raw_tuser (axi4s_video_tuser),    // ÊäÈëÖ¡¿ªÊ¼ĞÅºÅ
-    .I_raw_tready(I_raw_tready  ),       // Êä³ö×¼±¸ºÃĞÅºÅ
-    .O_raw_tdata (raw_data      ),       // Êä³öÔ­Ê¼Êı¾İ
-    .O_raw_tlast (O_raw_tlast_d0),       // Êä³öĞĞ½áÊøĞÅºÅ
-    .O_raw_tvalid(raw_data_valid),       // Êä³öÊı¾İÓĞĞ§ĞÅºÅ
-    .O_raw_tuser (O_raw_tuser_d0),       // Êä³öÖ¡¿ªÊ¼ĞÅºÅ
-    .O_raw_tready(1)                     // Ä£¿éÊ¼ÖÕ×¼±¸ºÃ½ÓÊÜÊı¾İ
-);
-
-// ÊµÀı»¯¡°zhenghe¡±Ä£¿é£¬½«Êı¾İ½øĞĞºÏ²¢´¦Àí
-zhenghe#(
-    .IMG_WIDTH ( IMG_WIDTH ),
-    .IMG_HEIGHT( IMG_HEIGHT),
-    .DATA_WIDTH( 32),
-    .data_complete_delay (data_complete_delay)
-) 
-zhenghe_d(
-    .I_clk    (I_clk   ),               // Ê±ÖÓĞÅºÅ
-    .I_rst_n  (I_rst_n ),               // ¸´Î»ĞÅºÅ£¬µÍÓĞĞ§
-
-    .I_tlast  (O_raw_tlast_d0 ),        // ÊäÈëĞĞ½áÊøĞÅºÅ
-    .I_tuser  (O_raw_tuser_d0 ),        // ÊäÈëÖ¡¿ªÊ¼ĞÅºÅ
-    .I_tdata  (raw_data ),              // ÊäÈëÔ­Ê¼Êı¾İ
-    .I_tvalid (raw_data_valid),         // ÊäÈëÊı¾İÓĞĞ§ĞÅºÅ
-
-    .O_tlast  (zhenghe_tlast ),         // Êä³öºÏ²¢ºóµÄĞĞ½áÊøĞÅºÅ
-    .O_tuser  (zhenghe_tuser ),         // Êä³öºÏ²¢ºóµÄÖ¡¿ªÊ¼ĞÅºÅ
-    .O_tdata  (zhenghe_tdata ),         // Êä³öºÏ²¢ºóµÄÊı¾İ
-    .O_tvalid (zhenghe_tvalid)          // Êä³öºÏ²¢ºóµÄÊı¾İÓĞĞ§ĞÅºÅ
-);
-
-// Éú³ÉÁ½ĞĞ»º³åÇø£¬Ê¹ÓÃÏßĞÔ»º³åÇøÊµÏÖ3x3¾ØÕóµÄĞĞÊı¾İ»º´æ
-genvar i;
-generate
-    for(i=1; i<3; i=i+1)
-    begin: two_line_buffer  // Ä£¿éÃüÃûÎªtwo_line_buffer
-        line_buffer_demosaic #(
-            .IMG_HEIGHT (IMG_HEIGHT),
-            .IMG_WIDTH  (IMG_WIDTH )
-        ) line_buffer_demosaic_r1 (
-            .I_clk     ( I_clk      ),    // Ê±ÖÓĞÅºÅ
-            .I_rst_n   ( I_rst_n    ),    // ¸´Î»ĞÅºÅ£¬µÍÓĞĞ§
-            .I_tuser   ( data[i-1][32] & valid[i-1]), // ÊäÈëÖ¡¿ªÊ¼ĞÅºÅ
-            .I_valid   ( valid[i-1] ),    // ÊäÈëÓĞĞ§ĞÅºÅ
-            .I_data    ( data[i-1]  ),    // ÊäÈëÊı¾İ
-            .O_valid   ( valid[i]   ),    // Êä³öÓĞĞ§ĞÅºÅ
-            .O_data    ( data[i]    )     // Êä³öÊı¾İ
-        );           
-    end        
-endgenerate
-
-// ÓÉÓÚÔÚBRAMÖĞÃ¿´ÎÊä³öÊı¾İ¶¼»áÑÓ³ÙÒ»¸öÖÜÆÚ£¬ËùÒÔÒªÊ¹ÕâĞ©Êı¾İ¶ÔÆë£¬ĞèÒª¶ÔÕâĞ©Êı¾İ½øĞĞÑÓ³Ù´¦Àí£¬ÆäÖĞdata[0]ÑÓ³Ù2¸öÖÜÆÚ£¬data[1]ÑÓ³ÙÒ»¸öÖÜÆÚ
-always @(posedge I_clk or negedge I_rst_n) begin
-    if (!I_rst_n) begin
-        data_d0_d <= 0;
-        data_d0   <= 0;
-        data_d1   <= 0;
-        valid_d0  <= 0;
-        valid_d1  <= 0;
+    always @(posedge I_clk or negedge I_rst_n) begin
+        if (!I_rst_n) begin
+            data_d0_d <= 33'd0;
+            data_d0   <= 33'd0;
+            data_d1   <= 33'd0;
+            valid_d0  <= 1'b0;
+            valid_d1  <= 1'b0;
+        end
+        else begin
+            valid_d0  <= valid[0];
+            valid_d1  <= valid_d0;
+            data_d0_d <= data[0];
+            data_d0   <= data_d0_d;
+            data_d1   <= data[1];
+        end
     end
-    else begin
-        valid_d0  <= valid[0];
-        valid_d1  <= valid_d0;
-        data_d0_d <= data[0];
-        data_d0   <= data_d0_d;
-        data_d1   <= data[1];
-    end
-end
 
-assign data_d2 = data[2];
-/*********************************************************
-***********3x3¾ØÕóµÄĞÎ³É£¬ÒÔ¼°¶Ô±ß½çÔªËØµÄ²¹³ä´¦Àí***********
-*********************************************************/
+    assign data_d2 = data[2];
 
-always @(posedge I_clk or negedge I_rst_n) begin 
-    if(!I_rst_n) begin
-        matrix_last_line_buffer <= 'b0 ;
-        matrix_cur_line_buffer  <= 'b0 ;
-        matrix_next_line_buffer <= 'b0 ;
-    end else if(valid_d1) begin
-        if(v_cnt == 0) begin  // µÚÒ»ĞĞ
-            if(h_cnt == 0) begin  // µÚÒ»ĞĞµÄµÚÒ»¸öÏñËØ
-                matrix_last_line_buffer <= {{24{1'b0}}, data_d0[31:24], data_d0[31:0], data_d0[31:0]} ;
-                matrix_cur_line_buffer  <= {{24{1'b0}}, data_d0[31:24], data_d0[31:0], data_d0[31:0]} ;
-                matrix_next_line_buffer <= {{24{1'b0}}, data_d0[31:24], data_d0[31:0], data_d0[31:0]} ;
-            end else if(h_cnt == (IMG_WIDTH_4x - 1)) begin  // µÚÒ»ĞĞµÄ×îºóÒ»¸öÏñËØ
-                matrix_last_line_buffer <= {matrix_next_line_buffer [63:0], matrix_next_line_buffer[7:0], {24{1'b0}}} ;
-                matrix_cur_line_buffer  <= {matrix_next_line_buffer [63:0], matrix_next_line_buffer[7:0], {24{1'b0}}} ;
-                matrix_next_line_buffer <= {matrix_next_line_buffer [63:0], matrix_next_line_buffer[7:0], {24{1'b0}}} ;
-            end else begin  // µÚÒ»ĞĞµÄÖĞ¼äÏñËØ
-                matrix_last_line_buffer <= {matrix_next_line_buffer[63:0], data_d0[31:0]} ;
-                matrix_cur_line_buffer  <= {matrix_next_line_buffer[63:0], data_d0[31:0]} ;
-                matrix_next_line_buffer <= {matrix_next_line_buffer[63:0], data_d0[31:0]} ;
+    // 3x3 çª—å£ï¼šæ¯è¡Œ 6 ä¸ªåƒç´ ï¼ˆçª—å£åˆ— -1..+4ï¼‰ï¼Œè¡Œ/åˆ—è¾¹ç•ŒæŒ‰å¤åˆ¶å¤„ç†ã€‚
+    // ä¸‰è¡Œå„è‡ªå·¦ç§» 96bit çª—å£ï¼šh_cnt==0 å¤åˆ¶ä¸­å¿ƒåƒç´ ï¼›h_cnt==æœ«åˆ— å¤åˆ¶æœ«åƒç´ ï¼›å¦åˆ™å·¦ç§»è¿›æ–°åƒç´ ã€‚
+    // å„è¡Œçš„æºæ•°æ®ï¼šä¸‹ä¸€è¡Œ=å½“å‰æ‹ data_d0ï¼ˆv_cnt>=1 æ—¶ï¼‰ï¼Œå½“å‰è¡Œ=data_d1ï¼ˆv_cnt>=1ï¼‰ï¼Œä¸Šä¸€è¡Œ=data_d2ï¼ˆv_cnt>=2ï¼‰ï¼›
+    // v_cnt==0/1 æ—¶æŒ‰å›¾åƒä¸Šè¾¹ç•Œå¤åˆ¶ï¼ˆè§ src é€‰æ‹©ï¼‰ã€‚
+    wire [32:0] src_last = (v_cnt == 0) ? data_d0 : (v_cnt == 1) ? data_d1 : data_d2;
+    wire [32:0] src_cur  = (v_cnt == 0) ? data_d0 : data_d1;
+    wire [32:0] src_next = data_d0;
+
+    generate
+        for (i = 0; i < N; i = i + 1) begin : g_matrix
+            wire [32:0] src = (i == 0) ? src_last : (i == 1) ? src_cur : src_next;
+            always @(posedge I_clk or negedge I_rst_n) begin
+                if (!I_rst_n)
+                    matrix[i] <= 96'd0;
+                else if (valid_d1) begin
+                    if (h_cnt == 0)
+                        matrix[i] <= {24'd0, src[31:24], src[31:0], src[31:0]};
+                    else if (h_cnt == IMG_WIDTH_4x - 1)
+                        matrix[i] <= {matrix[i][63:0], matrix[i][7:0], 24'd0};
+                    else
+                        matrix[i] <= {matrix[i][63:0], src[31:0]};
+                end
+                else
+                    matrix[i] <= 96'd0;
             end
         end
-        else if(v_cnt == 1) begin  // µÚ¶şĞĞ
-            if(h_cnt == 0) begin  // µÚ¶şĞĞµÄµÚÒ»¸öÏñËØ
-                matrix_last_line_buffer <= {{24{1'b0}}, data_d1[31:24], data_d1[31:0], data_d1[31:0]} ;
-                matrix_cur_line_buffer  <= {{24{1'b0}}, data_d1[31:24], data_d1[31:0], data_d1[31:0]} ;
-                matrix_next_line_buffer <= {{24{1'b0}}, data_d0[31:24], data_d0[31:0], data_d0[31:0]} ;
-            end else if(h_cnt == (IMG_WIDTH_4x - 1)) begin  // µÚ¶şĞĞµÄ×îºóÒ»¸öÏñËØ
-                matrix_last_line_buffer <= {matrix_cur_line_buffer [63:0], matrix_cur_line_buffer[7:0], {24{1'b0}}} ;
-                matrix_cur_line_buffer  <= {matrix_cur_line_buffer [63:0], matrix_cur_line_buffer[7:0], {24{1'b0}}} ;
-                matrix_next_line_buffer <= {matrix_next_line_buffer [63:0], matrix_next_line_buffer[7:0], {24{1'b0}}} ;
-            end else begin  // µÚ¶şĞĞµÄÖĞ¼äÏñËØ
-                matrix_last_line_buffer <= {matrix_cur_line_buffer[63:0],  data_d1[31:0]} ;
-                matrix_cur_line_buffer  <= {matrix_cur_line_buffer[63:0],  data_d1[31:0]} ;
-                matrix_next_line_buffer <= {matrix_next_line_buffer[63:0], data_d0[31:0]} ;
-            end
+    endgenerate
+
+    // è¡Œ/åˆ—è®¡æ•°å™¨ï¼ˆçª—å£æ•°æ®æœ‰æ•ˆæ—¶æ¨è¿›ï¼‰
+    always @(posedge I_clk or negedge I_rst_n) begin
+        if (!I_rst_n || zhenghe_tuser) begin
+            h_cnt <= 14'd0;
+            v_cnt <= 14'd0;
         end
-        else begin  // µÚÈıĞĞ¼°ÒÔºó
-            if(h_cnt == 0) begin  // µÚÒ»¸öÏñËØ
-                matrix_last_line_buffer <= {{24{1'b0}}, data_d2[31:24], data_d2[31:0], data_d2[31:0]} ;
-                matrix_cur_line_buffer  <= {{24{1'b0}}, data_d1[31:24], data_d1[31:0], data_d1[31:0]} ;
-                matrix_next_line_buffer <= {{24{1'b0}}, data_d0[31:24], data_d0[31:0], data_d0[31:0]} ;
-            end else if(h_cnt == (IMG_WIDTH_4x - 1)) begin  // ×îºóÒ»¸öÏñËØ
-                matrix_last_line_buffer <= {matrix_last_line_buffer[63:0], matrix_last_line_buffer[7:0], {24{1'b0}}} ;
-                matrix_cur_line_buffer  <= {matrix_cur_line_buffer [63:0], matrix_cur_line_buffer [7:0], {24{1'b0}}} ;
-                matrix_next_line_buffer <= {matrix_next_line_buffer[63:0], matrix_next_line_buffer[7:0], {24{1'b0}}} ;
-            end else begin  // ÖĞ¼äÏñËØ
-                matrix_last_line_buffer <= {matrix_last_line_buffer[63:0], data_d2[31:0]} ;
-                matrix_cur_line_buffer  <= {matrix_cur_line_buffer [63:0], data_d1[31:0]} ;
-                matrix_next_line_buffer <= {matrix_next_line_buffer[63:0], data_d0[31:0]} ;
-            end  
+        else begin
+            h_cnt <= valid_d1 ? ((h_cnt == IMG_WIDTH_4x - 1) ? 14'd0 : h_cnt + 1'b1) : h_cnt;
+            v_cnt <= (valid_d1 && (h_cnt == IMG_WIDTH_4x - 1))
+                     ? ((v_cnt == IMG_HEIGHT - 1) ? 14'd0 : v_cnt + 1'b1) : v_cnt;
         end
     end
-    else begin
-        matrix_last_line_buffer <= 'b0 ;
-        matrix_cur_line_buffer  <= 'b0 ;
-        matrix_next_line_buffer <= 'b0 ;
-    end 
-end
 
-// ¼ÆËãË®Æ½ºÍ´¹Ö±¼ÆÊıÆ÷
-always @(posedge I_clk or negedge I_rst_n) begin
-    if(!I_rst_n || zhenghe_tuser) begin
-        h_cnt <= 0;
-        v_cnt <= 0;
-    end else begin
-        h_cnt    <= valid_d1 ? ((h_cnt == IMG_WIDTH_4x - 1) ? 0 : h_cnt + 1) : h_cnt;
-        v_cnt    <= valid_d1 && (h_cnt == IMG_WIDTH_4x - 1) ? ((v_cnt == IMG_HEIGHT - 1) ? 0 : v_cnt + 1) : v_cnt;
+    // çª—å£æ•°æ®æœ‰æ•ˆä¸è¡Œå·æ‰“æ‹ï¼ˆbayer_ypos ç”¨ v_cnt çš„æ‰“æ‹å€¼ï¼‰
+    always @(posedge I_clk or negedge I_rst_n) begin
+        if (!I_rst_n) begin
+            ch_valid <= 1'b0;
+            v_cnt_d  <= 14'd0;
+        end
+        else begin
+            ch_valid <= valid_d1;
+            v_cnt_d  <= v_cnt;
+        end
     end
-end
 
-// Êı¾İÓĞĞ§ĞÅºÅµÄÑÓ³Ù´¦Àí
-always @(posedge I_clk or negedge I_rst_n) begin
-    if(!I_rst_n) begin
-        ch_valid <= 0;
-        v_cnt_d <= 0;
-    end else begin
-        ch_valid <= valid_d1 ;
-        v_cnt_d  <= v_cnt;
+    // tlast/tuser ä¸‰çº§å¯¹é½åè¾“å‡º
+    always @(posedge I_clk or negedge I_rst_n) begin
+        if (!I_rst_n) begin
+            tlast_pipe <= 3'd0;
+            tuser_pipe <= 3'd0;
+        end
+        else begin
+            tlast_pipe <= {tlast_pipe[1:0], zhenghe_tlast};
+            tuser_pipe <= {tuser_pipe[1:0], zhenghe_tuser};
+        end
     end
-end
 
-assign bayer_ypos = bayer_ypos_d0 ;
-
-// ¶ÔtuserºÍtlastĞÅºÅ½øĞĞÍ¬²½´¦Àí£¬´ËÊ±Êı¾İºÍÁ÷¿ØÖÆĞÅºÅÒÑ¾­Í¬²½
-always @(posedge I_clk or negedge I_rst_n) begin
-    if (!I_rst_n) begin
-        tlast_d0 <= 0;
-        tlast_d1 <= 0;
-        tlast_d2 <= 0;
-        tuser_d0 <= 0;
-        tuser_d1 <= 0;
-        tuser_d2 <= 0;
-    end
-    else begin
-        tlast_d0 <= zhenghe_tlast;
-        tlast_d1 <= tlast_d0;
-        tlast_d2 <= tlast_d1;
-        tuser_d0 <= zhenghe_tuser;
-        tuser_d1 <= tuser_d0;
-        tuser_d2 <= tuser_d1;
-    end
-end
-
-// ½«Í¬²½ºóµÄĞÅºÅÊä³ö
-assign O_tuser  = tuser_d2;
-assign O_tlast  = tlast_d2;
-assign O_tvalid = ch_valid;
-
+    assign O_tuser  = tuser_pipe[2];
+    assign O_tlast  = tlast_pipe[2];
+    assign O_tvalid = ch_valid;
 
 endmodule
-
-

@@ -1,110 +1,73 @@
-/*****************************************************************
-Company : MiLianKe Electronic Technology Co., Ltd.
-WebSite:https://www.milianke.com
-TechWeb:https://www.uisrc.com
-tmall-shop:https://milianke.tmall.com
-jd-shop:https://milianke.jd.com
-taobao-shop: https://milianke.taobao.com
-Description: 
-The reference demo provided by Milianke is only used for learning. 
-We cannot ensure that the demo itself is free of bugs, so users 
-should be responsible for the technical problems and consequences
-caused by the use of their own products.
-@Author      :   XiaoQingquan 
-@Time        :   2025/01 
-version:     :   1.1
-@Description :   ¸ÃÄ£¿éÖ÷ÒªÊÇÓÃÓÚ3x3¾ØÕóµÄĞÎ³É£¬ÒÔ¼°¶ÔÍ¼Ïñ±ß½çÏñËØµÄ´¦Àí
-                 ÔÚÔ­»ù´¡ÉÏÓÅ»¯ÁËÊ±Ğò£¬°ÑÔ­À´µÄÒ»Ğ©Î´ÍêÈ«¶ÔÆëµÄĞÅºÅ½øĞĞ¶ÔÆë¡£
-*****************************************************************/
-
+// å‡ºå¤„ï¼šMilianke uisrc ISP demoï¼ˆui_isp/demosaic_4x_2_0/top_demosaic.v, XiaoQingquan 2025/01, v1.1ï¼‰
+// demosaic é¡¶å±‚ï¼š3x3 è¡Œçª—å£ç¼“å­˜ + åŒçº¿æ€§æ’å€¼ï¼›æœ¬æ–‡ä»¶åªåšè¿çº¿ï¼Œæ— é€»è¾‘ã€‚
 module demosaic #(
-    parameter IMG_HEIGHT          = 1080,  // Í¼Ïñ¸ß¶È
-    parameter IMG_WIDTH           = 1920,   // Í¼Ïñ¿í¶È
-    parameter data_complete_delay = 50  ,
-    parameter BAYER_MODE          = "BGGR"
-)
-(
-    input           I_clk   ,   // Ê±ÖÓĞÅºÅ
-    input           I_rst_n ,   // ¸´Î»ĞÅºÅ£¬µÍÓĞĞ§
+    parameter IMG_HEIGHT          = 1080,    // å›¾åƒé«˜åº¦
+    parameter IMG_WIDTH           = 1920,    // å›¾åƒå®½åº¦
+    parameter data_complete_delay = 50,      // æ¯è¡Œæ•°æ®å®Œæˆåˆ°è¯»å‡ºçš„å»¶è¿Ÿï¼ˆcycleï¼‰
+    parameter BAYER_MODE          = "BGGR"   // Bayer æ’åˆ—ï¼šRGGB/BGGR/GBRG/GRBG
+) (
+    input               I_clk   ,
+    input               I_rst_n ,
 
-    input [39:0]            axi4s_video_tdata ,  // AXI4-StreamÊÓÆµÊı¾İ
-    input [9:0]             axi4s_video_tdest ,
-    input                   axi4s_video_tlast ,  // ĞĞ½áÊøĞÅºÅ
-    input                   axi4s_video_tvalid,  // Êı¾İÓĞĞ§ĞÅºÅ
-    input                   axi4s_video_tuser ,  // Ö¡¿ªÊ¼ĞÅºÅ
-    output                  axi4s_video_tready,  // ´ÓÄ£¿é×¼±¸ºÃ½ÓÊÜÊı¾İ
+    input  [39:0]       axi4s_video_tdata ,   // AXI4-Stream è§†é¢‘æ•°æ®
+    input  [9:0]        axi4s_video_tdest ,
+    input               axi4s_video_tlast ,
+    input               axi4s_video_tvalid,
+    input               axi4s_video_tuser ,
+    output              axi4s_video_tready,
 
-    output                  O_tlast  ,  // Êä³öĞĞ½áÊøĞÅºÅ
-    output                  O_tuser  ,  // Êä³öÖ¡¿ªÊ¼ĞÅºÅ
-    output [127:0]          O_tdata  ,  // Êä³öÊı¾İ
-    output                  O_tvalid ,  // Êä³öÊı¾İÓĞĞ§ĞÅºÅ
-    input                   O_tready    // Êä³öÊı¾İ×¼±¸ºÃĞÅºÅ
+    output              O_tlast ,
+    output              O_tuser ,
+    output [127:0]      O_tdata ,
+    output              O_tvalid,
+    input               O_tready
 );
 
+    wire        d_tlast , d_tuser , d_tvalid , d_tready;
+    wire        bayer_ypos;
+    wire [95:0] matrix_last_line, matrix_cur_line, matrix_next_line;
 
-wire demosaic_tlast ; 
-wire demosaic_tuser ; 
-wire demosaic_tvalid; 
-wire demosaic_tready; 
+    raw_matrix_3x3_buffer #(
+        .IMG_HEIGHT         (IMG_HEIGHT         ),
+        .IMG_WIDTH          (IMG_WIDTH          ),
+        .data_complete_delay(data_complete_delay)
+    ) raw_matrix_3x3_buffer_d (
+        .I_clk              (I_clk              ),
+        .I_rst_n            (I_rst_n            ),
+        .axi4s_video_tdata  (axi4s_video_tdata  ),
+        .axi4s_video_tdest  (axi4s_video_tdest  ),
+        .axi4s_video_tlast  (axi4s_video_tlast  ),
+        .axi4s_video_tvalid (axi4s_video_tvalid ),
+        .axi4s_video_tuser  (axi4s_video_tuser  ),
+        .axi4s_video_tready (axi4s_video_tready ),
+        .O_tlast            (d_tlast            ),
+        .O_tuser            (d_tuser            ),
+        .O_tvalid           (d_tvalid           ),
+        .O_tready           (d_tready           ),
+        .bayer_ypos         (bayer_ypos         ),
+        .matrix_last_line   (matrix_last_line   ),
+        .matrix_cur_line    (matrix_cur_line    ),
+        .matrix_next_line   (matrix_next_line   )
+    );
 
-wire        bayer_ypos      ;
-wire [95:0] matrix_last_line;
-wire [95:0] matrix_cur_line ;
-wire [95:0] matrix_next_line;
-
-raw_matrix_3x3_buffer #(
-    .IMG_HEIGHT         (IMG_HEIGHT         ),  // Í¼Ïñ¸ß¶È
-    .IMG_WIDTH          (IMG_WIDTH          ),   // Í¼Ïñ¿í¶È
-    .data_complete_delay(data_complete_delay)
-)raw_matrix_3x3_buffer_d
-(
-    /*input           */.I_clk    (I_clk   ),   // Ê±ÖÓĞÅºÅ
-    /*input           */.I_rst_n  (I_rst_n ),   // ¸´Î»ĞÅºÅ£¬µÍÓĞĞ§
-
-   /*input [39:0]    */.axi4s_video_tdata (axi4s_video_tdata ),  // AXI4-StreamÊÓÆµÊı¾İ
-   /*input [9:0]     */.axi4s_video_tdest (axi4s_video_tdest ),
-   /*input           */.axi4s_video_tlast (axi4s_video_tlast ),  // ĞĞ½áÊøĞÅºÅ
-   /*input           */.axi4s_video_tvalid(axi4s_video_tvalid),  // Êı¾İÓĞĞ§ĞÅºÅ
-   /*input           */.axi4s_video_tuser (axi4s_video_tuser ),  // Ö¡¿ªÊ¼ĞÅºÅ
-   /*output          */.axi4s_video_tready(axi4s_video_tready),  // ´ÓÄ£¿é×¼±¸ºÃ½ÓÊÜÊı¾İ
-
-   /*output          */.O_tlast         (demosaic_tlast ),   // ĞĞ½áÊøĞÅºÅÊä³ö
-   /*output          */.O_tuser         (demosaic_tuser ),   // Ö¡¿ªÊ¼ĞÅºÅÊä³ö
-   /*output          */.O_tvalid        (demosaic_tvalid),   // Êı¾İÓĞĞ§ĞÅºÅÊä³ö
-   /*input           */.O_tready        (demosaic_tready),   // ÉÏÒ»¼¶Ä£¿é×¼±¸ºÃ½ÓÊÜÊı¾İ
-
-   /*output          */.bayer_ypos      (bayer_ypos      ),   // BayerÂË²¨Æ÷ĞĞÎ»ÖÃ
-   /*output  [95:0]  */.matrix_last_line(matrix_last_line),   // ÉÏÒ»ĞĞ3x3¾ØÕóÊı¾İ
-   /*output  [95:0]  */.matrix_cur_line (matrix_cur_line ),   // µ±Ç°ĞĞ3x3¾ØÕóÊı¾İ
-   /*output  [95:0]  */.matrix_next_line(matrix_next_line)    // ÏÂÒ»ĞĞ3x3¾ØÕóÊı¾İ
-);
-
-bilinear_interpolation #(
-    .BAYER_MODE (BAYER_MODE)
-)bilinear_interpolation_d(
-    /*input            */.I_clk            (I_clk   ),
-    /*input            */.I_rst_n          (I_rst_n ),
-
-    /*//input
-    /*input            */.I_tlast      (demosaic_tlast )    ,
-    /*input            */.I_tuser      (demosaic_tuser )    ,
-    /*input            */.I_tvalid     (demosaic_tvalid)    ,
-    /*output           */.I_tready     (demosaic_tready)    ,
-  
-    /*input            */.bayer_ypos       (bayer_ypos       ),
-    /*input   [95:0]   */.matrix_last_line (matrix_last_line ),
-    /*input   [95:0]   */.matrix_cur_line  (matrix_cur_line  ),
-    /*input   [95:0]   */.matrix_next_line (matrix_next_line ),
-  
-    /*//output
-    /*output           */.O_tlast (O_tlast ),
-    /*output           */.O_tuser (O_tuser ),
-    /*output [127 : 0] */.O_tdata (O_tdata ),
-    /*output           */.O_tvalid(O_tvalid),
-    /*input            */.O_tready(O_tready)
-
-);
-
-
+    bilinear_interpolation #(
+        .BAYER_MODE(BAYER_MODE)
+    ) bilinear_interpolation_d (
+        .I_clk            (I_clk            ),
+        .I_rst_n          (I_rst_n          ),
+        .I_tlast          (d_tlast          ),
+        .I_tuser          (d_tuser          ),
+        .I_tvalid         (d_tvalid         ),
+        .I_tready         (d_tready         ),
+        .bayer_ypos       (bayer_ypos       ),
+        .matrix_last_line (matrix_last_line ),
+        .matrix_cur_line  (matrix_cur_line  ),
+        .matrix_next_line (matrix_next_line ),
+        .O_tlast          (O_tlast          ),
+        .O_tuser          (O_tuser          ),
+        .O_tdata          (O_tdata          ),
+        .O_tvalid         (O_tvalid         ),
+        .O_tready         (O_tready         )
+    );
 
 endmodule

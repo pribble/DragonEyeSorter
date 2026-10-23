@@ -1,367 +1,298 @@
-module system_top(
-    // HDMI interface 
+// DragonEyeSorter 顶层：PS 块设计（design_0：MIPI RX / ISP / VDMA / HDMI / NPU）
+// + 厂家明文 ISP/帧写 RTL + 自研 des_* 寄存器总线与运动/IO 模块的集成。
+// 厂家底板来自米联客 NPU demo（uisrc soc_prj）；des_* 接线、CEP 管脚与 CAN0 引出为本项目改动。
+module system_top (
+    // HDMI TX（厂家 hdmi_tx 模块）
     output [2:0] O_hdmi_tx_p,
-    output  O_hdmi_clk_p,
-  
-    // PS I2C0 EMIO
-    inout          SCL0,
-    inout          SDA0,
+    output       O_hdmi_clk_p,
 
+    // PS I2C0 EMIO（相机配置）
+    inout        SCL0,
+    inout        SDA0,
 
-    // Key input
-//    inout    [3:0] key,
-    // LED output
-    output   [2:0] led,
+    // 板载 LED（led[0] 自研心跳，led[1]/led[2] 厂家 lock）
+    output [2:0] led,
 
-    // DragonEyeSorter: CEP J12 (BANK11, 3.3V)
-    output         STEP_PUL,     // CEP PIN3  Y12, TB6600 PUL+ (common cathode, active high)
-    output         STEP_DIR,     // CEP PIN4  Y13
-    output         STEP_ENA,     // CEP PIN5  T9, TB6600 ENA+ (common cathode: low = energised)
-    input          ESTOP_IN,     // CEP PIN15 V11, low = emergency stop (pull-up)
-    input          ENC_A,        // CEP PIN6  U10, belt encoder (NPN open collector, pull-up)
-    input          ENC_B,        // CEP PIN7  T5
-    input          ENC_Z,        // CEP PIN8  U5
-    input          IR1_IN,       // CEP PIN9  V6, through-beam receiver (NPN, pull-up)
-    input          LIMIT1_IN,    // CEP PIN12 V7, limit switch (pull-up, low = active)
-    inout          SERVO_BUS,    // CEP PIN19 Y9, via BSS138, open-drain
-    output         FLAP1_PWM,    // CEP PIN18 Y6 (#16 FORK_PWM), belt-end flap stage 1 (MG996R)
-    output         FLAP2_PWM,    // CEP PIN20 Y8 (#18), flap stage 2
-    // board CAN transceiver SN65HVD232 (BANK33, terminal J11): PS CAN0 via the PL (v12)
-    output         CAN0_TXD,     // F20
-    input          CAN0_RXD,     // F19
-    
-	input  wire		    I_clk_hs_p  ,
-	input  wire	[3:0]	I_data_hs_p , 
-	input  wire	[3:0]	I_data_lp_p ,
-	input  wire	[3:0]	I_data_lp_n ,
+    // CEP J12（BANK11 3.3V）运动与现场 IO
+    output       STEP_PUL,      // PIN3  Y12：TB6600 PUL+（共阴，高有效）
+    output       STEP_DIR,      // PIN4  Y13
+    output       STEP_ENA,      // PIN5  T9：TB6600 ENA+（共阴，低 = 使能）
+    input        ESTOP_IN,      // PIN15 V11：急停，低有效（上拉）
+    input        ENC_A,         // PIN6  U10：皮带编码器（NPN 开路，上拉）
+    input        ENC_B,         // PIN7  T5
+    input        ENC_Z,         // PIN8  U5
+    input        IR1_IN,        // PIN9  V6：对射接收（NPN，上拉）
+    input        LIMIT1_IN,     // PIN12 V7：限位（上拉，低有效）
+    inout        SERVO_BUS,     // PIN19 Y9：舵机总线，经 BSS138 开漏
+    output       FLAP1_PWM,     // PIN18 Y6（#16）：导流挡板 1
+    output       FLAP2_PWM,     // PIN20 Y8（#18）：导流挡板 2
 
-    output wire         O_imx334_clk_24m   ,
-    output              O_imax334_rst_n
- );
+    // 板载 CAN 收发器（BANK33，J11）：PS CAN0 经 PL 引出
+    output       CAN0_TXD,      // F20
+    input        CAN0_RXD,      // F19
 
-    parameter  AXI_ADDR_WIDTH = 33 ;
-	parameter  AXI_DATA_WIDTH = 256  ;
-    parameter    X_SIZE = 1920 ;
-    parameter    Y_SIZE = 1080 ;
+    // MIPI CSI-2 输入（LVDS IO 实现 D-PHY）
+    input  wire       I_clk_hs_p,
+    input  wire [3:0] I_data_hs_p,
+    input  wire [3:0] I_data_lp_p,
+    input  wire [3:0] I_data_lp_n,
 
-    // Signals for the PS HP0 AXI slave (frame writer), PLL clocks and camera DMA control
+    // 相机时钟 / 复位
+    output wire O_imx334_clk_24m,
+    output      O_imax334_rst_n
+);
 
-    wire       [32:0] slave_hp0_axi_awaddr ;
-    wire        [1:0] slave_hp0_axi_awburst ;
-    wire        [3:0] slave_hp0_axi_awcache ;
-    wire        [5:0] slave_hp0_axi_awid ;
-    wire        [3:0] slave_hp0_axi_awlen ;
-    wire              slave_hp0_axi_awlock ;
-    wire        [2:0] slave_hp0_axi_awprot ;
-    wire        [3:0] slave_hp0_axi_awqos ;
-    wire        [1:0] slave_hp0_axi_awsize ;
-    wire              slave_hp0_axi_awvalid ;
-    wire              slave_hp0_axi_awready;
-    
-    wire              slave_hp0_axi_bready ;
-    wire        [5:0] slave_hp0_axi_bid ;
-    wire        [1:0] slave_hp0_axi_bresp ;
-    wire              slave_hp0_axi_bvalid ;
-    
-    wire       [63:0] slave_hp0_axi_wdata ;
-    wire              slave_hp0_axi_wlast ;
-    wire        [7:0] slave_hp0_axi_wstrb ;
-    wire              slave_hp0_axi_wvalid ;
-    wire              slave_hp0_axi_wready;
+    parameter AXI_ADDR_WIDTH = 33;
+    parameter AXI_DATA_WIDTH = 256;
+    parameter X_SIZE = 1920;
+    parameter Y_SIZE = 1080;
 
-    wire              f2p_irq ;
+    // ---------------- PS HP0 从口：帧写 AXI4 master 与 PLL 时钟 ----------------
+    wire [32:0] slave_hp0_axi_awaddr;
+    wire  [1:0] slave_hp0_axi_awburst;
+    wire  [3:0] slave_hp0_axi_awcache;
+    wire  [5:0] slave_hp0_axi_awid;
+    wire  [3:0] slave_hp0_axi_awlen;
+    wire        slave_hp0_axi_awlock;
+    wire  [2:0] slave_hp0_axi_awprot;
+    wire  [3:0] slave_hp0_axi_awqos;
+    wire  [1:0] slave_hp0_axi_awsize;
+    wire        slave_hp0_axi_awvalid;
+    wire        slave_hp0_axi_awready;
+    wire        slave_hp0_axi_bready;
+    wire  [5:0] slave_hp0_axi_bid;
+    wire  [1:0] slave_hp0_axi_bresp;
+    wire        slave_hp0_axi_bvalid;
+    wire [63:0] slave_hp0_axi_wdata;
+    wire        slave_hp0_axi_wlast;
+    wire  [7:0] slave_hp0_axi_wstrb;
+    wire        slave_hp0_axi_wvalid;
+    wire        slave_hp0_axi_wready;
 
-    wire              pll_clk_150 ;//synthesis keep;
-    wire              pll_clk_150_aresetn ;
+    wire        f2p_irq;
+    wire        pll_clk_150;          //synthesis keep
+    wire        pll_clk_150_aresetn;
+    wire        p2f_clk0_50m;
 
-wire    [31:0]                            camera_base_addr; 
-wire                                      camera_start; 
-wire                                      camera_clear; 
+    wire [31:0] camera_base_addr;
+    wire        camera_start;
+    wire        camera_clear;
 
-wire p2f_clk0_50m;
-wire pwm_out_unused;
-
-    // DragonEyeSorter: LED1 slow blink (~2.7s on / 2.7s off) proves self-built PL logic is loaded
+    // ---------------- 自研心跳：PL 逻辑已加载的直接证据（约 2.7s 翻转） ----------------
     reg [27:0] des_hb_cnt = 28'd0;
     always @(posedge p2f_clk0_50m) des_hb_cnt <= des_hb_cnt + 1'b1;
+
     wire        des_clk, des_wr;
     wire [11:0] des_waddr, des_raddr;
     wire [31:0] des_wdata, des_rdata;
     wire        des_led_ovr, des_led_val;
     assign led[0] = des_led_ovr ? des_led_val : des_hb_cnt[27];
 
-    // PS: design_0 block design (MIPI RX / ISP / VDMA / HDMI / NPU) + our AXI-Lite register bridge
-    design_0  design_0_inst (
-        // hp0 aw 
-        .hp1_w_us1_awaddr (slave_hp0_axi_awaddr ),
-        .hp1_w_us1_awburst (slave_hp0_axi_awburst ),
-        .hp1_w_us1_awcache (slave_hp0_axi_awcache ),
-        .hp1_w_us1_awid (slave_hp0_axi_awid ),
-        .hp1_w_us1_awlen (slave_hp0_axi_awlen ),
-        .hp1_w_us1_awlock (slave_hp0_axi_awlock ),
-        .hp1_w_us1_awprot (slave_hp0_axi_awprot ),
-        .hp1_w_us1_awqos (slave_hp0_axi_awqos ),
-        .hp1_w_us1_awsize (slave_hp0_axi_awsize ),
-        .hp1_w_us1_awvalid (slave_hp0_axi_awvalid ),
-        .hp1_w_us1_awready (slave_hp0_axi_awready ),
-        // hp0 w
-        .hp1_w_us1_wdata (slave_hp0_axi_wdata ),
-        .hp1_w_us1_wlast (slave_hp0_axi_wlast ),
-        .hp1_w_us1_wstrb (slave_hp0_axi_wstrb ),
-        .hp1_w_us1_wvalid (slave_hp0_axi_wvalid ),
-        .hp1_w_us1_wready (slave_hp0_axi_wready ),
-        // hp0 b
-        .hp1_w_us1_bid (slave_hp0_axi_bid ),
-        .hp1_w_us1_bresp (slave_hp0_axi_bresp ),
-        .hp1_w_us1_bvalid (slave_hp0_axi_bvalid ),
-        .hp1_w_us1_bready (slave_hp0_axi_bready ),
-        
-        .f2p_irq (f2p_irq ),
-        
-        
-        // iic0 and iic1
+    // ---------------- PS 块设计 ----------------
+    design_0 design_0_inst (
+        .hp1_w_us1_awaddr (slave_hp0_axi_awaddr),
+        .hp1_w_us1_awburst(slave_hp0_axi_awburst),
+        .hp1_w_us1_awcache(slave_hp0_axi_awcache),
+        .hp1_w_us1_awid   (slave_hp0_axi_awid),
+        .hp1_w_us1_awlen  (slave_hp0_axi_awlen),
+        .hp1_w_us1_awlock (slave_hp0_axi_awlock),
+        .hp1_w_us1_awprot (slave_hp0_axi_awprot),
+        .hp1_w_us1_awqos  (slave_hp0_axi_awqos),
+        .hp1_w_us1_awsize (slave_hp0_axi_awsize),
+        .hp1_w_us1_awvalid(slave_hp0_axi_awvalid),
+        .hp1_w_us1_awready(slave_hp0_axi_awready),
+        .hp1_w_us1_wdata  (slave_hp0_axi_wdata),
+        .hp1_w_us1_wlast  (slave_hp0_axi_wlast),
+        .hp1_w_us1_wstrb  (slave_hp0_axi_wstrb),
+        .hp1_w_us1_wvalid (slave_hp0_axi_wvalid),
+        .hp1_w_us1_wready (slave_hp0_axi_wready),
+        .hp1_w_us1_bid    (slave_hp0_axi_bid),
+        .hp1_w_us1_bresp  (slave_hp0_axi_bresp),
+        .hp1_w_us1_bvalid (slave_hp0_axi_bvalid),
+        .hp1_w_us1_bready (slave_hp0_axi_bready),
+        .f2p_irq          (f2p_irq),
         .mipi_iic_i2c0_scl_io(SCL0),
         .mipi_iic_i2c0_sda_io(SDA0),
-     
-    
-        // pl gpio
-    
-        
-        // hdmi
-        
-        .O_hdmi_tx_p(O_hdmi_tx_p),
-        .O_hdmi_clk_p(O_hdmi_clk_p),
-
-
-        .clk_150m(pll_clk_150), 
-        .p2f_clk0_50m(p2f_clk0_50m),
-        .rstn_150m(pll_clk_150_aresetn), 
- 
-        
-        // pwm output
-        .pwm_out(pwm_out_unused),
-        .vtg_lock                 (led[1] ), 
-        .axis_to_video_lock       (led[2]),
-        
-        // 
-        .camera_base_addr(camera_base_addr), 
-        .camera_start(camera_start), 
-        .camera_clear(camera_clear),
-        .des_clk(des_clk),
-        .des_wr(des_wr),
-        .des_waddr(des_waddr),
-        .des_wdata(des_wdata),
-        .des_raddr(des_raddr),
-        .des_rdata(des_rdata),
-        .can0_tx(CAN0_TXD),
-        .can0_rx(CAN0_RXD)
-
+        .O_hdmi_tx_p      (O_hdmi_tx_p),
+        .O_hdmi_clk_p     (O_hdmi_clk_p),
+        .clk_150m         (pll_clk_150),
+        .p2f_clk0_50m     (p2f_clk0_50m),
+        .rstn_150m        (pll_clk_150_aresetn),
+        .vtg_lock         (led[1]),
+        .axis_to_video_lock(led[2]),
+        .camera_base_addr (camera_base_addr),
+        .camera_start     (camera_start),
+        .camera_clear     (camera_clear),
+        .des_clk          (des_clk),
+        .des_wr           (des_wr),
+        .des_waddr        (des_waddr),
+        .des_wdata        (des_wdata),
+        .des_raddr        (des_raddr),
+        .des_rdata        (des_rdata),
+        .can0_tx          (CAN0_TXD),
+        .can0_rx          (CAN0_RXD)
     );
 
-    // MIPI input: D-PHY + unpack + ISP (ui_isp), 128-bit video stream out
-	wire ud_wclk;//synthesis keep
-	wire ud_wvs;//synthesis keep
-	wire ud_wde;//synthesis keep
-    wire [128-1:0] ud_wdata;
+    // ---------------- 相机 → MIPI D-PHY → CSI 解包 → ISP（ui_isp 明文链路） ----------------
+    wire        ud_wclk;              //synthesis keep
+    wire        ud_wvs;               //synthesis keep
+    wire        ud_wde;               //synthesis keep
+    wire [127:0] ud_wdata;
+    wire        S_hs_rx_clk;
+    wire [127:0] S_ISP_O_tdata;
+    wire        S_ISP_O_tlast;
+    wire        S_ISP_O_tuser;
+    wire        S_ISP_O_tvalid;
 
-    wire            S_hs_rx_clk    ;
-    wire            S_pll_lock     ;
+    assign O_imax334_rst_n = 1'b1;
 
-	wire   [ 127:0] S_ISP_O_tdata ;
-    wire         	S_ISP_O_tlast ;
-    wire  			S_ISP_O_tuser ;
-    wire         	S_ISP_O_tvalid;
-    // DragonEyeSorter v6: des_vision between the ISP and the frame writer (PL gray / Gaussian / binary / Sobel
-    // display modes + ROI statistics). MODE 0 passes the camera data through, 6 clocks later.
+    design_top_wrapper design_top_wrapper_u (
+        .I_sys_clk_156m   (p2f_clk0_50m),
+        .O_imx334_clk_24m (O_imx334_clk_24m),
+        .I_clk_hs_p       (I_clk_hs_p),
+        .I_data_hs_p      (I_data_hs_p),
+        .I_data_lp_p      (I_data_lp_p),
+        .I_data_lp_n      (I_data_lp_n),
+        .S_hs_rx_clk      (S_hs_rx_clk),
+        .O_ISP_tdata      (S_ISP_O_tdata),
+        .O_ISP_tlast      (S_ISP_O_tlast),
+        .O_ISP_tuser      (S_ISP_O_tuser),
+        .O_ISP_tvalid     (S_ISP_O_tvalid)
+    );
+
+    // ---------------- 自研 des_vision（ISP 输出与帧写之间）+ 帧起始/写完成锁存 ----------------
     wire [127:0] vis_tdata;
     wire         vis_tvalid, vis_tuser, vis_tlast;
-	
-	assign ud_wclk   = S_hs_rx_clk;
-	assign ud_wvs    = vis_tuser ;   // v6: through des_vision (was S_ISP_O_tuser)
-	assign ud_wde    = vis_tvalid ;  // v6 (was S_ISP_O_tvalid)
+    wire         cap_start_tgl;
+    reg          cap_done_d = 1'b0, cap_done_tgl = 1'b0;
+    reg          des_sof_d = 1'b0, des_sof_toggle = 1'b0;
 
-    // DragonEyeSorter: one toggle per camera frame, counted in des_regs.
-    // isp_top passes its *input* tuser straight to O_tuser, so it is not aligned with O_tvalid: use the edge alone.
-    reg des_sof_d = 1'b0, des_sof_toggle = 1'b0;
-    // DragonEyeSorter v5: frame writer start / done-interrupt events for the capture latch in des_regs
-    wire cap_start_tgl;
-    reg  cap_done_d = 1'b0, cap_done_tgl = 1'b0;
+    assign ud_wclk = S_hs_rx_clk;
+    assign ud_wvs  = vis_tuser;
+    assign ud_wde  = vis_tvalid;
+    assign ud_wdata = vis_tdata;      //synthesis keep
+
+    // f2p_irq 是厂家帧写完成中断：上升沿翻转，进 des_regs 拍摄锁存
     always @(posedge pll_clk_150) begin
         cap_done_d <= f2p_irq;
         if (f2p_irq && !cap_done_d) cap_done_tgl <= ~cap_done_tgl;
     end
+    // isp_top 把输入 tuser 直通到 O_tuser（不与 O_tvalid 对齐），因此只取边沿当帧起始
     always @(posedge S_hs_rx_clk) begin
         des_sof_d <= S_ISP_O_tuser;
         if (S_ISP_O_tuser && !des_sof_d) des_sof_toggle <= ~des_sof_toggle;
     end
-	assign ud_wdata  = vis_tdata; // v6 via des_vision; was S_ISP_O_tdata //synthesis keep
 
-    wire    [3:0]   S_lane_error    ;
+    // ---------------- 帧写 DDR：uidbuf_write（厂家明文）+ uiFDMA（AXI4 master） ----------------
+    wire [AXI_ADDR_WIDTH-1:0] fdma_waddr;
+    wire                      fdma_wareq;
+    wire [15:0]               fdma_wsize;
+    wire                      fdma_wbusy;
+    wire [AXI_DATA_WIDTH/4-1:0] fdma_wdata;
+    wire                      fdma_wvalid;
+    wire                      fdma_wready;
+    wire [AXI_ADDR_WIDTH-1:0] fdma_raddr;
+    wire                      fdma_rareq;
+    wire [15:0]               fdma_rsize;
+    wire                      fdma_rbusy;
+    wire [AXI_DATA_WIDTH/4-1:0] fdma_rdata;
+    wire                      fdma_rvalid;
+    wire                      fdma_rready;
+    wire                      wbuf_sync;
 
-	assign O_imax334_rst_n = 1'b1;
-
-    design_top_wrapper  design_top_wrapper_u
-    (
-    .I_sys_clk_156m     (p2f_clk0_50m     ),
-	.O_imx334_clk_24m   (O_imx334_clk_24m   ),
-	.I_clk_hs_p     	(I_clk_hs_p     ),
-	.I_data_hs_p    	(I_data_hs_p    ),
-	.I_data_lp_p    	(I_data_lp_p    ),
-	.I_data_lp_n    	(I_data_lp_n    ),
-
-    .S_lane_error       (S_lane_error   ),
-    .S_hs_rx_clk        (S_hs_rx_clk    ),
-	.S_pll_lock			(S_pll_lock		),
-    .O_ISP_tdata        (S_ISP_O_tdata     ),
-    .O_ISP_tlast        (S_ISP_O_tlast     ),
-    .O_ISP_tuser        (S_ISP_O_tuser     ),
-    .O_ISP_tvalid       (S_ISP_O_tvalid    )
+    uidbuf_write #(
+        .VIDEO_ENABLE    (1'b1),
+        .ENABLE_WRITE    (1'b1),
+        .ENABLE_READ     (1'b1),
+        .AXI_DATA_WIDTH  (AXI_DATA_WIDTH / 4),
+        .AXI_ADDR_WIDTH  (AXI_ADDR_WIDTH),
+        .W_BUFDEPTH      (1024 * 4),
+        .W_DATAWIDTH     (128),
+        .W_DSIZEBITS     (25),
+        .W_XDIV          (1),
+        .W_XSIZE         (X_SIZE / (128 / 32)),
+        .W_XSTRIDE       (X_SIZE / (128 / 32)),
+        .W_YSIZE         (Y_SIZE)
+    ) uidbuf_write_u0 (
+        .W_BASEADDR      ({1'b0, camera_base_addr}),
+        .W_BUFSIZE       (6),
+        .I_ui_clk        (pll_clk_150),
+        .I_ui_rstn       (pll_clk_150_aresetn),
+        .I_W_FS          (ud_wvs),
+        .I_W_clk         (ud_wclk),
+        .I_W_wren        (ud_wde),
+        .I_W_data        (ud_wdata),
+        .O_W_sync_cnt    (wbuf_sync),
+        .I_W_buf         (wbuf_sync),
+        .O_W_full        (),
+        .O_fdma_waddr    (fdma_waddr),
+        .O_fdma_wareq    (fdma_wareq),
+        .O_fdma_wsize    (fdma_wsize),
+        .I_fdma_wbusy    (fdma_wbusy),
+        .O_fdma_wdata    (fdma_wdata),
+        .I_fdma_wvalid   (fdma_wvalid),
+        .O_fdma_wready   (fdma_wready),
+        .O_W_start_tgl   (cap_start_tgl),
+        .camera_start    (camera_start),
+        .camera_done     (f2p_irq),
+        .camera_clear_intr(camera_clear)
     );
 
-	wire [AXI_ADDR_WIDTH-1:  0]      fdma_waddr;   
-	wire                             fdma_wareq;   
-	wire [15: 0]                     fdma_wsize;                                 
-	wire                             fdma_wbusy;   		
-	wire [AXI_DATA_WIDTH/4-1 : 0]      fdma_wdata; 
-	wire                             fdma_wvalid;  
-	wire                             fdma_wready;  
-	
-	wire [AXI_ADDR_WIDTH-1:  0]      fdma_raddr;   
-	wire                             fdma_rareq;   
-	wire [15: 0]                     fdma_rsize;                                 
-	wire                             fdma_rbusy;   			
-	wire [AXI_DATA_WIDTH/4-1 : 0]      fdma_rdata; 
-	wire                             fdma_rvalid;  
-	wire                             fdma_rready;  
-	wire wbuf_sync ;
+    uiFDMA #(
+        .M_AXI_ID_WIDTH    (6),
+        .M_AXI_ADDR_WIDTH  (AXI_ADDR_WIDTH),
+        .M_AXI_DATA_WIDTH  (AXI_DATA_WIDTH / 4),
+        .M_AXI_MAX_BURST_LEN(16)
+    ) uiFDMA_inst (
+        .I_fdma_waddr      (fdma_waddr),
+        .I_fdma_wareq      (fdma_wareq),
+        .I_fdma_wsize      (fdma_wsize),
+        .O_fdma_wbusy      (fdma_wbusy),
+        .I_fdma_wdata      (fdma_wdata),
+        .O_fdma_wvalid     (fdma_wvalid),
+        .I_fdma_wready     (1'b1),
+        .I_fdma_raddr      (fdma_raddr),
+        .I_fdma_rareq      (fdma_rareq),
+        .I_fdma_rsize      (fdma_rsize),
+        .O_fdma_rbusy      (fdma_rbusy),
+        .O_fdma_rdata      (fdma_rdata),
+        .O_fdma_rvalid     (fdma_rvalid),
+        .I_fdma_rready     (1'b1),
+        .M_AXI_ACLK        (pll_clk_150),
+        .M_AXI_ARESETN     (pll_clk_150_aresetn),
+        .M_AXI_AWID        (slave_hp0_axi_awid),
+        .M_AXI_AWADDR      (slave_hp0_axi_awaddr),
+        .M_AXI_AWLEN       (slave_hp0_axi_awlen),
+        .M_AXI_AWSIZE      (slave_hp0_axi_awsize),
+        .M_AXI_AWBURST     (slave_hp0_axi_awburst),
+        .M_AXI_AWLOCK      (slave_hp0_axi_awlock),
+        .M_AXI_AWCACHE     (slave_hp0_axi_awcache),
+        .M_AXI_AWPROT      (slave_hp0_axi_awprot),
+        .M_AXI_AWVALID     (slave_hp0_axi_awvalid),
+        .M_AXI_AWREADY     (slave_hp0_axi_awready),
+        .M_AXI_WDATA       (slave_hp0_axi_wdata),
+        .M_AXI_WSTRB       (slave_hp0_axi_wstrb),
+        .M_AXI_WLAST       (slave_hp0_axi_wlast),
+        .M_AXI_WVALID      (slave_hp0_axi_wvalid),
+        .M_AXI_WREADY      (slave_hp0_axi_wready),
+        .M_AXI_BID         (slave_hp0_axi_bid),
+        .M_AXI_BRESP       (slave_hp0_axi_bresp),
+        .M_AXI_BVALID      (slave_hp0_axi_bvalid),
+        .M_AXI_BREADY      (slave_hp0_axi_bready)
+    );
 
-	uidbuf_write# (
-	.VIDEO_ENABLE(1'b1),  
-	.ENABLE_WRITE(1'b1), 
-	.ENABLE_READ(1'b1), 
-	.AXI_DATA_WIDTH(AXI_DATA_WIDTH/4),
-	.AXI_ADDR_WIDTH(AXI_ADDR_WIDTH),
-	
-	.W_BUFDEPTH(1024*4),
-	.W_DATAWIDTH(128),//(256),//96->256
-	//.W_BASEADDR(BASEADDR),
-	.W_DSIZEBITS(25),
-	/*.W_XSIZE(180),
-	.W_XSTRIDE(180),
-	.W_YSIZE(1080),*/
-	.W_XDIV(1),
-	//.W_BUFSIZE(BUFSIZE),
-	
-	.W_XSIZE(X_SIZE/(128/32)),//(120),
-	.W_XSTRIDE(X_SIZE/(128/32)),//(120),
-	.W_YSIZE(Y_SIZE)
-	
-	)
-	uidbuf_write_u0
-	(
-	.W_BASEADDR({1'b0,camera_base_addr}),
-	//.W_DSIZEBITS(DSIZEBITS),
-	.W_BUFSIZE(6),
-	
-	.I_ui_clk(pll_clk_150),
-	.I_ui_rstn(pll_clk_150_aresetn),
-	
-	.I_W_FS(ud_wvs),
-	.I_W_clk(ud_wclk),
-	.I_W_wren(ud_wde),
-	.I_W_data(ud_wdata), 
-	.O_W_sync_cnt(wbuf_sync),
-	.I_W_buf(wbuf_sync),
-	.O_W_full(),
-	
-		
-	.O_fdma_waddr(fdma_waddr)  ,
-	.O_fdma_wareq(fdma_wareq)  ,
-	.O_fdma_wsize(fdma_wsize)  ,                                     
-	.I_fdma_wbusy(fdma_wbusy)  ,			
-	.O_fdma_wdata(fdma_wdata)	 ,
-	.I_fdma_wvalid(fdma_wvalid),
-	.O_fdma_wready(fdma_wready),
-	.O_fmda_wbuf  (fdma_wbuf),	
-	.O_fdma_wirq  (fdma_wirq),	
-	
-	.O_W_start_tgl      ( cap_start_tgl ),
-	.camera_start       ( camera_start ),
-	.camera_done        ( f2p_irq       ),
-	.camera_clear_intr  ( camera_clear)
-	); 
+    // ---------------- 自研模块：0x8030_1000 起的 AXI-Lite 寄存器总线 ----------------
+    wire [31:0] regs_rdata, sb_rdata, st_rdata, vis_rdata, pwm_rdata, io_rdata, des_ts;
+    wire        sb_drive_low, st_pul_n, st_dir_n, st_ena, des_estop;
+    wire [31:0] st_pos;
 
-	uiFDMA#
-	(
-	.M_AXI_ID_WIDTH(6)           ,//ID位宽
-	.M_AXI_ADDR_WIDTH(AXI_ADDR_WIDTH)		,//内存地址位宽
-	.M_AXI_DATA_WIDTH(AXI_DATA_WIDTH/4)		,//AXI总线的数据位宽
-	.M_AXI_MAX_BURST_LEN (16)                //AXI总线的burst 大小，对于AXI4，支持任意长度，对于AXI3以下最大16
-	)
-	uiFDMA_inst
-	(
-	.I_fdma_waddr(fdma_waddr)          ,//FDMA写通道地址
-	.I_fdma_wareq(fdma_wareq)          ,//FDMA写通道请求
-	.I_fdma_wsize(fdma_wsize)          ,//FDMA写通道一次FDMA的传输大小                                            
-	.O_fdma_wbusy(fdma_wbusy)          ,//FDMA处于BUSY状态，AXI总线正在写操作  
-					
-	.I_fdma_wdata(fdma_wdata)		    ,//FDMA写数据
-	.O_fdma_wvalid(fdma_wvalid)        ,//FDMA 写有效
-	.I_fdma_wready(1'b1)		       ,//FDMA写准备好，用户可以写数据
-	
-	.I_fdma_raddr(fdma_raddr)          ,// FDMA读通道地址
-	.I_fdma_rareq(fdma_rareq)          ,// FDMA读通道请求
-	.I_fdma_rsize(fdma_rsize)          ,// FDMA读通道一次FDMA的传输大小                                      
-	.O_fdma_rbusy(fdma_rbusy)          ,// FDMA处于BUSY状态，AXI总线正在读操作 
-					
-	.O_fdma_rdata(fdma_rdata)		    ,// FDMA读数据
-	.O_fdma_rvalid(fdma_rvalid)        ,// FDMA 读有效
-	.I_fdma_rready(1'b1)		    ,// FDMA读准备好，用户可以读数据
-	
-	//以下为AXI总线信号		
-	.M_AXI_ACLK                             (pll_clk_150),
-	.M_AXI_ARESETN                          (pll_clk_150_aresetn),
-	// Master Interface Write Address Ports
-	
-	.M_AXI_AWID                             (slave_hp0_axi_awid),
-	.M_AXI_AWADDR                           (slave_hp0_axi_awaddr),
-	.M_AXI_AWLEN                            (slave_hp0_axi_awlen),
-	.M_AXI_AWSIZE                           (slave_hp0_axi_awsize),
-	.M_AXI_AWBURST                          (slave_hp0_axi_awburst),
-	.M_AXI_AWLOCK                           (slave_hp0_axi_awlock),
-	.M_AXI_AWCACHE                          (slave_hp0_axi_awcache),
-	.M_AXI_AWPROT                           (slave_hp0_axi_awprot),
-	.M_AXI_AWQOS                            (),
-	.M_AXI_AWVALID                          (slave_hp0_axi_awvalid),
-	.M_AXI_AWREADY                          (slave_hp0_axi_awready),
-	// Master Interface Write Data Ports
-	.M_AXI_WDATA                            (slave_hp0_axi_wdata),
-	.M_AXI_WSTRB                            (slave_hp0_axi_wstrb),
-	.M_AXI_WLAST                            (slave_hp0_axi_wlast),
-	.M_AXI_WVALID                           (slave_hp0_axi_wvalid),
-	.M_AXI_WREADY                           (slave_hp0_axi_wready),
-	
-	// Master Interface Write Response Ports
-	.M_AXI_BID                              (slave_hp0_axi_bid),
-	.M_AXI_BRESP                            (slave_hp0_axi_bresp),
-	.M_AXI_BVALID                           (slave_hp0_axi_bvalid),
-	.M_AXI_BREADY                           (slave_hp0_axi_bready)
-
-	);				 
-
-    // ---------------- DragonEyeSorter PL blocks on the 0x8030_1000 register bus ----------------
-    wire [31:0] des_ts, regs_rdata, sb_rdata, st_rdata, vis_rdata, pwm_rdata, io_rdata;
-    wire        sb_drive_low, st_pul_n, st_dir_n, st_ena;
+    // 组合读多路：fvdma_ctrl 桥按 1 拍取数，不能打拍
     assign des_rdata = (des_raddr[11:8] == 4'h1) ? sb_rdata :
                        (des_raddr[11:8] == 4'h2) ? st_rdata :
                        (des_raddr[11:8] == 4'h3) ? vis_rdata :
                        (des_raddr[11:8] == 4'h4) ? pwm_rdata :
                        (des_raddr[11:8] == 4'h5) ? io_rdata : regs_rdata;
 
-    // e-stop: debounced + latched in des_io (v11); the latch holds the stepper until the PS clears it
-    wire des_estop;
-
-    wire [31:0] st_pos;
     des_regs #(.VERSION(32'd12)) des_regs_inst (
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h0), .waddr(des_waddr), .wdata(des_wdata),
         .raddr(des_raddr), .rdata(regs_rdata), .sof_toggle(des_sof_toggle), .ts(des_ts),
@@ -380,6 +311,7 @@ wire pwm_out_unused;
         .raddr(des_raddr[7:0]), .rdata(st_rdata), .estop(des_estop),
         .pul_n(st_pul_n), .dir_n(st_dir_n), .ena_o(st_ena), .pos_o(st_pos)
     );
+
     des_vision vision_inst (
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h3), .waddr(des_waddr[7:0]), .wdata(des_wdata),
         .raddr(des_raddr[7:0]), .rdata(vis_rdata),
@@ -399,8 +331,7 @@ wire pwm_out_unused;
         .raddr(des_raddr[7:0]), .rdata(pwm_rdata), .pwm({FLAP2_PWM, FLAP1_PWM})
     );
 
-    // TB6600 common-cathode wiring (PUL-/DIR-/ENA- to GND, PUL+/DIR+/ENA+ from these pins): pulse active high,
-    // ENA high releases the motor. Set to 0 for the common-anode + 74HCT245 wiring.
+    // TB6600 共阴接法（PUL-/DIR-/ENA- 接 GND）：脉冲高有效、ENA 高 = 脱机；共阳 + 74HCT245 时置 0
     localparam STEP_COMMON_CATHODE = 1;
     assign STEP_PUL = STEP_COMMON_CATHODE ? ~st_pul_n : st_pul_n;
     assign STEP_DIR = st_dir_n;

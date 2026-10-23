@@ -94,3 +94,6 @@ scripts/sd_image/flash_log.txt
 
 # ---------- 10. 提交材料生成物（submission/out/：可由 submission/build/ 重建，不入库） ----------
 submission/out/
+
+# pl/sim/equiv 的终验证据是本机生成物（可一键复现，不入库）；脚本 / 桩 / testbench 入库
+pl/sim/equiv/audit/evidence/

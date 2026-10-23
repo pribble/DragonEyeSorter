@@ -1,11 +1,4 @@
-/*****************************************************************
-Company : Nanjing Weiku Robot Technology Co., Ltd.
-Brand   : VLKUS
-Technical forum:www.uisrc.com
-@Author      :   XiaoQingquan 
-@Time        :   2024/09/11 
-@Description :   ISP_black_level_correction
-*****************************************************************/
+// 出处：南京微酷机器人 / VLKUS（www.uisrc.com）ISP 参考设计；重构版，接口与逐拍行为不变。
 `timescale 1ns / 1ps
 
 module BLC #(
@@ -21,7 +14,7 @@ module BLC #(
     input                   I_tlast   ,
     input                   I_tuser   ,
     input  [39:0]           I_tdata   ,
-    input                   I_tvalid  , 
+    input                   I_tvalid  ,
     input  [9:0]            I_tdest   ,
     output                  I_tready  ,
 
@@ -30,66 +23,42 @@ module BLC #(
     output [39:0]           O_tdata   ,
     output                  O_tvalid  ,
     output [9:0]            O_tdest   ,
-    input                   O_tready  
-
+    input                   O_tready
 );
 
+    // 单通道黑电平矫正：pix > offset 相减，否则钳 0；按 if/else 写以保持原版 x 语义
+    function [9:0] blc_sub(input [9:0] pix, input [9:0] offset);
+        if (pix > offset) blc_sub = pix - offset;
+        else              blc_sub = 10'd0;
+    endfunction
 
-    reg                   I_tlast_r    ;
-    reg                   I_tuser_r    ;
-    reg                   I_tvalid_r   ;
+    // 原版是 4 个独立 10bit 寄存器，同一条件同一时刻更新，合并成 40bit 等价
+    reg [39:0] O_tdata_r;
 
-    wire [9:0]  I_blc_data[3:0];
-    wire [9:0]  black_level_offset[3:0] ;
-    assign black_level_offset[0] = Black_level_offset_r0;
-    assign black_level_offset[1] = Black_level_offset_r1;
-    assign black_level_offset[2] = Black_level_offset_r2;
-    assign black_level_offset[3] = Black_level_offset_r3;
+    always @(posedge I_clk) begin       // 无复位：与厂版一致，复位期间保持 x
+        if (I_tvalid)
+            O_tdata_r <= { blc_sub(I_tdata[39:30], Black_level_offset_r3),
+                           blc_sub(I_tdata[29:20], Black_level_offset_r2),
+                           blc_sub(I_tdata[19:10], Black_level_offset_r1),
+                           blc_sub(I_tdata[ 9: 0], Black_level_offset_r0) };
+    end
 
-    reg  [9:0]  data_out[3:0];
-
-    assign I_blc_data[0] = I_tdata[9:0]  ;
-    assign I_blc_data[1] = I_tdata[19:10];
-    assign I_blc_data[2] = I_tdata[29:20];
-    assign I_blc_data[3] = I_tdata[39:30];
-    
-    genvar i;
-    generate for(i=0;i<4;i=i+1)
-        begin:
-        BLACK_LEVEL_OFFSET
-        always @(posedge I_clk)begin 
-            if (I_tvalid) begin
-                // 执行黑电平矫正，防止出现负�??
-                if (I_blc_data[i] > black_level_offset[i]) begin
-                    data_out[i] <= I_blc_data[i] - black_level_offset[i];
-                end 
-                else begin
-                    data_out[i] <= 10'd0; // 将结果裁剪为0，防止负�??
-                end
-            end
-        end
-        end
-    endgenerate
-
+    reg I_tlast_r, I_tuser_r, I_tvalid_r;
 
     always @(posedge I_clk or negedge I_rst_n) begin
-        if(!I_rst_n)
-            {I_tlast_r,I_tuser_r,I_tvalid_r} <= 0;
+        if (!I_rst_n) {I_tlast_r, I_tuser_r, I_tvalid_r} <= 3'd0;
         else begin
-            I_tlast_r <= I_tlast;
-            I_tuser_r <= I_tuser;
+            I_tlast_r  <= I_tlast;
+            I_tuser_r  <= I_tuser;
             I_tvalid_r <= I_tvalid;
         end
     end
 
-
-    assign  O_tlast      = I_tlast_r;   
-    assign  O_tuser      = I_tuser_r;   
-    assign  O_tvalid     = I_tvalid_r;
-
-    assign  O_tdata      = {data_out[3],data_out[2],data_out[1],data_out[0]};
-    // assign O_t_data = {R_new[7-:5],G_new[7-:6],B_new[7-:5]};
-    assign  I_tready     = O_tready;
-
+    assign O_tlast  = I_tlast_r;
+    assign O_tuser  = I_tuser_r;
+    assign O_tdata  = O_tdata_r;
+    assign O_tvalid = I_tvalid_r;
+    // O_tdest 原版即未驱动（高阻 z），为保持接口与行为不变保留
+    assign I_tready = O_tready;
 
 endmodule
