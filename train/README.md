@@ -63,7 +63,7 @@ source ~/des-train/bin/activate
 export YOLO_CONFIG_DIR=$HOME/.ultralytics-cfg
 cd <仓库根>/train
 # 真实数据（采集会话拷到 WSL 本地盘再训，/mnt/d 很慢）
-~/des-train/bin/python prepare_dataset.py --src ~/des-work/collect --out ~/des-work/real --val-sessions val_
+~/des-train/bin/python prepare_dataset.py --src ~/des-work/collect7 --out ~/des-work/real --val-sessions val_ --max-train 450
 ~/des-train/bin/python train_cls.py --data ~/des-work/real --epochs 40 --name real --project ~/des-work/runs
 ~/des-train/bin/python export_npu.py --weights ~/des-work/runs/real/weights/best.pt --calib ~/des-work/real/train --out ../models/part_cls
 ~/des-train/bin/python eval_onnx.py --model ../models/part_cls --val ~/des-work/real/val --refs out/part_cls_refs

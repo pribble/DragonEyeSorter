@@ -8,6 +8,9 @@ accuracy is inflated. Two ways:
   otherwise                    a random --val-frac of the tracks of every class (seeded)
 A part passed twice through the camera in one session is two tracks, so the random split can still leak a little;
 the session split cannot.
+  --max-train <n>              at most ~n training images per class: every track is kept, each with fewer crops
+                               (evenly spaced along its pass; crops of one pass are near-duplicates anyway). The
+                               collected crops are never deleted, the cap only applies to the copy in --out.
 
     python prepare_dataset.py --src /path/to/collect --out data/real --val-sessions val_
 """
@@ -26,6 +29,7 @@ def main():
     ap.add_argument("--val-sessions", nargs="*", default=[])
     ap.add_argument("--val-frac", type=float, default=0.2)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--max-train", type=int, default=0, help="cap training images per class (0 = all)")
     a = ap.parse_args()
 
     parts = collections.defaultdict(list)          # (class folder, session, track) -> files
@@ -58,6 +62,19 @@ def main():
             for i, k in enumerate(keys):
                 split[k] = "val" if i < nval else "train"
 
+    if a.max_train > 0:   # thin the crops of over-represented classes, keeping every track
+        crop_idx = lambda f: int(os.path.splitext(os.path.basename(f))[0].rsplit("_", 1)[-1])
+        for cls_dir, keys in by_cls.items():
+            tk = [k for k in keys if split[k] == "train"]
+            total = sum(len(parts[k]) for k in tk)
+            if not tk or total <= a.max_train:
+                continue
+            per = max(1, a.max_train // len(tk))
+            for k in tk:
+                fs = sorted(parts[k], key=crop_idx)
+                if len(fs) > per:
+                    parts[k] = [fs[round(i * (len(fs) - 1) / max(1, per - 1))] for i in range(per)] if per > 1 else [fs[len(fs) // 2]]
+            print(f"{cls_dir}: {total} training crops -> {sum(len(parts[k]) for k in tk)} ({per} per track)")
     if os.path.exists(a.out):
         shutil.rmtree(a.out)
     stats = collections.defaultdict(lambda: [0, 0, 0, 0])   # train parts, train images, val parts, val images
