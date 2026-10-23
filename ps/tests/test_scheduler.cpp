@@ -238,6 +238,35 @@ static void test_speed_adapt()
     CHECK(adapt_speed(c, 50, 100, 4) == 50, "disabled: base");
 }
 
+// clutter: a blob first seen past the decision line (a hand, the gate paddle) gets no track; a part coming in from the
+// upstream edge is tracked through it. With spawn_before_decide off, the clutter is tracked (old behaviour).
+static void test_spawn_before_decide()
+{
+    for (int on = 1; on >= 0; on--) {
+        std::mt19937 rng(5);
+        TrackerConfig tc = tracker_cfg();   // decide_x 270, view 0..300
+        tc.spawn_before_decide = on != 0;
+        Tracker tr(tc);
+        // part riding in from upstream; clutter sitting at table x 285 (moves with nothing: s changes with B)
+        for (uint32_t f = 0; f < 320; f++) {
+            const double B = f;
+            std::vector<SimPart> parts = {{-30, 0, 30, 30, 0.f, 0}, {float(285 - B), 40, 25, 25, 0.f, -1}};
+            tr.update(observe(parts, B, f, rng));
+        }
+        int part = 0, clutter = 0;
+        for (const Track &t : tr.tracks()) {
+            if (std::fabs(t.y) < 5) part++;
+            if (std::fabs(t.y - 40) < 5) clutter++;
+        }
+        if (on)
+            CHECK(part == 1 && clutter == 0 && tr.stats.created == 1, "spawn before decide: part %d clutter %d created %llu",
+                  part, clutter, (unsigned long long)tr.stats.created);
+        else
+            CHECK(part == 1 && tr.stats.created > 1, "spawn anywhere: clutter tracked (created %llu)",
+                  (unsigned long long)tr.stats.created);
+    }
+}
+
 // gate geometry of the 10-22 layout (10_项目文档/侧边导流挡板方案.md §2c): gate 1 pivot on the far edge opposite the arm,
 // 230 mm paddle closed at 55 deg / open at -20 deg; checked against the hand-computed numbers of that section
 static bool near(double a, double b, double tol) { return std::fabs(a - b) <= tol; }
@@ -870,6 +899,7 @@ int main()
     test_size_rule();
     test_recipes();
     test_votes();
+    test_spawn_before_decide();
     test_gate_geometry();
     test_flaps();
     test_speed_adapt();

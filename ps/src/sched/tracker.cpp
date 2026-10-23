@@ -168,6 +168,7 @@ void Tracker::update(const FrameObs &obs)
     for (size_t di = 0; di < nd; di++) {
         const Detection &d = obs.dets[di];
         if (d_used_[di] || d.partial) continue;
+        if (cfg_.spawn_before_decide && d.p.x >= cfg_.decide_x) continue;   // clutter, not a part coming down the belt
         tracks_.emplace_back();
         Track &t = tracks_.back();
         t.id = next_id_++;

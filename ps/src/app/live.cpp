@@ -413,7 +413,10 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
             }
             if (now - last_hmi >= 0.12) { hmi_panel = hmi.render(); last_hmi = now; }
         }
-        s->blobs.assign(blobs.begin(), blobs.end()); s->tm = tm;
+        s->blobs.clear();   // raw outlines: only upstream of the decision line (past it, tracked parts have their box and
+        for (size_t i = 0; i < blobs.size() && i < obs.dets.size(); i++)   // anything new there is clutter)
+            if (obs.dets[i].p.x < cfg.tracker.decide_x) s->blobs.push_back(blobs[i]);
+        s->tm = tm;
         s->meas_ms = mres.empty() ? 0 : meas.last_ms;
         s->measured = meas.measured; s->meas_failed = meas.failed;
         s->npu = npu.running(); s->npu_ms = npu.last_npu_ms; s->npu_runs = npu.runs;

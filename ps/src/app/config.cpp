@@ -82,7 +82,8 @@ std::string load_config(const std::string &path, AppConfig &cfg)
         sec_gets(j, "tracker", "fov_x0", trk.fov_x0, "fov_x1", trk.fov_x1, "edge_margin", trk.edge_margin, "decide_x",
                  trk.decide_x, "tail_x", trk.tail_x, "gate_s", trk.gate_s, "gate_y", trk.gate_y, "min_hits",
                  trk.min_hits, "max_miss_new", trk.max_miss_new, "max_miss", trk.max_miss, "min_conf", trk.min_conf,
-                 "pick_unclassified", trk.pick_unclassified, "unclassified_bin", trk.unclassified_bin);
+                 "pick_unclassified", trk.pick_unclassified, "unclassified_bin", trk.unclassified_bin,
+                 "spawn_before_decide", trk.spawn_before_decide);
         PickerConfig &pk = cfg.picker;
         if (const json *c = sec_gets(j, "picker", "pick_x", pk.pick_x, "pick_tol", pk.pick_tol, "pick_after_fov_mm",
                                      cfg.pick_after_fov, "reach_y0", pk.reach_y0, "reach_y1", pk.reach_y1,

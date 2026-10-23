@@ -12,6 +12,8 @@ struct TrackerConfig {
     float fov_x0 = 0, fov_x1 = 300;   // table x range seen by the camera (mm)
     float edge_margin = 10;           // tracks this close to the FOV edge are not expected to be seen
     float decide_x = 280;             // decide the disposition when x_now passes this
+    bool spawn_before_decide = true;  // new tracks only upstream of decide_x: parts come in from the upstream edge, so a
+                                      // blob first seen past it is clutter (hand, gate paddle, gripper), not a part
     float tail_x = 600;               // end of the belt; tracks are dropped past it
     float gate_s = 12, gate_y = 12;   // association gates (mm)
     int min_hits = 3;                 // New -> Tracking
