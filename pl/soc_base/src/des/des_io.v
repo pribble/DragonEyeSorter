@@ -1,15 +1,10 @@
-// des_io.v — field inputs (v11): e-stop latch, through-beam / limit capture, quadrature belt encoder.
-// E-stop (PIN15, NO contact to GND, pull-up): debounced EST_DEB_US, latched on press; the latch drives
-// the stepper's estop until the PS clears it — a clear is ignored while still pressed.
-// IR1 (NPN) / LIMIT1: debounced IN_DEB_US; each IR1 "blocked" edge captures ts, stepper POS and encoder
-// count. Encoder (E6B2-CWZ6C class, A/B/Z): 2-FF sync + glitch filter, x4 decode (A leads B counts up),
-// illegal double transitions counted, index latches count, 10 ms speed window.
-// Registers (0x500 window, combinational read, word index raddr[7:2]):
-//   0x00 STATUS R b0 ESTOP_LATCHED b1 ESTOP_NOW b2 IR1_BLOCKED b3 LIMIT1_ACTIVE b4..6 enc A/B/Z
-//   0x04 CTRL W b0 ESTOP_CLR b1 ENC_ZERO b2 IR1_CNT_CLR / 0x08 ESTOP_TS / 0x0C ESTOP_CNT
-//   0x10 IR1_CNT / 0x14 IR1_TS / 0x18 IR1_POS / 0x1C IR1_ENC (blocked-edge captures)
-//   0x20 ENC_CNT signed x4 / 0x24 ENC_ERR / 0x28 ENC_ZPOS / 0x2C ENC_SPEED / 0x30 ENC_ZCNT
-//   0x34 ID R 0x494F3031 / 0x38 CFG RW b0 IR1 polarity b1 LIMIT1 polarity (0 = low-active)
+// des_io.v — field inputs: e-stop latch, through-beam / limit capture, quadrature belt encoder; 寄存器 0x500 的
+// 偏移 / 位域以 docs/PL设计.md 为准。
+// E-stop (PIN15, NO contact to GND, pull-up): debounced EST_DEB_US, latched on press; the latch drives the
+// stepper's estop until the PS clears it — a clear is ignored while still pressed. IR1 (NPN) / LIMIT1: debounced
+// IN_DEB_US; each IR1 "blocked" edge captures ts / stepper POS / encoder count. Encoder (E6B2-CWZ6C class, A/B/Z):
+// 2-FF sync + glitch filter, x4 decode (A leads B counts up), illegal double transitions counted, index latches
+// count, 10 ms speed window.
 `include "des_common.vh"
 module des_io #(
     parameter integer CLK_HZ = 75_000_000, EST_DEB_US = 1000, IN_DEB_US = 20,

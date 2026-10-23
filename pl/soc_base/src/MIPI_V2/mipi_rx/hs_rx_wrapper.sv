@@ -23,22 +23,19 @@ module hs_rx_wrapper #(
     generate
         for (i = 0; i < LANE_NUM; i = i + 1) begin : MIPI_DATA_LANE_GEN
             data_lane_rx_wrapper #(.DEVICE(DEVICE)) u_data_lane_rx_wrapper (
-                .I_hs_clk_x4 (I_hs_clk_x4), .I_hs_clk_x2 (I_hs_clk_x2), .I_hs_clk (I_hs_clk),
-                .I_lp_clk (I_lp_clk), .I_rst (I_rst),
-                .I_lane_hs_invert (I_lane_hs_invert[i]), .I_lane_lp_invert (I_lane_lp_invert[i]),
-                .I_mipi_hs_p (I_mipi_hs_p[i]), .I_mipi_lp_p (I_mipi_lp_p[i]), .I_mipi_lp_n (I_mipi_lp_n[i]),
-                .O_hs_valid (S_hs_valid[i]), .O_hs_data (S_hs_data[i]), .O_lane_error (O_lane_error[i])
+                .I_hs_clk_x4(I_hs_clk_x4), .I_hs_clk_x2(I_hs_clk_x2), .I_hs_clk(I_hs_clk),
+                .I_lp_clk(I_lp_clk), .I_rst(I_rst),
+                .I_lane_hs_invert(I_lane_hs_invert[i]), .I_lane_lp_invert(I_lane_lp_invert[i]),
+                .I_mipi_hs_p(I_mipi_hs_p[i]), .I_mipi_lp_p(I_mipi_lp_p[i]), .I_mipi_lp_n(I_mipi_lp_n[i]),
+                .O_hs_valid(S_hs_valid[i]), .O_hs_data(S_hs_data[i]), .O_lane_error(O_lane_error[i])
             );
         end
     endgenerate
 
-    channel_aligner_wrapper #(
-        .CH_NUM     (LANE_NUM),
-        .DATA_WIDTH (8)
-    ) u_channel_aligner_wrapper (
-        .I_clk              (I_hs_clk),              .I_rst_n (~I_rst),
-        .I_ch_valid         (S_hs_valid),            .I_ch_data (S_hs_data),
-        .O_ch_aligner_valid (S_ch_aligner_valid),    .O_ch_aligner_data (S_ch_aligner_data)
+    channel_aligner_wrapper #(.CH_NUM(LANE_NUM), .DATA_WIDTH(8)) u_channel_aligner_wrapper (
+        .I_clk(I_hs_clk), .I_rst_n(~I_rst),
+        .I_ch_valid(S_hs_valid), .I_ch_data(S_hs_data),
+        .O_ch_aligner_valid(S_ch_aligner_valid), .O_ch_aligner_data(S_ch_aligner_data)
     );
 
     assign O_hs_valid = &S_ch_aligner_valid;

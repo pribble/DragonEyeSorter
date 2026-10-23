@@ -1,6 +1,6 @@
 // 出处：MiLianKe（米联客，www.uisrc.com）ISP 参考设计；重构版，接口与逐拍行为不变。
 `timescale 1ns / 1ps
-module image_cut  #(
+module image_cut #(
     parameter [12:0] IMG_WIDTH  = 640,
     parameter [12:0] IMG_HEIGHT = 480,
     parameter        DATA_WIDTH = 96,
@@ -8,20 +8,16 @@ module image_cut  #(
                      SKIP_ROWS_bottom = 2,
                      SKIP_COLS_left   = 2,
                      SKIP_COLS_right  = 2
-)
-(
-    input                       I_clk  ,
-    input                       I_rst_n,
-    input                       I_tlast  ,
-    input                       I_tuser  ,
-    input [DATA_WIDTH-1:0]      I_tdata  ,
-    input                       I_tvalid ,
-    output                      I_tready ,
-    output                      O_tlast  ,
-    output                      O_tuser  ,
-    output reg [DATA_WIDTH-1:0] O_tdata  ,
-    output                      O_tvalid ,
-    input                       O_tready
+) (
+    input  wire                  I_clk, I_rst_n,
+    input  wire                  I_tlast, I_tuser,
+    input  wire [DATA_WIDTH-1:0] I_tdata,
+    input  wire                  I_tvalid,
+    output wire                  I_tready,
+    output wire                  O_tlast, O_tuser,
+    output reg  [DATA_WIDTH-1:0] O_tdata,
+    output wire                  O_tvalid,
+    input  wire                  O_tready
 );
     localparam IMG_WIDTH_4x = (IMG_WIDTH >> 2);
     reg [13:0]           h_cnt, v_cnt;              // 位宽/回绕同原版

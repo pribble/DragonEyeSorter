@@ -1,18 +1,15 @@
 // 出处：Milianke uisrc ISP demo（ui_isp/demosaic_4x_2_0/line_buffer_demosaic.v, XiaoQingquan 2024/10）
 // 单行缓冲：按 4 像素组（32bit 数据 + tuser 位）延迟一行输出；首行写满后锁定读使能。
 `timescale 1ns / 1ps
-
 module line_buffer_demosaic #(
     parameter IMG_HEIGHT = 1080,   // 图像高度
     parameter IMG_WIDTH  = 1920    // 图像宽度
 ) (
-    input              I_clk  ,
-    input              I_rst_n,
-    input              I_tuser,    // 帧起始
-    input              I_valid,
-    input       [32:0] I_data ,
-    output             O_valid,
-    output      [32:0] O_data
+    input  wire        I_clk, I_rst_n,
+    input  wire        I_tuser, I_valid,       // I_tuser = 帧起始
+    input  wire [32:0] I_data,
+    output wire        O_valid,
+    output wire [32:0] O_data
 );
 
     localparam IMG_WIDTH_4x = IMG_WIDTH >> 2;   // 每行的 4 像素组数
@@ -29,21 +26,17 @@ module line_buffer_demosaic #(
         if (!I_rst_n) begin
             data_d0       <= 33'd0;
             valid_d0      <= 1'b0;
-            addra         <= 11'd0;
-            addrb         <= 11'd0;
+            {addra, addrb} <= 22'd0;
             tlast_lock_d0 <= 1'b0;
-        end
-        else begin
+        end else begin
             // 数据/有效固定打一拍（不受 tuser 影响）
             data_d0  <= I_data;
             valid_d0 <= I_valid;
 
             if (I_tuser) begin
-                addra         <= 11'd0;
-                addrb         <= 11'd0;
-                tlast_lock_d0 <= 1'b0;
-            end
-            else begin
+                {addra, addrb} <= 22'd0;
+                tlast_lock_d0  <= 1'b0;
+            end else begin
                 if (valid_d0)
                     addra <= (addra == IMG_WIDTH_4x - 1) ? 11'd0 : addra + 1'b1;
                 if (addra == IMG_WIDTH_4x - 1)
@@ -57,13 +50,8 @@ module line_buffer_demosaic #(
     assign O_valid = valid_d0 & tlast_lock_d0;
 
     blk_mem_gen_demosaic blk_mem_gen_demosaic_r0 (
-        .clka (I_clk   ),
-        .wea  (valid_d0),
-        .addra(addra   ),
-        .dia  (data_d0 ),
-        .clkb (I_clk   ),
-        .addrb(addrb   ),
-        .dob  (O_data  )
+        .clka(I_clk), .wea(valid_d0), .addra(addra), .dia(data_d0),
+        .clkb(I_clk), .addrb(addrb), .dob(O_data)
     );
 
 endmodule

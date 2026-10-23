@@ -3,6 +3,7 @@
 # Saturation → contrast → Brightness → data96_128 → 128bit 输出，逐拍 trace 全部输出。
 # top_demosaic.v：普通路径让两侧都编译（golden 自动取 baseline.rev、新版取工作区），
 # `~` 行让 golden 副本先做字节级注释清洗（该文件有 TD 专有的 `/*//input` 嵌套注释笔误）。
+# 第三轮基线 1f7c232：8 套未用 LUT 已删（golden 里已不存在），不再列 `%` 行。
 pl/soc_base/src/ui_isp/isp_top.v
 pl/soc_base/src/ui_isp/BLC.v
 pl/soc_base/src/ui_isp/demosaic_4x_2_0/top_demosaic.v
@@ -26,14 +27,6 @@ pl/soc_base/src/ui_isp/awb_1_1/blk_mem_gen_awb_delay_signal/RTL/ram_330dcd7b33e5
 pl/soc_base/src/ui_isp/image_cut.v
 pl/soc_base/src/ui_isp/gamma/gamma.v
 pl/soc_base/src/ui_isp/gamma/lut_2_2.v
-% pl/soc_base/src/ui_isp/gamma/lut_0_8.v
-% pl/soc_base/src/ui_isp/gamma/lut_1_2.v
-% pl/soc_base/src/ui_isp/gamma/lut_1_4.v
-% pl/soc_base/src/ui_isp/gamma/lut_1_6.v
-% pl/soc_base/src/ui_isp/gamma/lut_1_8.v
-% pl/soc_base/src/ui_isp/gamma/lut_2_0.v
-% pl/soc_base/src/ui_isp/gamma/lut_2_4.v
-% pl/soc_base/src/ui_isp/gamma/lut_2_6.v
 pl/soc_base/src/ui_isp/Saturation_adj.v
 pl/soc_base/src/ui_isp/contrast_adj.v
 pl/soc_base/src/ui_isp/Brightness_adjustment.v

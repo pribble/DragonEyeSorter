@@ -16,12 +16,10 @@ module des_regs #(parameter [31:0] VERSION = 32'd2) (
 );
     localparam [31:0] DES_ID = 32'h44455301;
 
-    reg [31:0] scratch = 32'd0, free_cnt = 32'd0;
-    reg [31:0] frame_cnt = 32'd0, frame_ts = 32'd0, frame_period = 32'd0;
-    reg [31:0] cur_fcnt = 32'd0, cur_t0 = 32'd0, cur_pos0 = 32'd0;
-    reg [31:0] cap_seq = 32'd0, cap_fcnt = 32'd0, cap_t0 = 32'd0, cap_t1 = 32'd0,
-               cap_pos0 = 32'd0, cap_pos1 = 32'd0;
-    reg [1:0]  led_ctrl = 2'd0;
+    reg [31:0] scratch = 0, free_cnt = 0, frame_cnt = 0, frame_ts = 0, frame_period = 0;
+    reg [31:0] cur_fcnt = 0, cur_t0 = 0, cur_pos0 = 0;
+    reg [31:0] cap_seq = 0, cap_fcnt = 0, cap_t0 = 0, cap_t1 = 0, cap_pos0 = 0, cap_pos1 = 0;
+    reg [1:0]  led_ctrl = 0;
 
     // Frame / capture toggles: one 3-FF chain each, the owner tests s2 != s1 (same cycles as inline).
     wire sof_s1, sof_s2, cs_s1, cs_s2, cd_s1, cd_s2;
@@ -46,14 +44,11 @@ module des_regs #(parameter [31:0] VERSION = 32'd2) (
     // read: one word table indexed by raddr[11:2], everything above 0x034 reads 0xDEADBEEF
     always @* begin
         case (raddr[11:2])
-            10'h000: rdata = DES_ID;      10'h001: rdata = VERSION;
-            10'h002: rdata = scratch;     10'h003: rdata = free_cnt;
-            10'h004: rdata = {30'd0, led_ctrl};
-            10'h005: rdata = frame_cnt;   10'h006: rdata = frame_ts;
-            10'h007: rdata = frame_period;
-            10'h008: rdata = cap_seq;     10'h009: rdata = cap_fcnt;
-            10'h00A: rdata = cap_t0;      10'h00B: rdata = cap_t1;
-            10'h00C: rdata = cap_pos0;    10'h00D: rdata = cap_pos1;
+            10'h000: rdata = DES_ID;      10'h001: rdata = VERSION;    10'h002: rdata = scratch;
+            10'h003: rdata = free_cnt;    10'h004: rdata = {30'd0, led_ctrl};
+            10'h005: rdata = frame_cnt;   10'h006: rdata = frame_ts;   10'h007: rdata = frame_period;
+            10'h008: rdata = cap_seq;     10'h009: rdata = cap_fcnt;   10'h00A: rdata = cap_t0;
+            10'h00B: rdata = cap_t1;      10'h00C: rdata = cap_pos0;   10'h00D: rdata = cap_pos1;
             default: rdata = 32'hDEAD_BEEF;
         endcase
     end

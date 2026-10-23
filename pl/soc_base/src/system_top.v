@@ -49,25 +49,15 @@ module system_top (
 
     // ---------------- PS HP0 从口：帧写 AXI4 master 与 PLL 时钟 ----------------
     wire [32:0] slave_hp0_axi_awaddr;
-    wire  [1:0] slave_hp0_axi_awburst;
-    wire  [3:0] slave_hp0_axi_awcache;
-    wire  [5:0] slave_hp0_axi_awid;
-    wire  [3:0] slave_hp0_axi_awlen;
-    wire        slave_hp0_axi_awlock;
-    wire  [2:0] slave_hp0_axi_awprot;
-    wire  [3:0] slave_hp0_axi_awqos;
-    wire  [1:0] slave_hp0_axi_awsize;
-    wire        slave_hp0_axi_awvalid;
-    wire        slave_hp0_axi_awready;
-    wire        slave_hp0_axi_bready;
-    wire  [5:0] slave_hp0_axi_bid;
-    wire  [1:0] slave_hp0_axi_bresp;
-    wire        slave_hp0_axi_bvalid;
     wire [63:0] slave_hp0_axi_wdata;
-    wire        slave_hp0_axi_wlast;
     wire  [7:0] slave_hp0_axi_wstrb;
-    wire        slave_hp0_axi_wvalid;
-    wire        slave_hp0_axi_wready;
+    wire  [5:0] slave_hp0_axi_awid, slave_hp0_axi_bid;
+    wire  [3:0] slave_hp0_axi_awcache, slave_hp0_axi_awlen, slave_hp0_axi_awqos;
+    wire  [2:0] slave_hp0_axi_awprot;
+    wire  [1:0] slave_hp0_axi_awburst, slave_hp0_axi_awsize, slave_hp0_axi_bresp;
+    wire        slave_hp0_axi_awlock, slave_hp0_axi_awvalid, slave_hp0_axi_awready,
+                slave_hp0_axi_bready, slave_hp0_axi_bvalid, slave_hp0_axi_wlast,
+                slave_hp0_axi_wvalid, slave_hp0_axi_wready;
 
     wire        f2p_irq;
     wire        pll_clk_150;          //synthesis keep
@@ -75,8 +65,7 @@ module system_top (
     wire        p2f_clk0_50m;
 
     wire [31:0] camera_base_addr;
-    wire        camera_start;
-    wire        camera_clear;
+    wire        camera_start, camera_clear;
 
     // ---------------- 自研心跳：PL 逻辑已加载的直接证据（约 2.7s 翻转） ----------------
     reg [27:0] des_hb_cnt = 28'd0;
@@ -162,7 +151,7 @@ module system_top (
 
     // ---------------- 自研 des_vision（ISP 输出与帧写之间）+ 帧起始/写完成锁存 ----------------
     wire [127:0] vis_tdata;
-    wire         vis_tvalid, vis_tuser, vis_tlast;
+    wire         vis_tvalid, vis_tuser;    // m_tlast 未被帧写模块使用（uidbuf_write 无 tlast 口）
     wire         cap_start_tgl;
     reg          cap_done_d = 1'b0, cap_done_tgl = 1'b0;
     reg          des_sof_d = 1'b0, des_sof_toggle = 1'b0;
@@ -184,21 +173,10 @@ module system_top (
     end
 
     // ---------------- 帧写 DDR：uidbuf_write（厂家明文）+ uiFDMA（AXI4 master） ----------------
-    wire [AXI_ADDR_WIDTH-1:0] fdma_waddr;
-    wire                      fdma_wareq;
-    wire [15:0]               fdma_wsize;
-    wire                      fdma_wbusy;
+    wire [AXI_ADDR_WIDTH-1:0]   fdma_waddr;
+    wire [15:0]                 fdma_wsize;
     wire [AXI_DATA_WIDTH/4-1:0] fdma_wdata;
-    wire                      fdma_wvalid;
-    wire                      fdma_wready;
-    wire [AXI_ADDR_WIDTH-1:0] fdma_raddr;
-    wire                      fdma_rareq;
-    wire [15:0]               fdma_rsize;
-    wire                      fdma_rbusy;
-    wire [AXI_DATA_WIDTH/4-1:0] fdma_rdata;
-    wire                      fdma_rvalid;
-    wire                      fdma_rready;
-    wire                      wbuf_sync;
+    wire                        fdma_wareq, fdma_wbusy, fdma_wvalid, wbuf_sync;
 
     uidbuf_write #(
         .VIDEO_ENABLE    (1'b1),
@@ -231,7 +209,6 @@ module system_top (
         .I_fdma_wbusy    (fdma_wbusy),
         .O_fdma_wdata    (fdma_wdata),
         .I_fdma_wvalid   (fdma_wvalid),
-        .O_fdma_wready   (fdma_wready),
         .O_W_start_tgl   (cap_start_tgl),
         .camera_start    (camera_start),
         .camera_done     (f2p_irq),
@@ -251,12 +228,12 @@ module system_top (
         .I_fdma_wdata      (fdma_wdata),
         .O_fdma_wvalid     (fdma_wvalid),
         .I_fdma_wready     (1'b1),
-        .I_fdma_raddr      (fdma_raddr),
-        .I_fdma_rareq      (fdma_rareq),
-        .I_fdma_rsize      (fdma_rsize),
-        .O_fdma_rbusy      (fdma_rbusy),
-        .O_fdma_rdata      (fdma_rdata),
-        .O_fdma_rvalid     (fdma_rvalid),
+        .I_fdma_raddr      ({AXI_ADDR_WIDTH{1'b0}}),
+        .I_fdma_rareq      (1'b0),
+        .I_fdma_rsize      (16'd0),
+        .O_fdma_rbusy      (),
+        .O_fdma_rdata      (),
+        .O_fdma_rvalid     (),
         .I_fdma_rready     (1'b1),
         .M_AXI_ACLK        (pll_clk_150),
         .M_AXI_ARESETN     (pll_clk_150_aresetn),
@@ -282,9 +259,8 @@ module system_top (
     );
 
     // ---------------- 自研模块：0x8030_1000 起的 AXI-Lite 寄存器总线 ----------------
-    wire [31:0] regs_rdata, sb_rdata, st_rdata, vis_rdata, pwm_rdata, io_rdata, des_ts;
+    wire [31:0] regs_rdata, sb_rdata, st_rdata, vis_rdata, pwm_rdata, io_rdata, des_ts, st_pos;
     wire        sb_drive_low, st_pul_n, st_dir_n, st_ena, des_estop;
-    wire [31:0] st_pos;
 
     // 组合读多路：fvdma_ctrl 桥按 1 拍取数，不能打拍
     assign des_rdata = (des_raddr[11:8] == 4'h1) ? sb_rdata :
@@ -316,7 +292,7 @@ module system_top (
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h3), .waddr(des_waddr[7:0]), .wdata(des_wdata),
         .raddr(des_raddr[7:0]), .rdata(vis_rdata),
         .pclk(S_hs_rx_clk), .s_tdata(S_ISP_O_tdata), .s_tvalid(S_ISP_O_tvalid), .s_tuser(S_ISP_O_tuser),
-        .s_tlast(S_ISP_O_tlast), .m_tdata(vis_tdata), .m_tvalid(vis_tvalid), .m_tuser(vis_tuser), .m_tlast(vis_tlast)
+        .s_tlast(S_ISP_O_tlast), .m_tdata(vis_tdata), .m_tvalid(vis_tvalid), .m_tuser(vis_tuser)
     );
 
     des_io io_inst (

@@ -1,18 +1,11 @@
 // 出处：MiLianKe（米联客，www.uisrc.com）ISP 参考设计；重构版，接口与逐拍行为不变。
 // MIPI RAW10 解包：4 像素 = 4 个 MSB8 + 1 个低 2bit 字节；每拍 4 字节，5 拍凑 16 像素。
 module raw10_unpacket_4lane (
-    input  wire        I_clk,
-    input  wire        I_rst_n,
-
-    input  wire        I_csi_frame_start,
-    input  wire        I_csi_frame_end,
-    input  wire        I_csi_valid,
+    input  wire        I_clk, I_rst_n,
+    input  wire        I_csi_frame_start, I_csi_frame_end, I_csi_valid,
     input  wire [31:0] I_csi_data,
-
-    output reg         O_raw10_frame_start,
-    output reg         O_raw10_frame_end,
-    output reg         O_raw10_valid,
-    output reg [39:0]  O_raw10_data
+    output reg         O_raw10_frame_start, O_raw10_frame_end, O_raw10_valid,
+    output reg  [39:0] O_raw10_data
 );
 
     reg        S_csi_valid_1d;

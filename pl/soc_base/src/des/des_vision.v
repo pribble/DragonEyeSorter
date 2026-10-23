@@ -1,11 +1,11 @@
-// des_vision.v — PL image path between the ISP output and the frame writer (赛题领域3: 灰度滤波/边缘检测/尺寸粗测).
+// des_vision.v — PL image path between ISP output and the frame writer (赛题领域3: 灰度滤波/边缘检测/尺寸粗测);
+// 寄存器 0x300 的偏移 / 位域 / 复位值以 docs/PL设计.md 为准。
 // 128-bit beats of 4 BGRA pixels, WIDTH/4 beats/row, rows counted from tuser like the frame writer; no back-pressure.
 // MODE0 1-clock bypass, filters 6 clocks, alpha=0; 3x3 results one pixel left / one row up of the centre (left edge
 // reuses itself, row above 0 = previous frame's last row). gray Y=(77R+150G+29B)>>8; window from two row buffers
 // (ERAM WIDTH/4x64b); Gaussian [1 2 1;2 4 2;1 2 1]/16, Sobel |Gx|+|Gy| over 3 pipeline stages; statistics on the
-// binary image in ROI/FULL published each SOF. Registers 0x300 (see docs/PL设计.md): 0x00 CTRL, 0x04 THR, 0x08/0x0C
-// ROIX/ROIY, 0x10 APPLY, 0x14 ID 0x56495331, 0x20..0x3C SEQ/AREA/BBOXX/BBOXY/SUMX/SUMY/EDGES/CYCLES, 0x40 ACTIVE.
-// LANES=4 every pixel; LANES=2 pixels 0,2 only (half logic, result on 2px, window steps 2px, PS scales by 4/LANES).
+// binary image in ROI/FULL published each SOF. LANES=4 every pixel; LANES=2 pixels 0,2 only (half logic, result on
+// 2px, window steps 2px, PS scales by 4/LANES).
 module des_vision #(
     parameter integer WIDTH = 1920, HEIGHT = 1080, LANES = 4
 ) (
@@ -57,15 +57,15 @@ module des_vision #(
     // stage for the statistics) and v/u/l of stages 1..5.
     reg tuser_d = 1'b0; wire sof = s_tuser & ~tuser_d; reg [BTW-1:0] bx = 0; reg [YW-1:0] row = 0;
     wire [BTW-1:0] cur_bx = sof ? 0 : bx; wire [YW-1:0] cur_row = sof ? 0 : row;
-    wire bypass = sof ? (p_cfg[F_MODE +: 3] == 3'd0 || p_cfg[F_MODE +: 3] > 3'd5)
-                      : (a_mode == 3'd0 || a_mode > 3'd5);
+    wire [2:0] mode_now = sof ? p_cfg[F_MODE +: 3] : a_mode;   // pending mode on the SOF beat
+    wire bypass = mode_now == 3'd0 || mode_now > 3'd5;
     reg [5*BTW-1:0] bxq = 0; reg [6*YW-1:0] rowq = 0; reg [4:0] vsr = 0, usr = 0, lsr = 0;
     wire [BTW-1:0] bx1 = bxq[0 +: BTW], bx3 = bxq[4*BTW +: BTW];
     wire [YW-1:0] row3 = rowq[4*YW +: YW], row6 = rowq[5*YW +: YW];
     wire v1 = vsr[0], v3 = vsr[4], u3 = usr[4], l3 = lsr[4];
 
-    function [7:0] gray_of(input [31:0] p);
-        reg [16:0] s;
+    function [7:0] gray_of(input [23:0] p);
+        reg [15:0] s;
         begin s = 77 * p[23:16] + 150 * p[15:8] + 29 * p[7:0]; gray_of = s[15:8]; end
     endfunction
     function [7:0] out_pixel(input [2:0] mode, input [7:0] g, input [7:0] ga,
@@ -91,7 +91,7 @@ module des_vision #(
     reg [L-1:0] sel4 = 0, esel4 = 0; reg [XW-1:0] xb = 0;
     integer i, j, k; reg [11:0] gs; reg signed [11:0] gx, gy;
     reg [XW-1:0] cx, bmin, bmax; reg [SXW-1:0] sx_beat; reg [NW-1:0] n_sel, n_edge;
-    reg [YW-1:0] ry, r; reg inroi, rok; reg [7:0] ov; reg [8*L-1:0] ovl = 0; reg res_tgl = 1'b0;
+    reg [YW-1:0] ry, r; reg inroi, rok; reg [8*L-1:0] ovl = 0; reg res_tgl = 1'b0;
     reg [20:0] acc_area = 0, acc_edges = 0, res_area = 0, res_edges = 0;
     reg [31:0] acc_sx = 0, acc_sy = 0, cyc = 0, res_sx = 0, res_sy = 0, res_cyc = 0;
     reg [XW-1:0] acc_x0 = {XW{1'b1}}, acc_x1 = 0, res_x0 = {XW{1'b1}}, res_x1 = 0;
@@ -104,7 +104,7 @@ module des_vision #(
             row <= (cur_bx == BEATS - 1) ? cur_row + 1'b1 : cur_row;
             lb_rd <= lb[cur_bx];
         end else if (sof) begin bx <= 0; row <= 0; end
-        for (j = 0; j < L; j = j + 1) g1[8*j +: 8] <= gray_of(s_tdata[32*STEP*j +: 32]);
+        for (j = 0; j < L; j = j + 1) g1[8*j +: 8] <= gray_of(s_tdata[32*STEP*j +: 24]);
         bxq <= {bxq[4*BTW-1:0], cur_bx}; rowq <= {rowq[5*YW-1:0], cur_row};
         vsr <= {vsr[3:0], s_tvalid}; usr <= {usr[3:0], s_tuser}; lsr <= {lsr[3:0], s_tlast};
         if (v1) begin

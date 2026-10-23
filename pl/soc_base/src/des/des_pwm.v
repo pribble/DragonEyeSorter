@@ -1,7 +1,5 @@
-// des_pwm.v — 2-channel 50 Hz flap-servo PWM (docs/PL设计.md §导流挡板 des_pwm); widths take effect
-// at the next period start; reads are combinational (AXI bridge samples next edge, v7).
-// Regs (0x400): 0x00 CTRL[1:0] en / 0x04 PERIOD us (min 2600) / 0x08 CH0_US / 0x0C CH1_US (max 2550) /
-//   0x10 CNT / 0x14 ID 0x50574D31.
+// des_pwm.v — 2-channel 50 Hz flap-servo PWM; 寄存器 0x400 的偏移 / 位域以 docs/PL设计.md 为准。widths take
+// effect at the next period start; reads are combinational (AXI bridge samples next edge, v7).
 module des_pwm #(parameter integer CLK_HZ = 75_000_000) (
     input  wire        clk, wr,
     input  wire [7:0]  waddr,
@@ -13,12 +11,11 @@ module des_pwm #(parameter integer CLK_HZ = 75_000_000) (
     localparam integer CLK_PER_US = CLK_HZ / 1_000_000;
 
     reg [1:0]  en = 2'd0;
-    reg [15:0] period_us = 16'd20000;
+    reg [15:0] period_us = 16'd20000, us = 16'd0;   // period / microseconds within the current period
     reg [23:0] width_w = 24'd0;   // PS-written pulse widths, {ch1, ch0}, 12 bits each
     reg [23:0] width_a = 24'd0;   // widths in force this period
     reg [31:0] periods = 32'd0;
     reg [6:0]  div = 7'd0;        // clocks within the current microsecond (75 max)
-    reg [15:0] us = 16'd0;        // microseconds within the current period
 
     always @(posedge clk) begin
         if (wr) case (waddr[7:2])
@@ -41,8 +38,7 @@ module des_pwm #(parameter integer CLK_HZ = 75_000_000) (
     always @* begin
         case (raddr[7:2])
             6'h00: rdata = {30'd0, en};            6'h01: rdata = {16'd0, period_us};
-            6'h02: rdata = {20'd0, width_w[11:0]};
-            6'h03: rdata = {20'd0, width_w[23:12]};
+            6'h02: rdata = {20'd0, width_w[11:0]}; 6'h03: rdata = {20'd0, width_w[23:12]};
             6'h04: rdata = periods;                6'h05: rdata = 32'h50574D31;
             default: rdata = 32'hDEADBEEF;
         endcase

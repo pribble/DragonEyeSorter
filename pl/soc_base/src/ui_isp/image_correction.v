@@ -2,25 +2,24 @@
 module image_correction #(
     parameter DATA_WIDTH  = 40,
     parameter TDEST_WIDTH = 10
-)(
-    input                          I_clk            ,
-    input                          I_rst_n          ,
-    input    [DATA_WIDTH - 1:0]    I_raw_data       ,
-    input                          I_raw_valid      ,
-    input                          I_raw_frame_start,
-    input                          I_raw_frame_end  ,
-    output   [DATA_WIDTH - 1:0]    O_raw_tdata      ,
-    output                         O_raw_tlast      ,
-    output reg [TDEST_WIDTH - 1:0] O_raw_tdest      ,
-    output                         O_raw_tvalid     ,
-    output                         O_raw_tuser      ,
-    input                          O_raw_tready
+) (
+    input  wire                    I_clk, I_rst_n,
+    input  wire [DATA_WIDTH-1:0]   I_raw_data,
+    input  wire                    I_raw_valid,
+    input  wire                    I_raw_frame_start,
+    input  wire                    I_raw_frame_end,
+    output wire [DATA_WIDTH-1:0]   O_raw_tdata,
+    output wire                    O_raw_tlast,
+    output reg  [TDEST_WIDTH-1:0]  O_raw_tdest,
+    output wire                    O_raw_tvalid,
+    output wire                    O_raw_tuser,
+    input  wire                    O_raw_tready
 );
-    reg                       I_raw_tvalid_d;
-    reg    [DATA_WIDTH - 1:0] I_raw_tdata_r;
-    reg    [16:0]             cnt;            // 行间空闲计数（位宽/回绕同原版）
-    reg    [14:0]             h_cnt, v_cnt;   // 行列计数（位宽/回绕同原版）
-    wire                      V_valid, H_valid, tuser, last;
+    reg                    I_raw_tvalid_d;
+    reg [DATA_WIDTH-1:0]   I_raw_tdata_r;
+    reg [16:0]             cnt;            // 行间空闲计数（位宽/回绕同原版）
+    reg [14:0]             h_cnt, v_cnt;   // 行列计数（位宽/回绕同原版）
+    wire                   V_valid, H_valid, tuser, last;
 
     assign V_valid = (v_cnt > 0) && (v_cnt < 1081);
     assign H_valid = (h_cnt < 481) && (h_cnt > 0);

@@ -1,11 +1,8 @@
-// servo_bus: Desheng v4.01 master, 115200 8N1 single-wire half duplex, open-drain TX (BSS138 pull-up).
-// PS fills TX buf with [ID,LEN,INSTR,params...]; HW prepends FF FF, appends checksum ~sum(ID,LEN,STATUS,params...).
-// NOTE PDF 2.3.6 SYNC WRITE prints 0x8B but formula gives ~(0x545)&0xFF = 0xBA (5 other examples match); HW uses 0xBA.
-// 1-byte (~87us) turnaround guard after each transfer; RX timeout from TX end, default 3000us.
-// Regs (0x100): 0x00 CTRL b0 GO(sc) b1 EXPECT_REPLY b2 CLEAR b[14:8] TX_COUNT(clamp64);
-// 0x04 STATUS b0 BUSY b1 DONE b2 TIMEOUT b3 RX_ERR b4 RX_OK b[14:8] RX_COUNT b[23:16] status;
-// 0x08 TIMEOUT_US; 0x0C/0x10/0x14 TX_T0/TX_T1/RX_T; 0x18/0x1C/0x20 CNT_TIMEOUT/RX_ERR/FRAMES;
-// 0x40-0x7F TX 64B; 0x80-0x9F RX 32B ([ID,LEN,STATUS,params,CHK]); byte i = word[i/4][8*(i%4)+:8].
+// servo_bus: Desheng v4.01 master, 115200 8N1 single-wire half duplex, open-drain TX (BSS138 pull-up); 寄存器 0x100
+// 的偏移 / 位域以 docs/PL设计.md 为准。PS fills TX buf with [ID,LEN,INSTR,params...]; HW prepends FF FF and appends
+// checksum ~sum(ID,LEN,STATUS,params...). 1-byte (~87us) turnaround guard after each transfer; RX timeout from TX end,
+// default 3000us. NOTE PDF 2.3.6 SYNC WRITE prints 0x8B but formula gives ~(0x545)&0xFF = 0xBA (5 other examples
+// match); HW uses 0xBA.
 module servo_bus #(
     parameter integer CLK_HZ = 75_000_000,
     parameter integer BAUD   = 115_200
@@ -145,12 +142,8 @@ module servo_bus #(
             8'h04: rdata = {8'd0, rx_status, 1'b0, 1'b0, (state == S_TX) ? 6'd0 : idx[5:0], 3'd0,
                             res == R_OK, res == R_ERR, res == R_TIMEOUT, res != R_NONE,
                             (state != S_IDLE) | go};
-            8'h08: rdata = timeout_us;
-            8'h0C: rdata = tx_t0;
-            8'h10: rdata = tx_t1;
-            8'h14: rdata = rx_t;
-            8'h18: rdata = cnt_timeout;
-            8'h1C: rdata = cnt_rx_err;
+            8'h08: rdata = timeout_us;   8'h0C: rdata = tx_t0;        8'h10: rdata = tx_t1;
+            8'h14: rdata = rx_t;         8'h18: rdata = cnt_timeout;  8'h1C: rdata = cnt_rx_err;
             8'h20: rdata = cnt_frames;
             default:
                 if (raddr[7:6] == 2'b01) rdata = {tx_buf[tb+3], tx_buf[tb+2], tx_buf[tb+1], tx_buf[tb]};

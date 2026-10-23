@@ -1,23 +1,17 @@
 // 出处：MiLianKe（米联客，www.uisrc.com）ISP 参考设计；重构版，接口与逐拍行为不变。
 module Brightness_adjustment #(
-    parameter  BRIGHTNESS_ADD   = 20,
-    parameter  BRIGHTNESS_MINUS = 0
-)
-(
-    input                   I_clk  ,
-    input                   I_rst_n,
-
-    input                   I_tlast  ,
-    input                   I_tuser  ,
-    input  [95:0]           I_tdata  ,
-    input                   I_tvalid ,
-    output                  I_tready ,
-
-    output                  O_tlast  ,
-    output                  O_tuser  ,
-    output [95:0]           O_tdata  ,
-    output                  O_tvalid ,
-    input                   O_tready
+    parameter BRIGHTNESS_ADD   = 20,
+    parameter BRIGHTNESS_MINUS = 0
+) (
+    input  wire        I_clk, I_rst_n,
+    input  wire        I_tlast, I_tuser,
+    input  wire [95:0] I_tdata,
+    input  wire        I_tvalid,
+    output wire        I_tready,
+    output wire        O_tlast, O_tuser,
+    output wire [95:0] O_tdata,
+    output wire        O_tvalid,
+    input  wire        O_tready
 );
 
     reg       I_tlast_r, I_tuser_r, I_tvalid_r;
@@ -26,18 +20,15 @@ module Brightness_adjustment #(
 
     // 4 像素通道折叠：每像素 RGB888 四路同构，仅数据切片不同
     genvar i;
-    generate for (i = 0; i < 4; i = i + 1) begin: g_pixel
+    generate for (i = 0; i < 4; i = i + 1) begin : g_pixel
         wire [7:0] r = I_tdata[24*i + 16 +: 8];
         wire [7:0] g = I_tdata[24*i +  8 +: 8];
         wire [7:0] b = I_tdata[24*i      +: 8];
 
         // 亮度偏移按原版 32bit 表达式计算后截 10bit（参数可为负/超范围，语义保持不变）
         always @(posedge I_clk or negedge I_rst_n) begin
-            if (!I_rst_n) begin
-                R_d[i] <= 10'd0;
-                G_d[i] <= 10'd0;
-                B_d[i] <= 10'd0;
-            end else if (I_tvalid) begin
+            if (!I_rst_n) {R_d[i], G_d[i], B_d[i]} <= 0;
+            else if (I_tvalid) begin
                 R_d[i] <= r + BRIGHTNESS_ADD - BRIGHTNESS_MINUS;
                 G_d[i] <= g + BRIGHTNESS_ADD - BRIGHTNESS_MINUS;
                 B_d[i] <= b + BRIGHTNESS_ADD - BRIGHTNESS_MINUS;
@@ -63,10 +54,8 @@ module Brightness_adjustment #(
     assign O_tlast  = I_tlast_r;
     assign O_tuser  = I_tuser_r;
     assign O_tvalid = I_tvalid_r;
-    assign O_tdata  = {R[3], G[3], B[3],
-                       R[2], G[2], B[2],
-                       R[1], G[1], B[1],
-                       R[0], G[0], B[0]};
+    assign O_tdata  = {R[3], G[3], B[3], R[2], G[2], B[2],
+                       R[1], G[1], B[1], R[0], G[0], B[0]};
     assign I_tready = O_tready;
 
 endmodule

@@ -3,11 +3,11 @@
 *WebSite : https://www.milianke.com      TechWeb : https://www.uisrc.com
 *Description : FDMA <-> AXI4 FULL 读写通道 glue（AXI4 master）
 *Copyright : Copyright (c) MiLianKe, All rights reserved.  Revision 3.1
-*2026 PL refactor: 行为逐拍不变；删除注释掉的旧版本、未使用的 axi_rlast/rburst_cnt、
-*                  收紧 burst 长度/计数/字节数位宽、合并重复的同步链 always。
-*                  M_AXI_WID 厂家原版即未驱动（保持 z），M_AXI_BID/RID/RRESP/RLAST 输入未用。
-*********************************************************************/
-module uiFDMA#
+*2026 PL refactor: 行为逐拍不变；删旧版本注释、未用 axi_rlast/rburst_cnt、收紧位宽、合并同步链。
+*  M_AXI_WID 原版即未驱动（保持 z），M_AXI_BID/RID/RRESP/RLAST 输入未用。
+*  注：本工程读通道不可达（system_top 只接写 AXI：I_fdma_rareq/raddr/rsize 恒 0，O_fdma_r
+*  与 M_AXI_AR/R 端口未连）；为保持逐拍等价与端口契约原样保留，删除需同改两个 tb。
+*********************************************************************/module uiFDMA #
 (
 parameter  integer         M_AXI_ID_WIDTH			= 3		    , //ID,demo中没用到
 parameter  integer         M_AXI_ID			        = 0		    , //ID,demo中没用到
@@ -16,65 +16,62 @@ parameter  integer         M_AXI_DATA_WIDTH			= 128		,//AXI总线的数据位宽
 parameter  integer		  M_AXI_MAX_BURST_LEN       = 64         //AXI总线的burst 大小，对于AXI4，支持任意长度，对于AXI3以下最大16
 )
 (
-input   wire [M_AXI_ADDR_WIDTH-1 : 0]      I_fdma_waddr          ,//FDMA写通道地址
-input                                      I_fdma_wareq          ,//FDMA写通道请求
-input   wire [15 : 0]                      I_fdma_wsize          ,//FDMA写通道一次FDMA的传输大小
-output                                     O_fdma_wbusy          ,//FDMA处于BUSY状态，AXI总线正在写操作
-
-input   wire [M_AXI_DATA_WIDTH-1 :0]       I_fdma_wdata		   ,//FDMA写数据
-output  wire                               O_fdma_wvalid         ,//FDMA 写有效
-input	wire                               I_fdma_wready		   ,//FDMA写准备好，用户可以写数据
-
-input   wire [M_AXI_ADDR_WIDTH-1 : 0]      I_fdma_raddr          ,// FDMA读通道地址
-input                                      I_fdma_rareq          ,// FDMA读通道请求
-input   wire [15 : 0]                      I_fdma_rsize          ,// FDMA读通道一次FDMA的传输大小
-output                                     O_fdma_rbusy          ,// FDMA处于BUSY状态，AXI总线正在读操作
-
-output  wire [M_AXI_DATA_WIDTH-1 :0]       O_fdma_rdata		   ,// FDMA读数据
-output  wire                               O_fdma_rvalid         ,// FDMA 读有效
-input	wire                               I_fdma_rready		   ,// FDMA读准备好，用户可以读数据
+input  wire [M_AXI_ADDR_WIDTH-1:0] I_fdma_waddr,   //FDMA写通道地址
+input  wire                        I_fdma_wareq,   //FDMA写通道请求
+input  wire [15:0]                 I_fdma_wsize,   //FDMA写通道一次FDMA的传输大小
+output                             O_fdma_wbusy,   //FDMA处于BUSY状态，AXI总线正在写操作
+input  wire [M_AXI_DATA_WIDTH-1:0] I_fdma_wdata,   //FDMA写数据
+output wire                        O_fdma_wvalid,  //FDMA 写有效
+input  wire                        I_fdma_wready,  //FDMA写准备好，用户可以写数据
+input  wire [M_AXI_ADDR_WIDTH-1:0] I_fdma_raddr,   // FDMA读通道地址
+input  wire                        I_fdma_rareq,   // FDMA读通道请求
+input  wire [15:0]                 I_fdma_rsize,   // FDMA读通道一次FDMA的传输大小
+output                             O_fdma_rbusy,   // FDMA处于BUSY状态，AXI总线正在读操作
+output wire [M_AXI_DATA_WIDTH-1:0] O_fdma_rdata,   // FDMA读数据
+output wire                        O_fdma_rvalid,  // FDMA 读有效
+input  wire                        I_fdma_rready,  // FDMA读准备好，用户可以读数据
 
 //以下为AXI总线信号
-input 	wire  								M_AXI_ACLK			,
-input 	wire  								M_AXI_ARESETN		,
-output 	wire [M_AXI_ID_WIDTH-1 : 0]		    M_AXI_AWID			,
-output 	wire [M_AXI_ADDR_WIDTH-1 : 0] 	    M_AXI_AWADDR		,
-output 	wire [7 : 0]						M_AXI_AWLEN			,
-output 	wire [2 : 0] 						M_AXI_AWSIZE		,
-output 	wire [1 : 0] 						M_AXI_AWBURST		,
-output 	wire  								M_AXI_AWLOCK		,
-output 	wire [3 : 0] 						M_AXI_AWCACHE		,
-output 	wire [2 : 0] 						M_AXI_AWPROT		,
-output 	wire [3 : 0] 						M_AXI_AWQOS			,
-output 	wire  								M_AXI_AWVALID		,
-input	wire  								M_AXI_AWREADY		,
-output  wire [M_AXI_ID_WIDTH-1 : 0] 		M_AXI_WID			,	// 厂家原版未驱动（保持 z）
-output  wire [M_AXI_DATA_WIDTH-1 : 0] 	    M_AXI_WDATA			,
-output  wire [M_AXI_DATA_WIDTH/8-1 : 0] 	M_AXI_WSTRB			,
-output  wire  								M_AXI_WLAST			,
-output  wire  								M_AXI_WVALID		,
-input   wire  								M_AXI_WREADY		,
-input   wire [M_AXI_ID_WIDTH-1 : 0] 		M_AXI_BID			,	// 未用
-input   wire [1 : 0] 						M_AXI_BRESP			,	// 未用
-input   wire  								M_AXI_BVALID		,	// 未用
-output  wire  								M_AXI_BREADY		,
-output  wire [M_AXI_ID_WIDTH-1 : 0] 		M_AXI_ARID			,
-output  wire [M_AXI_ADDR_WIDTH-1 : 0] 	    M_AXI_ARADDR		,
-output  wire [7 : 0] 						M_AXI_ARLEN			,
-output  wire [2 : 0] 						M_AXI_ARSIZE		,
-output  wire [1 : 0] 						M_AXI_ARBURST		,
-output  wire  								M_AXI_ARLOCK		,
-output  wire [3 : 0] 						M_AXI_ARCACHE		,
-output  wire [2 : 0] 						M_AXI_ARPROT		,
-output  wire [3 : 0] 						M_AXI_ARQOS			,
-output  wire  								M_AXI_ARVALID		,
-input   wire  								M_AXI_ARREADY		,
-input   wire [M_AXI_ID_WIDTH-1 : 0] 		M_AXI_RID			,	// 未用
-input   wire [M_AXI_DATA_WIDTH-1 : 0] 	    M_AXI_RDATA			,
-input   wire [1 : 0] 						M_AXI_RRESP			,	// 未用
-input   wire  								M_AXI_RLAST			,	// 未用
-input   wire  								M_AXI_RVALID		,
-output  wire  								M_AXI_RREADY
+input  wire                          M_AXI_ACLK,
+input  wire                          M_AXI_ARESETN,
+output wire [M_AXI_ID_WIDTH-1:0]     M_AXI_AWID,
+output wire [M_AXI_ADDR_WIDTH-1:0]   M_AXI_AWADDR,
+output wire [7:0]                    M_AXI_AWLEN,
+output wire [2:0]                    M_AXI_AWSIZE,
+output wire [1:0]                    M_AXI_AWBURST,
+output wire                          M_AXI_AWLOCK,
+output wire [3:0]                    M_AXI_AWCACHE,
+output wire [2:0]                    M_AXI_AWPROT,
+output wire [3:0]                    M_AXI_AWQOS,
+output wire                          M_AXI_AWVALID,
+input  wire                          M_AXI_AWREADY,
+output wire [M_AXI_ID_WIDTH-1:0]     M_AXI_WID,       // 厂家原版未驱动（保持 z）
+output wire [M_AXI_DATA_WIDTH-1:0]   M_AXI_WDATA,
+output wire [M_AXI_DATA_WIDTH/8-1:0] M_AXI_WSTRB,
+output wire                          M_AXI_WLAST,
+output wire                          M_AXI_WVALID,
+input  wire                          M_AXI_WREADY,
+input  wire [M_AXI_ID_WIDTH-1:0]     M_AXI_BID,       // 未用
+input  wire [1:0]                    M_AXI_BRESP,     // 未用
+input  wire                          M_AXI_BVALID,    // 未用
+output wire                          M_AXI_BREADY,
+output wire [M_AXI_ID_WIDTH-1:0]     M_AXI_ARID,
+output wire [M_AXI_ADDR_WIDTH-1:0]   M_AXI_ARADDR,
+output wire [7:0]                    M_AXI_ARLEN,
+output wire [2:0]                    M_AXI_ARSIZE,
+output wire [1:0]                    M_AXI_ARBURST,
+output wire                          M_AXI_ARLOCK,
+output wire [3:0]                    M_AXI_ARCACHE,
+output wire [2:0]                    M_AXI_ARPROT,
+output wire [3:0]                    M_AXI_ARQOS,
+output wire                          M_AXI_ARVALID,
+input  wire                          M_AXI_ARREADY,
+input  wire [M_AXI_ID_WIDTH-1:0]     M_AXI_RID,       // 未用
+input  wire [M_AXI_DATA_WIDTH-1:0]   M_AXI_RDATA,
+input  wire [1:0]                    M_AXI_RRESP,     // 未用
+input  wire                          M_AXI_RLAST,     // 未用
+input  wire                          M_AXI_RVALID,
+output wire                          M_AXI_RREADY
 	);
 
 //计算数据位宽
@@ -89,10 +86,7 @@ localparam AXI_BYTES          = M_AXI_DATA_WIDTH/8;                        // AX
 localparam MAX_BURST_LEN_SIZE = clogb2(M_AXI_MAX_BURST_LEN - 1);           // burst 计数值 MSB 下标
 localparam BURST_LEN_W        = clogb2(M_AXI_MAX_BURST_LEN);               // burst 长度寄存器位宽
 localparam BURST_BYTES_W      = clogb2(M_AXI_MAX_BURST_LEN * AXI_BYTES);   // burst 字节数位宽
-
-//=====================================================================
 // AXI4 写通道：FDMA 一次写传输 -> 1..N 个 AXI4 INCR burst
-//=====================================================================
 reg     [M_AXI_ADDR_WIDTH-1 : 0]    axi_awaddr  = 0;      //AXI4 写地址
 reg                                 axi_awvalid = 1'b0;   //AXI4 写地址有效
 reg                                 axi_wvalid  = 1'b0;   //AXI4 写数据有效
@@ -117,21 +111,12 @@ wire                                fdma_wend   = w_next && (fdma_wleft_cnt == 1
 wire                                wend_ack    = fdma_wend_enable & next_req;
 wire                                axi_wlast   = (w_next == 1'b1) && (wburst_cnt == M_AXI_AWLEN);
 
-assign M_AXI_AWID       = M_AXI_ID;                  //写地址ID，用来标志一组写信号
-assign M_AXI_AWADDR     = axi_awaddr;
-assign M_AXI_AWLEN      = wburst_len - 1;            //AXI4 burst 长度（拍数-1）
-assign M_AXI_AWSIZE     = clogb2(AXI_BYTES-1);
-assign M_AXI_AWBURST    = 2'b01;                     //INCR，地址递增
-assign M_AXI_AWLOCK     = 1'b0;
-assign M_AXI_AWCACHE    = 4'b0010;                   //不使用 cache/buffer
-assign M_AXI_AWPROT     = 3'h0;
-assign M_AXI_AWQOS      = 4'h0;
-assign M_AXI_AWVALID    = axi_awvalid;
-assign M_AXI_WDATA      = I_fdma_wdata;
-assign M_AXI_WSTRB      = {(AXI_BYTES){1'b1}};       //所有字节有效
-assign M_AXI_WLAST      = axi_wlast;
-assign M_AXI_WVALID     = axi_wvalid & I_fdma_wready; //写数据有效需 FDMA 可接收
-assign M_AXI_BREADY     = 1'b1;
+assign M_AXI_AWID = M_AXI_ID;  assign M_AXI_AWADDR = axi_awaddr;  assign M_AXI_AWLEN = wburst_len - 1;
+assign M_AXI_AWSIZE = clogb2(AXI_BYTES-1);  assign M_AXI_AWBURST = 2'b01;  assign M_AXI_AWLOCK = 1'b0;
+assign M_AXI_AWCACHE = 4'b0010;  assign M_AXI_AWPROT = 3'h0;  assign M_AXI_AWQOS = 4'h0;
+assign M_AXI_AWVALID = axi_awvalid;  assign M_AXI_WDATA = I_fdma_wdata;
+assign M_AXI_WSTRB = {(AXI_BYTES){1'b1}};  assign M_AXI_WLAST = axi_wlast;
+assign M_AXI_WVALID = axi_wvalid & I_fdma_wready;  assign M_AXI_BREADY = 1'b1;
 
 assign O_fdma_wvalid    = (w_next && (~axi_wlast)) || ((axi_wstart_locked_r1 == 1'b1) && axi_wstart_locked_r2 == 1'b0);
 assign O_fdma_wbusy     = fdma_wstart_locked;
@@ -155,7 +140,7 @@ always @(posedge M_AXI_ACLK)
 reg axi_rstart_locked    = 1'b0; //axi 读 burst 进行中
 reg axi_rstart_locked_r1 = 1'b0;
 reg axi_rstart_locked_r2 = 1'b0;
-always @(posedge M_AXI_ACLK)begin
+always @(posedge M_AXI_ACLK) begin
     axi_wstart_locked_r1 <= axi_wstart_locked;
     axi_wstart_locked_r2 <= axi_wstart_locked_r1;
     axi_rstart_locked_r1 <= axi_rstart_locked;
@@ -163,14 +148,14 @@ always @(posedge M_AXI_ACLK)begin
 end
 
 //burst 结束握手：AW 通道握手与 WLAST 都完成后产生 1 拍 next_req，并清标志
-always @(posedge M_AXI_ACLK)begin
+always @(posedge M_AXI_ACLK) begin
     aw_enable <= (w_enable & aw_enable) ? 1'b0 : ((axi_awvalid & M_AXI_AWREADY) ? 1'b1 : aw_enable);
     w_enable  <= (w_enable & aw_enable) ? 1'b0 : (axi_wlast ? 1'b1 : w_enable);
     next_req  <= (w_enable & aw_enable);
 end
 
 //FDMA 最后一拍与末端 burst 都完成后，下一拍给出 fdma_wend_all 释放传输锁
-always @(posedge M_AXI_ACLK)begin
+always @(posedge M_AXI_ACLK) begin
     fdma_wend_all    <= wend_ack;
     fdma_wend_enable <= wend_ack ? 1'b0 : (fdma_wend ? 1'b1 : fdma_wend_enable);
 end
@@ -219,7 +204,7 @@ always @(posedge M_AXI_ACLK)
     end
 
 //一次 AXI burst 最大 M_AXI_MAX_BURST_LEN 拍，超过自动拆分
-always @(posedge M_AXI_ACLK)begin
+always @(posedge M_AXI_ACLK) begin
     if(M_AXI_ARESETN == 1'b0)begin
         wburst_len <= 1;
     end
@@ -231,9 +216,7 @@ always @(posedge M_AXI_ACLK)begin
     end
 end
 
-//=====================================================================
-// AXI4 读通道：FDMA 一次读传输 -> 1..N 个 AXI4 INCR burst
-//=====================================================================
+// AXI4 读通道：FDMA 一次读传输 -> 1..N 个 AXI4 INCR burst（本工程不可达，见文件头）
 reg     [M_AXI_ADDR_WIDTH-1 : 0]    axi_araddr  = 0;      //AXI4 读地址
 reg                                 axi_arvalid = 1'b0;   //AXI4 读地址有效
 reg                                 axi_rready  = 1'b0;   //AXI4 读准备
@@ -253,17 +236,10 @@ wire                                ar_ack      = M_AXI_ARREADY && axi_arvalid &
 reg  [M_AXI_DATA_WIDTH-1 : 0] rdata_fdma;
 reg                           valid_fdma;
 
-assign M_AXI_ARID       = M_AXI_ID;                  //读地址ID
-assign M_AXI_ARADDR     = axi_araddr;
-assign M_AXI_ARLEN      = rburst_len - 1;            //AXI4 burst 长度（拍数-1）
-assign M_AXI_ARSIZE     = clogb2(AXI_BYTES-1);
-assign M_AXI_ARBURST    = 2'b01;                     //INCR，地址递增
-assign M_AXI_ARLOCK     = 1'b0;
-assign M_AXI_ARCACHE    = 4'b0010;
-assign M_AXI_ARPROT     = 3'h0;
-assign M_AXI_ARQOS      = 4'h0;
-assign M_AXI_ARVALID    = axi_arvalid;
-assign M_AXI_RREADY     = axi_rready && I_fdma_rready; //读数据准备需 FDMA 可接收
+assign M_AXI_ARID = M_AXI_ID;  assign M_AXI_ARADDR = axi_araddr;  assign M_AXI_ARLEN = rburst_len - 1;
+assign M_AXI_ARSIZE = clogb2(AXI_BYTES-1);  assign M_AXI_ARBURST = 2'b01;  assign M_AXI_ARLOCK = 1'b0;
+assign M_AXI_ARCACHE = 4'b0010;  assign M_AXI_ARPROT = 3'h0;  assign M_AXI_ARQOS = 4'h0;
+assign M_AXI_ARVALID = axi_arvalid;  assign M_AXI_RREADY = axi_rready && I_fdma_rready;
 
 assign O_fdma_rdata     = rdata_fdma;
 assign O_fdma_rvalid    = valid_fdma;

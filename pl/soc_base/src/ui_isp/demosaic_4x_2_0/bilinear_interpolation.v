@@ -4,25 +4,18 @@
 // 的色表映射到 R/G/B，替代原码 4 份重复通道逻辑。
 module bilinear_interpolation #(
     parameter BAYER_MODE = "BGGR"   // Bayer 排列：RGGB/BGGR/GBRG/GRBG
-)(
-    input               I_clk           ,
-    input               I_rst_n         ,
-
-    input               I_tlast         ,
-    input               I_tuser         ,
-    input               I_tvalid        ,
-    output              I_tready        ,
-
-    input               bayer_ypos      ,   // 窗口中心行行奇偶
-    input      [95:0]   matrix_last_line,
-    input      [95:0]   matrix_cur_line ,
-    input      [95:0]   matrix_next_line,
-
-    output              O_tlast         ,
-    output              O_tuser         ,
-    output     [127:0]  O_tdata         ,
-    output              O_tvalid        ,
-    input               O_tready
+) (
+    input  wire        I_clk, I_rst_n,
+    input  wire        I_tlast, I_tuser, I_tvalid,
+    output wire        I_tready,
+    input  wire        bayer_ypos,           // 窗口中心行行奇偶
+    input  wire [95:0] matrix_last_line,
+    input  wire [95:0] matrix_cur_line,
+    input  wire [95:0] matrix_next_line,
+    output wire        O_tlast, O_tuser,
+    output wire [127:0] O_tdata,
+    output wire        O_tvalid,
+    input  wire        O_tready
 );
 
     // 3x3 窗口字节：行 0/1/2 = 上一行/当前行/下一行；窗口列 0..5 = 相对当前 4 像素组的 -1..+4
@@ -51,76 +44,59 @@ module bilinear_interpolation #(
         end
     endgenerate
 
-    // 第 1 级：角色和打拍（q 布局：每个像素位 40bit = {D, V, H, C}，各 10bit）
+    reg [119:0] mp;     // 每像素位 30bit = {B, G, R}，各 10bit
+    reg [119:0] mean;   // 每像素位 30bit = {B, G, R}，各 10bit（值域 <=255，与原码 9bit 均值等效）
+
+    // 第 1 级：角色和打拍（q 布局：每个像素位 40bit = {D, V, H, C}，各 10bit）；
+    // 同拍推进 bayer_ypos 与 tlast/tuser/tvalid 移位的 4 个原独立 always 合并（全非阻塞、同复位）。
     reg [159:0] q;
-    always @(posedge I_clk or negedge I_rst_n) begin
-        if (!I_rst_n)
-            q <= 160'd0;
-        else if (I_tvalid)
-            q <= {role[3][3], role[2][3], role[1][3], role[0][3],
-                  role[3][2], role[2][2], role[1][2], role[0][2],
-                  role[3][1], role[2][1], role[1][1], role[0][1],
-                  role[3][0], role[2][0], role[1][0], role[0][0]};
-    end
-
-    // bayer_ypos 打拍：第 2 级用 r0 选色表，第 3 级用 r1 选均值移位
     reg bayer_ypos_r0, bayer_ypos_r1;
-    always @(posedge I_clk or negedge I_rst_n) begin
-        if (!I_rst_n) begin
-            bayer_ypos_r0 <= 1'b0;
-            bayer_ypos_r1 <= 1'b0;
-        end
-        else begin
-            bayer_ypos_r0 <= bayer_ypos;
-            bayer_ypos_r1 <= bayer_ypos_r0;
-        end
-    end
-
-    // 流控制信号同步：tlast/tuser/tvalid 延迟 5 拍与数据对齐
     reg [4:0] I_tlast_r, I_tuser_r, I_tvalid_r;
     always @(posedge I_clk or negedge I_rst_n) begin
         if (!I_rst_n) begin
+            q <= 160'd0;
+            bayer_ypos_r0 <= 1'b0;
+            bayer_ypos_r1 <= 1'b0;
             I_tlast_r  <= 5'd0;
             I_tuser_r  <= 5'd0;
             I_tvalid_r <= 5'd0;
-        end
-        else begin
-            I_tlast_r  <= {I_tlast_r[3:0], I_tlast};
-            I_tuser_r  <= {I_tuser_r[3:0], I_tuser};
+        end else begin
+            if (I_tvalid)
+                q <= {role[3][3], role[2][3], role[1][3], role[0][3],
+                      role[3][2], role[2][2], role[1][2], role[0][2],
+                      role[3][1], role[2][1], role[1][1], role[0][1],
+                      role[3][0], role[2][0], role[1][0], role[0][0]};
+            // bayer_ypos 打拍：第 2 级用 r0 选色表，第 3 级用 r1 选均值移位
+            bayer_ypos_r0 <= bayer_ypos;
+            bayer_ypos_r1 <= bayer_ypos_r0;
+            // tlast/tuser/tvalid 延迟 5 拍与数据对齐
+            I_tlast_r  <= {I_tlast_r[3:0],  I_tlast};
+            I_tuser_r  <= {I_tuser_r[3:0],  I_tuser};
             I_tvalid_r <= {I_tvalid_r[3:0], I_tvalid};
         end
     end
 
     // 第 2/3 级：按 Bayer 模式取色表（角色和 -> R/G/B），再按抽头数移位求均值。
     // 未列出的 BAYER_MODE（非法参数）不生成任何逻辑 -> 与厂家原码一致输出 x。
-    reg [119:0] mp;     // 每像素位 30bit = {B, G, R}，各 10bit
-    reg [119:0] mean;   // 每像素位 30bit = {B, G, R}，各 10bit（值域 <=255，与原码 9bit 均值等效）
     generate
         if (BAYER_MODE == "RGGB") begin : g_rggb
-            // bayer_ypos=0 的色表
             wire [119:0] mp_p0 = {
                 q[140 +: 10], q[120 +: 10], q[130 +: 10], q[110 +: 10],
                 (q[90 +: 10] + q[100 +: 10]), q[80 +: 10], q[60 +: 10], q[40 +: 10],
                 q[50 +: 10], q[30 +: 10], (q[10 +: 10] + q[20 +: 10]), q[0 +: 10]
             };
-            // bayer_ypos=1 的色表
             wire [119:0] mp_p1 = {
                 q[120 +: 10], (q[130 +: 10] + q[140 +: 10]), q[150 +: 10], q[90 +: 10],
                 q[80 +: 10], q[100 +: 10], q[40 +: 10], (q[50 +: 10] + q[60 +: 10]),
                 q[70 +: 10], q[10 +: 10], q[0 +: 10], q[20 +: 10]
             };
             always @(posedge I_clk or negedge I_rst_n) begin
-                if (!I_rst_n)
+                if (!I_rst_n) begin
                     mp <= 120'd0;
-                else if (I_tvalid_r[0])
-                    mp <= bayer_ypos_r0 ? mp_p1 : mp_p0;
-            end
-
-            always @(posedge I_clk or negedge I_rst_n) begin
-                if (!I_rst_n)
                     mean <= 120'd0;
-                else if (I_tvalid_r[1])
-                    mean <= bayer_ypos_r1 ? {
+                end else begin
+                    if (I_tvalid_r[0]) mp <= bayer_ypos_r0 ? mp_p1 : mp_p0;
+                    if (I_tvalid_r[1]) mean <= bayer_ypos_r1 ? {
                         mp[110 +: 10] >> 0, mp[100 +: 10] >> 2, mp[90 +: 10] >> 2,
                         mp[80 +: 10] >> 1, mp[70 +: 10] >> 0, mp[60 +: 10] >> 1,
                         mp[50 +: 10] >> 0, mp[40 +: 10] >> 2, mp[30 +: 10] >> 2,
@@ -131,33 +107,27 @@ module bilinear_interpolation #(
                         mp[50 +: 10] >> 1, mp[40 +: 10] >> 0, mp[30 +: 10] >> 1,
                         mp[20 +: 10] >> 2, mp[10 +: 10] >> 2, mp[0 +: 10] >> 0
                     };
+                end
             end
         end
         else if (BAYER_MODE == "BGGR") begin : g_bggr
-            // bayer_ypos=0 的色表
             wire [119:0] mp_p0 = {
                 q[130 +: 10], q[120 +: 10], q[140 +: 10], q[80 +: 10],
                 (q[90 +: 10] + q[100 +: 10]), q[110 +: 10], q[50 +: 10], q[40 +: 10],
                 q[60 +: 10], q[0 +: 10], (q[10 +: 10] + q[20 +: 10]), q[30 +: 10]
             };
-            // bayer_ypos=1 的色表
             wire [119:0] mp_p1 = {
                 q[150 +: 10], (q[130 +: 10] + q[140 +: 10]), q[120 +: 10], q[100 +: 10],
                 q[80 +: 10], q[90 +: 10], q[70 +: 10], (q[50 +: 10] + q[60 +: 10]),
                 q[40 +: 10], q[20 +: 10], q[0 +: 10], q[10 +: 10]
             };
             always @(posedge I_clk or negedge I_rst_n) begin
-                if (!I_rst_n)
+                if (!I_rst_n) begin
                     mp <= 120'd0;
-                else if (I_tvalid_r[0])
-                    mp <= bayer_ypos_r0 ? mp_p1 : mp_p0;
-            end
-
-            always @(posedge I_clk or negedge I_rst_n) begin
-                if (!I_rst_n)
                     mean <= 120'd0;
-                else if (I_tvalid_r[1])
-                    mean <= bayer_ypos_r1 ? {
+                end else begin
+                    if (I_tvalid_r[0]) mp <= bayer_ypos_r0 ? mp_p1 : mp_p0;
+                    if (I_tvalid_r[1]) mean <= bayer_ypos_r1 ? {
                         mp[110 +: 10] >> 2, mp[100 +: 10] >> 2, mp[90 +: 10] >> 0,
                         mp[80 +: 10] >> 1, mp[70 +: 10] >> 0, mp[60 +: 10] >> 1,
                         mp[50 +: 10] >> 2, mp[40 +: 10] >> 2, mp[30 +: 10] >> 0,
@@ -168,33 +138,27 @@ module bilinear_interpolation #(
                         mp[50 +: 10] >> 1, mp[40 +: 10] >> 0, mp[30 +: 10] >> 1,
                         mp[20 +: 10] >> 0, mp[10 +: 10] >> 2, mp[0 +: 10] >> 2
                     };
+                end
             end
         end
         else if (BAYER_MODE == "GBRG") begin : g_gbrg
-            // bayer_ypos=0 的色表
             wire [119:0] mp_p0 = {
                 q[120 +: 10], (q[130 +: 10] + q[140 +: 10]), q[150 +: 10], q[90 +: 10],
                 q[80 +: 10], q[100 +: 10], q[40 +: 10], (q[50 +: 10] + q[60 +: 10]),
                 q[70 +: 10], q[10 +: 10], q[0 +: 10], q[20 +: 10]
             };
-            // bayer_ypos=1 的色表
             wire [119:0] mp_p1 = {
                 q[140 +: 10], q[120 +: 10], q[130 +: 10], q[110 +: 10],
                 (q[90 +: 10] + q[100 +: 10]), q[80 +: 10], q[60 +: 10], q[40 +: 10],
                 q[50 +: 10], q[30 +: 10], (q[10 +: 10] + q[20 +: 10]), q[0 +: 10]
             };
             always @(posedge I_clk or negedge I_rst_n) begin
-                if (!I_rst_n)
+                if (!I_rst_n) begin
                     mp <= 120'd0;
-                else if (I_tvalid_r[0])
-                    mp <= bayer_ypos_r0 ? mp_p1 : mp_p0;
-            end
-
-            always @(posedge I_clk or negedge I_rst_n) begin
-                if (!I_rst_n)
                     mean <= 120'd0;
-                else if (I_tvalid_r[1])
-                    mean <= bayer_ypos_r1 ? {
+                end else begin
+                    if (I_tvalid_r[0]) mp <= bayer_ypos_r0 ? mp_p1 : mp_p0;
+                    if (I_tvalid_r[1]) mean <= bayer_ypos_r1 ? {
                         mp[110 +: 10] >> 1, mp[100 +: 10] >> 0, mp[90 +: 10] >> 1,
                         mp[80 +: 10] >> 2, mp[70 +: 10] >> 2, mp[60 +: 10] >> 0,
                         mp[50 +: 10] >> 1, mp[40 +: 10] >> 0, mp[30 +: 10] >> 1,
@@ -205,33 +169,27 @@ module bilinear_interpolation #(
                         mp[50 +: 10] >> 0, mp[40 +: 10] >> 2, mp[30 +: 10] >> 2,
                         mp[20 +: 10] >> 1, mp[10 +: 10] >> 0, mp[0 +: 10] >> 1
                     };
+                end
             end
         end
         else if (BAYER_MODE == "GRBG") begin : g_grbg
-            // bayer_ypos=0 的色表
             wire [119:0] mp_p0 = {
                 q[150 +: 10], (q[130 +: 10] + q[140 +: 10]), q[120 +: 10], q[100 +: 10],
                 q[80 +: 10], q[90 +: 10], q[70 +: 10], (q[50 +: 10] + q[60 +: 10]),
                 q[40 +: 10], q[20 +: 10], q[0 +: 10], q[10 +: 10]
             };
-            // bayer_ypos=1 的色表
             wire [119:0] mp_p1 = {
                 q[130 +: 10], q[120 +: 10], q[140 +: 10], q[80 +: 10],
                 (q[90 +: 10] + q[100 +: 10]), q[110 +: 10], q[50 +: 10], q[40 +: 10],
                 q[60 +: 10], q[0 +: 10], (q[10 +: 10] + q[20 +: 10]), q[30 +: 10]
             };
             always @(posedge I_clk or negedge I_rst_n) begin
-                if (!I_rst_n)
+                if (!I_rst_n) begin
                     mp <= 120'd0;
-                else if (I_tvalid_r[0])
-                    mp <= bayer_ypos_r0 ? mp_p1 : mp_p0;
-            end
-
-            always @(posedge I_clk or negedge I_rst_n) begin
-                if (!I_rst_n)
                     mean <= 120'd0;
-                else if (I_tvalid_r[1])
-                    mean <= bayer_ypos_r1 ? {
+                end else begin
+                    if (I_tvalid_r[0]) mp <= bayer_ypos_r0 ? mp_p1 : mp_p0;
+                    if (I_tvalid_r[1]) mean <= bayer_ypos_r1 ? {
                         mp[110 +: 10] >> 1, mp[100 +: 10] >> 0, mp[90 +: 10] >> 1,
                         mp[80 +: 10] >> 0, mp[70 +: 10] >> 2, mp[60 +: 10] >> 2,
                         mp[50 +: 10] >> 1, mp[40 +: 10] >> 0, mp[30 +: 10] >> 1,
@@ -242,31 +200,27 @@ module bilinear_interpolation #(
                         mp[50 +: 10] >> 2, mp[40 +: 10] >> 2, mp[30 +: 10] >> 0,
                         mp[20 +: 10] >> 1, mp[10 +: 10] >> 0, mp[0 +: 10] >> 1
                     };
+                end
             end
         end
     endgenerate
 
-    // 第 4 级：饱和到 8bit，并按输出格式拼 128bit（每个 32bit 像素 = {8'b0, R, G, B}）
-    reg [127:0] rgb_d;
+    // 第 4/5 级：饱和到 8bit 拼 128bit（每个 32bit 像素 = {8'b0, R, G, B}），再打一拍输出
+    reg [127:0] rgb_d, rgb_q;
     always @(posedge I_clk or negedge I_rst_n) begin
-        if (!I_rst_n)
+        if (!I_rst_n) begin
             rgb_d <= 128'd0;
-        else if (I_tvalid_r[2])
-            rgb_d <= {
-                8'd0, (mean[98] ? 8'd255 : mean[97 -: 8]), (mean[108] ? 8'd255 : mean[107 -: 8]), (mean[118] ? 8'd255 : mean[117 -: 8]),
-                8'd0, (mean[68] ? 8'd255 : mean[67 -: 8]), (mean[78] ? 8'd255 : mean[77 -: 8]), (mean[88] ? 8'd255 : mean[87 -: 8]),
-                8'd0, (mean[38] ? 8'd255 : mean[37 -: 8]), (mean[48] ? 8'd255 : mean[47 -: 8]), (mean[58] ? 8'd255 : mean[57 -: 8]),
-                8'd0, (mean[8] ? 8'd255 : mean[7 -: 8]), (mean[18] ? 8'd255 : mean[17 -: 8]), (mean[28] ? 8'd255 : mean[27 -: 8])
-            };
-    end
-
-    // 第 5 级：输出数据打拍
-    reg [127:0] rgb_q;
-    always @(posedge I_clk or negedge I_rst_n) begin
-        if (!I_rst_n)
             rgb_q <= 128'd0;
-        else if (I_tvalid_r[3])
-            rgb_q <= rgb_d;
+        end else begin
+            if (I_tvalid_r[2])
+                rgb_d <= {
+                    8'd0, (mean[98] ? 8'd255 : mean[97 -: 8]), (mean[108] ? 8'd255 : mean[107 -: 8]), (mean[118] ? 8'd255 : mean[117 -: 8]),
+                    8'd0, (mean[68] ? 8'd255 : mean[67 -: 8]), (mean[78] ? 8'd255 : mean[77 -: 8]), (mean[88] ? 8'd255 : mean[87 -: 8]),
+                    8'd0, (mean[38] ? 8'd255 : mean[37 -: 8]), (mean[48] ? 8'd255 : mean[47 -: 8]), (mean[58] ? 8'd255 : mean[57 -: 8]),
+                    8'd0, (mean[8] ? 8'd255 : mean[7 -: 8]), (mean[18] ? 8'd255 : mean[17 -: 8]), (mean[28] ? 8'd255 : mean[27 -: 8])
+                };
+            if (I_tvalid_r[3]) rgb_q <= rgb_d;
+        end
     end
 
     assign O_tlast  = I_tlast_r[4];
