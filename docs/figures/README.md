@@ -44,7 +44,7 @@ python docs/figures/make_figures.py --paper    # paper 主题 → figures/paper/
 | `fig_pick_sequence.py` | 图 4-1 良品抓取 / NG 导流挡板时序 |
 | `fig_layout.py` | 图 7-1 工位布局（俯视，按比例） |
 | `paper/` | `--paper` 主题的输出（5 张 SVG + PNG + `fig_meta.json`），报告引用这一套 |
-| `make_system_wiring.py` | `fig_system_wiring.png`（整机接线：市电 / 24V / 急停 / 步进 / 舵机供电 / 电平转换 / J12 引脚；实线已接、虚线待接） |
+| `make_system_wiring.py` | `fig_system_wiring.png`（整机接线：市电 / 24V / 急停 / 步进 / 舵机 6.8V / 5V / 编码器 / 电平转换 / 挡板 / J12 引脚 / J11 CAN；实线已接、虚线待接） |
 | `make_step_wiring.py` / `make_servo_lv_wiring.py` | 步进四信号、BSS138 低压侧三针在 J12 上的位置（叠加厂家位号图） |
 
 单张调试：`python docs/figures/fig_timebase.py`（跑单张 + 打印该图门禁），加 `--paper` 出报告那套。导出 SVG（矢量、文字可编辑）+ PNG 宽 3200px（报告满版心 15.8cm 时 ≈514 dpi）。两套 `fig_meta.json` 是下游依据：画布尺寸、`px_per_pt`、最小字号，以及 slide 版的 **PPT 重点框区域**（`regions`，源 PNG 像素、左上原点）。`submission/build/make_ppt.py` 读 `fig_meta.json`，`verify_report.py` 读 `paper/fig_meta.json` 的 `min_fs_pt`。**改插图后两套都重跑。**
