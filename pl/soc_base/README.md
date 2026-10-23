@@ -1,6 +1,6 @@
 # pl/soc_base/ — PL 工程（soc_prj，TD 6.2.1）
 
-厂家 NPU demo `soc_prj` 底板 + 我们的全部改动；**仓库里这一份即可直接编译**：TD 6.2.1 打开 `soc_prj.al` → 综合 / 布局布线 → `soc_prj.bit`。**板端当前 v14（最新）**：v14 = 二次重构源码（`c1b94b5`）后全量重编 + 上板（`BOOT.bin` `a72e00f7…`，比特流 `a8a29533…`；`pl_check.sh` 21 项回归通过、2min soak 0 error；寄存器 `VERSION` 仍 12）。HDMI 串行域 1 个 −0.164ns 端点属厂家路径，TMDS 视觉待复核 ⚠；版本与上板证据见下「板端版本台账」。明细见 [log/2026-10-23-PL二次重构](../../docs/log/2026-10-23-PL二次重构.md) · [后全量重编与上板](../../docs/log/2026-10-23-PL二次重构后全量重编.md)；各模块上板状态与验证记录见 [docs/PL设计.md](../../docs/PL设计.md)。2026-10-24 又对**厂家明文 RTL（非 des）**做了一轮零行为重构（**未重编比特流 / 未上板**，板端仍 v14）：源码净减 55.7%、TD 综合 0 error，明细见 [log/2026-10-24-PL厂家RTL重构](../../docs/log/2026-10-24-PL厂家RTL重构.md)。
+厂家 NPU demo `soc_prj` 底板 + 我们的全部改动；**仓库里这一份即可直接编译**：TD 6.2.1 打开 `soc_prj.al` → 综合 / 布局布线 → `soc_prj.bit`。**板端当前 v14（最新）**：v14 = 二次重构源码（`c1b94b5`）后全量重编 + 上板（`BOOT.bin` `a72e00f7…`，比特流 `a8a29533…`；`pl_check.sh` 21 项回归通过、2min soak 0 error；寄存器 `VERSION` 仍 12）。HDMI 串行域 1 个 −0.164ns 端点属厂家路径，TMDS 视觉待复核 ⚠；版本与上板证据见下「板端版本台账」。明细见 [log/2026-10-23-PL二次重构](../../docs/log/2026-10-23-PL二次重构.md) · [后全量重编与上板](../../docs/log/2026-10-23-PL二次重构后全量重编.md)；各模块上板状态与验证记录见 [docs/PL设计.md](../../docs/PL设计.md)。2026-10-24 又对**厂家明文 RTL（非 des）**做了一轮零行为重构（**未重编比特流 / 未上板**，板端仍 v14）：源码净减 55.7%、TD 综合 0 error，明细见 [log/2026-10-24-PL厂家RTL重构](../../docs/log/2026-10-24-PL厂家RTL重构.md)。随后**第三轮 PL 重构**把自研 `des/` 与顶层、厂家明文 RTL、`pl/sim` 仿真框架一起再精简（零外部行为变化，**未重编比特流 / 未上板**，板端仍 v14），明细见 [log/2026-10-24-PL第三轮重构](../../docs/log/2026-10-24-PL第三轮重构.md)。
 
 来源：米联客 / 安路 NPU 演示套件 `demo.zip → demo/soc_prj/`（2025-12 版）。TD 统一 6.2.1（与厂家比特流同版本，原样重编逐位一致已验证）；其他版本打开会提示格式升级。
 
@@ -28,7 +28,7 @@ v12 上板记录原在 PL设计「基线」段，10-20 文档收敛移入本表�
 - `design_0/` — 图形化 SoC 设计：PS + MIPI RX + ISP + VDMA + HDMI 时序 + **NPU 软核 IP**；`design_0.address.xml` 是 GP 口地址分配（vdmafb 0x80100000 / VDMA 0x80200000 / mipicam 0x80300000 / soft_npu GP1 0x1F0000000）——**我们的 AXI-Lite 从机（PL_BASE）从这里分配，避开上述段**
 - `design_0/ip/` — 例化 IP 的包装与 RTL（多数为安路闭源加密文件）
 - `al_ip/` — 安路 IP 参数（PLL、NPU_SOFT 等）
-- `src/` — 明文 RTL：`system_top.v`、`hdmi_tx/`、`MIPI_V2/`（`mipi_rx/` + `src/` 只剩 `csi_unpacket.v` 与 `design_top_wrapper.v`）、`write_fdma/`、`ui_isp/`、`pwm.v`（2026-10 全部做过零行为重构，见 [log/2026-10-24-PL厂家RTL重构](../../docs/log/2026-10-24-PL厂家RTL重构.md)）
+- `src/` — 明文 RTL：`system_top.v`、`hdmi_tx/`、`MIPI_V2/`（`mipi_rx/` + `src/` 只剩 `csi_unpacket.v` 与 `design_top_wrapper.v`）、`write_fdma/`、`ui_isp/`、`pwm.v`（2026-10 两轮零行为重构，见 [log/2026-10-24-PL厂家RTL重构](../../docs/log/2026-10-24-PL厂家RTL重构.md) · [log/2026-10-24-PL第三轮重构](../../docs/log/2026-10-24-PL第三轮重构.md)）
 - `src/ui_isp/` — ISP 链路**平铺一层**：`isp_top.v`、`raw10_unpacket_4lane.v` 与 8 个单文件模块（`BLC.v`、`image_cut.v`、`contrast_adj.v`、`Brightness_adjustment.v`、`Saturation_adj.v`、`image_correction.v`、`data96_128.v`、`data128_96.v`）直接放根目录；`gamma/`（2 个 `.v`：`gamma.v` + 唯一在用的 `lut_2_2.v`）、`demosaic_4x_2_0/`（6 个 `.v` + 2 个厂家 `blk_mem_gen` IP）、`awb_1_1/`（2 个 `.v` + 1 个 IP）因多文件 / IP 保留子目录
 - `src/des/` — **自研模块**：des_regs、servo_bus、stepper_ctrl、des_vision、des_pwm、des_io、awb_seq_div（已登记进 `soc_prj.al`）；`des_common.vh`（同步 / 去抖公共模块，被 des_regs / des_io 引用，纯 `include` 无需单独登记）
 - `src/constraint/` — 管脚 `io.adc`（CEP = BANK11 3.3V）、时序 `timing.sdc`
@@ -85,6 +85,7 @@ v12 上板记录原在 PL设计「基线」段，10-20 文档收敛移入本表�
 | CAN0 管脚 | PS 硬核 `can0_tx_out` / `can0_rx_in` 经 `ARM_Processor_System_*` → `design_0.v` → `system_top` 引到 F20（TX）/ F19（RX），LVCMOS33、RX 上拉 | 官方块设计没开 PS CAN，原 `can0` 只能回环，接不了 USB-CAN / PLC |
 | 自研 RTL 二次精简（`src/des/*.v`、`src/des/des_common.vh`、`src/system_top.v`） | 零行为精简：收紧数据类型、合并重复逻辑、清理死代码与注释；另删 13 个不可达厂家 IP 包装与过期块设计脚本（见上节） | 减少代码量、提升综合资源效率；寄存器零变，**未重编比特流**（[log/2026-10-23-PL二次重构](../../docs/log/2026-10-23-PL二次重构.md)） |
 | 厂家明文 RTL 零行为重构（`src/{ui_isp,MIPI_V2,hdmi_tx,write_fdma}/`、`src/system_top.v`、`src/pwm.v`） | 逐拍等价前提下精简：合并重复通道 / 重复 always、收紧位宽、删死码与无效 `//synthesis keep`、GB18030 → UTF-8；gamma 单配置特化（9 套曲线 → 2.2，删 8 个 LUT 文件）；MIPI/HDMI `DEVICE` 只留 DR1；`wfifo.v` 确认为明文生成件并一并重构 | 减少代码量（41 文件净 −5,351 行 / −55.7%，−198,191 B）、提升综合效率（LUT −328 / FF −201）；36 项逐拍等价回归 + 8 项功能仿真逐字节一致 + 综合 0 error（[log/2026-10-24-PL厂家RTL重构](../../docs/log/2026-10-24-PL厂家RTL重构.md)） |
+| 第三轮 PL 重构（`src/des/*.v`、`src/des/des_common.vh`、`src/system_top.v`、`src/{ui_isp,MIPI_V2,hdmi_tx,write_fdma}/`） | 自研与厂家明文 RTL 再精简：位宽 / 数据类型收紧、重复 always 与重复通道合并、死码与未用参数清理、LUT 表紧凑排版；**零新增 / 零删除 / 零合并**，三份 TD 工程文件零改；`pl/sim` 仿真框架同轮精简与提速（PC 侧，不落板） | 减少代码量（40 文件净 −1,164 行 / −22.6%，−28,985 B）；综合资源基本持平（LUT +51 / FF −96，ERAM / DSP 不变）；36 项逐拍等价 + 8 项功能仿真逐字节一致（[log/2026-10-24-PL第三轮重构](../../docs/log/2026-10-24-PL第三轮重构.md)） |
 
 ## 已知问题（编译前先看）
 
