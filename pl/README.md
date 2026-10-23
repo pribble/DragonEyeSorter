@@ -18,7 +18,7 @@ pl/
 │   │   └── des_common.vh        # 同步 / 去抖公共模块（被 des_regs / des_io 纯 include 引用，不占寄存器地址）
 │   ├── src/constraint/  #   管脚 io.adc（CEP = BANK11 3.3V）、时序 timing.sdc
 │   └── soc_prj.al       #   TD 工程入口
-├── sim/                 # testbench（run_sim.sh 入口：des_axi / servo_bus / stepper / vision / vision2 / pwm / io / awb）
+├── sim/                 # testbench 与仿真入口（run_sim.sh 单目标：des_axi / servo_bus / stepper / vision / vision2 / pwm / io / awb；run_all.sh 全量 8 项）
 └── test/                # 独立验证工程（单独编小比特流验证单点硬件，不并入产品版图）
     └── step_test/       # 步进驱动器点动：100MHz 分频方波驱动 TB6600
 ```
@@ -33,6 +33,7 @@ pl/
 
 - 官方 demo 基线：**LUT6 79%（41,524 / 52,480）、slice 85.8%（45,034 / 52,480）、ERAM 92.5%、DSP 59.6%（143 / 240）**，WNS −4.12ns，违规集中在跨时钟域。（slice 与 LUT6 是两个口径，引用时说清。）
 - 自研模块全部加入后：slice 83.31%（43,719 / 52,480）、ERAM 261/280（剩 19 块）、DSP 65%；自研各域时序 0 违例。
+- 二次重构（源码级零行为精简，未重编比特流）：TD 6.2.1 综合前后（非 P&R）LUT 58,100→58,122、FF 39,305→39,244、slice 44,097→44,126、ERAM 261/280、DSP 156/240 基本持平，自研模块 LUT 1,851→1,774、FF 3,685→3,624；行数 / 字节与明细见 [log/2026-10-23-PL二次重构](../docs/log/2026-10-23-PL二次重构.md)；板端 P&R 数字仍是上一条 v13 的值。
 - 自研 P0 模块预算 ≤4000 LUT / ≤10 ERAM：总线 UART 用小 FIFO、PL 内不做乘除法（加减速表 PS 算）、加自研跨域路径后须补 `set_clock_groups`。
 - 超支砍单顺序：形态学 / CCL → overlay、tensor_pack；亚像素与视觉定位已在 PS 实现，不再占 PL。
 
@@ -41,3 +42,4 @@ pl/
 - 寄存器偏移与 [PL设计](../docs/PL设计.md)、`ps/src/hw/des_regs.h` 同一次提交更新。
 - 自研图像算子直接在 `soc_base/src/des/` 里写（厂家 `src/isp/` 的 line_buffer / `matrix_3x3` 框架没接进链路，已删除），改动登记进 [soc_base/README](soc_base/README.md) 的改动摘要表。
 - 每个模块配 testbench；时序关键模块要能导出测试报告用的时间戳 / 计数。
+- 仿真：单目标 `bash pl/sim/run_sim.sh <目标>`；全量 `bash pl/sim/run_all.sh`（8 项逐项 PASS / FAIL，任一失败非 0，可从任意目录调用；WSL 需 `iverilog`，环境见 [环境与上手](../docs/环境与上手.md) §1）。

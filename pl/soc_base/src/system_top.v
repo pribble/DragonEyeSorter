@@ -1,5 +1,3 @@
-
-
 module system_top(
     // HDMI interface 
     output [2:0] O_hdmi_tx_p,
@@ -40,18 +38,13 @@ module system_top(
     output wire         O_imx334_clk_24m   ,
     output              O_imax334_rst_n
  );
-	
+
     parameter  AXI_ADDR_WIDTH = 33 ;
 	parameter  AXI_DATA_WIDTH = 256  ;
     parameter    X_SIZE = 1920 ;
     parameter    Y_SIZE = 1080 ;
 
-
-    
-    /**********************************************************
-            Signals Definition Connected to PS
-    **********************************************************/
- 
+    // Signals for the PS HP0 AXI slave (frame writer), PLL clocks and camera DMA control
 
     wire       [32:0] slave_hp0_axi_awaddr ;
     wire        [1:0] slave_hp0_axi_awburst ;
@@ -77,29 +70,13 @@ module system_top(
     wire              slave_hp0_axi_wready;
 
     wire              f2p_irq ;
-    wire       [63:0] pl_gpio_in ;
-    wire              i2c0_scl_in ;
-    wire              i2c0_sda_in ;
-    wire              i2c1_scl_in ;
-    wire              i2c1_sda_in ;
-
 
     wire              pll_clk_150 ;//synthesis keep;
-    wire              pll_clk_150_lock ;
     wire              pll_clk_150_aresetn ;
-    
-    wire       [63:0] pl_gpio_oe ;
-    wire       [63:0] pl_gpio_out ;
-	
-    wire    [7:0]   mipi_diag_level_bursts;
-   
-    wire lock_pl ;
-    
-    
+
 wire    [31:0]                            camera_base_addr; 
 wire                                      camera_start; 
 wire                                      camera_clear; 
-
 
 wire p2f_clk0_50m;
 wire pwm_out_unused;
@@ -113,10 +90,7 @@ wire pwm_out_unused;
     wire        des_led_ovr, des_led_val;
     assign led[0] = des_led_ovr ? des_led_val : des_hb_cnt[27];
 
-
-    /**********************************************************
-                        PS 
-    **********************************************************/
+    // PS: design_0 block design (MIPI RX / ISP / VDMA / HDMI / NPU) + our AXI-Lite register bridge
     design_0  design_0_inst (
         // hp0 aw 
         .hp1_w_us1_awaddr (slave_hp0_axi_awaddr ),
@@ -184,54 +158,15 @@ wire pwm_out_unused;
 
     );
 
-
-    // PLIO IO
-//    assign pl_gpio_in[0] = key[0];
-//    assign pl_gpio_in[1] = key[1];
-//    assign pl_gpio_in[2] = key[2];
-//    assign pl_gpio_in[3] = key[3];
-//    assign key[0] = pl_gpio_oe[0] ? pl_gpio_out[0] : 1'bz;
-//    assign key[1] = pl_gpio_oe[1] ? pl_gpio_out[1] : 1'bz;
-//    assign key[2] = pl_gpio_oe[2] ? pl_gpio_out[2] : 1'bz;
-//    assign key[3] = pl_gpio_oe[3] ? pl_gpio_out[3] : 1'bz;
-
-    // SMA connector
-    assign J10 = 'd0;
-    assign J11 = 'd0;
-
-
-    /**********************************************************
-            ADI VDMA ( Connected to MIPI )
-    **********************************************************/
-    wire	[95:0]	m_axis_tdata		;//synthesis keep;
-    wire			m_axis_tuser		;//synthesis keep;
-    wire			m_axis_tlast		;//synthesis keep;
-    wire			m_axis_tvalid		;//synthesis keep;
-    wire			m_axis_tready		;//synthesis keep;
-    //wire    [7:0]   mipi_diag_level_bursts;
-    /**********************************************************
-            MIPI INPUT
-    **********************************************************/
-	
+    // MIPI input: D-PHY + unpack + ISP (ui_isp), 128-bit video stream out
 	wire ud_wclk;//synthesis keep
 	wire ud_wvs;//synthesis keep
 	wire ud_wde;//synthesis keep
-	//wire [256-1:0] ud_wdata;//synthesis keep
     wire [128-1:0] ud_wdata;
-	
-	wire        S_vi_256b_frame_start;   
-    wire        S_vi_256b_valid;        
-    wire[255:0] S_vi_256b_data;  
-    
-	
-	
+
     wire            S_hs_rx_clk    ;
     wire            S_pll_lock     ;
-    wire            S_axi_user     ;
-    wire            S_axi_valid    ;
-    wire            S_axi_last     ;
-    wire   [127:0]  S_axi_data     ;
-	
+
 	wire   [ 127:0] S_ISP_O_tdata ;
     wire         	S_ISP_O_tlast ;
     wire  			S_ISP_O_tuser ;
@@ -259,46 +194,15 @@ wire pwm_out_unused;
         des_sof_d <= S_ISP_O_tuser;
         if (S_ISP_O_tuser && !des_sof_d) des_sof_toggle <= ~des_sof_toggle;
     end
-	assign ud_wdata  = vis_tdata; // v6 via des_vision; was S_ISP_O_tdata //{{8'd0, O_axi_data[8-1:0],O_axi_data[16-1:8],O_axi_data[23:16]}, {8'd0, O_axi_data[32-1:24],O_axi_data[40-1:32],O_axi_data[47:40]}, {8'd0, O_axi_data[56-1:48],O_axi_data[64-1:56],O_axi_data[71:64]}, {8'd0, O_axi_data[80-1:72],O_axi_data[88-1:80],O_axi_data[95:88]}} ;  //{{8'd0, O_axi_data[23:0]}, {8'd0, O_axi_data[47:24]}, {8'd0, O_axi_data[71:48]}, {8'd0, O_axi_data[95:72]}} ; //S_vi_256b_data ; //{S_vi_256b_data[96*1-1:96*0],S_vi_256b_data[96*2-1:96*1],S_vi_256b_data[96*3-1:96*2]，S_vi_256b_data[96*4-1:96*3]}; //synthesis keep
-	
+	assign ud_wdata  = vis_tdata; // v6 via des_vision; was S_ISP_O_tdata //synthesis keep
+
     wire    [3:0]   S_lane_error    ;
 
-    reg [7:0] cnt_error = 0;
-    always@(posedge S_hs_rx_clk)begin
-        if(S_lane_error != 4'b0000)
-            cnt_error <= cnt_error + 1;
-    end
-
-//    assign led[7:3] = cnt_error[4:0];
 	assign O_imax334_rst_n = 1'b1;
-	wire S_hs_rstn ;
-	
-  //isp_top u_isp_top (
-	//.axi4s_video_aclk(S_hs_rx_clk),
-	//.I_rst_n         (S_pll_lock),
-	//.I_tlast         (S_axi_last ),
-	//.I_tuser         (S_axi_user ),
-	//.I_tdata         (S_axi_data ),
-	//.I_tvalid        (S_axi_valid),
-	//.O_tdata         (S_ISP_O_tdata ),
-	//.O_tlast         (S_ISP_O_tlast ),
-	//.O_tuser         (S_ISP_O_tuser ),
-	//.O_tvalid        (S_ISP_O_tvalid)
-  //);
-	
+
     design_top_wrapper  design_top_wrapper_u
     (
     .I_sys_clk_156m     (p2f_clk0_50m     ),
-	//.I_clk_hs_p         (I_clk_hs_p         ),
-    //.I_clk_lp_p			(I_clk_lp_p			),
-	//.I_data_hs_p        (I_data_hs_p        ), 
-    //.I_data_lp_p        (I_data_lp_p        ),
-    //.I_data_lp_n        (I_data_lp_n        ), 
-    //.I_csi_lp_ck_dir	(I_csi_lp_ck_dir	),    
-	//.I_csi_lp_d0_dir    (I_csi_lp_d0_dir    ),
-    //.I_csi_lp_d1_dir    (I_csi_lp_d1_dir    ),
-	//.I_csi_lp_d2_dir    (I_csi_lp_d2_dir    ),
-    //.I_csi_lp_d3_dir    (I_csi_lp_d3_dir    ),    	    
 	.O_imx334_clk_24m   (O_imx334_clk_24m   ),
 	.I_clk_hs_p     	(I_clk_hs_p     ),
 	.I_data_hs_p    	(I_data_hs_p    ),
@@ -313,20 +217,7 @@ wire pwm_out_unused;
     .O_ISP_tuser        (S_ISP_O_tuser     ),
     .O_ISP_tvalid       (S_ISP_O_tvalid    )
     );
-	
-	/*data_96bit_to_256bit u_data_96bit_to_256bit(
-	.I_clk                ( S_hs_rx_clk           ),
-	.I_rst_n              ( S_hs_rstn                ),
-	
-	.I_96b_frame_start    ( O_axi_user     ),
-	.I_96b_valid          ( O_axi_valid           ),
-	.I_96b_data           ( {O_axi_data[24*1-1:24*0],O_axi_data[24*2-1:24*1],O_axi_data[24*3-1:24*2],O_axi_data[24*4-1:24*3]}            ),
-	
-	.O_256b_frame_start  ( S_vi_256b_frame_start ),
-	.O_256b_valid         ( S_vi_256b_valid       ),
-	.O_256b_data          ( S_vi_256b_data        )
-	);*/
-	
+
 	wire [AXI_ADDR_WIDTH-1:  0]      fdma_waddr;   
 	wire                             fdma_wareq;   
 	wire [15: 0]                     fdma_wsize;                                 
@@ -344,8 +235,6 @@ wire pwm_out_unused;
 	wire                             fdma_rready;  
 	wire wbuf_sync ;
 
-	
-	
 	uidbuf_write# (
 	.VIDEO_ENABLE(1'b1),  
 	.ENABLE_WRITE(1'b1), 
@@ -401,7 +290,7 @@ wire pwm_out_unused;
 	.camera_done        ( f2p_irq       ),
 	.camera_clear_intr  ( camera_clear)
 	); 
-	
+
 	uiFDMA#
 	(
 	.M_AXI_ID_WIDTH(6)           ,//ID位宽
@@ -457,31 +346,8 @@ wire pwm_out_unused;
 	.M_AXI_BRESP                            (slave_hp0_axi_bresp),
 	.M_AXI_BVALID                           (slave_hp0_axi_bvalid),
 	.M_AXI_BREADY                           (slave_hp0_axi_bready)
-	
-//	// Master Interface Read Address Ports
-//	.M_AXI_ARID                             (slave_hp0_axi_arid),
-//	.M_AXI_ARADDR                           (slave_hp0_axi_araddr),
-//	.M_AXI_ARLEN                            (slave_hp0_axi_arlen),
-//	.M_AXI_ARSIZE                           (slave_hp0_axi_arsize),
-//	.M_AXI_ARBURST                          (slave_hp0_axi_arburst),
-//	.M_AXI_ARLOCK                           (slave_hp0_axi_arlock),
-//	.M_AXI_ARCACHE                          (slave_hp0_axi_arcache),
-//	.M_AXI_ARPROT                           (slave_hp0_axi_arprot),
-//	.M_AXI_ARQOS                            (),
-//	.M_AXI_ARVALID                          (slave_hp0_axi_arvalid),
-//	.M_AXI_ARREADY                          (slave_hp0_axi_arready),
-//	// Master Interface Read Data Ports
-//	.M_AXI_RID                              (slave_hp0_axi_rid),
-//	.M_AXI_RDATA                            (slave_hp0_axi_rdata),
-//	.M_AXI_RRESP                            (slave_hp0_axi_rresp),
-//	.M_AXI_RLAST                            (slave_hp0_axi_rlast),
-//	.M_AXI_RVALID                           (slave_hp0_axi_rvalid),
-//	.M_AXI_RREADY                           (slave_hp0_axi_rready)
-	
-	
+
 	);				 
- 
- 
 
     // ---------------- DragonEyeSorter PL blocks on the 0x8030_1000 register bus ----------------
     wire [31:0] des_ts, regs_rdata, sb_rdata, st_rdata, vis_rdata, pwm_rdata, io_rdata;

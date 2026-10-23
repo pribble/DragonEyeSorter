@@ -1,6 +1,6 @@
 # pl/soc_base/ — PL 工程（soc_prj，TD 6.2.1）
 
-厂家 NPU demo `soc_prj` 底板 + 我们的全部改动；**仓库里这一份即可直接编译**：TD 6.2.1 打开 `soc_prj.al` → 综合 / 布局布线 → `soc_prj.bit`。**板端与源码均为 v13**（v13 = v12 PL 重构后全量重编，`BOOT.bin` `48c6bc7b…`；寄存器 `VERSION` 仍 12；版本与上板证据见下「板端版本台账」）；各模块上板状态与验证记录见 [docs/PL设计.md](../../docs/PL设计.md)。
+厂家 NPU demo `soc_prj` 底板 + 我们的全部改动；**仓库里这一份即可直接编译**：TD 6.2.1 打开 `soc_prj.al` → 综合 / 布局布线 → `soc_prj.bit`。**板端仍 v13**（v13 = v12 PL 重构后全量重编，`BOOT.bin` `48c6bc7b…`；寄存器 `VERSION` 仍 12；版本与上板证据见下「板端版本台账」）。源码在 v13 之后又做过一轮零行为重构（**未重编比特流**，板端不受影响），明细见 [log/2026-10-23-PL二次重构](../../docs/log/2026-10-23-PL二次重构.md)；各模块上板状态与验证记录见 [docs/PL设计.md](../../docs/PL设计.md)。
 
 来源：米联客 / 安路 NPU 演示套件 `demo.zip → demo/soc_prj/`（2025-12 版）。TD 统一 6.2.1（与厂家比特流同版本，原样重编逐位一致已验证）；其他版本打开会提示格式升级。
 
@@ -46,12 +46,14 @@ v12 上板记录原在 PL设计「基线」段，10-20 文档收敛移入本表�
 
 2026-10-17 对 140 个明文 `.v/.sv/.vh` 做引用链扫描（从 `system_top` 出发逐级看例化），删掉 **15 个没有任何例化的厂家文件**（`src/isp/` 图像算子 7 个、`MIPI_V2/src/` 的 RAW8 老解包路径 7 个、厂家除法器 IP 1 个），并删 `soc_prj.al` 与两份 `soc_prj.prj` 里的对应登记（73 → 58 条）。`design_0/ip/**`、0 字节的 `define.v` 与厂家 `pwm.v` 保留（被加密 IP 内部或块设计引用）。理由与验证见 [log/2026-10-17-清理未用的厂家PL源码](../../docs/log/2026-10-17-清理未用的厂家PL源码.md)。
 
+二次重构（[log/2026-10-23-PL二次重构](../../docs/log/2026-10-23-PL二次重构.md)）又删除 **13 个不可达的厂家文件**：`design_0/ip/DR1_ARM_Processor_System_0/` 7 个、`design_0/ip/proc_sys_reset_75M/` 5 个、过期块设计生成脚本 `design_0/design_0.tcl` 1 个。判据：从 `system_top` BFS 不可达；TD v13 综合 build log 的 109 条 analyze 文件列表里没有这些 `.v`；syn / phy 的 area 层次报告里没有对应 module；`soc_prj.al`、两份 `soc_prj.prj` 与 `design_0.xml` 的 fileSets 均 0 登记（工程文件零改）；该 `.tcl` 引用了被删的 IP。加密 IP 数量不变（这 13 个都不含 `pragma protect`）。
+
 ## 寄存器总线
 
 - 时钟：`des_clk` = `fvdma_ctrl` 的 AXI 时钟（`pll_75m`，75MHz）
 - PS 地址：`0x8030_1000 + 偏移`（GP0 上 `fvdma_ctrl` 的窗口是 `0x8030_0000~0x8030_FFFF`；`0x0000~0x0FFF` 仍是厂家寄存器，供 `mipicam` 驱动使用，厂家写入已排除我们的地址段）
 - 寄存器定义见 [docs/PL设计.md](../../docs/PL设计.md)
-- 仿真：[pl/sim/tb_des_axi.v](../sim/tb_des_axi.v)（`run_sim.sh des_axi`）
+- 仿真：[pl/sim/tb_des_axi.v](../sim/tb_des_axi.v)（`run_sim.sh des_axi`）；全部 8 项 `bash pl/sim/run_all.sh`
 
 ## 当前对厂家的改动摘要
 
@@ -73,6 +75,7 @@ v12 上板记录原在 PL设计「基线」段，10-20 文档收敛移入本表�
 | `des_vision` / `des_pwm` 读数据 | 改组合逻辑读（桥接逻辑在同一时钟取数，打拍的会读回上一个地址） | 寄存器读回正确 |
 | `stepper_ctrl` | 运动中把 `TARGET` 改成恰好等于 `POS` 时就地停；目标在身后仍减速停 | 皮带「停在此处」写法不再卡死 |
 | CAN0 管脚 | PS 硬核 `can0_tx_out` / `can0_rx_in` 经 `ARM_Processor_System_*` → `design_0.v` → `system_top` 引到 F20（TX）/ F19（RX），LVCMOS33、RX 上拉 | 官方块设计没开 PS CAN，原 `can0` 只能回环，接不了 USB-CAN / PLC |
+| 自研 RTL 二次精简（`src/des/*.v`、`src/des/des_common.vh`、`src/system_top.v`） | 零行为精简：收紧数据类型、合并重复逻辑、清理死代码与注释；另删 13 个不可达厂家 IP 包装与过期块设计脚本（见上节） | 减少代码量、提升综合资源效率；寄存器零变，**未重编比特流**（[log/2026-10-23-PL二次重构](../../docs/log/2026-10-23-PL二次重构.md)） |
 
 ## 已知问题（编译前先看）
 
