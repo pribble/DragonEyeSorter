@@ -53,9 +53,11 @@ std::string Runner::start()
     return "";
 }
 // Frames written back to back can be lost by the CAN controller (soak 10-11, loopback: 1000 of 108691, 79 of 82 lost
-// STATUS frames in seconds with bursts of PART frames; spaced sends at <= 2000 frames/s lose nothing). So everything
-// but ACKs goes through a queue drained one frame per cycle (60 frames/s; normal load ~15 frames/s, a burst of parts
-// is spread over a few hundred ms).
+// STATUS frames in seconds with bursts of PART frames; spaced sends at <= 2000 frames/s lose nothing). So every frame
+// goes through a queue drained one frame per cycle (60 frames/s; normal load ~15 frames/s, a burst of parts is spread
+// over a few hundred ms). ACKs have their own queue that goes first: they still leave at the end of the cycle that
+// received the command. (10-23, real bus with the USB-CAN: ACKs written right away + the queued frame of the same
+// cycle lost 34 of 1067 STATUS frames with a PLC command every 0.5 s, none without commands.)
 void Runner::send(const canp_frame_t &f)
 {
     if (can_fd_ < 0) return;
@@ -64,14 +66,22 @@ void Runner::send(const canp_frame_t &f)
     }
     txq_.push_back(f);
 }
-void Runner::send_now(const canp_frame_t &f) { if (can_fd_ >= 0) can_send(can_fd_, &f); }
+void Runner::send_ack(const canp_frame_t &f)
+{
+    if (can_fd_ < 0) return;
+    if (ackq_.size() >= 32) {   // commands flooding faster than one frame per cycle: keep the newest
+        ackq_.pop_front(); tx_dropped_++;
+    }
+    ackq_.push_back(f);
+}
 void Runner::flush_tx()
 {
-    if (can_fd_ < 0 || txq_.empty()) return;
-    const int r = can_try_send(can_fd_, &txq_.front());   // never blocks the worker (no PLC on the bus: queue full)
-    if (r == 1) return;                                    // try again next cycle
+    std::deque<canp_frame_t> &q = !ackq_.empty() ? ackq_ : txq_;
+    if (can_fd_ < 0 || q.empty()) return;
+    const int r = can_try_send(can_fd_, &q.front());   // never blocks the worker (no PLC on the bus: queue full)
+    if (r == 1) return;                                 // try again next cycle
     if (r < 0) tx_dropped_++;
-    txq_.pop_front();
+    q.pop_front();
 }
 void Runner::set_state(uint8_t s, const char *why)
 {
@@ -147,9 +157,9 @@ void Runner::handle_can(double now)
     canp_frame_t f;
     while (can_recv(can_fd_, &f, 0) == 1) {
         uint8_t result = CANP_ACK_OK; switch (f.id) {
-        case CANP_ID_CMD: result = command(f.data[0], "PLC"); send_now(canp_ack(f.id, f.data[1], result)); break;
-        case CANP_ID_SPEED: result = set_speed(canp_get16(f.data) / 10.0, "PLC"); send_now(canp_ack(f.id, f.data[2], result)); break;
-        case CANP_ID_RECIPE: result = select_recipe(f.data[0], "PLC"); send_now(canp_ack(f.id, f.data[1], result)); break;
+        case CANP_ID_CMD: result = command(f.data[0], "PLC"); send_ack(canp_ack(f.id, f.data[1], result)); break;
+        case CANP_ID_SPEED: result = set_speed(canp_get16(f.data) / 10.0, "PLC"); send_ack(canp_ack(f.id, f.data[2], result)); break;
+        case CANP_ID_RECIPE: result = select_recipe(f.data[0], "PLC"); send_ack(canp_ack(f.id, f.data[1], result)); break;
         case CANP_ID_PLC_HB: last_plc_hb_ = now; break;
         case CANP_ID_TIME: {   // the PLC's wall clock (no RTC here): records use our clock + this offset
             const bool first = !wall_synced(); wall_apply_ms(canp_time_ms(&f), "PLC");

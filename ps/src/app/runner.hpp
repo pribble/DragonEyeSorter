@@ -58,7 +58,7 @@ private:
     uint8_t status_flags(double now) const;   // CANP_FLAG_* of both the STATUS frame and the Modbus register
     void set_state(uint8_t s, const char *why);
     void send(const canp_frame_t &f);        // queued: at most one frame per cycle (see flush_tx)
-    void send_now(const canp_frame_t &f);    // ACKs: right away
+    void send_ack(const canp_frame_t &f);    // ACKs: own queue, sent before txq_ (still one frame per cycle)
     void flush_tx();
     des_hw_t *hw_;
     const AppConfig &cfg_;
@@ -67,7 +67,7 @@ private:
     ArmExec arm_;
     ArmConfig arm_cfg_;          // worker thread only: copied into every ArmJob
     int can_fd_ = -1;
-    std::deque<canp_frame_t> txq_;
+    std::deque<canp_frame_t> txq_, ackq_;
     uint64_t tx_dropped_ = 0;
     std::atomic<uint8_t> state_{CANP_ST_IDLE};
     uint8_t alarm_ = 0, hb_ = 0;
