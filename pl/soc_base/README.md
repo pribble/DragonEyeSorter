@@ -1,6 +1,6 @@
 # pl/soc_base/ — PL 工程（soc_prj，TD 6.2.1）
 
-厂家 NPU demo `soc_prj` 底板 + 我们的全部改动；**仓库里这一份即可直接编译**：TD 6.2.1 打开 `soc_prj.al` → 综合 / 布局布线 → `soc_prj.bit`。**板端当前 v14（最新）**：v14 = 二次重构源码（`c1b94b5`）后全量重编 + 上板（`BOOT.bin` `a72e00f7…`，比特流 `a8a29533…`；`pl_check.sh` 21 项回归通过、2min soak 0 error；寄存器 `VERSION` 仍 12）。HDMI 串行域 1 个 −0.164ns 端点属厂家路径，TMDS 视觉待复核 ⚠；版本与上板证据见下「板端版本台账」。明细见 [log/2026-10-23-PL二次重构](../../docs/log/2026-10-23-PL二次重构.md) · [后全量重编与上板](../../docs/log/2026-10-23-PL二次重构后全量重编.md)；各模块上板状态与验证记录见 [docs/PL设计.md](../../docs/PL设计.md)。
+厂家 NPU demo `soc_prj` 底板 + 我们的全部改动；**仓库里这一份即可直接编译**：TD 6.2.1 打开 `soc_prj.al` → 综合 / 布局布线 → `soc_prj.bit`。**板端当前 v14（最新）**：v14 = 二次重构源码（`c1b94b5`）后全量重编 + 上板（`BOOT.bin` `a72e00f7…`，比特流 `a8a29533…`；`pl_check.sh` 21 项回归通过、2min soak 0 error；寄存器 `VERSION` 仍 12）。HDMI 串行域 1 个 −0.164ns 端点属厂家路径，TMDS 视觉待复核 ⚠；版本与上板证据见下「板端版本台账」。明细见 [log/2026-10-23-PL二次重构](../../docs/log/2026-10-23-PL二次重构.md) · [后全量重编与上板](../../docs/log/2026-10-23-PL二次重构后全量重编.md)；各模块上板状态与验证记录见 [docs/PL设计.md](../../docs/PL设计.md)。2026-10-24 又对**厂家明文 RTL（非 des）**做了一轮零行为重构（**未重编比特流 / 未上板**，板端仍 v14）：源码净减 55.7%、TD 综合 0 error，明细见 [log/2026-10-24-PL厂家RTL重构](../../docs/log/2026-10-24-PL厂家RTL重构.md)。
 
 来源：米联客 / 安路 NPU 演示套件 `demo.zip → demo/soc_prj/`（2025-12 版）。TD 统一 6.2.1（与厂家比特流同版本，原样重编逐位一致已验证）；其他版本打开会提示格式升级。
 
@@ -28,28 +28,33 @@ v12 上板记录原在 PL设计「基线」段，10-20 文档收敛移入本表�
 - `design_0/` — 图形化 SoC 设计：PS + MIPI RX + ISP + VDMA + HDMI 时序 + **NPU 软核 IP**；`design_0.address.xml` 是 GP 口地址分配（vdmafb 0x80100000 / VDMA 0x80200000 / mipicam 0x80300000 / soft_npu GP1 0x1F0000000）——**我们的 AXI-Lite 从机（PL_BASE）从这里分配，避开上述段**
 - `design_0/ip/` — 例化 IP 的包装与 RTL（多数为安路闭源加密文件）
 - `al_ip/` — 安路 IP 参数（PLL、NPU_SOFT 等）
-- `src/` — 明文 RTL：`system_top.v`、`hdmi_tx/`、`MIPI_V2/`（`mipi_rx/` + `src/` 只剩 `csi_unpacket.v` 与 `design_top_wrapper.v`）、`write_fdma/`、`ui_isp/`、`pwm.v`
-- `src/ui_isp/` — ISP 链路**平铺一层**：`isp_top.v`、`raw10_unpacket_4lane.v` 与 8 个单文件模块（`BLC.v`、`image_cut.v`、`contrast_adj.v`、`Brightness_adjustment.v`、`Saturation_adj.v`、`image_correction.v`、`data96_128.v`、`data128_96.v`）直接放根目录；`gamma/`（10 个 `.v`）、`demosaic_4x_2_0/`（6 个 `.v` + 2 个厂家 `blk_mem_gen` IP）、`awb_1_1/`（2 个 `.v` + 1 个 IP）因多文件 / IP 保留子目录
+- `src/` — 明文 RTL：`system_top.v`、`hdmi_tx/`、`MIPI_V2/`（`mipi_rx/` + `src/` 只剩 `csi_unpacket.v` 与 `design_top_wrapper.v`）、`write_fdma/`、`ui_isp/`、`pwm.v`（2026-10 全部做过零行为重构，见 [log/2026-10-24-PL厂家RTL重构](../../docs/log/2026-10-24-PL厂家RTL重构.md)）
+- `src/ui_isp/` — ISP 链路**平铺一层**：`isp_top.v`、`raw10_unpacket_4lane.v` 与 8 个单文件模块（`BLC.v`、`image_cut.v`、`contrast_adj.v`、`Brightness_adjustment.v`、`Saturation_adj.v`、`image_correction.v`、`data96_128.v`、`data128_96.v`）直接放根目录；`gamma/`（2 个 `.v`：`gamma.v` + 唯一在用的 `lut_2_2.v`）、`demosaic_4x_2_0/`（6 个 `.v` + 2 个厂家 `blk_mem_gen` IP）、`awb_1_1/`（2 个 `.v` + 1 个 IP）因多文件 / IP 保留子目录
 - `src/des/` — **自研模块**：des_regs、servo_bus、stepper_ctrl、des_vision、des_pwm、des_io、awb_seq_div（已登记进 `soc_prj.al`）；`des_common.vh`（同步 / 去抖公共模块，被 des_regs / des_io 引用，纯 `include` 无需单独登记）
 - `src/constraint/` — 管脚 `io.adc`（CEP = BANK11 3.3V）、时序 `timing.sdc`
 - `soc_prj_Runs/syn_1/soc_prj.prj` 与 `soc_prj_Runs/phy_1/soc_prj.prj` — 综合 / 布局布线工程文件（`*_Runs/` 被 ignore，改动要 `git add -f`）
 
 ## 加密 IP
 
-实测 **15 个 `pragma protect`（加密）文件**，随本工程编译，改不了：
+实测 **12 个 `pragma protect`（加密）文件**，随本工程编译，改不了：
 
 | 位置 | 个数 | 内容 |
 |---|---|---|
-| `design_0/ip/**/RTL/` | 11 | NPU 软核、VDMA、视频时序发生器、AXI Matrix ×3、AXI 协议转换 ×2、AXI4-Stream to Video Out |
+| `design_0/ip/**/RTL/` | 9 | NPU 软核、VDMA、视频时序发生器（部分加密）、AXI Matrix ×3、AXI 协议转换 ×2、AXI4-Stream to Video Out |
 | `src/hdmi_tx/hdmi_tx_controller_wrapper.enc.v` | 1 | HDMI 控制器（TMDS） |
 | `src/MIPI_V2/mipi_rx/` | 2 | D-PHY 数据通道接收、通道对齐 |
-| `src/write_fdma/wfifo.v` | 1 | 帧写 FIFO（文件名没带 `.enc`，内容同样是 `pragma protect`） |
+
+`src/write_fdma/wfifo.v` 文件名不带 `.enc`，内容里的 `` `pragma protect begin `` **是注释掉的** →
+实为明文的 TD IP Generator 生成件（可仿真、可重构）；2026-10 厂家 RTL 重构已把它一并零行为重构
+（见 [log/2026-10-24-PL厂家RTL重构](../../docs/log/2026-10-24-PL厂家RTL重构.md)），因此不在加密清单内。
 
 ## 删掉的厂家未用源码
 
 2026-10-17 对 140 个明文 `.v/.sv/.vh` 做引用链扫描（从 `system_top` 出发逐级看例化），删掉 **15 个没有任何例化的厂家文件**（`src/isp/` 图像算子 7 个、`MIPI_V2/src/` 的 RAW8 老解包路径 7 个、厂家除法器 IP 1 个），并删 `soc_prj.al` 与两份 `soc_prj.prj` 里的对应登记（73 → 58 条）。`design_0/ip/**`、0 字节的 `define.v` 与厂家 `pwm.v` 保留（被加密 IP 内部或块设计引用）。理由与验证见 [log/2026-10-17-清理未用的厂家PL源码](../../docs/log/2026-10-17-清理未用的厂家PL源码.md)。
 
 二次重构（[log/2026-10-23-PL二次重构](../../docs/log/2026-10-23-PL二次重构.md)）又删除 **13 个不可达的厂家文件**：`design_0/ip/DR1_ARM_Processor_System_0/` 7 个、`design_0/ip/proc_sys_reset_75M/` 5 个、过期块设计生成脚本 `design_0/design_0.tcl` 1 个。判据：从 `system_top` BFS 不可达；TD v13 综合 build log 的 109 条 analyze 文件列表里没有这些 `.v`；syn / phy 的 area 层次报告里没有对应 module；`soc_prj.al`、两份 `soc_prj.prj` 与 `design_0.xml` 的 fileSets 均 0 登记（工程文件零改）；该 `.tcl` 引用了被删的 IP。加密 IP 数量不变（这 13 个都不含 `pragma protect`）。
+
+2026-10-24 厂家 RTL 重构（[log/2026-10-24](../../docs/log/2026-10-24-PL厂家RTL重构.md)）再删除 **8 个未用的 gamma LUT**（`src/ui_isp/gamma/lut_{0_8,1_2,1_4,1_6,1_8,2_0,2_4,2_6}.v`，共 2,227 行 / 103,062 B）：`isp_top` 写死 `GAMMA_10x=22`，其余 8 套曲线无任何例化，属「只有一种配置被使用」的参数分支特化；`soc_prj.al` 与两份 `soc_prj.prj` 同批删 8 条登记（59 → 51 条）。
 
 ## 寄存器总线
 
@@ -79,6 +84,7 @@ v12 上板记录原在 PL设计「基线」段，10-20 文档收敛移入本表�
 | `stepper_ctrl` | 运动中把 `TARGET` 改成恰好等于 `POS` 时就地停；目标在身后仍减速停 | 皮带「停在此处」写法不再卡死 |
 | CAN0 管脚 | PS 硬核 `can0_tx_out` / `can0_rx_in` 经 `ARM_Processor_System_*` → `design_0.v` → `system_top` 引到 F20（TX）/ F19（RX），LVCMOS33、RX 上拉 | 官方块设计没开 PS CAN，原 `can0` 只能回环，接不了 USB-CAN / PLC |
 | 自研 RTL 二次精简（`src/des/*.v`、`src/des/des_common.vh`、`src/system_top.v`） | 零行为精简：收紧数据类型、合并重复逻辑、清理死代码与注释；另删 13 个不可达厂家 IP 包装与过期块设计脚本（见上节） | 减少代码量、提升综合资源效率；寄存器零变，**未重编比特流**（[log/2026-10-23-PL二次重构](../../docs/log/2026-10-23-PL二次重构.md)） |
+| 厂家明文 RTL 零行为重构（`src/{ui_isp,MIPI_V2,hdmi_tx,write_fdma}/`、`src/system_top.v`、`src/pwm.v`） | 逐拍等价前提下精简：合并重复通道 / 重复 always、收紧位宽、删死码与无效 `//synthesis keep`、GB18030 → UTF-8；gamma 单配置特化（9 套曲线 → 2.2，删 8 个 LUT 文件）；MIPI/HDMI `DEVICE` 只留 DR1；`wfifo.v` 确认为明文生成件并一并重构 | 减少代码量（41 文件净 −5,351 行 / −55.7%，−198,191 B）、提升综合效率（LUT −328 / FF −201）；36 项逐拍等价回归 + 8 项功能仿真逐字节一致 + 综合 0 error（[log/2026-10-24-PL厂家RTL重构](../../docs/log/2026-10-24-PL厂家RTL重构.md)） |
 
 ## 已知问题（编译前先看）
 

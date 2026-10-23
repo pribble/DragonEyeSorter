@@ -16,9 +16,11 @@ pl/
 │   │   ├── des_io.v             # 急停 / 对射 / 限位 / 编码器 @+0x500（已上板）
 │   │   ├── awb_seq_div.v        # ISP 白平衡逐位除法器（替代厂家除法器 IP，省约 4k LUT）
 │   │   └── des_common.vh        # 同步 / 去抖公共模块（被 des_regs / des_io 纯 include 引用，不占寄存器地址）
+│   ├── src/{ui_isp,MIPI_V2,hdmi_tx,write_fdma}/  # 厂家明文 RTL（2026-10 已零行为重构；gamma 只留 2.2 一张表）
 │   ├── src/constraint/  #   管脚 io.adc（CEP = BANK11 3.3V）、时序 timing.sdc
 │   └── soc_prj.al       #   TD 工程入口
-├── sim/                 # testbench 与仿真入口（run_sim.sh 单目标：des_axi / servo_bus / stepper / vision / vision2 / pwm / io / awb；run_all.sh 全量 8 项）
+├── sim/                 # testbench 与仿真入口（run_sim.sh 单目标 / run_all.sh 全量 8 项；
+│                        #   equiv/ 厂家 RTL golden-vs-工作区逐拍等价回归 36 项）
 └── test/                # 独立验证工程（单独编小比特流验证单点硬件，不并入产品版图）
     └── step_test/       # 步进驱动器点动：100MHz 分频方波驱动 TB6600
 ```
@@ -34,6 +36,7 @@ pl/
 - 官方 demo 基线：**LUT6 79%（41,524 / 52,480）、slice 85.8%（45,034 / 52,480）、ERAM 92.5%、DSP 59.6%（143 / 240）**，WNS −4.12ns，违规集中在跨时钟域。（slice 与 LUT6 是两个口径，引用时说清。）
 - 自研模块全部加入后（v14 全量重编）：slice 83.26%（43,694 / 52,480）、ERAM 261/280（剩 19 块）、DSP 65%；自研 75M / 像素 / 150M / PS AXI 域 0 违例（HDMI 串行域 1 个 −0.164ns 厂家路径端点，待肉眼复核 ⚠）。
 - 二次重构（`c1b94b5`，零行为精简）：综合 LUT 58,100→58,122、FF 39,305→39,244、slice 44,097→44,126、ERAM 261/280、DSP 156/240（持平），自研模块 LUT 1,851→1,774、FF 3,685→3,624；源码已全量重编并上板（v14，`pl_check.sh` 21 项 0 失败）：P&R slice 83.26%、ERAM 261/280、DSP 156/240，自研 75M / 像素 / 150M 域 0 违例。行数 / 字节与明细见 [log/2026-10-23-PL二次重构](../docs/log/2026-10-23-PL二次重构.md)、[后全量重编与上板](../docs/log/2026-10-23-PL二次重构后全量重编.md)。
+- 厂家明文 RTL 重构（2026-10-24，零行为，**未重编比特流**）：非 des 明文 41 文件（33 改 + 8 删）净 **−5,351 行 / −198,191 B（−55.7% / −53.6%）**；TD 6.2.1 综合（Optimize-Gate，非 P&R）LUT **58,122→57,794（−0.56%）**、FF **39,244→39,043（−0.51%）**、ERAM 261/280、DSP 156/240 不变；36 项逐拍等价回归 + 8 项功能仿真逐字节一致。明细见 [log/2026-10-24-PL厂家RTL重构](../docs/log/2026-10-24-PL厂家RTL重构.md)。
 - 自研 P0 模块预算 ≤4000 LUT / ≤10 ERAM：总线 UART 用小 FIFO、PL 内不做乘除法（加减速表 PS 算）、加自研跨域路径后须补 `set_clock_groups`。
 - 超支砍单顺序：形态学 / CCL → overlay、tensor_pack；亚像素与视觉定位已在 PS 实现，不再占 PL。
 
@@ -41,5 +44,7 @@ pl/
 
 - 寄存器偏移与 [PL设计](../docs/PL设计.md)、`ps/src/hw/des_regs.h` 同一次提交更新。
 - 自研图像算子直接在 `soc_base/src/des/` 里写（厂家 `src/isp/` 的 line_buffer / `matrix_3x3` 框架没接进链路，已删除），改动登记进 [soc_base/README](soc_base/README.md) 的改动摘要表。
+- 改**厂家明文 RTL**（`src/{ui_isp,MIPI_V2,hdmi_tx,write_fdma}/`、`system_top.v`、`pwm.v`）必须跑 `pl/sim/equiv/`
+  逐拍等价回归（golden = `pl/sim/equiv/baseline.rev`，36 项）；加密文件与 TD 生成 IP 不动。
 - 每个模块配 testbench；时序关键模块要能导出测试报告用的时间戳 / 计数。
 - 仿真：单目标 `bash pl/sim/run_sim.sh <目标>`；全量 `bash pl/sim/run_all.sh`（8 项逐项 PASS / FAIL，任一失败非 0，可从任意目录调用；WSL 需 `iverilog`，环境见 [环境与上手](../docs/环境与上手.md) §1）。

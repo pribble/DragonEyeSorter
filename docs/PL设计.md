@@ -6,15 +6,15 @@
 
 在官方 NPU demo 工程 `soc_prj`（MIPI RX + ISP + VDMA + HDMI + NPU 软核，已过 P&R）上叠加自研模块；顶层 `src/system_top.v`，PS 与 AXI 互联在块设计 `design_0`。
 
-**板端当前 v14（最新）**：v14 = 二次重构源码（`c1b94b5`）后全量重编 + 上板（`BOOT.bin` `a72e00f7…`，比特流 `a8a29533…`）；`pl_check.sh` 21 项回归通过、2min soak 0 error；寄存器 `VERSION` 仍 12（接口未变）。HDMI 串行域 1 个 −0.164ns 端点属厂家路径，TMDS 视觉待复核 ⚠。逐版改动与上板记录见 [pl/soc_base/README](../pl/soc_base/README.md) 与 [log/](log/README.md)。
+**板端当前 v14（最新）**：v14 = 二次重构源码（`c1b94b5`）后全量重编 + 上板（`BOOT.bin` `a72e00f7…`，比特流 `a8a29533…`）；`pl_check.sh` 21 项回归通过、2min soak 0 error；寄存器 `VERSION` 仍 12（接口未变）。HDMI 串行域 1 个 −0.164ns 端点属厂家路径，TMDS 视觉待复核 ⚠。逐版改动与上板记录见 [pl/soc_base/README](../pl/soc_base/README.md) 与 [log/](log/README.md)。2026-10-24 又对**厂家明文 RTL（非 des）**做了一轮零行为重构（源码级，**未重编比特流、未上板**），见 [log/2026-10-24-PL厂家RTL重构](log/2026-10-24-PL厂家RTL重构.md)。
 
 **CAN 管脚（最新版已引到）**：底板 CAN 收发器接 PL 管脚 F20（TX）/ F19（RX），LVCMOS33、RX 上拉；RS485 接 L17 / N16 / N15（硬件手册 p21），尚未引出（要先定 PL UART 还是 PS UART 经 EMIO）。官方 demo 块设计没开 PS CAN（`CAN0_Available=0`，收发脚未约束）→ 最新版把 PS 硬核 `can0_tx_out` / `can0_rx_in` 经块设计引到 `system_top`，再到 F20 / F19。单节点验证：无人应答时发送错误计数按 CAN 规则累加、进 ERROR-PASSIVE 不进 BUS-OFF → 收发回路已通（明细见 log）；双节点实测等 J11 插头。注意：① ipms_canfd 驱动的错误帧把 ACK 位置码 0x19 写进 data[2]，candump 会显示成 bit-error，别被误导；② 驱动只支持 FD 模式，`ip link … fd off` 直接 EINVAL，收发经典帧不受影响（`can_up.sh` 照用）；③ 底板 B2B 管脚表（20250526）把 CAN / HDMI 管脚写反，以硬件手册 + 实测为准。
 
 ### 官方源码可复用性（`soc_prj/src/` 清点）
 
-- **明文可改（在用）**：`ui_isp/` 整套 ISP、`write_fdma/`（帧写 DDR）、`MIPI_V2/`、`hdmi_tx/`、厂家 AXI `pwm.v`（3 个实例，输出只当 lock 状态位）、AXI4-Lite 寄存器桥模板 `fvdma_ctrl`。
-- **加密（改不了）**：15 个 `pragma protect` 文件（NPU 软核、VDMA、时序发生器、AXI 互连、HDMI、MIPI D-PHY、`wfifo.v`），清单见 [pl/soc_base/README](../pl/soc_base/README.md)。
-- **已删（未例化的厂家源码）**：厂商图像算子 7 个、RAW8 老解包与第二套 AWB 7 个、白平衡流水线除法器 1.3MB；理由与验证见 [log/2026-10-17](log/2026-10-17-清理未用的厂家PL源码.md)。
+- **明文可改（在用）**：`ui_isp/` 整套 ISP、`write_fdma/`（帧写 DDR，含明文的 `wfifo.v`）、`MIPI_V2/`、`hdmi_tx/`、厂家 AXI `pwm.v`（3 个实例，输出只当 lock 状态位）、AXI4-Lite 寄存器桥模板 `fvdma_ctrl`。以上明文 RTL 已在 2026-10-24 做零行为重构（[log](log/2026-10-24-PL厂家RTL重构.md)），改它们须跑 `pl/sim/equiv/` 逐拍等价回归。
+- **加密（改不了）**：12 个 `pragma protect` 文件（NPU 软核、VDMA、部分视频时序发生器、AXI 互连、HDMI 控制器、MIPI D-PHY），清单见 [pl/soc_base/README](../pl/soc_base/README.md)。
+- **已删（未例化的厂家源码）**：厂商图像算子 7 个、RAW8 老解包与第二套 AWB 7 个、白平衡流水线除法器 1.3MB；理由与验证见 [log/2026-10-17](log/2026-10-17-清理未用的厂家PL源码.md)。2026-10-24 再删 8 个未用的 gamma LUT（单配置特化到 2.2 曲线，见 [log](log/2026-10-24-PL厂家RTL重构.md)）。
 - **我们的贡献点**：运动控制（步进脉冲 + 加减速、舵机总线主机、QEI、帧锁存、IO 同步）、图像处理（二值 / 形态学 / CCL / 投影测量 / ROI 缩放 / 张量打包）、AXI 寄存器堆、同步 / 去抖公共原语（`pl/soc_base/src/des/des_common.vh`，被 `des_regs` / `des_io` 纯 `include` 引用，不占寄存器地址）。
 
 ## 模块清单
@@ -52,6 +52,7 @@
 - ISP 白平衡两个「每时钟出一个商」的流水线除法器改为背靠背逐位除（`pl/soc_base/src/des/awb_seq_div.v`，改 `ui_isp/awb_1_1/awb.v`）：每 49 时钟一个新增益、增益差 ≤1 步、不再每帧开头复位；对照仿真 `run_sim.sh awb` 逐拍一致，省约 4k LUT + 2k 加法链 + 5k FF。
 - NPU 软核里的 YOLO 后处理 / 缩放单元理论上可省（我们是 ROI 分类 + PS 预处理），但 ArmNN Alnpu 后端依赖不确定，不动。
 - 重构（自研 RTL 两轮零行为精简；最近一轮见 [log/2026-10-23-PL二次重构](log/2026-10-23-PL二次重构.md)）：行数 / 字节与综合资源前后对比见该 log；**寄存器偏移、位域与复位值未变**，与 `ps/src/hw/des_regs.h` 同一次提交。
+- 厂家明文 RTL 重构（2026-10-24，零行为，未重编比特流）：非 des 明文 41 文件（33 改 + 8 删）净 **−5,351 行 / −198,191 B（−55.7% / −53.6%）**，其中 `bilinear_interpolation` 911→278 行、`wfifo` 887→516 行；TD 6.2.1 综合（Optimize-Gate，非 P&R）LUT **58,122→57,794（−0.56%）**、FF **39,244→39,043（−0.51%）**、ERAM 261/280 与 DSP 156/240 不变，0 error；36 项逐拍等价回归（golden = `9a905cc`）全 PASS，8 项功能仿真日志与基线逐字节一致。明细见 [log/2026-10-24-PL厂家RTL重构](log/2026-10-24-PL厂家RTL重构.md)。
 
 ## 寄存器通道（已实现）
 
