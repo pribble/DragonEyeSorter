@@ -328,6 +328,14 @@ int main()
         CHECK(g.ok && g.teeth_judged && g.teeth == 30, "teeth %d", g.teeth);
         CHECK(std::fabs(g.od - 32 - GROW) < TOL && std::fabs(g.bore_d - 6 - GROW) < TOL, "OD %.3f bore %.3f", g.od, g.bore_d);
         CHECK(g.short_teeth == 0 && g.missing_teeth == 0 && g.flash_gaps == 0, "false defects");
+        tc.judge_max_dist_mm = 50;   // the real walls are only dark near the axis: past the limit, size only
+        GearMeasure gl = measure_gear(s.img, s.roi, h, tc);
+        CHECK(gl.ok && !gl.teeth_judged && gl.short_teeth + gl.missing_teeth + gl.flash_gaps == 0 &&
+                  std::fabs(gl.od - g.od) < 1e-4f, "judge_max_dist: judged %d od %.3f", gl.teeth_judged, gl.od);
+        Vec2 cn = AXIS + Vec2{30, -20};
+        Scene sn = render(gear(cn, 30, 16, 13.75f, 0.0f, {}, {}), circle(cn, 3), k, true);
+        GearMeasure gn = measure_gear(sn.img, sn.roi, h, tc);
+        CHECK(gn.ok && gn.teeth_judged && gn.teeth == 30, "36 mm off within judge_max_dist: judged %d", gn.teeth_judged);
     }
     {   // E: rack 50 mm, 15 teeth, 25 deg
         Scene s = render(rack({150, 80}, 50, 15, 25 * kPi / 180, {}), {}, 1.f);

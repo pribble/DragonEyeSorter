@@ -138,7 +138,8 @@ RackMeasure measure_rack(const cv::Mat &gray, cv::Rect roi, const Homography &h,
     m.teeth = k_last + 1; m.missing_teeth = std::max(0, m.teeth - present);
     meas::filled_valleys(prof, s.runs, false, NB, cfg.flash_mm, s.vmins, s.gaps, m.flash_gaps);
     if (n >= 2) m.pitch = float((n * sxy - sx * sy) / (n * sxx - sx * sx));
-    m.smear_mm = meas::smear_at(cfg, cfg.rack_h_mm, c); m.teeth_judged = m.smear_mm <= cfg.max_smear_mm;
+    m.smear_mm = meas::smear_at(cfg, cfg.rack_h_mm, c); m.teeth_judged = m.smear_mm <= cfg.max_smear_mm &&
+        (cfg.judge_max_dist_mm <= 0 || norm(c - cfg.axis_table) <= cfg.judge_max_dist_mm);
     if (!m.teeth_judged) m.short_teeth = m.missing_teeth = m.flash_gaps = 0;
     m.ok = true;
     return m;

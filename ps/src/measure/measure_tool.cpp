@@ -64,7 +64,7 @@ std::string describe(const PartResult &r)
         else
             snprintf(b, sizeof b, "gear at (%6.1f, %6.1f): OD %.3f root %.3f bore %.3f ecc %.3f | teeth %d short %d missing %d "
                      "flash %d%s | fit rms %.3f smear %.2f", r.p.x, r.p.y, g.od, g.root_d, g.bore_d, g.ecc, g.teeth, g.short_teeth, g.missing_teeth,
-                     g.flash_gaps, g.teeth_judged ? "" : " (NOT judged: parallax)", g.fit_rms, g.smear_mm);
+                     g.flash_gaps, g.teeth_judged ? "" : " (NOT judged: off-axis)", g.fit_rms, g.smear_mm);
     } else {
         const RackMeasure &k = r.r;
         if (!k.ok) snprintf(b, sizeof b, "rack at (%6.1f, %6.1f): FAILED %s", r.p.x, r.p.y, k.err.c_str());
@@ -72,7 +72,7 @@ std::string describe(const PartResult &r)
             snprintf(b, sizeof b, "rack at (%6.1f, %6.1f): length %.3f height %.3f pitch %.4f | teeth %d short %d missing %d "
                      "flash %d%s | axis %.1f deg smear %.2f",
                      r.p.x, r.p.y, k.length, k.height, k.pitch, k.teeth, k.short_teeth, k.missing_teeth, k.flash_gaps,
-                     k.teeth_judged ? "" : " (NOT judged: parallax)", k.axis * 180 / kPi, k.smear_mm);
+                     k.teeth_judged ? "" : " (NOT judged: off-axis)", k.axis * 180 / kPi, k.smear_mm);
     }
     return b;
 }

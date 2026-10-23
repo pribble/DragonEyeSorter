@@ -14,6 +14,9 @@ struct MeasureConfig {
     float rack_h_mm = 12;
     bool walls_visible = true;   // side walls bright in the image (silhouette = sweep) vs only the top face  ⚠ lighting
     float max_smear_mm = 0.8;    // above this parallax smear, tooth / gap defects are not judged
+    float judge_max_dist_mm = 0; // and only within this distance of the optical axis (0 = no limit): with dark
+                                 // walls the smear is 0, yet far parts still show their walls (2026-10-24 sweep:
+                                 // right up to ~60 mm off, wrong beyond ~90)
     float short_tooth_mm = 0.4;  // tooth tip this far below the tip circle = short (缺料)
     float flash_mm = 0.5;        // valley floor this far above the root circle = filled (飞边)
     float od_offset_mm = 0, bore_offset_mm = 0;

@@ -21,7 +21,8 @@ GearMeasure measure_gear(const cv::Mat &gray, cv::Rect roi, const Homography &h,
     Vec2 c0; float r0;
     meas::fit_circle(s.pts, c0, r0);
     g.smear_mm = meas::smear_at(cfg, cfg.gear_h_mm, c0);
-    g.teeth_judged = g.smear_mm <= cfg.max_smear_mm;
+    g.teeth_judged = g.smear_mm <= cfg.max_smear_mm &&
+                     (cfg.judge_max_dist_mm <= 0 || norm(c0 - cfg.axis_table) <= cfg.judge_max_dist_mm);
     const int NB = 720;   // r(theta) bins, 0.5 deg
     s.prof.assign(NB, -1.f);
     s.bin_of.resize(s.pts.size()); s.rad.resize(s.pts.size());

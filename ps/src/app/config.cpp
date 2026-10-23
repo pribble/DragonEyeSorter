@@ -164,7 +164,8 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             MeasureConfig &m = t.m;
             if (c->contains("axis_table")) { ji::vec2(*c, "axis_table", m.axis_table); t.axis_from_image = false; }
             ji::gets(*c, "camera_h_mm", m.camera_h_mm, "gear_h_mm", m.gear_h_mm, "rack_h_mm", m.rack_h_mm,
-                     "walls_visible", m.walls_visible, "max_smear_mm", m.max_smear_mm, "short_tooth_mm",
+                     "walls_visible", m.walls_visible, "max_smear_mm", m.max_smear_mm, "judge_max_dist_mm", m.judge_max_dist_mm,
+                     "short_tooth_mm",
                      m.short_tooth_mm, "flash_mm", m.flash_mm, "od_offset_mm", m.od_offset_mm, "bore_offset_mm",
                      m.bore_offset_mm, "bore_near_arc", m.bore_near_arc);
             if (c->contains("colors"))
