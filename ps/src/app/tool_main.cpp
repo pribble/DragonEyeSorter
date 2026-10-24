@@ -1,5 +1,5 @@
 // tool_main.cpp — des_tool: the operator entry point. Modes: probe | locate | track | display | collect | measure |
-//   calib-cam | calib-belt | calib-enc | calib-flat | calib-arm | arm (scan|read|teach|torque-*|home|goto|pick) | ik,
+//   calib-cam | calib-belt | calib-enc | calib-beam | calib-flat | calib-arm | arm (scan|read|teach|torque-*|home|goto|pick) | ik,
 //   --version; options: -c cfg.json -n N --vmax N --exp us --gain dB*10 --dump f.png --belt mm/s --no-rt --out …
 // Human-driven (prints measurements, writes calib.json / training crops, can move hardware with --go / calib-*), so it is
 // NOT part of the deployed product binary (run / live = main.cpp -> des_app); pass/fail checks are the test_* binaries.
@@ -33,7 +33,8 @@ using namespace des;
 static void usage_tool()
 {
     fprintf(stderr,
-            "usage: des_tool probe|locate|track|display|collect|measure|calib-cam|calib-belt|calib-enc|calib-flat|calib-arm|arm|ik\n       [options]\n  -c cfg.json  -n N  --vmax N  --exp us  --gain dB*10  --dump file.png  --belt mm/s  --no-rt\n"
+            "usage: des_tool probe|locate|track|display|collect|measure|calib-cam|calib-belt|calib-enc|calib-beam|calib-flat|calib-arm|arm|ik\n       [options]\n  -c cfg.json  -n N  --vmax N  --exp us  --gain dB*10  --dump file.png  --belt mm/s  --no-rt\n"
+            "  calib-beam: ONE gear in view upstream of the through-beam (IR1); -n rounds (default 3) down across the\n             beam and back at --belt mm/s (default 20)  --od <caliper OD>  --steps <move>  -> calib.json \"beam\"\n"
             "  calib-cam: --board <cols>x<rows> (inner corners)  --square <mm>  --travel right|left|down|up\n             --image <file> (instead of the camera)  --out <calib.json>  --exhaustive\n  calib-belt: ONE part on the belt near the upstream edge (camera calibrated first); the belt moves\n"
             "             forward and back. --steps <long move>  --belt <mm/s> (default 20)  --out <calib.json>\n  calib-enc: EMPTY belt; moves --steps (default 300 mm) downstream and back, -n rounds, at --belt mm/s\n"
             "             (default belt.run_speed): measuring-wheel encoder vs stepper -> calib.json \"encoder\"\n  calib-flat: a blank white sheet covering the upstream edge of the view; the belt carries it across\n"
@@ -478,6 +479,106 @@ static int run_calib_enc(des_hw_t &hw, const AppConfig &cfg, const Args &a)
     report_saved(out, e);
     return e.empty() ? 0 : 1;
 }
+// Through-beam position (sched/beam.hpp, des_io IR1): ONE gear lying in view upstream of the beam. Each round the belt
+// carries it downstream across the beam (the PL latches the stepper position at the "blocked" edge, read here within
+// 10 ms) and back to the start; the part's still position there plus the belt travel since the edge give where its
+// centre was at the edge, and the leading edge (+ R) is the beam. Standing still: no camera timing in the number, so
+// the run-time difference to it is the tracking error of the moving line.
+static int run_calib_beam(des_hw_t &hw, const AppConfig &cfg, const Args &a)
+{
+    if (hw.version < DES_VERSION_IO) {
+        fprintf(stderr, "calib-beam: bitstream VERSION %u has no IR1 input (needs >= %u)\n", hw.version, DES_VERSION_IO);
+        return 1;
+    }
+    if (cfg.calib_loaded.empty()) {
+        fprintf(stderr, "calibrate the camera first (des_tool calib-cam): the beam position is in table mm\n");
+        return 1;
+    }
+    if (!cfg.belt_calibrated)
+        printf("note: belt.mm_per_step %.5f is not from calib-belt: the beam position is only as good as it\n", cfg.belt.mm_per_step);
+    des_io_t io;
+    des_io_read(&hw, &io);
+    if (io.status & DES_IO_ST_IR1_BLOCKED) {
+        fprintf(stderr, "calib-beam: the beam reads blocked now: something in it, emitter / receiver not powered or not "
+                        "aligned, or the polarity is inverted (check with desreg io watch 10; invert: desreg w 0x538 1)\n");
+        return 1;
+    }
+    CameraSession cam(&hw, cfg, a);
+    if (!cam.ok()) return 1;
+    Locator loc(cfg.locate);
+    const double mmps = cfg.belt.mm_per_step * (cfg.belt.dir >= 0 ? 1 : -1);   // belt travel per POS step, + = downstream
+    const double mm_s = a.belt > 0 ? a.belt : 20.0;
+    const BeltRates r = belt_rates(cfg, mm_s);   // 0.5 s ramps
+    const int rounds = a.n > 0 ? int(a.n) : 3;
+    belt_prepare(hw);
+    auto fail = [&](const std::string &e) {
+        fprintf(stderr, "calib-beam: %s\n", e.c_str());
+        des_step_stop(&hw);
+        return 2;
+    };
+    Vec2 p0;
+    float len0 = 0;
+    std::string e = still_position(*cam, loc, cfg, p0, &cfg.px_to_part, &len0);   // where the part stands (its height)
+    if (!e.empty()) return fail(e);
+    const float R = 0.5f * (a.part_od > 0 ? a.part_od : len0);
+    printf("start: part at x %.2f y %.2f mm, size in the image %.2f mm%s -> R %.2f mm; view x %.0f .. %.0f\n", p0.x, p0.y, len0,
+           a.part_od > 0 ? fmt(", caliper OD %.2f used", a.part_od).c_str() : " (give --od <caliper OD> for a better R)",
+           R, cfg.tracker.fov_x0, cfg.tracker.fov_x1);
+    const double room = cfg.tracker.fov_x1 - 5 - (p0.x + R);   // default: leading edge up to the downstream view edge
+    if (!a.steps && room < 20)
+        return fail("not enough room downstream: put the part near the upstream edge of the view, upstream of the beam");
+    const int32_t steps = a.steps ? a.steps : int32_t(std::lround(room / mmps));
+    printf("each round: %d steps (%+.0f mm) at %.0f mm/s and back; the part's leading edge must cross the beam on the way\n",
+           steps, steps * mmps, mm_s);
+    std::vector<double> xs;
+    for (int k = 0; k < rounds && !g_stop; k++) {
+        des_io_read(&hw, &io);
+        const uint32_t cnt0 = io.ir1_cnt;
+        bool seen = false;
+        int32_t pos_e = 0;
+        uint32_t n_first = 0;
+        std::function<void()> sf = [&]() {   // every 10 ms while moving: the first new edge and its latched POS
+            des_io_t s;
+            if (seen || des_io_read(&hw, &s) != DES_OK || s.ir1_cnt == cnt0) return;
+            seen = true; pos_e = s.ir1_pos; n_first = s.ir1_cnt - cnt0;
+        };
+        if (!(e = belt_move(hw, steps, r.vmax, r.acc, &sf)).empty()) return fail(e);
+        des_io_read(&hw, &io);
+        const uint32_t fwd_edges = io.ir1_cnt - cnt0;
+        if (!(e = belt_move(hw, -steps, r.vmax, r.acc)).empty()) return fail(e);
+        if (!seen)
+            return fail(fmt("the part went %+.0f mm without breaking the beam: beam further downstream (--steps), above the "
+                            "part, or IR1 not wired (desreg io watch 10 and block it by hand)", steps * mmps));
+        if (n_first > 1) printf("  note: %u edges within 10 ms: the latched position is the last of them\n", n_first);
+        Vec2 p1;
+        float l1 = 0;
+        if (!(e = still_position(*cam, loc, cfg, p1, &cfg.px_to_part, &l1)).empty()) return fail(e);
+        const double b_end = des_step_pos(&hw) * mmps, b_e = pos_e * mmps;
+        const double xc = p1.x - (b_end - b_e);   // part centre when the beam went dark
+        const double bx = xc + R;
+        printf("[%d] edge at POS %d (%u edge(s) on the way down); back at x %.2f (start %.2f, %+.2f); centre at the edge "
+               "%.2f -> beam x %.2f mm\n", k + 1, pos_e, fwd_edges, p1.x, p0.x, p1.x - p0.x, xc, bx);
+        xs.push_back(bx);
+    }
+    if (xs.empty()) return 2;
+    double mean = 0, sd = 0;
+    for (double v : xs) mean += v;
+    mean /= xs.size();
+    for (double v : xs) sd += (v - mean) * (v - mean);
+    sd = xs.size() > 1 ? std::sqrt(sd / (xs.size() - 1)) : 0;
+    printf("== beam: x %.2f mm (sd %.2f over %zu rounds), part y %.1f\n", mean, sd, xs.size(), p0.y);
+    if (sd > 0.5) printf("   sd > 0.5 mm: belt slipping, beam edge soft (laser spot half on the part?), or the part moved\n");
+    if (mean > cfg.tracker.decide_x - 20)
+        printf("   WARNING: the beam is not upstream of decide_x %.0f - 20: part records are written before the part reaches "
+               "it (move the beam upstream)\n", cfg.tracker.decide_x);
+    if (mean < cfg.tracker.fov_x0)
+        printf("   beam upstream of the view: set beam.expire_mm >= %.0f in des_app.json\n", cfg.tracker.fov_x0 - mean + 60);
+    const std::string out = calib_out(cfg, a, CalibDefault::Beam);
+    e = save_beam_calib(out, mean, sd, int(xs.size()), R, p0.y);
+    report_saved(out, e);
+    if (e.empty() && !cfg.beam.enabled) printf("   turn it on: des_app.json \"beam\": {\"enabled\": true}, then restart des_app\n");
+    return e.empty() ? 0 : 1;
+}
 // Flat field for the part crops (flat_field.hpp): a blank white sheet (A4 across the belt is enough) lies at the
 // upstream edge of the view and covers it; the belt carries it downstream in --steps steps (default 40 mm), 4 frames
 // averaged per stop, until the sheet's leading edge has reached the downstream edge of the view plus one more stop
@@ -752,6 +853,7 @@ int main(int argc, char **argv)
     else if (a.mode == "calib-cam") rc = run_calib(&hw, cfg, a);
     else if (a.mode == "calib-belt") rc = run_calib_belt(hw, cfg, a);
     else if (a.mode == "calib-enc") rc = run_calib_enc(hw, cfg, a);
+    else if (a.mode == "calib-beam") rc = run_calib_beam(hw, cfg, a);
     else if (a.mode == "calib-flat") rc = run_calib_flat(hw, cfg, a);
     else if (a.mode == "calib-arm") rc = run_calib_arm(hw, cfg, a);
     else if (a.mode == "arm") rc = run_arm(hw, cfg, a);

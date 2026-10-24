@@ -41,14 +41,18 @@ struct PartRecord {
     float s = 0, y = 0, axis = 0, len = 0, wid = 0;
     uint32_t pl_area = 0; float pl_d_mm = 0, pl_w_mm = 0, pl_h_mm = 0;
     int16_t votes = 0;    float npu_ms = 0, lat_ms = 0;  uint8_t recipe = 0;
+    int8_t beam = 0;      float beam_err = 0;   // through-beam (Track::beam, sched/beam.hpp); err only when beam == 2
 };
-const char *csv_header();   // the 43 column names, one line (part_stats.py / des_feed.py read them by name)
+const char *csv_header();   // the 45 column names, one line (part_stats.py / des_feed.py read them by name)
+const char *beam_status(int8_t beam);   // CSV text of Track::beam: "" (off) / waiting / matched / missed / na
 class PartLog {
 public:
     PartLog();
     ~PartLog();
     std::string open(const StorageConfig &cfg);   // "" on success
     void add(PartRecord r, const cv::Mat &crop);  // non-blocking; crop may be empty
+    // through-beam event (matched / repeat / no_track / missed / lost) -> beam_<session>.csv next to the parts CSV
+    void add_beam(const BeamResult &b, double t_s);
     void close();                                 // flush everything, stop the writer
     bool is_open() const { return th_.joinable(); }
     void set_images(const std::string &mode);   // HMI: sampled per record by the writer's producer
@@ -60,13 +64,18 @@ private:
     struct Item {
         PartRecord r;
         cv::Mat crop;
+        bool is_beam = false;   // a beam event instead of a part record
+        BeamResult b;
+        double b_t = 0;
     };
     void loop();
     void write(const Item &it);
+    void write_beam(const Item &it);
     StorageConfig cfg_;
     mutable std::mutex m_;   // cfg_.images: set_images() vs add()
     std::string day_dir_;
     FILE *csv_ = nullptr;
+    FILE *beam_ = nullptr;   // opened at the first beam event (no file when the beam is off)
     double t0_ = 0;
     std::thread th_;
     BgQueue<Item> q_;

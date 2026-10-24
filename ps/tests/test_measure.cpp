@@ -512,12 +512,12 @@ int main()
             if (lines == 1) continue;
             int commas = 0;
             for (char *c = buf; *c; c++) commas += *c == ',';
-            fields_ok += commas == 42;   // 43 columns, the comma in "why" was replaced
+            fields_ok += commas == 44;   // 45 columns, the comma in "why" was replaced
             if (strstr(buf, ".jpg")) with_img++;
         }
         if (f) fclose(f);
         printf("[storage] %s: %d lines, %d with image, written %llu images %llu dropped %llu errors %llu\n", log.csv_path.c_str(), lines, with_img, (unsigned long long)log.written.load(), (unsigned long long)log.images.load(), (unsigned long long)log.dropped.load(), (unsigned long long)log.errors.load());
-        CHECK(lines == 4 && fields_ok == 3, "csv lines %d, rows with 43 columns %d", lines, fields_ok);
+        CHECK(lines == 4 && fields_ok == 3, "csv lines %d, rows with 45 columns %d", lines, fields_ok);
         CHECK(with_img == 2 && log.images == 2, "images only for flap / recheck (%d)", with_img);
         int nr = 0, ni = 0, jpg_ok = 0;
         Frame fr;

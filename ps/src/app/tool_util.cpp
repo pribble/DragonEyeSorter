@@ -70,26 +70,28 @@ std::string capture_gray_avg(CameraRig &cam, int discard, cv::Mat &sum, cv::Mat 
     sum.convertTo(gray, CV_8U, 0.25);
     return "";
 }
-std::string still_position(CameraRig &cam, Locator &loc, const AppConfig &cfg, Vec2 &p)
+std::string still_position(CameraRig &cam, Locator &loc, const AppConfig &cfg, Vec2 &p, const Homography *h, float *len)
 {
     CapturedFrame f;
     std::string err = capture_frames(cam, cfg.camera.buffers + 2, f);   // ring may still hold frames of the move
     if (!err.empty()) return err;
-    std::vector<float> xs, ys; xs.reserve(7); ys.reserve(7); int blobs = 0;
+    const Homography &map = h ? *h : cfg.px_to_table;
+    std::vector<float> xs, ys, ls; xs.reserve(7); ys.reserve(7); ls.reserve(7); int blobs = 0;
     for (int i = 0; i < 7; i++) {
         if (!(err = cam.next(f, true)).empty()) return err;
-        std::vector<Detection> d = loc.run(f.bgra, f.width, f.height, f.stride, cfg.px_to_table); const Detection *best = nullptr;
+        std::vector<Detection> d = loc.run(f.bgra, f.width, f.height, f.stride, map); const Detection *best = nullptr;
         for (const Detection &x : d)
             if (!x.partial && (!best || x.len * x.wid > best->len * best->wid)) best = &x;
         blobs = std::max(blobs, int(d.size()));
         if (best) {
-            xs.push_back(best->p.x); ys.push_back(best->p.y);
+            xs.push_back(best->p.x); ys.push_back(best->p.y); ls.push_back(best->len);
         }
     }
     if (xs.size() < 4) return "no part fully in view (one part on the belt, inside the view, threshold ok? try locate)";
     if (blobs > 1) printf("  note: %d blobs in view, using the largest\n", blobs);
-    std::nth_element(xs.begin(), xs.begin() + xs.size() / 2, xs.end()); std::nth_element(ys.begin(), ys.begin() + ys.size() / 2, ys.end());
-    p = {xs[xs.size() / 2], ys[ys.size() / 2]};
+    auto median = [](std::vector<float> &v) { std::nth_element(v.begin(), v.begin() + v.size() / 2, v.end()); return v[v.size() / 2]; };
+    p = {median(xs), median(ys)};
+    if (len) *len = median(ls);
     return "";
 }
 bool read_image(const std::string &path, cv::Mat &bgr, cv::Mat &gray)
@@ -115,6 +117,7 @@ std::string calib_out(const AppConfig &cfg, const Args &a, CalibDefault which)
         return fn[0] == '/' ? fn : cfg.config_dir + "/" + fn;
     }
     case CalibDefault::Arm: return cfg.calib_loaded;
+    case CalibDefault::Beam: return cfg.calib_loaded;
     }
     return cfg.calib_loaded;
 }

@@ -24,7 +24,17 @@ const char *csv_header()
     return "wall_ms,t_s,track,frame_first,frame_last,cls,label,conf,disp,dest,why,"
            "meas_valid,kind,size_mm,bore_mm,ecc_mm,pitch_mm,teeth,short,missing,flash,teeth_judged,smear_mm,"
            "axis_dist_mm,meas_frame,meas_count,s_mm,y_mm,axis_deg,len_mm,wid_mm,pl_area_px,pl_d_mm,pl_w_mm,pl_h_mm,"
-           "image,votes,npu_ms,lat_ms,recipe,hue_deg,sat,color";
+           "image,votes,npu_ms,lat_ms,recipe,hue_deg,sat,color,beam,beam_err_mm";
+}
+const char *beam_status(int8_t beam)
+{
+    switch (beam) {
+    case 1: return "waiting";
+    case 2: return "matched";
+    case -1: return "missed";
+    case -2: return "na";
+    default: return "";
+    }
 }
 // ------------------------------------------------------------------ NetFeed (was net_feed.hpp/.cpp; only used here)
 class NetFeed {
@@ -237,7 +247,10 @@ void PartLog::add(PartRecord r, const cv::Mat &crop)
         std::lock_guard<std::mutex> lk(m_);
         want = cfg_.images == "all" || (cfg_.images == "ng" && r.disp != Disposition::Pick);
     }
-    if (cfg_.max_queue <= 0 || !q_.push({std::move(r), want ? crop : cv::Mat()})) dropped++;   // Mat: no copy
+    Item it;
+    it.r = std::move(r);
+    if (want) it.crop = crop;   // Mat: no copy
+    if (cfg_.max_queue <= 0 || !q_.push(std::move(it))) dropped++;
 }
 void PartLog::close()
 {
@@ -250,11 +263,33 @@ void PartLog::close()
     if (csv_) {
         fclose(csv_); csv_ = nullptr;
     }
+    if (beam_) {
+        fclose(beam_); beam_ = nullptr;
+    }
 }
 void PartLog::loop()
 {
     Item it;
-    while (q_.pop(it)) write(it);
+    while (q_.pop(it)) it.is_beam ? write_beam(it) : write(it);
+}
+void PartLog::add_beam(const BeamResult &b, double t_s)
+{
+    if (!th_.joinable()) return;
+    Item it;
+    it.is_beam = true; it.b = b; it.b_t = t_s;
+    if (cfg_.max_queue <= 0 || !q_.push(std::move(it))) dropped++;
+}
+void PartLog::write_beam(const Item &it)
+{
+    if (!beam_) {
+        const std::string p = day_dir_ + "/beam_" + session + ".csv";
+        if (!(beam_ = fopen(p.c_str(), "w"))) { errors++; return; }
+        fprintf(beam_, "t_s,kind,belt_mm,enc,track,err_mm,n\n");
+    }
+    const BeamResult &b = it.b;
+    if (fprintf(beam_, "%.3f,%s,%.2f,%d,%d,%.2f,%u\n", it.b_t, to_str(b.kind), b.belt_mm, b.enc, b.track, b.err, b.n) < 0 ||
+        fflush(beam_) != 0)
+        errors++;
 }
 void PartLog::write(const Item &it)
 {
@@ -281,13 +316,13 @@ void PartLog::write(const Item &it)
     int n = snprintf(line, sizeof line,
                     "%lld,%.3f,%d,%u,%u,%d,%s,%.3f,%s,%s,%s,"
                     "%d,%c,%.3f,%.3f,%.3f,%.4f,%d,%d,%d,%d,%d,%.2f,"
-                    "%.1f,%u,%d,%.2f,%.2f,%.1f,%.1f,%.1f,%u,%.2f,%.2f,%.2f,%s,%d,%.2f,%.1f,%d,%.0f,%.0f,%d",
+                    "%.1f,%u,%d,%.2f,%.2f,%.1f,%.1f,%.1f,%u,%.2f,%.2f,%.2f,%s,%d,%.2f,%.1f,%d,%.0f,%.0f,%d,%s,%s",
                     (long long)r.wall_ms, r.t_s, r.track_id, r.frame_first, r.frame_last, r.cls, lab, r.conf,
                     to_str(r.disp), dst, why, int(m.valid), m.kind ? m.kind : '-', m.size, m.bore, m.ecc, m.pitch,
                     m.teeth, m.short_teeth, m.missing_teeth, m.flash_gaps, int(m.teeth_judged), m.smear,
                     m.axis_dist < 1e8f ? m.axis_dist : -1.f, m.frame, m.count, r.s, r.y, r.axis * 57.29578f, r.len,
                     r.wid, r.pl_area, r.pl_d_mm, r.pl_w_mm, r.pl_h_mm, img.c_str(), r.votes, r.npu_ms, r.lat_ms,
-                    r.recipe, m.hue, m.sat, m.color);
+                    r.recipe, m.hue, m.sat, m.color, beam_status(r.beam), r.beam == 2 ? fmt("%.2f", r.beam_err).c_str() : "");
     if (n < 0 || size_t(n) >= sizeof line || fprintf(csv_, "%s\n", line) < 0 || fflush(csv_) != 0) {
         errors++; return;
     }

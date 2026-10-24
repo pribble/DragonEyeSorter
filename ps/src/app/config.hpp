@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include "arm.hpp"
+#include "beam.hpp"
 #include "geom.hpp"
 #include "measure_config.hpp"
 #include "picker.hpp"
@@ -84,6 +85,7 @@ struct AppConfig {
     StorageConfig storage;
     NpuConfig npu;
     FlapConfig flaps;            // side diverter gates (des_pwm, v7; in picker.hpp)
+    BeamConfig beam;             // through-beam on IR1 (sched/beam.hpp): des_app.json "beam" + calib.json "beam" (x_mm)
     PlcConfig plc;
     std::string label_list = "models/label_list.json";
     std::string calib_file = "calib.json";     // written by des_tool calib-cam, merged over this file if present

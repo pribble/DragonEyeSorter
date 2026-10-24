@@ -347,6 +347,12 @@ std::string save_arm_calib(const std::string &path, const ArmBaseFit &f, bool wi
     a["points"] = f.resid.size();
     return save_section(path, "arm", a);
 }
+std::string save_beam_calib(const std::string &path, double x_mm, double sd_mm, int rounds, double part_r_mm, double y_mm)
+{
+    const nlohmann::ordered_json sec = {{"x_mm", x_mm}, {"date", stamp()}, {"sd_mm", sd_mm}, {"rounds", rounds},
+                                        {"part_r_mm", part_r_mm}, {"part_y_mm", y_mm}};
+    return save_section(path, "beam", sec);
+}
 void draw_calib(cv::Mat &bgr, const CalibResult &r)
 {
     if (!r.ok) return;

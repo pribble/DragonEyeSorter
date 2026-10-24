@@ -80,6 +80,7 @@
   "storage_comment": "本地存储（赛题硬性项②）：每件判定后一行 CSV（<dir>/<日期>/parts_<会话>.csv）+ 零件裁切图（images: none / ng = 翻板和复检件 / all）。dir 不写就是 data/log、按本文件所在目录解析（生产配置 → /root/des/data/log；把这份配置连同程序拷到别的目录部署时，数据就落在那个目录，不污染生产数据），写绝对路径则原样用。板子没有 RTC，日期目录按系统时钟，测试前先对时",
   "plc_comment": "Modbus-TCP 从站（产线 PLC / 组态软件经网口读状态、下命令；寄存器表 hw/modbus_tcp.hpp，规则同 CAN）。0 = 关",
   "plc": { "modbus_port": 502 },
+  "beam": { "enabled": false, "match_mm": 12, "expire_mm": 120, "miss_mm": 25 },
   "storage": { "enabled": true, "images": "ng", "jpeg_quality": 92, "max_queue": 256, "feed_port": 9500 },
 
   "bins": ["gear_box", "rack_box"],

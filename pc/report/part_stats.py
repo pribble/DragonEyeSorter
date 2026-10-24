@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""part_stats.py — test-report numbers from the board's part records (des_app part_log CSV, 40 columns).
+"""part_stats.py — test-report numbers from the board's part records (des_app part_log CSV, 45 columns; with the
+through-beam on, also the beam_<session>.csv beside it).
 
 Copies the CSVs off the board first, e.g.
     scp -r $BOARD_HOST:/root/des/records ./records
@@ -133,9 +134,30 @@ def read_rows(spec_list, truth_all):
             with open(fp, encoding='utf-8', newline='') as f:
                 for r in csv.DictReader(f):
                     r['_file'] = os.path.basename(fp)
+                    r['_path'] = fp
                     r['_truth'] = truth
                     rows.append(r)
     return rows
+
+
+def beam_events(rows):
+    """Through-beam event counts from the beam_<session>.csv next to each parts_<session>.csv (des_app writes it
+    when the beam is on): matched / repeat / no_track (vision did not track it) / missed / lost."""
+    counts, seen = {}, set()
+    for r in rows:
+        p = r.get('_path', '')
+        d, base = os.path.dirname(p), os.path.basename(p)
+        if not base.startswith('parts_'):
+            continue
+        bp = os.path.join(d, 'beam_' + base[len('parts_'):])
+        if bp in seen or not os.path.exists(bp):
+            continue
+        seen.add(bp)
+        with open(bp, encoding='utf-8', newline='') as f:
+            for e in csv.DictReader(f):
+                k = e.get('kind', '?')
+                counts[k] = counts.get(k, 0) + (int(e.get('n') or 1) if k == 'lost' else 1)
+    return counts
 
 
 def main():
@@ -308,6 +330,33 @@ def main():
             out['pl_diff_' + kind] = dist(diff, 'mm', 3)
             md.append('| %s | %s | %s |' % (name, fmt_dist(out['pl_diff_' + kind]),
                                             fmt_dist(dist([num(r, 'pl_d_mm') for r in k], 'mm', 2))))
+        md.append('')
+
+    # ---- through-beam (IR1): predicted leading edge vs an independent sensor latched on the same PL clock
+    with_beam = [r for r in rows if r.get('beam')]
+    if with_beam:
+        st = {}
+        for r in with_beam:
+            st[r['beam']] = st.get(r['beam'], 0) + 1
+        errs = [num(r, 'beam_err_mm') for r in with_beam if r['beam'] == 'matched' and r.get('beam_err_mm')]
+        out['beam_status'] = st
+        out['beam_err'] = dist(errs, 'mm', 2)
+        ev = beam_events(rows)
+        out['beam_events'] = ev
+        md.append('## 对射光电（IR1）：跟踪误差\n')
+        md.append('| 指标 | 值 |\n|---|---|')
+        md.append('| 跟踪预测前沿 − 光束（PL 同时钟锁存） | %s |' % fmt_dist(out['beam_err']))
+        if errs:
+            out['beam_max_abs'] = max(abs(e) for e in errs)
+            md.append('| 最大 \\|误差\\| | %.2f mm |' % out['beam_max_abs'])
+        md.append('| 记录里的对射状态 | %s |' % '，'.join('%s %d' % kv for kv in sorted(st.items())))
+        if ev:
+            md.append('| 对射事件（beam_*.csv） | %s |' % '，'.join('%s %d' % kv for kv in sorted(ev.items())))
+            crossed = ev.get('matched', 0) + ev.get('no_track', 0)
+            if crossed:
+                out['beam_vision_miss'] = ev.get('no_track', 0) / crossed
+                md.append('| 过光束的物体中视觉没跟踪到的（漏检） | %d / %d = %.2f%% |' % (
+                    ev.get('no_track', 0), crossed, out['beam_vision_miss'] * 100))
         md.append('')
 
     text = '\n'.join(md)

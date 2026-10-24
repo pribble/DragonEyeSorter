@@ -60,6 +60,7 @@ struct Snapshot {
     bool plan_on = true;                        // run mode: false while the line is not running (no plan)
     Tracker::Stats st;
     uint64_t processed = 0, stale = 0;
+    int8_t beam = -1;                           // through-beam: -1 off, 0 clear, 1 blocked (overlay line colour)
     cv::Mat panel;                              // status panel, rendered by the worker (~10 Hz), blitted per frame
     cv::Mat hmi;                                // operator interface band (Hmi::H rows at Hmi::Y0)
 };
@@ -157,6 +158,20 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
     std::string e = plog.open(cfg.storage);
     if (!e.empty()) fprintf(stderr, "storage: %s (parts are NOT recorded)\n", e.c_str());
     else if (plog.is_open()) printf("storage: %s (images: %s)\n", plog.csv_path.c_str(), cfg.storage.images.c_str());
+    std::unique_ptr<BeamMonitor> beam;   // through-beam on IR1 (sched/beam.hpp)
+    std::vector<BeamResult> beam_out;
+    if (cfg.beam.active() && hw.version < DES_VERSION_IO) {
+        fprintf(stderr, "beam: bitstream VERSION %u has no IR1 input (needs >= %u)\n", hw.version, DES_VERSION_IO);
+    } else if (cfg.beam.active()) {
+        beam.reset(new BeamMonitor(cfg.beam));
+        printf("beam: x %.1f mm (match +-%.0f, unclaimed after %.0f, missed after %.0f mm)\n", cfg.beam.x_mm,
+               cfg.beam.match_mm, cfg.beam.expire_mm, cfg.beam.miss_mm);
+        if (cfg.beam.x_mm > cfg.tracker.decide_x - 20)   // records are written at the decision: the beam must come first
+            printf("beam: WARNING x %.0f is not upstream of decide_x %.0f - 20: part records will say \"waiting\"\n",
+                   cfg.beam.x_mm, cfg.tracker.decide_x);
+    } else if (cfg.beam.enabled) {
+        fprintf(stderr, "beam: enabled but no position (des_tool calib-beam writes calib.json \"beam\")\n");
+    }
     std::unique_ptr<Collector> col;
     if (!opt.collect.label.empty()) {
         col.reset(new Collector(opt.collect, cfg));
@@ -244,6 +259,19 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
         const auto &blobs = loc.rects_full();
         for (Detection &d : obs.dets) d.p.x -= float((b1 - b0) * (d.img_v - 0.5f));   // rolling-shutter row timing
         tr.update(obs);
+        des_io_t io{};   // field inputs once per cycle: the beam here, the encoder speed for the HMI below
+        const bool io_ok = hw.version >= DES_VERSION_IO && des_io_read(&hw, &io) == DES_OK;
+        if (beam && io_ok) {   // before the records below: a part decided this cycle carries its beam result
+            beam_out.clear();
+            beam->poll(io.ir1_cnt, io.ir1_pos * mmps, int32_t(io.ir1_enc), beam_out);
+            beam->update(tr.tracks(), des_step_pos(&hw) * mmps, beam_out);
+            const double ts = plog.now_s();
+            for (const BeamResult &r : beam_out) {
+                plog.add_beam(r, ts);
+                if (r.kind == BeamKind::NoTrack || r.kind == BeamKind::Missed || r.kind == BeamKind::Lost)
+                    printf("[beam] %s at belt %.1f mm (track %d)\n", to_str(r.kind), r.belt_mm, r.track);
+            }
+        }
         if (col)   // training crops; dropped if the DMA reused the buffer while they were copied
             col->step(tr, f.bgra, f.width, f.height, f.stride, obs.belt_mm, f.pl_frame, obs.dets, blobs, fresh);
         // measurement reads the camera buffer again: drop the results if the DMA reused it (the cycle goes on)
@@ -315,6 +343,10 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
                     rec.lat_ms = float(ns->second.lat_ms / ns->second.n);
                     npu_stat.erase(ns);
                 }
+                if (beam) {
+                    rec.beam = t.beam;
+                    if (t.beam == 2) { rec.beam_err = beam_track_err(t, cfg.beam.x_mm); beam->finalize(t); }
+                }
                 const cv::Mat &crop = it != crops.end() ? it->second : cv::Mat();
                 hmi.add_part(rec, crop, now);
                 plog.add(std::move(rec), crop);
@@ -381,8 +413,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
         {
             HmiStatus hs;
             hs.run_state = runner ? int(runner->state()) : -1; hs.belt_mm_s = des_step_speed(&hw) * cfg.belt.mm_per_step;
-            des_io_t io;
-            if (hw.version >= DES_VERSION_IO && des_io_read(&hw, &io) == DES_OK) {
+            if (io_ok) {
                 if (!enc.have_ref) { enc.have_ref = true; enc.first = enc.ref = io.enc; enc.ref_t = now; }
                 else if (now - enc.ref_t >= 0.5) {
                     enc.mm_s = std::abs(double(io.enc) - enc.ref) * cfg.belt.enc_scale() / (now - enc.ref_t);
@@ -436,6 +467,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
         s->npu = npu.running(); s->npu_ms = npu.last_npu_ms; s->npu_runs = npu.runs;
         s->logged = plog.written; s->log_images = plog.images; s->plan = out.belt; s->plan_on = plan_on; s->st = tr.stats;
         s->processed = processed; s->stale = stale;
+        s->beam = !beam ? -1 : io_ok && (io.status & DES_IO_ST_IR1_BLOCKED) ? 1 : 0;
         tr.retire(des_step_pos(&hw) * mmps);
         const double end = mono_s();
         s->work_ms = (end - t0) * 1e3;
@@ -453,6 +485,16 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
         sh.snap = s;
     }
     if (col) { col->finish(); printf("%s -> %s\n", col->status().c_str(), col->dir.c_str()); }
+    if (beam) {
+        const BeamMonitor::Stats &b = beam->stats;
+        printf("== beam: %llu edges: matched %llu, repeat %llu, no track %llu (vision missed them?), lost %llu; "
+               "tracks past the beam without an edge %llu\n", (unsigned long long)b.edges, (unsigned long long)b.matched,
+               (unsigned long long)b.repeats, (unsigned long long)b.no_track, (unsigned long long)b.lost,
+               (unsigned long long)b.missed);
+        if (b.n_err)
+            printf("   tracking error at the beam (predicted leading edge - beam): mean %+.2f mm, sd %.2f, min %+.2f, "
+                   "max %+.2f over %llu parts\n", b.mean(), b.sd(), b.err_min, b.err_max, (unsigned long long)b.n_err);
+    }
 }
 cv::Scalar color_of(const TrackView &t)
 {
@@ -507,6 +549,8 @@ void draw(cv::Mat &img, const Snapshot &s, const Homography &hinv, double belt_m
     }
     line_at_x(vid, hinv, cfg.tracker.decide_x, "decide", cv::Scalar(255, 255, 255));
     line_at_x(vid, hinv, cfg.picker.pick_x, "pick", cv::Scalar(0, 210, 0));
+    if (s.beam >= 0)   // through-beam: red while something blocks it
+        line_at_x(vid, hinv, cfg.beam.x_mm, "beam", s.beam ? cv::Scalar(0, 0, 255) : cv::Scalar(0, 200, 255));
     // Panel + band, rendered by the worker (~10 / 8 Hz): copy only when the buffer holds an older one (saves ~3 ms).
     const bool new_panel = !s.panel.empty() && s.panel.cols == kPanelW && s.panel.data != b.panel.data;
     const bool new_hmi = !s.hmi.empty() && s.hmi.cols == img.cols && s.hmi.data != b.hmi.data;

@@ -25,11 +25,14 @@ std::string capture_frames(CameraRig &cam, int n, CapturedFrame &f, bool keep_la
 // 4 full frames averaged into an 8-bit gray view (flat-field white level). `sum` is scratch (CV_32F) reused across calls, so the calibration loop allocates it once instead of per stop.
 std::string capture_gray_avg(CameraRig &cam, int discard, cv::Mat &sum, cv::Mat &gray);
 // Still-pose position of the largest fully visible part, median over 7 frames (calib-belt / calib-arm). "" on success.
-std::string still_position(CameraRig &cam, Locator &loc, const AppConfig &cfg, Vec2 &p);
+// h = nullptr: belt-plane mapping (px_to_table, flat paper); &cfg.px_to_part for a part of gear_h_mm (calib-beam).
+// len != nullptr: median long side (round_fit: enclosing-circle diameter).
+std::string still_position(CameraRig &cam, Locator &loc, const AppConfig &cfg, Vec2 &p, const Homography *h = nullptr,
+                           float *len = nullptr);
 // --image: BGR frame + its gray (both are needed: gray for detection, BGR for --dump / draw). false = unreadable.
 bool read_image(const std::string &path, cv::Mat &bgr, cv::Mat &gray);
 // Which default output file a calibration mode would update anyway: calib.json next to the config, the merged calib file, or flat.json / cfg.flat_file.
-enum class CalibDefault : uint8_t { Camera, Belt, Encoder, Flat, Arm };
+enum class CalibDefault : uint8_t { Camera, Belt, Encoder, Flat, Arm, Beam };
 std::string calib_out(const AppConfig &cfg, const Args &a, CalibDefault which);
 // `saved <path>: ok` / `saved <path>: <err>`; ok_extra is appended after "ok" (flat's "flat_file is empty" note).
 void report_saved(const std::string &out, const std::string &err, const char *ok_extra = nullptr);

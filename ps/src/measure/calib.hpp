@@ -101,6 +101,8 @@ EncCalib enc_from_samples(const std::vector<EncSample> &fwd, const std::vector<E
 std::string save_enc_calib(const std::string &path, const EncCalib &e, int rounds, double mm_per_count_sd);
 // Adds "arm": {base_xy, base_yaw_deg, belt_z (if with_belt_z), fit residuals} (des_tool calib-arm). Empty = ok.
 std::string save_arm_calib(const std::string &path, const ArmBaseFit &f, bool with_belt_z);
+// Adds "beam": {x_mm, sd_mm, rounds, part_r_mm, part_y_mm} (des_tool calib-beam: through-beam position). Empty = ok.
+std::string save_beam_calib(const std::string &path, double x_mm, double sd_mm, int rounds, double part_r_mm, double y_mm);
 // Draw detected corners, table axes at the origin and a 50 mm grid onto a BGR image.
 void draw_calib(cv::Mat &bgr, const CalibResult &r);
 

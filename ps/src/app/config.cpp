@@ -155,6 +155,10 @@ std::string load_config(const std::string &path, AppConfig &cfg)
                 if (fcp.gates.size() > 2) return path + ": flaps.gates: at most 2 (des_pwm has 2 channels)";
             }
         if (const json *c = ji::sec(j, "plc")) ji::get(*c, "modbus_port", cfg.plc.modbus_port);
+        BeamConfig &bm = cfg.beam;   // x_mm comes from calib.json (des_tool calib-beam); a hand-set one also counts
+        if (const json *c = sec_gets(j, "beam", "enabled", bm.enabled, "match_mm", bm.match_mm, "expire_mm", bm.expire_mm,
+                                     "miss_mm", bm.miss_mm))
+            if (c->contains("x_mm")) { ji::get(*c, "x_mm", bm.x_mm); bm.calibrated = true; }
         NpuConfig &np = cfg.npu; sec_gets(j, "npu", "enabled", np.enabled, "model", np.model, "core", np.core); StorageConfig &st = cfg.storage;
         if (sec_gets(j, "storage", "enabled", st.enabled, "dir", st.dir, "images", st.images, "jpeg_quality",
                      st.jpeg_quality, "max_queue", st.max_queue, "feed_port", st.feed_port)) {
@@ -205,6 +209,9 @@ std::string load_config(const std::string &path, AppConfig &cfg)
                 const json &ac = c["arm"]; ji::vec2(ac, "base_xy", cfg.arm.base_xy);
                 if (ac.contains("base_yaw_deg")) cfg.arm.base_yaw = ac["base_yaw_deg"].get<float>() * kPi / 180.f;
                 ji::get(ac, "belt_z", cfg.arm.belt_z);
+            }
+            if (c.contains("beam") && c["beam"].contains("x_mm")) {   // des_tool calib-beam
+                ji::get(c["beam"], "x_mm", cfg.beam.x_mm); cfg.beam.calibrated = true;
             }
             cfg.calib_loaded = cp;
         } catch (const std::exception &e) {
@@ -266,6 +273,7 @@ std::string load_config(const std::string &path, AppConfig &cfg)
         cfg.px_to_part = part_homography(cfg.px_to_table, m, axis);
     }
     if (cfg.pick_after_fov > 0) cfg.picker.pick_x = cfg.tracker.fov_x1 + cfg.pick_after_fov;  // after calib.json
+    cfg.beam.fov_x0 = cfg.tracker.fov_x0;
     cfg.picker.tail_x = cfg.tracker.tail_x; cfg.picker.recheck_outlet = 0; cfg.picker.arm_base = cfg.arm.base_xy;
     // after calib.json (calib-arm may have moved it)
     cfg.picker.tangential_first = cfg.arm.max_tilt_deg > 0; cfg.picker.gates.clear();

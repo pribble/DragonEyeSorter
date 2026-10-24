@@ -7,6 +7,7 @@
 #include <string>
 
 #include "arm.hpp"
+#include "beam.hpp"
 #include "geom.hpp"
 #include "picker.hpp"
 #include "sim.hpp"
@@ -899,6 +900,99 @@ static void test_arm_base_fit()
           "points 1 mm apart rejected");
 }
 
+// through-beam monitor (sched/beam.hpp): matching, chatter, unclaimed edges, missed parts, lost edges, statistics
+static Track beam_track(int id, float s, float ext = 16)
+{
+    Track t;
+    t.id = id; t.s = s; t.ext_x = ext; t.n_geom = 1; t.hits = 3; t.state = TrackState::Tracking;
+    return t;
+}
+static void test_beam()
+{
+    BeamConfig c;
+    c.enabled = c.calibrated = true; c.x_mm = 150; c.match_mm = 12; c.expire_mm = 120; c.miss_mm = 25; c.fov_x0 = 0;
+    CHECK(c.active(), "beam active");
+    BeamMonitor bm(c);
+    std::vector<Track> tr;
+    std::vector<BeamResult> out;
+    tr.push_back(beam_track(1, 50));                 // leading edge at the beam when b = 84
+    bm.poll(7, 0, 0, out);                           // first read: old edges are not ours
+    CHECK(out.empty() && bm.stats.edges == 0, "first poll only takes the counter");
+    bm.update(tr, 0, out);
+    CHECK(tr[0].beam == 1, "track upstream of the beam waits (%d)", tr[0].beam);
+    bm.poll(8, 85, 1700, out);                       // edge 1 mm after the predicted one
+    bm.update(tr, 86, out);
+    CHECK(out.size() == 1 && out[0].kind == BeamKind::Matched && out[0].track == 1, "edge matched to track 1");
+    CHECK(std::fabs(out[0].err - 1.f) < 1e-3f && out[0].enc == 1700, "provisional error +1 mm (%.3f)", out[0].err);
+    CHECK(tr[0].beam == 2 && tr[0].beam_b == 85, "track marked matched at the edge's belt position");
+    tr[0].s = 49.5f;                                 // s keeps averaging after the match: the record uses the final one
+    CHECK(std::fabs(beam_track_err(tr[0], c.x_mm) - 0.5f) < 1e-3f, "final error follows s (%.3f)", beam_track_err(tr[0], c.x_mm));
+    out.clear();
+    bm.poll(9, 100, 0, out);                         // trailing teeth chatter while the part still covers the beam
+    bm.update(tr, 101, out);
+    CHECK(out.size() == 1 && out[0].kind == BeamKind::Repeat && out[0].track == 1, "chatter = repeat");
+    out.clear();
+    bm.poll(10, 300, 0, out);                        // something crossed with no track around
+    bm.update(tr, 350, out);
+    CHECK(out.empty(), "unclaimed edge waits (expire after 120 mm)");
+    bm.update(tr, 430, out);
+    CHECK(out.size() == 1 && out[0].kind == BeamKind::NoTrack, "unclaimed edge -> no_track");
+    out.clear();
+    tr.push_back(beam_track(2, -100));               // tracked, never breaks the beam
+    bm.update(tr, 200, out);
+    CHECK(tr[1].beam == 1 && out.empty(), "second track waits");
+    bm.update(tr, 259, out);
+    CHECK(tr[1].beam == 1, "25 mm past is still within miss_mm");
+    bm.update(tr, 261, out);
+    CHECK(tr[1].beam == -1 && out.size() == 1 && out[0].kind == BeamKind::Missed && out[0].track == 2,
+          "track past the beam -> missed");
+    out.clear();
+    tr.push_back(beam_track(3, -100));               // first seen with its leading edge 30 mm past the beam (in view)
+    bm.update(tr, 264, out);
+    CHECK(tr[2].beam == -2 && out.empty(), "born past the beam: not applicable");
+    Track mg = beam_track(4, -300); mg.merged = true; tr.push_back(mg);
+    bm.update(tr, 264, out);
+    CHECK(tr[3].beam == -2, "merged blob: not applicable");
+    Track np = beam_track(5, 0); np.n_geom = 0; tr.push_back(np);
+    bm.update(tr, 0, out);
+    CHECK(tr[4].beam == 0, "track without a position is not classified yet");
+    bm.poll(13, 500, 0, out);                        // three edges between two reads: two are gone
+    CHECK(bm.stats.lost == 2 && !out.empty() && out.back().kind == BeamKind::Lost && out.back().n == 2, "jump of 3 = 2 lost");
+    out.clear();
+    bm.poll(0, 0, 0, out);                           // counter cleared on the board
+    bm.poll(1, 600, 0, out);
+    CHECK(bm.stats.edges == 7, "cleared counter restarts (%llu edges)", (unsigned long long)bm.stats.edges);
+    bm.finalize(tr[0]);
+    bm.finalize(tr[1]);                              // not matched: no error
+    CHECK(bm.stats.n_err == 1 && std::fabs(bm.stats.mean() - 0.5) < 1e-6, "statistics from matched records only");
+    Track g = beam_track(6, 0, 10); g.meas.valid = true; g.meas.kind = 'g'; g.meas.size = 31.95f;
+    CHECK(std::fabs(beam_part_r(g) - 15.975f) < 1e-4f, "measured gear: R = OD / 2");
+    // beam upstream of the camera view: the edge comes first, the track later
+    BeamConfig u = c;
+    u.x_mm = -50; u.fov_x0 = 0;
+    BeamMonitor bu(u);
+    std::vector<Track> tu;
+    bu.poll(0, 0, 0, out);
+    out.clear();
+    bu.poll(1, 10, 0, out);
+    bu.update(tu, 10, out);
+    CHECK(out.empty(), "edge before any track waits");
+    tu.push_back(beam_track(7, -75.5f));             // lead at b = 10: -75.5 + 10 + 16 = -49.5
+    bu.update(tu, 80, out);
+    CHECK(tu[0].beam == 2 && out.size() == 1 && out[0].kind == BeamKind::Matched && std::fabs(out[0].err - 0.5f) < 1e-3f,
+          "upstream beam: late track claims the earlier edge (%d)", tu[0].beam);
+    // two edges of one part inside the window: the first one (FIFO) is its edge, the second a repeat
+    BeamMonitor b2(c);
+    std::vector<Track> t2{beam_track(8, 50)};
+    out.clear();
+    b2.poll(0, 0, 0, out);
+    b2.update(t2, 0, out);
+    b2.poll(1, 80, 0, out);                          // 4 mm early (a bounce before the real edge)
+    b2.poll(2, 84.5, 0, out);
+    b2.update(t2, 85, out);
+    CHECK(t2[0].beam == 2 && t2[0].beam_b == 80, "first edge in the window wins");
+    CHECK(out.size() == 2 && out[1].kind == BeamKind::Repeat, "second edge of the same part = repeat");
+}
 int main()
 {
     test_geom();
@@ -916,5 +1010,6 @@ int main()
     test_picker_tangential();
     test_arm();
     test_arm_base_fit();
+    test_beam();
     return test_summary();
 }

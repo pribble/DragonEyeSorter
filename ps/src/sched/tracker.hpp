@@ -51,6 +51,10 @@ struct Track {
     float cls_conf = 0;                    // mean confidence of the voted class
     uint32_t first_frame = 0, last_frame = 0;
     PartMeasure meas;       // filled by the app (measure/track_measure) while the part crosses the camera
+    // through-beam (sched/beam.hpp, BeamMonitor): 0 not seen yet, 1 waiting for the beam, 2 matched (beam_b = belt
+    // travel at its edge), -1 passed the beam without an edge, -2 not applicable (first seen past the beam / merged)
+    int8_t beam = 0;
+    double beam_b = 0;
 
     void set_why(const char *w)   // bounded copy: no overflow, the tail is dropped
     {

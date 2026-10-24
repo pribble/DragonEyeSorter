@@ -34,6 +34,7 @@ struct Args {
     int steps = 0;                // calib-belt: long move (0 = to ~75 % of the view)
     float marker_h = -1;          // calib-arm: height of the marker top above the belt (mm); < 0 = keep belt_z
     float carry_mm = 0;           // calib-arm: belt carries each located marker this far downstream to the arm
+    float part_od = 0;            // calib-beam: caliper OD of the gear (0 = from the image)
 };
 extern volatile sig_atomic_t g_stop;   // set by on_sigint; every mode's loop polls it
 void on_sigint(int sig);
