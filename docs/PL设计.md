@@ -8,7 +8,9 @@
 
 **板端当前 v15（最新）**：v15 = 第三轮重构源码（`9e01d8f`，自研 + 厂家明文 RTL + `pl/sim` 框架）全量重编 + 上板（`BOOT.bin` `b0aef232…`，比特流 `e14fbb65…`；56m25s、0 error）；`pl_check.sh` 21 项回归通过、2min soak 0 error；寄存器 `VERSION` 仍 12（接口未变）。自研各域 0 违例；v14 的 HDMI 串行 −0.164ns 与 PS HP0→NPU −0.133ns 厂家路径端点已消失，NPU 软核域内 −0.093ns / 42 端点仍属厂家加密 IP；TMDS 视觉待复核 ⚠。逐版改动与上板记录见 [pl/soc_base/README](../pl/soc_base/README.md) 与 [log/](log/README.md)。2026-10-24 又对**厂家明文 RTL（非 des）**做了一轮零行为重构（源码级），随后第三轮 PL 重构把**自研 `des/` 与顶层、厂家明文 RTL、`pl/sim` 仿真框架**一起再精简（零外部行为变化）——两轮当时均未重编比特流，源码由 v15 全量重编 + 上板转正，见 [log/2026-10-24-PL厂家RTL重构](log/2026-10-24-PL厂家RTL重构.md) · [log/2026-10-24-PL第三轮重构](log/2026-10-24-PL第三轮重构.md) · [log/2026-10-24-PL第三轮重编上板v15](log/2026-10-24-PL第三轮重编上板v15.md)。
 
-**CAN 管脚（最新版已引到）**：底板 CAN 收发器接 PL 管脚 F20（TX）/ F19（RX），LVCMOS33、RX 上拉；RS485 接 L17 / N16 / N15（硬件手册 p21），尚未引出（要先定 PL UART 还是 PS UART 经 EMIO）。官方 demo 块设计没开 PS CAN（`CAN0_Available=0`，收发脚未约束）→ 最新版把 PS 硬核 `can0_tx_out` / `can0_rx_in` 经块设计引到 `system_top`，再到 F20 / F19。单节点验证：无人应答时发送错误计数按 CAN 规则累加、进 ERROR-PASSIVE 不进 BUS-OFF → 收发回路已通（明细见 log）；10-23 J11 接 PC USB-CAN 双节点实测通过（240/240，见 [测试与验证](测试与验证.md)）。注意：① ipms_canfd 驱动的错误帧把 ACK 位置码 0x19 写进 data[2]，candump 会显示成 bit-error，别被误导；② 驱动只支持 FD 模式，`ip link … fd off` 直接 EINVAL，收发经典帧不受影响（`can_up.sh` 照用）；③ 底板 B2B 管脚表（20250526）把 CAN / HDMI 管脚写反，以硬件手册 + 实测为准。
+**v16（源码已完成、仿真全过，比特流待编 / 上板前先问用户）**：新增 `des_485`（RS485 Modbus-RTU，窗口 `0x6xx`，J11 第 5 / 6 位）与帧起始锁存的编码器计数（`CAP_ENC0/1`），`VERSION` 16；对原有全部输出的整顶层等价回归逐拍一致。分支 `v16-rs485`，回退点 tag `v15-board-20261024` + 本机 `work/v15_archive/`。见下面「RS485 `des_485`」。
+
+**CAN 管脚（最新版已引到）**：底板 CAN 收发器接 PL 管脚 F20（TX）/ F19（RX），LVCMOS33、RX 上拉；RS485 接 L17（TX）/ N16（RX）/ N15（DE，1 = 发送；与 /RE 并联，原理图 p14）（硬件手册 p21），v16 起由 PL `des_485` 驱动。官方 demo 块设计没开 PS CAN（`CAN0_Available=0`，收发脚未约束）→ 最新版把 PS 硬核 `can0_tx_out` / `can0_rx_in` 经块设计引到 `system_top`，再到 F20 / F19。单节点验证：无人应答时发送错误计数按 CAN 规则累加、进 ERROR-PASSIVE 不进 BUS-OFF → 收发回路已通（明细见 log）；10-23 J11 接 PC USB-CAN 双节点实测通过（240/240，见 [测试与验证](测试与验证.md)）。注意：① ipms_canfd 驱动的错误帧把 ACK 位置码 0x19 写进 data[2]，candump 会显示成 bit-error，别被误导；② 驱动只支持 FD 模式，`ip link … fd off` 直接 EINVAL，收发经典帧不受影响（`can_up.sh` 照用）；③ 底板 B2B 管脚表（20250526）把 CAN / HDMI 管脚写反，以硬件手册 + 实测为准。
 
 ### 官方源码可复用性（`soc_prj/src/` 清点）
 
@@ -28,7 +30,7 @@
 | `des_io` | 急停去抖 + 锁存（锁存期间步进停住）、对射 / 限位去抖 + 边沿捕获、编码器 4 倍频 + 滤波 + Z 相 + 测速 | 自研 | P0 / P1 | ✅ 上板；编码器已接、手滚 4000 计数/圈；急停实按 PL 停步进已测（[log/2026-10-17](log/2026-10-17-相机安装与标定试跑.md)），界面复位流程待测；对射待接 |
 | `des_pwm` | 两个侧边导流挡板的舵机 PWM，按带位置触发 | 自研 | P1 | ✅ 上板（读回 / 50Hz）；挡板舵机未接 |
 | `des_vision` | 边缘 / 二值显示 + ROI 投影测尺寸 | 自研 | P1 | ✅ 上板，6 种模式实画面验证、统计读回正确 |
-| `rs485_modbus` | Modbus-RTU 主站（寄存器窗口 `0x6xx`） | 自研 | P1 | ⬜ 未做（网口 Modbus-TCP 从站已在 PS 侧，见 [软件与UI](软件与UI.md)） |
+| `des_485` | RS485 Modbus-RTU 收发：硬件 DE、CRC16 生成 / 校验、3.5 字符判帧、应答超时、校验位、监听帧（寄存器窗口 `0x6xx`） | 自研 | P1 | 🟡 v16：仿真 60 项过、整顶层等价回归过；比特流待上板 |
 | `awb_seq_div` | ISP 自动白平衡逐位除法器（替换厂家流水线除法器） | 自研 | P0 | ✅ 在用，省约 4k LUT |
 | `img_morph` / `blob_ccl` / `roi_scaler` / `tensor_pack` / `overlay` | 形态学、连通域、ROI 缩放、张量打包、叠加 | 自研 | P2 | ⬜ 未做（大块图像算法优先放 PS） |
 | `traj_interp` | 多轴时间同步插补（115200 带宽承载不了高频插补点） | 自研 | P2 | ⬜ 未做 |
@@ -64,7 +66,7 @@
 | 偏移 | R/W | 名称 | 说明 |
 |---|---|---|---|
 | 0x000 | R | `DES_ID` | 固定 `0x44455301`（"DES" + 版本 01） |
-| 0x004 | R | `DES_VERSION` | 当前 12（编码见下） |
+| 0x004 | R | `DES_VERSION` | v15 板上 12；v16 = 16（编码见下） |
 | 0x008 | R/W | `SCRATCH` | 读写测试 |
 | 0x00C | R | `FREE_CNT` | 75MHz 自由计数器（硬件时间戳 / 延迟测量） |
 | 0x010 | R/W | `LED_CTRL` | b0 = 接管 LED1，b1 = LED1 亮灭 |
@@ -75,9 +77,10 @@
 | 0x024 | R | `CAP_FCNT` | 写模块开始写这一帧时的 `FRAME_CNT` |
 | 0x028 / 0x02C | R | `CAP_T0` / `CAP_T1` | 开始写 / 完成中断时的 `FREE_CNT` |
 | 0x030 / 0x034 | R | `CAP_POS0` / `CAP_POS1` | 开始写 / 完成中断时的带位置（步进 `POS`） |
+| 0x038 / 0x03C | R | `CAP_ENC0` / `CAP_ENC1` | 同一时钟沿的计米轮编码器计数（v16）：图像、步进、编码器三路同刻锁存 |
 | 其余 | R | — | 读回 `0xDEADBEEF` |
 
-`DES_VERSION` 编码：12 = 当前；v8~v10 未改寄存器接口（v10 只去光源输出、未单独上板），PS 只需判断 5 / 6 / 7 / 11（拍摄锁存 / `des_vision` / `des_pwm` / `des_io` 是否存在）。
+`DES_VERSION` 编码：12 = v12~v15（v13~v15 是重构 / 重编，寄存器接口未变）；16 = v16（`CAP_ENC0/1` + `des_485`）；v8~v10 未改寄存器接口（v10 只去光源输出、未单独上板），PS 只需判断 5 / 6 / 7 / 11 / 16（拍摄锁存 / `des_vision` / `des_pwm` / `des_io` / `des_485` 与 `CAP_ENC`）。
 
 **拍摄锁存**：厂家帧写模块 `uidbuf_write` 开始写一帧、完成中断 `f2p_irq` 上升沿各翻转一次，经两级同步进 75MHz 域；开始时锁暂存、完成时整组更新 `CAP_*`，PS 在 `WaitFinish` 返回后有整帧时间读。PS 用 `CAP_POS0/1` 按件所在图像行插值，得该行读出时刻的带位置（卷帘快门）。
 
@@ -188,11 +191,38 @@
 | 0x534 | R | `ID` = 0x494F3031 |
 | 0x538 | R/W | `CFG`：b0 IR1 极性（0 = 低有效，NPN 挡光）/ b1 LIMIT1 极性（0 = 低有效） |
 
+### RS485 `des_485`（`PL_BASE + 0x600`，v16）
+
+[pl/soc_base/src/des/des_485.v](../pl/soc_base/src/des/des_485.v)。板载 SP3485EN（J11 第 5 位 485_A、第 6 位 485_B，板上 R121 120Ω 终端）。PS 只写 PDU（地址、功能码、数据，不含 CRC），其余全在 PL：
+
+- 发前等总线静默 t3.5（`T35_US`，PS 按波特率设：3.5 × 11 bit，>19200 时固定 1750µs）；DE 提前 1 bit 拉高，PDU 后补 CRC16（初值 0xFFFF、反射多项式 0xA001、低字节在前），最后一个停止位结束即放 DE。
+- 要应答时从发完起计 `TIMEOUT_US` 等第一个起始位；收到的帧以 t3.5 静默判结束，CRC 对全部字节（含 CRC）求余为 0 才算对；8 位数据、校验位 无 / 偶 / 奇、1 停止位；校验位或停止位错、超过 64 字节都单独标出。
+- 空闲时总线上出现的帧（PC 当主站）存为监听帧，PS 读后应答清标志；`CTRL` 的 go / 长度和 `TX_BUF` 在传输进行中写入被忽略（不会像 `servo_bus` 那样改到正在发的帧）；`CTRL` b4 中止：A/B 接反或终端无偏置时总线可能一直不静默，PS 驱动超期后中止并报错。
+- 仿真 [pl/sim/tb_des_485.v](../pl/sim/tb_des_485.v)（`run_sim.sh rs485`）60 项：行为级从站逐位核对线上字节、CRC 金标准（01 05 00 00 FF 00 → 8C 3A；01 03 00 00 00 0A → C5 CD）、校验位、DE 提前 1 bit / 停止位结束释放，以及应答正确、CRC 错、短帧、校验位错、超时（误差 <1%）、溢出、广播、监听帧、t3.5 间隔、忙时写保护、总线卡低中止。
+
+| 偏移 | R/W | 说明 |
+|---|---|---|
+| 0x600 | W | `CTRL`：b0 发送 / b1 要应答 / b2 清计数与结果 / b3 监听帧已读 / b4 中止 / b[14:8] PDU 字节数 1~62 |
+| 0x604 | R | `STATUS`：b0 忙 / b1 完成 / b2 超时 / b3 CRC 错 / b4 应答正确 / b5 校验位或停止位错 / b6 溢出 / b7 有监听帧 / b[15:8] 最近一帧字节数（含 CRC）/ b16 DE / b17 RX 线电平 / b18 正在收 / b19 监听帧 CRC 对 / b20 监听帧校验或停止位错 |
+| 0x608 | R/W | `TIMEOUT_US` 应答超时（默认 100000） |
+| 0x60C | R/W | `DIV` 每 bit 时钟数（75MHz / 波特率，默认 7813 = 9600） |
+| 0x610 | R/W | `CFG` b[1:0] 校验：0 无 / 1 偶 / 2 奇 |
+| 0x614 | R/W | `T35_US` 帧间静默（默认 4011） |
+| 0x618 / 0x61C | R | `TX_T0` / `TX_T1`：第一个起始位 / 最后停止位结束时的 `FREE_CNT` |
+| 0x620 / 0x624 | R | `RX_T0` / `RX_T1`：最近一帧第一个起始位 / 最后一个字节时的 `FREE_CNT`（应答时延 = `RX_T0 − TX_T1`） |
+| 0x628~0x63C | R | 计数：已发 / 应答正确 / 超时 / CRC 错 / 校验或停止位错 / 监听帧 |
+| 0x640 | R | `ID` = 0x34383501 |
+| 0x644 | R | `QUIET_US` 总线已静默的微秒数（饱和 65535） |
+| 0x680~0x6BF | W/R | `TX_BUF` 64 字节（小端字） |
+| 0x6C0~0x6FF | R | `RX_BUF` 最近一帧 64 字节（含 CRC） |
+
+PS：`des_hw` 的 `des_485_config / des_485_xfer / des_485_listen`（`DES_VERSION_485` = 16）；调试 `desreg 485 [cfg|tx|bc|soak|listen|clr]`；应用层（继电器模块 + 三色灯 + CAN / Modbus-TCP 转发）在 `ps/src/app/rs485_io` 与 `ps/src/hw/modbus_rtu`，见 [软件与UI](软件与UI.md)。
+
 ## 分段与扩展登记
 
-分段固定：`0x0xx` des_regs / `0x1xx` servo_bus / `0x2xx` stepper_ctrl / `0x3xx` des_vision / `0x4xx` des_pwm / `0x5xx` des_io；窗口 `0x8030_1000~0x8030_1FFF`（4KB）。新模块从 `0x6xx` 起，**实现前先在此登记偏移**，并与 `ps/src/hw/` 头文件同一次提交更新。
+分段固定：`0x0xx` des_regs / `0x1xx` servo_bus / `0x2xx` stepper_ctrl / `0x3xx` des_vision / `0x4xx` des_pwm / `0x5xx` des_io / `0x6xx` des_485；窗口 `0x8030_1000~0x8030_1FFF`（4KB）。新模块从 `0x7xx` 起，**实现前先在此登记偏移**，并与 `ps/src/hw/` 头文件同一次提交更新。
 
 | 偏移 | 模块 | 说明 |
 |---|---|---|
 | `0x5xx` | `des_io` | 见上表；PS 侧 `ps/src/hw/des_regs.h` 的 `DES_IO_*` |
-| `0x6xx` | `rs485_master`（规划） | 结构同 `servo_bus`，见 [软件与UI](软件与UI.md) 工业总线一节 |
+| `0x6xx` | `des_485`（v16） | 见上表；PS 侧 `DES_485_*` |
