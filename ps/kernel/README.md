@@ -11,3 +11,5 @@ cd ps/kernel
 make build KERNELDIR=<内核树路径> CROSS_PREFIX=<aarch64工具链前缀>
 # 产物 mipicam.ko；板上： rmmod mipicam && insmod mipicam.ko
 ```
+
+**已知问题（厂家代码，刻意不改）**：读写寄存器 ioctl 不检查偏移、mmap 不检查长度、`devm_ioremap_resource` 返回值不查、打开计数与中断标志没加锁。设备只有 root 能开、且同一时刻只有一个程序在用（des_app / des_tool 启动时互斥），实测 2h 60fps 只跳 13 帧；改它要重编内核模块并替换板上 `.ko`，风险大于收益。真要改驱动（如上面的帧时间戳）时一起修。

@@ -22,8 +22,7 @@ static int64_t realtime_ms()
     return int64_t(ts.tv_sec) * 1000 + ts.tv_nsec / 1000000;
 }
 
-// part_log.cpp still defines the wall clock with strong symbols: weak keeps des_app / des_tool linking until the area
-// agents delete theirs (then these take over); no call-site change needed.
+// The only definition of the wall clock (part_log.cpp's copy is gone); kept weak so a test can stub it.
 #define DES_UTIL_WEAK __attribute__((weak))
 
 DES_UTIL_WEAK void set_wall_offset_ms(int64_t offset_ms)

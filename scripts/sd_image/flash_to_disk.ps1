@@ -8,6 +8,7 @@ param(
     [string]$Img = "$PSScriptRoot\sd_persistent.img"
 )
 $ErrorActionPreference = 'Stop'
+$rc = 1
 Start-Transcript -Path "$PSScriptRoot\flash_log.txt" -Force | Out-Null
 
 Add-Type @"
@@ -74,8 +75,9 @@ try {
     foreach ($h in $held) { $h.Close() }
     $ha = [BitConverter]::ToString($md5a.Hash); $hb = [BitConverter]::ToString($md5b.Hash)
     "image md5 = $ha"; "disk  md5 = $hb"
-    if ($ha -eq $hb) { "VERIFY OK" } else { "VERIFY FAILED" }
+    if ($ha -eq $hb) { "VERIFY OK"; $rc = 0 } else { "VERIFY FAILED" }
     Update-HostStorageCache
 }
 catch { "ERROR: $_" }
 finally { Stop-Transcript | Out-Null }
+exit $rc   # 0 only after a matching read-back; 1 on a mismatch or any error

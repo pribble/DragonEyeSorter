@@ -21,6 +21,8 @@ SVC_PAUSED=0
 if [ -x ./des_service.sh ] && ./des_service.sh status | grep -q "^des_service: running"; then
     ./des_service.sh stop > /dev/null && SVC_PAUSED=1
 fi
+# every exit path (can_up failing included) brings the service back; Ctrl-C below only ends the run early
+trap '[ $SVC_PAUSED -eq 1 ] && ./des_service.sh start > /dev/null; SVC_PAUSED=0' EXIT
 
 "$DIR/can_up.sh" "$IF" "$MODE" > "$OUT/can_up.txt" 2>&1 || { cat "$OUT/can_up.txt"; exit 1; }
 ip -s -d link show "$IF" > "$OUT/can_before.txt"
@@ -71,4 +73,4 @@ ip -s -d link show "$IF" > "$OUT/can_after.txt"
     # interface counters since can_up (loopback: every TX frame should come back as RX)
     awk '/RX:/ {getline; rx = $2} /TX:/ {getline; tx = $2} END {printf "can0 packets TX %d RX %d (loopback difference %d)\n", tx, rx, tx - rx}' "$OUT/can_after.txt"
 } | tee "$OUT/summary.txt"
-[ $SVC_PAUSED -eq 1 ] && ./des_service.sh start > /dev/null
+# the EXIT trap restarts the service

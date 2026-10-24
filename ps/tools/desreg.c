@@ -194,12 +194,19 @@ int main(int argc, char **argv)
         rc = 2;
     } else if (argc == 1) {
         rc = status();
-    } else if (!strcmp(cmd, "r") && argc == 3) {
-        printf("0x%08x\n", rd(strtoul(argv[2], NULL, 0)));
-    } else if (!strcmp(cmd, "w") && argc == 4) {
-        uint32_t off = strtoul(argv[2], NULL, 0), v = strtoul(argv[3], NULL, 0);
+    } else if ((!strcmp(cmd, "r") && argc == 3) || (!strcmp(cmd, "w") && argc == 4)) {
+        /* raw access: only the mapped window (DES_PL_SPAN), word aligned - anything else would fault or alias */
+        uint32_t off = strtoul(argv[2], NULL, 0);
+        if (off >= DES_PL_SPAN || (off & 3)) {
+            fprintf(stderr, "offset 0x%x outside 0x000..0x%03x or not 4-byte aligned\n", off, DES_PL_SPAN - 4);
+            rc = 1;
+        } else if (cmd[0] == 'r') {
+            printf("0x%08x\n", rd(off));
+        } else {
+        uint32_t v = strtoul(argv[3], NULL, 0);
         des_wr(&hw, off, v);
         printf("0x%03x <- 0x%08x, readback 0x%08x\n", off, v, rd(off));
+        }
     } else if (!strcmp(cmd, "led") && argc == 3) {
         uint32_t v = !strcmp(argv[2], "on") ? 3 : !strcmp(argv[2], "off") ? 1 : 0;
         des_wr(&hw, DES_REG_LED_CTRL, v);

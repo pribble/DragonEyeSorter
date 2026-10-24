@@ -17,9 +17,9 @@ echo "" >> "$OUTPUT_FILE"
 
 # 转换 .env 为 Makefile 格式
 grep -v '^#' "$ENV_FILE" | grep -v '^[[:space:]]*$' | while IFS='=' read -r key value; do
-    # 移除首尾空格
-    key=$(echo "$key" | xargs)
-    value=$(echo "$value" | xargs)
+    # 移除首尾空格（含 CRLF 的 \r）和成对引号。不用 xargs：它把反斜杠当转义吃掉，D:\ANLU\FD 会变成 D:ANLUFD
+    key=$(printf '%s' "$key" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+    value=$(printf '%s' "$value" | sed -E "s/^[[:space:]]+//; s/[[:space:]]+\$//; s/^\"(.*)\"\$/\\1/; s/^'(.*)'\$/\\1/")
 
     # 处理 Windows 路径（替换反斜杠为正斜杠）
     value=$(echo "$value" | sed 's|\\|/|g')

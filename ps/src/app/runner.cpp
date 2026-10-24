@@ -175,7 +175,9 @@ void Runner::handle_can(double now)
         case CANP_ID_RECIPE: result = select_recipe(f.data[0], "PLC"); send_ack(canp_ack(f.id, f.data[1], result)); break;
         case CANP_ID_PLC_HB: last_plc_hb_ = now; break;
         case CANP_ID_TIME: {   // the PLC's wall clock (no RTC here): records use our clock + this offset
-            const bool first = !wall_synced(); wall_apply_ms(canp_time_ms(&f), "PLC");
+            const int64_t ms = canp_time_ms(&f);
+            if (f.len < 6 || ms < 1700000000000LL) { last_event_ = "PLC TIME frame ignored (not a clock)"; break; }   // as Modbus
+            const bool first = !wall_synced(); wall_apply_ms(ms, "PLC");
             if (first) { last_event_ = "clock synced from PLC"; } break;
         }
         default: break;
@@ -288,7 +290,7 @@ void Runner::cycle(Tracker &tr, Picker &pk)
         jog_dir_ = 0; Picker::Input in = picker_input(&belt_, hw_, cfg_.belt);
         in.cruise_mm_s = speed_mm_s_ > 0 ? speed_mm_s_ : cfg_.belt.run_speed;
         in.arm_idle = !arm_busy_; in.arm_clear = arm_clear_;
-        Picker::Output out = pk.tick(tr, in);
+        Picker::Output out = pk.tick(tr, in); plan_ = out.belt;
         // one pass over the tracks: speed adaptation (nearest decided pick ahead) + newly decided parts
         double nearest_pick = -1; for (const Track &t : tr.tracks()) {
             if (t.state == TrackState::Decided && t.disp == Disposition::Pick) {

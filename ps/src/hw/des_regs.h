@@ -67,7 +67,7 @@
 #define DES_VIS_SUMY         0x334u
 #define DES_VIS_EDGES        0x338u
 #define DES_VIS_CYCLES       0x33Cu    /* R  pixel clocks per frame */
-#define DES_VIS_ACTIVE       0x340u    /* R  settings in use: [2:0] mode [8] full [23:16] threshold */
+#define DES_VIS_ACTIVE       0x340u    /* R  settings in use: [2:0] mode [8] full [23:16] threshold [27:24] lanes (0 = 4) */
 #define DES_VIS_ID_VALUE     0x56495331u
 
 /* des_pwm, PL_BASE + 0x400 (v7): belt-end flap servos (2 x 50 Hz) (pl/soc_base/src/des/des_pwm.v);

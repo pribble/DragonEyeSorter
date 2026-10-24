@@ -6,6 +6,8 @@
 #include "armnnUtils/DataLayoutIndexed.hpp"
 #include "executor.hpp"
 #include <cstdlib>
+#include <stdexcept>
+#include <string>
 #include "armnnALUtils/cma_mem_init.hpp"
 
 // DragonEyeSorter: ARMNN_LOG=trace|debug|info|warning lowers the log threshold (diagnosing model loading)
@@ -39,13 +41,17 @@ void NPUExecutor::prepare(armnn::INetworkPtr network, const std::vector<armnn::B
     op_options.SetExportEnabled(true);
 
     armnn::IOptimizedNetworkPtr optNet = armnn::Optimize(*network, backends, m_runtime->GetDeviceSpec(), op_options);
+    if (!optNet) throw std::runtime_error("ArmNN Optimize failed (no backend supports the network)");
 
     // Load graph into runtime
     armnn::INetworkProperties networkProperties_default(
         false,
         armnn::MemorySource::Malloc, armnn::MemorySource::Malloc);
     std::string errorMsg;
-    m_runtime->LoadNetwork(m_netId, std::move(optNet), errorMsg, network_properties.has_value() ? network_properties.value() : networkProperties_default);
+    const armnn::Status st = m_runtime->LoadNetwork(m_netId, std::move(optNet), errorMsg,
+        network_properties.has_value() ? network_properties.value() : networkProperties_default);
+    if (st != armnn::Status::Success)   // otherwise every later inference fails with no hint why (caller: npu.cpp catch)
+        throw std::runtime_error("ArmNN LoadNetwork failed: " + errorMsg);
 }
 
 // binding info -> one CMA buffer + tensor per input / output

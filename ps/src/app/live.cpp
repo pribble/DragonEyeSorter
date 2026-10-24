@@ -57,6 +57,7 @@ struct Snapshot {
     uint64_t measured = 0, meas_failed = 0;
     uint64_t logged = 0, log_images = 0;
     BeltPlan plan;
+    bool plan_on = true;                        // run mode: false while the line is not running (no plan)
     Tracker::Stats st;
     uint64_t processed = 0, stale = 0;
     cv::Mat panel;                              // status panel, rendered by the worker (~10 Hz), blitted per frame
@@ -122,7 +123,7 @@ cv::Mat render_panel(const Snapshot &s, const Shared &sh, uint32_t pl_frame, uin
     snprintf(b, sizeof b, "pick %llu   flap %llu   recheck %llu", (unsigned long long)s.st.decided_pick,
              (unsigned long long)s.st.decided_flap, (unsigned long long)s.st.decided_recheck);
     line(b, white);
-    snprintf(b, sizeof b, "noise %llu   belt plan %s", (unsigned long long)s.st.noise, plans[s.plan.kind]);
+    snprintf(b, sizeof b, "noise %llu   belt plan %s", (unsigned long long)s.st.noise, s.plan_on ? plans[s.plan.kind] : "-");
     line(b, white);
     snprintf(b, sizeof b, "saved %llu  (images %llu)", (unsigned long long)s.logged, (unsigned long long)s.log_images);
     line(b, white, 0.62, 48);
@@ -262,8 +263,10 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
                 ns.n++; ns.npu_ms += v.npu_ms; ns.lat_ms += v.lat_ms;
             }
         Picker::Output out;
+        bool plan_on = true;
         if (runner) {
             runner->cycle(tr, pk);   // state machine, belt, arm, CAN
+            plan_on = runner->state() == CANP_ST_RUN; out.belt = runner->belt_plan();   // the plan Runner applied
         } else {
             Picker::Input in = picker_input(nullptr, &hw, cfg.belt);
             out = pk.tick(tr, in);
@@ -431,7 +434,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
         s->meas_ms = mres.empty() ? 0 : meas.last_ms;
         s->measured = meas.measured; s->meas_failed = meas.failed;
         s->npu = npu.running(); s->npu_ms = npu.last_npu_ms; s->npu_runs = npu.runs;
-        s->logged = plog.written; s->log_images = plog.images; s->plan = out.belt; s->st = tr.stats;
+        s->logged = plog.written; s->log_images = plog.images; s->plan = out.belt; s->plan_on = plan_on; s->st = tr.stats;
         s->processed = processed; s->stale = stale;
         tr.retire(des_step_pos(&hw) * mmps);
         const double end = mono_s();

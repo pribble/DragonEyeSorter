@@ -228,7 +228,12 @@ def main(argv=None) -> int:
     check("docx 存在", DOCX.is_file(), DOCX.name)
     check("pdf 存在", PDF.is_file(), PDF.name)
     if not (DOCX.is_file() and PDF.is_file()):
-        return flush(out_path, lines)
+        # 产物缺失：后面的检查都做不了，但必须按失败退出（退出码 1），否则门禁会把「没生成」当通过
+        missing = [r for r in results if r[1] is False]
+        for n, _, d in missing:
+            emit("FAIL  %s —— %s" % (n, d))
+        emit("结论：有不通过项：" + "; ".join(n for n, _, _ in missing))
+        return flush(out_path, lines, missing)
     head = PDF.read_bytes()[:5]
     check("PDF 文件头 %PDF-", head == b"%PDF-", repr(head))
     check("PDF ≤ 50MB", PDF.stat().st_size <= 50 * 1024 * 1024,

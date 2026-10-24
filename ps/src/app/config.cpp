@@ -42,6 +42,7 @@ std::string load_rules(const std::string &path, AppConfig &cfg)
     json j;
     try { f >> j; } catch (const std::exception &e) { return path + ": " + e.what(); }
     auto &rules = cfg.tracker.rules; rules.clear();
+    try {   // a missing / mistyped key (j.at) must reach the caller as an error, not terminate des_app
     for (const json &l : j.at("labels")) {
         const size_t id = l.at("id").get<size_t>();
         if (rules.size() <= id) rules.resize(id + 1);
@@ -51,6 +52,10 @@ std::string load_rules(const std::string &path, AppConfig &cfg)
         const int idx = index_of(action == "arm_pick" ? cfg.bins : cfg.outlets, dest);
         const bool sorts = (action == "arm_pick" || action == "flap") && idx >= 0;
         r.disp = sorts ? (action == "arm_pick" ? Disposition::Pick : Disposition::Flap) : Disposition::Recheck; r.dest = sorts ? idx : 0;
+    }
+    } catch (const std::exception &e) {
+        rules.clear();   // no half table: every class then goes to recheck
+        return path + ": " + e.what();
     }
     return "";
 }

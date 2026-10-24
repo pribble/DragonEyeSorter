@@ -44,6 +44,7 @@ public:
     uint8_t select_recipe(int id, const char *who);
     int take_recipe();                      // id accepted since the last call, -1 = none
     uint8_t state() const { return state_; }
+    const BeltPlan &belt_plan() const { return plan_; }   // the picker's last belt plan (valid while RUN)
     bool arm_busy() const { return arm_busy_; }   // a pick is being executed (the manual arm page waits)
     void set_home(const std::array<int, 6> &counts);   // HMI arm page: ready pose of every following pick
     double speed_mm_s() const { return speed_mm_s_; }
@@ -88,6 +89,7 @@ private:
     std::vector<uint16_t> ir_;   // Modbus input-register image, reused every cycle
     FlapSequencer flaps_;
     std::vector<FlapEvent> flap_events_;   // the picker's last flap events (empty when the line is not running)
+    BeltPlan plan_;              // the picker's last belt plan (HMI panel; worker thread only)
     int flap_us_[2] = {-1, -1};  // last written pulse widths
     bool pwm_enabled_ = false;
     std::thread arm_thread_;
