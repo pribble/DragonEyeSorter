@@ -61,8 +61,8 @@ OPENCV := $(OPENCV_LIB)
 RPATH  := -Wl,-rpath,/opt/armnn_lib/lib:/opt/ffmpeg_opencv4.7.0_aarch64/lib
 
 # 头文件搜索路径（平铺 include）。kernel/ 只为了 src/vision/mipi_camera.cpp 拿到唯一一份 ioctl 头，
-# vendor/third_party 是 nlohmann json.hpp（app / measure / ui / vision 都用），tests 放共享断言宏。
-INC := -Isrc/app -Isrc/hw -Isrc/sched -Isrc/measure -Isrc/ui -Isrc/vision -Ikernel -Itests -Ivendor/third_party
+# vendor/ 是 nlohmann json.hpp（app / measure / ui / vision 都用），tests 放共享断言宏。
+INC := -Isrc/app -Isrc/hw -Isrc/sched -Isrc/measure -Isrc/ui -Isrc/vision -Ikernel -Itests -Ivendor
 
 # ---------------------------------------------------------------- sources (wildcard)
 ENTRY_APP := src/app/main.cpp

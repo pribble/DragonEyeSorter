@@ -43,7 +43,7 @@ ps/
 ├── tests/          # test_scheduler / test_modbus / test_calib / test_measure / test_belt_hil /
 │                   #   test_can / test_npu / test_servo_gap
 ├── kernel/         # mipicam 驱动源码 + 唯一一份 mipicam_module.h
-└── vendor/         # third_party/json.hpp（编入）+ demo/（厂家 demo 未编入件）
+└── vendor/         # json.hpp（nlohmann 单头，编入；厂家 demo 留档已删）
 ```
 
 **读产品逻辑从 `src/app/{main,live,runner}.cpp` 开始，运维命令从 `src/app/tool_main.cpp` 开始。**
@@ -129,7 +129,7 @@ ps/
 
 ## src/vision/ 的定位与改造边界
 
-`src/vision/` 来自安路官方 face_detection demo，是**检测流水线的改造起点**，已改成零件检测。只放编进二进制的 4 个 `.cpp`：取帧 `mipi_camera`（`/dev/mipicam` DMA，`icamera::enumerate_device` 的定义并在这里）、推理 `executor`（`NPUExecutor`，ArmNN + Alnpu）、`flow_common_types`、`logger_forward`；显示不走厂家的 `ihdmi`（HDMI 输出是 `src/ui/display.cpp`）。厂家 demo 的其余现成件（前处理 `preprocess`、8 缓冲流水 `BufferedNPUExecutor`、后处理）在 [vendor/demo](vendor/demo/README.md)，**没编入**。
+`src/vision/` 来自安路官方 face_detection demo，是**检测流水线的改造起点**，已改成零件检测。只放编进二进制的 4 个 `.cpp`：取帧 `mipi_camera`（`/dev/mipicam` DMA，`icamera::enumerate_device` 的定义并在这里）、推理 `executor`（`NPUExecutor`，ArmNN + Alnpu）、`flow_common_types`、`logger_forward`；显示不走厂家的 `ihdmi`（HDMI 输出是 `src/ui/display.cpp`）。厂家 demo 的其余现成件（前处理 `preprocess`、8 缓冲流水 `BufferedNPUExecutor`、后处理）没编入，留档已从仓库删除（需要时从 git 历史或厂家 SDK 找回）。
 
 ## 编译与部署
 

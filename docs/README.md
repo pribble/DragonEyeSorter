@@ -43,7 +43,7 @@
 | [../AGENTS.md](../AGENTS.md) | 给 AI 的常驻说明：事实纪律、按任务读的路由表、红线、提交纪律（细则全在本文档地图的各篇里） |
 | [log/README.md](log/README.md) | log 的格式、主题索引与沿革归属 |
 | [pl/README.md](../pl/README.md) | PL 目录布局、工程组织、资源预算；[soc_base](../pl/soc_base/README.md) 底板工程与对厂家的改动、[soc_prj_Runs](../pl/soc_base/soc_prj_Runs/README.md) TD 运行目录最小集合 |
-| [ps/README.md](../ps/README.md) | PS 代码地图、四层产物、构建与命令参考；[kernel](../ps/kernel/README.md) mipicam 内核模块；[vendor](../ps/vendor/README.md) 非自研代码边界（含厂家 demo） |
+| [ps/README.md](../ps/README.md) | PS 代码地图、四层产物、构建与命令参考；[kernel](../ps/kernel/README.md) mipicam 内核模块；[vendor](../ps/vendor/README.md) 非自研代码边界（json.hpp） |
 | [scripts/README.md](../scripts/README.md) | `bootbin/` 打包、`sd_image/` 烧卡、`sdk_fix_sonames.sh`；[deploy](../scripts/deploy/README.md) 板端部署清单与上板 |
 | [train/README.md](../train/README.md) | 合成数据、训练、导出 + UINT8 量化、评估与上板核对 |
 | [pc/plc_sim/README.md](../pc/plc_sim/README.md) · [pc/report/README.md](../pc/report/README.md) | PC 端「产线 PLC」模拟器（CAN）；测试报告出数与长时间运行统计 |
