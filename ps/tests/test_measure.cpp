@@ -640,6 +640,25 @@ int main()
         printf("[locate rel] Otsu/60: %zu blobs, relative: %zu blobs (%d parts, %d glare)\n", old.size(), rel.size(), parts, glare);
         CHECK(old.size() == 3, "the old threshold should pick the glare up too (%zu blobs)", old.size());
         CHECK(rel.size() == 2 && parts == 2 && glare == 0, "relative threshold: %zu blobs, %d parts, %d glare", rel.size(), parts, glare);
+        // heavy dirt at the rim: a dark chunk eats a third of the disc's edge -> minAreaRect is long and off-centre,
+        // the enclosing circle stays on the disc (round_fit)
+        cv::Mat gd(1080, 1920, CV_8UC1, cv::Scalar(40));
+        cv::circle(gd, cv::Point(960, 540), 107, cv::Scalar(170), cv::FILLED);
+        cv::circle(gd, cv::Point(960 + 95, 540), 55, cv::Scalar(40), cv::FILLED);   // stain over the right rim
+        cv::cvtColor(gd, bgra, cv::COLOR_GRAY2BGRA);
+        LocateConfig lr;
+        std::vector<Detection> box = Locator(lr).run(bgra.data, 1920, 1080, int(bgra.step), hl);
+        lr.round_fit = true;
+        std::vector<Detection> circ = Locator(lr).run(bgra.data, 1920, 1080, int(bgra.step), hl);
+        const Vec2 truth{960 * S, 540 * S};
+        CHECK(box.size() == 1 && circ.size() == 1, "stained disc: %zu / %zu blobs", box.size(), circ.size());
+        if (box.size() == 1 && circ.size() == 1) {
+            printf("[locate stain] minAreaRect %.1f x %.1f off %.2f mm | circle %.1f x %.1f off %.2f mm\n", box[0].len,
+                   box[0].wid, norm(box[0].p - truth), circ[0].len, circ[0].wid, norm(circ[0].p - truth));
+            CHECK(box[0].len / box[0].wid > 1.05f && norm(box[0].p - truth) > 1.0f, "the stain should distort minAreaRect");
+            CHECK(std::fabs(circ[0].len - circ[0].wid) < 0.01f && std::fabs(circ[0].len - 32) < 1.5f &&
+                      norm(circ[0].p - truth) < 0.8f, "round_fit: %.1f x %.1f, off %.2f", circ[0].len, circ[0].wid, norm(circ[0].p - truth));
+        }
     }
     return test_summary();
 }

@@ -64,6 +64,12 @@ std::vector<Detection> Locator::run(const uint8_t *bgra, int width, int height, 
         float area_mm2 = float(cv::contourArea(c)) * px_mm2;
         if (area_mm2 < cfg_.min_area_mm2) continue;
         cv::RotatedRect rr = cv::minAreaRect(c);
+        if (cfg_.round_fit) {   // square box on the smallest enclosing circle (axis kept from minAreaRect)
+            cv::Point2f cc;
+            float rad;
+            cv::minEnclosingCircle(c, cc, rad);
+            rr = cv::RotatedRect(cc, cv::Size2f(2 * rad, 2 * rad), rr.angle);
+        }
         cv::Rect br = cv::boundingRect(c);
         cv::Point2f pts[4];
         rr.points(pts);

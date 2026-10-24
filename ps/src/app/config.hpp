@@ -30,6 +30,11 @@ struct LocateConfig {
     // > 0 and a flat field loaded: pixel is part when gray > max(rel_thresh * white, rel_floor); else Otsu / thresh.
     float rel_thresh = 0;
     int rel_floor = 25;
+    // Every part is a round gear (racks dropped 2026-10-18): centre and size from the smallest enclosing circle of
+    // the blob, box = square. A dark stain at the rim (heavy dirt samples) cuts a chunk out of the bright blob:
+    // minAreaRect then gave a long box and a centre pulled off by up to 5 mm; the enclosing circle of what is left
+    // still sits on the tooth tips. false = minAreaRect (any shape).
+    bool round_fit = false;
     std::shared_ptr<const FlatField> flat;   // set by load_config from flat_file (the same field as the crops)
 };
 struct BeltConfig {

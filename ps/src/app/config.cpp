@@ -67,7 +67,7 @@ std::string load_config(const std::string &path, AppConfig &cfg)
                  cam.exposure_us, "gain_db10", cam.gain_db10);
         LocateConfig &loc = cfg.locate; sec_gets(j, "locate", "scale", loc.scale, "thresh", loc.thresh, "min_thresh", loc.min_thresh, "open_iter",
                  loc.open_iter, "border_px", loc.border_px, "min_area_mm2", loc.min_area_mm2, "max_area_mm2", loc.max_area_mm2,
-                 "rel_thresh", loc.rel_thresh, "rel_floor", loc.rel_floor);
+                 "rel_thresh", loc.rel_thresh, "rel_floor", loc.rel_floor, "round_fit", loc.round_fit);
         if (j.contains("px_to_table")) {   // frozen error text: a wrong length is not a type error (CONTRACT §1)
             const json &h = j["px_to_table"];
             if (h.size() != 9) return "px_to_table needs 9 numbers (row-major 3x3)";
