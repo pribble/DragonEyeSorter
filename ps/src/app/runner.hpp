@@ -49,6 +49,8 @@ public:
     void set_home(const std::array<int, 6> &counts);   // HMI arm page: ready pose of every following pick
     double speed_mm_s() const { return speed_mm_s_; }
     void set_active_recipe(int id) { active_recipe_ = id; }   // for the Modbus read-back (the worker applies recipes)
+    // tower light on RS485 (CAN LAMP / Modbus HR 7): mode 1 = these lamps (LAMP_*), 0 = follow the line state
+    uint8_t set_lamp(uint8_t mode, uint8_t lamps, const char *who);
 private:
     // arm thread hand-off: the job carries the ready pose it was planned with, so the config is only ever touched
     // by the worker thread (no lock around it).
@@ -81,6 +83,7 @@ private:
     int jog_dir_ = 0;            // manual belt jog (IDLE only)
     int pending_recipe_ = -1;    // accepted by select_recipe, not yet applied by the worker
     std::unique_ptr<ModbusTcp> mb_;  // Modbus-TCP slave (cfg.plc.modbus_port > 0)
+    std::unique_ptr<Rs485Io> rs485_; // RS485 relay module / tower light (cfg.rs485.enabled and bitstream v16)
     uint64_t mb_requests_ = 0;
     double last_mb_ = -1e9;          // last Modbus request seen (PLC_LINK)
     uint16_t mb_seq_ = 0, mb_time_hi_ = 0, mb_hb_ = 0, part_seq_ = 0;

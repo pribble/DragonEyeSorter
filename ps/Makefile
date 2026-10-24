@@ -99,7 +99,7 @@ check-board:
 	@$(if $(wildcard $(FREETYPE_INC)),echo FREETYPE_INC ok,$(error FREETYPE_INC 未设置或目录不存在：$(FREETYPE_INC)。$(ENV_HINT)))
 	@$(if $(wildcard $(BOARD_LIBS)),echo BOARD_LIBS ok,$(error BOARD_LIBS 未设置或目录不存在：$(BOARD_LIBS)。$(ENV_HINT)))
 
-all: $(BUILD)/desreg $(BUILD)/test_scheduler $(BUILD)/test_modbus $(BUILD)/test_calib $(BUILD)/test_measure $(BUILD)/test_belt_hil $(BUILD)/test_can $(BUILD)/canplc $(BUILD)/des_app $(BUILD)/des_tool
+all: $(BUILD)/desreg $(BUILD)/test_scheduler $(BUILD)/test_modbus $(BUILD)/test_rs485 $(BUILD)/test_calib $(BUILD)/test_measure $(BUILD)/test_belt_hil $(BUILD)/test_can $(BUILD)/canplc $(BUILD)/des_app $(BUILD)/des_tool
 	-@powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/deploy/deploy.ps1 -Stage
 
 $(BUILD):
@@ -135,6 +135,11 @@ $(BUILD)/test_measure: tests/test_measure.cpp $(MEASURE_SRC) src/app/part_log.cp
 # Modbus-TCP slave over loopback (no SDK; also builds with WSL g++)
 $(BUILD)/test_modbus: tests/test_modbus.cpp src/hw/modbus_tcp.cpp $(wildcard src/hw/modbus_tcp.hpp) | $(BUILD)
 	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_modbus.cpp src/hw/modbus_tcp.cpp -lpthread
+
+# RS485: Modbus-RTU PDUs + the lamp worker against a simulated relay module (no hardware; links des_hw only for its types)
+$(BUILD)/test_rs485: tests/test_rs485.cpp src/hw/modbus_rtu.cpp src/app/rs485_io.cpp src/app/util.cpp $(OBJ)/des_hw.o \
+                     $(wildcard src/hw/modbus_rtu.hpp src/app/rs485_io.hpp) | $(OBJ) $(BUILD)
+	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_rs485.cpp src/hw/modbus_rtu.cpp src/app/rs485_io.cpp src/app/util.cpp $(OBJ)/des_hw.o -lpthread
 
 $(BUILD)/canplc: tools/canplc.c $(wildcard src/hw/can_link.c src/hw/can_link.h src/hw/can_proto.h) | $(BUILD)
 	$(CC) $(CFLAGS) $(INC) -o $@ tools/canplc.c $(wildcard src/hw/can_link.c)

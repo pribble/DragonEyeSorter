@@ -30,7 +30,7 @@ def main():
     t0 = time.time()
 
     def ir():
-        return c.read_input(0, M.N_IR)
+        return M.read_status(c)
 
     def log(msg):
         r = ir()

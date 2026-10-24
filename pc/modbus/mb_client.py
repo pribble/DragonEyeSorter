@@ -10,6 +10,8 @@ requests any PLC (Siemens MB_CLIENT, Mitsubishi / Omron Modbus-TCP, KingView / W
   python mb_client.py speed 45.5                belt speed set point, mm/s
   python mb_client.py recipe 2
   python mb_client.py time                      send this PC's clock (the board has no RTC)
+  python mb_client.py lamp red buzzer           tower light on the RS485 relay module (Ethernet -> RS485), any of
+                                                green / yellow / red / buzzer / off; "lamp auto" = back to the line state
   python mb_client.py bench [-n 1000]           round-trip time of a full status read
 Options: --host 192.168.137.100 --port 502
 """
@@ -19,16 +21,19 @@ import struct
 import sys
 import time
 
-# ---- register map (keep in step with ps/src/hw/modbus_map.h) ----
-HR_CMD, HR_SPEED, HR_RECIPE, HR_RESULT, HR_SEQ, HR_TIME_HI, HR_TIME_LO, N_HR = 0, 1, 2, 3, 4, 5, 6, 8
+# ---- register map (keep in step with ps/src/hw/modbus_tcp.hpp) ----
+HR_CMD, HR_SPEED, HR_RECIPE, HR_RESULT, HR_SEQ, HR_TIME_HI, HR_TIME_LO, HR_LAMP, N_HR = 0, 1, 2, 3, 4, 5, 6, 7, 8
 IR_STATE, IR_FLAGS, IR_TOTAL, IR_OK, IR_NG, IR_RECHECK = 0, 1, 2, 4, 6, 8
 IR_PART_SEQ, IR_PART_ID, IR_PART_CLS, IR_PART_DISP, IR_PART_DEST, IR_PART_SIZE, IR_PART_CONF = range(10, 17)
-IR_SPEED, IR_HB, IR_UPTIME, IR_ALARM, IR_RECIPE, IR_VERSION, N_IR = 17, 18, 19, 20, 21, 22, 24
+IR_SPEED, IR_HB, IR_UPTIME, IR_ALARM, IR_RECIPE, IR_VERSION = 17, 18, 19, 20, 21, 22
+IR_485_FLAGS, IR_485_LAMPS, IR_485_INPUTS, IR_485_OK, IR_485_ERR, IR_485_RESP = range(24, 30)   # map v1.1 (0x0101)
+N_IR, N_IR_V10 = 32, 24
+LAMPS = {"green": 1, "yellow": 2, "red": 4, "buzzer": 8, "off": 0}
 
 CMDS = {"start": 1, "stop": 2, "pause": 3, "resume": 4, "reset": 5}
 ACK = {0: "OK", 1: "REJECTED（当前状态不允许）", 2: "BAD_VALUE（取值不对）", 3: "UNKNOWN（未知命令）"}
 STATES = {0: "IDLE 停止", 1: "RUN 运行", 2: "PAUSED 暂停", 3: "ESTOP 急停", 4: "FAULT 故障"}
-FLAGS = [(0x01, "皮带在动"), (0x02, "机械臂忙"), (0x04, "报警"), (0x08, "PLC 在线"), (0x10, "已标定")]
+FLAGS = [(0x01, "皮带在动"), (0x02, "机械臂忙"), (0x04, "报警"), (0x08, "PLC 在线"), (0x10, "已标定"), (0x20, "RS485 在线")]
 DISP = {0: "抓取", 1: "挡板", 2: "复检"}
 
 
@@ -99,6 +104,18 @@ class Client:
         raise ModbusError("the board did not execute the write within %.1f s (des_app run not running?)" % timeout)
 
 
+def read_status(cl):
+    """all input registers; a board with register map v1.0 (24 registers) is padded with zeros"""
+    try:
+        return cl.read_input(0, N_IR)
+    except ModbusError:
+        return cl.read_input(0, N_IR_V10) + [0] * (N_IR - N_IR_V10)
+
+
+def lamp_text(bits):
+    return "+".join(n for n, b in LAMPS.items() if b and bits & b) or "灭"
+
+
 def u32(r, i):
     return (r[i] << 16) | r[i + 1]
 
@@ -135,6 +152,8 @@ def main():
     r = sub.add_parser("recipe")
     r.add_argument("id", type=int)
     sub.add_parser("time")
+    lp = sub.add_parser("lamp")
+    lp.add_argument("what", nargs="+", choices=sorted(LAMPS) + ["auto"])
     b = sub.add_parser("bench")
     b.add_argument("-n", type=int, default=1000)
     a = ap.parse_args()
@@ -150,11 +169,11 @@ def main():
         return 2
     try:
         if a.op == "status":
-            print(decode(cl.read_input(0, N_IR), cl.read_holding(0, N_HR)))
+            print(decode(read_status(cl), cl.read_holding(0, N_HR)))
         elif a.op == "cmd":
             res = cl.write_checked(HR_CMD, [CMDS[a.name]])
             print("%s -> %s" % (a.name, ACK.get(res, res)))
-            print(decode(cl.read_input(0, N_IR), cl.read_holding(0, N_HR)))
+            print(decode(read_status(cl), cl.read_holding(0, N_HR)))
             return 0 if res == 0 else 1
         elif a.op == "speed":
             res = cl.write_checked(HR_SPEED, [int(round(a.mm_s * 10))])
@@ -168,6 +187,13 @@ def main():
             t = int(time.time())
             res = cl.write_checked(HR_TIME_HI, [t >> 16, t & 0xFFFF])
             print("time %s -> %s" % (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t)), ACK.get(res, res)))
+            return 0 if res == 0 else 1
+        elif a.op == "lamp":
+            v = 0 if "auto" in a.what else 0x100 | sum(LAMPS[w] for w in a.what)
+            res = cl.write_checked(HR_LAMP, [v])
+            print("lamp %s -> %s" % (" ".join(a.what), ACK.get(res, res)))
+            if res == 1:
+                print("  REJECTED：板上 RS485 没在跑（des_app.json rs485.enabled、比特流 v16、继电器模块接好了吗）")
             return 0 if res == 0 else 1
         elif a.op == "bench":
             t0 = time.perf_counter()

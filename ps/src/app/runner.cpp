@@ -26,6 +26,7 @@ Runner::Runner(des_hw_t *hw, const AppConfig &cfg, const RunOptions &opt)
 }
 Runner::~Runner()
 {
+    rs485_.reset();   // lamps off, bus thread joined
     jobs_.close_and_clear();
     if (arm_thread_.joinable()) arm_thread_.join();
     des_step_stop(hw_);
@@ -44,6 +45,18 @@ std::string Runner::start()
             fprintf(stderr, "[run] Modbus-TCP off: %s\n", e.c_str()); mb_.reset();
         } else {
             printf("[run] Modbus-TCP slave on port %d\n", mb_->port());
+        }
+    }
+    if (cfg_.rs485.enabled) {   // a missing driver / old bitstream costs only the tower light
+        std::string e;
+        RtuXfer x = rs485_hw_xfer(hw_, cfg_.rs485, e);
+        if (!x) {
+            fprintf(stderr, "[run] RS485 off: %s\n", e.c_str());
+        } else {
+            rs485_.reset(new Rs485Io(cfg_.rs485, std::move(x)));
+            rs485_->start();
+            printf("[run] RS485 %d 8%c1, relay module at address %d (tower light)\n", cfg_.rs485.baud, cfg_.rs485.parity,
+                   cfg_.rs485.addr);
         }
     }
     // side gates: where a 32 mm part on the belt centre line meets each one, and how early it must be decided
@@ -158,6 +171,14 @@ uint8_t Runner::select_recipe(int id, const char *who)
     last_event_ = std::string(who) + " recipe " + std::to_string(id) + " " + r->name;
     return CANP_ACK_OK;
 }
+uint8_t Runner::set_lamp(uint8_t mode, uint8_t lamps, const char *who)
+{
+    if (mode > 1 || (lamps & 0xF0)) return CANP_ACK_BAD_VALUE;
+    if (!rs485_) return CANP_ACK_REJECTED;   // no RS485 bus running
+    rs485_->set_override(mode == 1, lamps);
+    last_event_ = mode ? fmt("%s lamps %X via RS485", who, lamps) : std::string(who) + " lamps back to the line state";
+    return CANP_ACK_OK;
+}
 int Runner::take_recipe()
 {
     const int id = pending_recipe_;
@@ -173,6 +194,9 @@ void Runner::handle_can(double now)
         case CANP_ID_CMD: result = command(f.data[0], "PLC"); send_ack(canp_ack(f.id, f.data[1], result)); break;
         case CANP_ID_SPEED: result = set_speed(canp_get16(f.data) / 10.0, "PLC"); send_ack(canp_ack(f.id, f.data[2], result)); break;
         case CANP_ID_RECIPE: result = select_recipe(f.data[0], "PLC"); send_ack(canp_ack(f.id, f.data[1], result)); break;
+        case CANP_ID_LAMP:   // CAN -> RS485: the relay module gets the PLC's lamps
+            result = f.len < 3 ? uint8_t(CANP_ACK_BAD_VALUE) : set_lamp(f.data[0], f.data[1], "PLC");
+            send_ack(canp_ack(f.id, f.data[2], result)); break;
         case CANP_ID_PLC_HB: last_plc_hb_ = now; break;
         case CANP_ID_TIME: {   // the PLC's wall clock (no RTC here): records use our clock + this offset
             const int64_t ms = canp_time_ms(&f);
@@ -199,6 +223,8 @@ void Runner::handle_modbus(double now)
             case MB_HR_CMD: r = v <= 0xFF ? command(uint8_t(v), "Modbus") : uint8_t(CANP_ACK_UNKNOWN); break;
             case MB_HR_SPEED: r = set_speed(v / 10.0, "Modbus"); break;
             case MB_HR_RECIPE: r = select_recipe(v, "Modbus"); break;
+            case MB_HR_LAMP:   // Ethernet -> RS485
+                r = (v & 0xFEF0) ? uint8_t(CANP_ACK_BAD_VALUE) : set_lamp(uint8_t(v >> 8), uint8_t(v & 0x0F), "Modbus"); break;
             case MB_HR_TIME_HI: mb_time_hi_ = v; continue;   // applied with the low word
             case MB_HR_TIME_LO: {
                 const int64_t unix_s = (int64_t(mb_time_hi_) << 16) | v; if (unix_s < 1700000000) { r = CANP_ACK_BAD_VALUE; break; }   // before 2023: not a clock
@@ -216,7 +242,8 @@ uint8_t Runner::status_flags(double now) const
     return uint8_t((belt_.stopped() ? 0 : CANP_FLAG_BELT_MOVING) | (arm_busy_ ? CANP_FLAG_ARM_BUSY : 0) |
                    (alarm_ ? CANP_FLAG_ALARM : 0) |
                    (now - last_plc_hb_ < 1.0 || now - last_mb_ < 1.0 ? CANP_FLAG_PLC_LINK : 0) |
-                   (cfg_.calib_loaded.empty() ? 0 : CANP_FLAG_CALIBRATED));
+                   (cfg_.calib_loaded.empty() ? 0 : CANP_FLAG_CALIBRATED) |
+                   (rs485_ && rs485_->link_ok() ? CANP_FLAG_RS485 : 0));
 }
 // read-back values (holding) and status (input registers), every cycle
 void Runner::update_modbus(double now)
@@ -246,6 +273,16 @@ void Runner::update_modbus(double now)
     ir_[MB_IR_ALARM] = alarm_;
     ir_[MB_IR_RECIPE] = uint16_t(active_recipe_);
     ir_[MB_IR_VERSION] = MB_MAP_VERSION;
+    mb_->set_holding(MB_HR_LAMP, rs485_ && rs485_->override_on() ? uint16_t(0x100 | rs485_->override_lamps()) : 0);
+    if (rs485_) {
+        const Rs485Io::Stats s = rs485_->stats();
+        ir_[MB_IR_485_FLAGS] = uint16_t(1 | (rs485_->link_ok() ? 2 : 0) | (s.override_on ? 4 : 0));
+        ir_[MB_IR_485_LAMPS] = coils_to_lamps(s.coils_rb, cfg_.rs485);
+        ir_[MB_IR_485_INPUTS] = uint16_t(s.inputs);
+        ir_[MB_IR_485_OK] = uint16_t(s.ok);
+        ir_[MB_IR_485_ERR] = uint16_t(s.timeouts + s.crc + s.rx_err + s.exceptions + s.bad_reply + s.other);
+        ir_[MB_IR_485_RESP] = uint16_t(s.resp_last > 0 ? std::min(65535.0, s.resp_last * 100) : 0);
+    }
     mb_->set_inputs(0, ir_);
 }
 void Runner::cycle(Tracker &tr, Picker &pk)
@@ -343,6 +380,10 @@ void Runner::cycle(Tracker &tr, Picker &pk)
         last_status_ = now;
     }
     if (now - last_counts_ >= 1.0) { send(canp_counts(&counts_)); last_counts_ = now; }
+    if (rs485_) {   // the tower light follows the line; yellow joins green when a PLC that was there went quiet
+        const bool seen = last_plc_hb_ > -1e8 || last_mb_ > -1e8, link = now - last_plc_hb_ < 1.0 || now - last_mb_ < 1.0;
+        rs485_->set_line(state_, alarm_ != 0, seen && !link);
+    }
     flush_tx();
     update_modbus(now);
 }
@@ -352,10 +393,11 @@ std::string Runner::status_line() const
     if (txq_.size() > 4 || tx_dropped_)
         snprintf(q, sizeof q, "CAN txq %zu dropped %llu  ", txq_.size(), (unsigned long long)tx_dropped_);
     const double t = mono_s();
-    return fmt("%s  belt %.1f mm/s  arm %s  total %u ok %u ng %u recheck %u  %s%s%s%s", state_name(state_),
+    return fmt("%s  belt %.1f mm/s  arm %s  total %u ok %u ng %u recheck %u  %s%s%s%s%s", state_name(state_),
                belt_.speed_mm_s(), arm_busy_ ? "busy" : "idle", counts_.total, counts_.ok, counts_.ng, counts_.recheck,
                can_fd_ >= 0 ? (t - last_plc_hb_ < 1.0 ? "PLC ok  " : "PLC --  ") : "",
-               mb_ ? (t - last_mb_ < 1.0 ? "Modbus ok  " : "Modbus --  ") : "", q, last_event_.c_str());
+               mb_ ? (t - last_mb_ < 1.0 ? "Modbus ok  " : "Modbus --  ") : "",
+               rs485_ ? (rs485_->link_ok() ? "485 ok  " : "485 --  ") : "", q, last_event_.c_str());
 }
 void Runner::set_home(const std::array<int, 6> &counts)
 {

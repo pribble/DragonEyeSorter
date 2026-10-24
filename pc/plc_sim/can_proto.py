@@ -1,8 +1,10 @@
-"""DragonEyeSorter <-> "PLC" CAN protocol v1.1 — Python side of ps/src/hw/can_proto.h (keep the two in step).
+"""DragonEyeSorter <-> "PLC" CAN protocol v1.2 — Python side of ps/src/hw/can_proto.h (keep the two in step).
 
 Classic CAN 2.0A, 500 kbit/s, little-endian multi-byte fields.
   PLC -> DES: 0x100 CMD [cmd, seq] / 0x101 SPEED [speed_x10 u16, seq] / 0x102 RECIPE [recipe, seq]
               0x103 PLC_HB [counter] (>= 2 Hz) / 0x104 TIME [unix_s u32, ms u16] (no ACK)
+              0x105 LAMP [mode, lamps, seq] (v1.2: tower light on the board's RS485 bus; mode 1 = lamps b0 green
+                    b1 yellow b2 red b3 buzzer, 0 = follow the line state; ACK rejected when RS485 is not running)
   DES -> PLC: 0x180 ACK [id_lo, seq, result] / 0x181 STATUS [state, flags, speed_x10 u16, alarm, hb, uptime_s u16]
               0x182 COUNTS [total, ok, ng, recheck u16] / 0x183 PART [id u16, class, disp, dest, conf_pct, size_x100 u16]
               0x184 ALARM [code, severity, detail u16]
@@ -12,7 +14,7 @@ import time
 
 BITRATE = 500000
 
-ID_CMD, ID_SPEED, ID_RECIPE, ID_PLC_HB, ID_TIME = 0x100, 0x101, 0x102, 0x103, 0x104
+ID_CMD, ID_SPEED, ID_RECIPE, ID_PLC_HB, ID_TIME, ID_LAMP = 0x100, 0x101, 0x102, 0x103, 0x104, 0x105
 ID_ACK, ID_STATUS, ID_COUNTS, ID_PART, ID_ALARM = 0x180, 0x181, 0x182, 0x183, 0x184
 
 CMD_START, CMD_STOP, CMD_PAUSE, CMD_RESUME, CMD_RESET_ALARM = 1, 2, 3, 4, 5
@@ -21,6 +23,8 @@ CMD_NAMES = {CMD_START: "start", CMD_STOP: "stop", CMD_PAUSE: "pause", CMD_RESUM
 ACK_NAMES = {0: "OK", 1: "rejected", 2: "bad value", 3: "unknown"}
 STATE_NAMES = {0: "IDLE", 1: "RUN", 2: "PAUSED", 3: "ESTOP", 4: "FAULT"}
 FLAG_BELT_MOVING, FLAG_ARM_BUSY, FLAG_ALARM, FLAG_PLC_LINK, FLAG_CALIBRATED = 0x01, 0x02, 0x04, 0x08, 0x10
+FLAG_RS485 = 0x20   # v1.2: the RS485 relay module answered within 2 s
+LAMP_GREEN, LAMP_YELLOW, LAMP_RED, LAMP_BUZZER = 1, 2, 4, 8
 DISP_NAMES = {0: "pick", 1: "flap", 2: "recheck"}
 
 
@@ -36,6 +40,11 @@ def speed(mm_s, seq):
 
 def recipe(r, seq):
     return ID_RECIPE, bytes([r & 0xFF, seq & 0xFF])
+
+
+def lamp(mode, lamps, seq):
+    """tower light via the board's RS485 bus: mode 1 = these LAMP_* bits, 0 = back to the line state"""
+    return ID_LAMP, bytes([mode & 1, lamps & 0x0F, seq & 0xFF])
 
 
 def plc_hb(counter):

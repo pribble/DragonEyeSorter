@@ -20,7 +20,7 @@ namespace des {
 
 // register map v1: the board is the slave; same codes / rules as can_proto.h (CMD / ACK / ST / FLAG / DISP_*);
 // 0-based addresses (PLC software counting from 1 shows 40001.. / 30001..); 32-bit values high word first.
-inline constexpr uint16_t MB_MAP_VERSION = 0x0100;
+inline constexpr uint16_t MB_MAP_VERSION = 0x0101;   // 0x0101: + HR 7 LAMP, IR 24..29 RS485
 // holding registers (FC 03 read, FC 06 / 16 write): a write is executed in the next control cycle (<= 17 ms), then
 // SEQ + 1 and RESULT holds its CANP_ACK_* code
 enum : uint16_t {
@@ -31,6 +31,8 @@ enum : uint16_t {
     MB_HR_SEQ = 4,      // read only: + 1 per handled write (write, wait for it, read RESULT)
     MB_HR_TIME_HI = 5,  // PLC wall clock, Unix seconds: high word ...
     MB_HR_TIME_LO = 6,  // ... low word (write both in one FC 16; the low word applies it; the board has no RTC)
+    MB_HR_LAMP = 7,     // v1.1: tower light on RS485 = CAN LAMP: bit 8 override, bits 0..3 green / yellow / red / buzzer
+                        // (0 = back to the line state); reads the override in force
     MB_N_HR = 8,
 };
 // input registers (FC 04), refreshed every control cycle
@@ -54,7 +56,14 @@ enum : uint16_t {
     MB_IR_ALARM = 20,      // alarm code (1 = e-stop), 0 = none
     MB_IR_RECIPE = 21,     // active recipe id
     MB_IR_VERSION = 22,    // MB_MAP_VERSION
-    MB_N_IR = 24,
+    // v1.1, RS485 bus (app/rs485_io): 0 while it is off
+    MB_IR_485_FLAGS = 24,  // b0 running, b1 link (the relay module answered within 2 s), b2 PLC lamp override
+    MB_IR_485_LAMPS = 25,  // lamps read back from the relay coils (bits as MB_HR_LAMP)
+    MB_IR_485_INPUTS = 26, // digital inputs of the module (FC 02), when configured
+    MB_IR_485_OK = 27,     // good transactions (wraps)
+    MB_IR_485_ERR = 28,    // failed ones: no reply + CRC + framing + exceptions + bad replies (wraps)
+    MB_IR_485_RESP = 29,   // last reply time (end of request -> first reply bit), 0.01 ms
+    MB_N_IR = 32,
 };
 
 class ModbusTcp {

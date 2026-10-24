@@ -7,6 +7,7 @@
 #include "geom.hpp"
 #include "measure_config.hpp"
 #include "picker.hpp"
+#include "rs485_io.hpp"
 #include "tracker.hpp"
 namespace des {
 struct CameraConfig {
@@ -86,6 +87,7 @@ struct AppConfig {
     NpuConfig npu;
     FlapConfig flaps;            // side diverter gates (des_pwm, v7; in picker.hpp)
     BeamConfig beam;             // through-beam on IR1 (sched/beam.hpp): des_app.json "beam" + calib.json "beam" (x_mm)
+    Rs485Config rs485;           // RS485 relay module + tower light in `run` (app/rs485_io.hpp; PL v16)
     PlcConfig plc;
     std::string label_list = "models/label_list.json";
     std::string calib_file = "calib.json";     // written by des_tool calib-cam, merged over this file if present

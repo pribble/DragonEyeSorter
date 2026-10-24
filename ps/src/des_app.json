@@ -81,6 +81,8 @@
   "plc_comment": "Modbus-TCP 从站（产线 PLC / 组态软件经网口读状态、下命令；寄存器表 hw/modbus_tcp.hpp，规则同 CAN）。0 = 关",
   "plc": { "modbus_port": 502 },
   "beam": { "enabled": false, "match_mm": 12, "expire_mm": 120, "miss_mm": 25 },
+  "rs485": { "enabled": false, "baud": 9600, "parity": "N", "timeout_ms": 100, "addr": 1, "coils": 4,
+             "lamp_coils": [0, 1, 2, 3], "poll_ms": 200, "buzzer_s": 2, "inputs": 0 },
   "storage": { "enabled": true, "images": "ng", "jpeg_quality": 92, "max_queue": 256, "feed_port": 9500 },
 
   "bins": ["gear_box", "rack_box"],

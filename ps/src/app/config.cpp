@@ -159,6 +159,21 @@ std::string load_config(const std::string &path, AppConfig &cfg)
         if (const json *c = sec_gets(j, "beam", "enabled", bm.enabled, "match_mm", bm.match_mm, "expire_mm", bm.expire_mm,
                                      "miss_mm", bm.miss_mm))
             if (c->contains("x_mm")) { ji::get(*c, "x_mm", bm.x_mm); bm.calibrated = true; }
+        Rs485Config &rs = cfg.rs485;
+        if (const json *c = sec_gets(j, "rs485", "enabled", rs.enabled, "baud", rs.baud, "timeout_ms", rs.timeout_ms,
+                                     "addr", rs.addr, "coils", rs.coils, "poll_ms", rs.poll_ms, "buzzer_s", rs.buzzer_s,
+                                     "inputs", rs.inputs)) {
+            std::string par(1, rs.parity); ji::get(*c, "parity", par);
+            if (par != "N" && par != "E" && par != "O") return path + ": rs485.parity must be N / E / O";
+            rs.parity = par[0];
+            if (c->contains("lamp_coils")) {   // relay of [green, yellow, red, buzzer], -1 = not wired
+                const json &lc = (*c)["lamp_coils"];
+                if (lc.size() != 4) return path + ": rs485.lamp_coils needs 4 numbers (green, yellow, red, buzzer)";
+                for (int k = 0; k < 4; k++) rs.lamp_coil[k] = lc[k].get<int>();
+            }
+            if (rs.addr < 1 || rs.addr > 247) return path + ": rs485.addr must be 1..247";
+            if (rs.coils < 1 || rs.coils > 32) return path + ": rs485.coils must be 1..32";
+        }
         NpuConfig &np = cfg.npu; sec_gets(j, "npu", "enabled", np.enabled, "model", np.model, "core", np.core); StorageConfig &st = cfg.storage;
         if (sec_gets(j, "storage", "enabled", st.enabled, "dir", st.dir, "images", st.images, "jpeg_quality",
                      st.jpeg_quality, "max_queue", st.max_queue, "feed_port", st.feed_port)) {
