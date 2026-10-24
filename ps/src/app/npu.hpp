@@ -29,12 +29,16 @@ public:
     // pre_ms / npu_ms = input preparation / network run.
     std::vector<float> classify(const cv::Mat &crop_bgr, double *pre_ms = nullptr, double *npu_ms = nullptr);
     std::vector<float> last_logits;                     // dequantized network output of the last call
+    // model JSON "logit_offset" (train/export_npu.py bias correction of the uint8 quantization), added to the
+    // logits before the softmax; empty = none. last_logits stay the raw network output.
+    const std::vector<float> &logit_offset() const { return logit_offset_; }
     const std::vector<std::string> &classes() const { return classes_; }
     std::string describe() const;                       // input / output tensor types, for logs
 private:
     std::unique_ptr<CmaResourceZone> zone_;
     std::unique_ptr<NPUExecutor> ex_;
     std::vector<std::string> classes_;
+    std::vector<float> logit_offset_;
     int w_ = 0, h_ = 0;
     float mean_[3] = {0, 0, 0}, scale_[3] = {1 / 255.f, 1 / 255.f, 1 / 255.f};
     bool in_u8_ = false, out_u8_ = false;

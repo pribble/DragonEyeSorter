@@ -39,6 +39,10 @@ std::string NpuClassifier::load(const std::string &json_path)
     std::string model;
     try {
         model = j.at("model").get<std::string>(); classes_ = j.at("classes").get<std::vector<std::string>>();
+        logit_offset_ = j.value("logit_offset", std::vector<float>{});
+        if (!logit_offset_.empty() && logit_offset_.size() != classes_.size())
+            return json_path + ": logit_offset has " + std::to_string(logit_offset_.size()) + " values, " +
+                   std::to_string(classes_.size()) + " classes";
         const auto &in = j.at("input"); for (int c = 0; c < 3; c++) {
             mean_[c] = in.at("mean").at(c).get<float>(); scale_[c] = in.at("scale").at(c).get<float>();
         }
@@ -123,10 +127,12 @@ std::vector<float> NpuClassifier::classify(const cv::Mat &crop_bgr, double *pre_
     for (size_t i = 0; i < out_n_; i++)
         last_logits[i] = out_u8_ ? (static_cast<uint8_t *>(ob->virt_addr)[i] - out_zero_) * out_scale_
                                  : static_cast<float *>(ob->virt_addr)[i];
-    std::vector<float> p(out_n_);
-    const float mx = *std::max_element(last_logits.begin(), last_logits.end());
+    std::vector<float> p(out_n_), z(last_logits);
+    if (logit_offset_.size() == out_n_)
+        for (size_t i = 0; i < out_n_; i++) z[i] += logit_offset_[i];
+    const float mx = *std::max_element(z.begin(), z.end());
     float sum = 0;
-    for (size_t i = 0; i < out_n_; i++) sum += (p[i] = std::exp(last_logits[i] - mx));
+    for (size_t i = 0; i < out_n_; i++) sum += (p[i] = std::exp(z[i] - mx));
     for (float &v : p) v /= sum;
     return p;
 }

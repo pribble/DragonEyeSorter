@@ -67,10 +67,13 @@ int main(int argc, char **argv)
         n++;
         ok_label += top == r["label"].get<int>();
         ok_fp32 += top == argmax(r["fp32"]);
-        ok_u8 += top == argmax(r["uint8"]);
+        nlohmann::json u8c = r["uint8"];   // raw PC uint8 logits + the model's logit_offset (what the board adds)
+        for (size_t i = 0; i < u8c.size() && i < npu.logit_offset().size(); i++)
+            u8c[i] = u8c[i].get<float>() + npu.logit_offset()[i];
+        ok_u8 += top == argmax(u8c);
         if (n <= 8)
             printf("  %-28s label %d npu %d (p %.3f)  pc fp32 %d uint8 %d  max|dlogit| vs uint8 %.3f\n", it.key().c_str(),
-                   r["label"].get<int>(), top, p[top], argmax(r["fp32"]), argmax(r["uint8"]), d);
+                   r["label"].get<int>(), top, p[top], argmax(r["fp32"]), argmax(u8c), d);
     }
     printf("== %d crops: NPU = label %d, = PC fp32 %d, = PC uint8 %d; max |logit - PC uint8| %.3f\n", n, ok_label,
            ok_fp32, ok_u8, worst_u8);
@@ -82,6 +85,10 @@ int main(int argc, char **argv)
         std::vector<cv::String> files;
         cv::glob(std::string(ev) + "/*", files, true);
         int total = 0;
+        // NPU_DUMP=<csv>: one line per crop, "<class dir>/<file>,<class id>,<raw logit 0>,..." (the dequantized
+        // network output, before logit_offset): for fitting the bias correction against the board's NPU itself
+        // (train/npu_bias.py), whose integer arithmetic differs from the PC's uint8 simulation by up to ~1.7
+        FILE *dump = getenv("NPU_DUMP") ? fopen(getenv("NPU_DUMP"), "w") : nullptr;
         for (const cv::String &f : files) {
             size_t a = f.find_last_of('/'), b = f.find_last_of('/', a - 1);
             std::string cls_dir = f.substr(b + 1, a - b - 1);
@@ -92,8 +99,14 @@ int main(int argc, char **argv)
             std::vector<float> p = npu.classify(img);
             if (p.empty()) continue;
             conf[size_t(cid * nc + int(std::max_element(p.begin(), p.end()) - p.begin()))]++;
+            if (dump) {
+                fprintf(dump, "%s/%s,%d", cls_dir.c_str(), f.substr(a + 1).c_str(), cid);
+                for (float v : npu.last_logits) fprintf(dump, ",%.5f", v);
+                fprintf(dump, "\n");
+            }
             total++;
         }
+        if (dump) fclose(dump);
         int diag = 0, okng_ok = 0;
         auto is_ok = [&](int c) { const std::string &l = npu.classes()[c]; return l.size() > 3 && l.compare(l.size() - 3, 3, "_ok") == 0; };
         printf("== NPU accuracy on %s (%d crops)\nrows = true, cols = predicted\n", ev, total);

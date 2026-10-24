@@ -45,6 +45,24 @@ class Reader(CalibrationDataReader):
         return None if f is None else {self.name: preprocess(f, self.imgsz)}
 
 
+def bias_offset(fp32, u8, in_name, files, imgsz, n):
+    """Per-class mean(fp32 logits - uint8 logits) over n training crops (seeded pick), [] when n == 0."""
+    if n <= 0:
+        return []
+    import onnxruntime as ort
+    s32 = ort.InferenceSession(fp32, providers=["CPUExecutionProvider"])
+    s8 = ort.InferenceSession(u8, providers=["CPUExecutionProvider"])
+    pick = list(files)
+    random.Random(1).shuffle(pick)
+    d = []
+    for f in pick[:n]:
+        x = preprocess(f, imgsz)
+        d.append(s32.run(None, {in_name: x})[0][0] - s8.run(None, {in_name: x})[0][0])
+    off = np.mean(np.array(d), axis=0)
+    print(f"logit bias correction over {len(d)} training crops: {np.round(off, 3).tolist()}")
+    return [round(float(v), 4) for v in off]
+
+
 def drop_softmax(src, dst):
     m = onnx.load(src)
     g = m.graph
@@ -74,6 +92,10 @@ def main():
     ap.add_argument("--calib-method", default="MinMax", choices=["MinMax", "Entropy", "Percentile"],
                     help="activation range calibration (MinMax / Entropy / Percentile gave the same accuracy on the synthetic set)")
     ap.add_argument("--labels", default=os.path.join(HERE, "..", "models", "label_list.json"))
+    # Logit bias correction: the per-tensor uint8 weights shift the logits by a roughly constant amount per class;
+    # offset = mean(fp32 - uint8) over --nbias training crops, written to the model JSON as logit_offset and added by
+    # des_app before the softmax (2026-10-24, real 5-class set: per-crop val 88.0 -> 95.1 %, per-part 41/44 -> 44/44).
+    ap.add_argument("--nbias", type=int, default=600, help="training crops for the logit bias correction (0 = off)")
     a = ap.parse_args()
 
     model = YOLO(a.weights)
@@ -87,6 +109,7 @@ def main():
     files = sorted(glob.glob(os.path.join(a.calib, "**", "*.png"), recursive=True) +
                    glob.glob(os.path.join(a.calib, "**", "*.jpg"), recursive=True))
     random.Random(0).shuffle(files)
+    files_all = list(files)
     files = files[: a.ncalib]
     u8 = a.out + "_uint8.onnx"
     quantize_static(pre, u8, Reader(files, in_name, a.imgsz), quant_format=QuantFormat.QDQ,
@@ -117,6 +140,7 @@ def main():
         "output": {"name": out_name, "kind": "logits", "softmax_in_app": True},
         "crop": {"side_mm": 56, "px": a.imgsz},
         "classes": classes,
+        "logit_offset": bias_offset(fp32, u8, in_name, files_all, a.imgsz, a.nbias),
         # same keys as the vendor demo JSON, for its tools
         "input_params": {"r_mean": 0.0, "g_mean": 0.0, "b_mean": 0.0,
                          "r_scale": 0.003921, "g_scale": 0.003921, "b_scale": 0.003921},

@@ -34,6 +34,9 @@ def main():
     with open(a.model + ".json", encoding="utf-8") as f:
         meta = json.load(f)
     classes = meta["classes"]
+    off = np.array(meta.get("logit_offset") or [0.0] * len(classes), dtype=np.float32)
+    if np.any(off):
+        print("uint8 logits + logit_offset", np.round(off, 3).tolist(), "(as des_app does)")
     imgsz = meta["input"]["shape"][2]
     sessions = {k: ort.InferenceSession(f"{a.model}_{k}.onnx", providers=["CPUExecutionProvider"])
                 for k in ("fp32", "uint8")}
@@ -53,13 +56,15 @@ def main():
     for i, (f, cid) in enumerate(files):
         x = preprocess(f, imgsz)
         out = {k: s.run(None, {inp[k]: x})[0][0] for k, s in sessions.items()}
+        raw_u8 = out["uint8"]
+        out["uint8"] = raw_u8 + off
         for k in sessions:
             conf[k][cid, int(np.argmax(out[k]))] += 1
         agree += int(np.argmax(out["fp32"]) == np.argmax(out["uint8"]))
         if i in pick:
             name = f"{i:04d}_{classes[cid]}{os.path.splitext(f)[1]}"
             shutil.copy(f, os.path.join(a.refs, name))
-            refs[name] = {"label": cid, "fp32": out["fp32"].tolist(), "uint8": out["uint8"].tolist()}
+            refs[name] = {"label": cid, "fp32": out["fp32"].tolist(), "uint8": raw_u8.tolist()}   # raw: NPU output
 
     for k in sessions:
         c = conf[k]
@@ -78,7 +83,7 @@ def main():
     print(f"\nfp32 / uint8 top-1 agreement {agree / len(files):.4f} on {len(files)} crops")
     if a.refs:
         with open(os.path.join(a.refs, "refs.json"), "w", encoding="utf-8") as f:
-            json.dump({"classes": classes, "imgsz": imgsz, "refs": refs}, f, indent=1)
+            json.dump({"classes": classes, "imgsz": imgsz, "logit_offset": off.tolist(), "refs": refs}, f, indent=1)
         print(f"wrote {len(refs)} reference crops -> {a.refs}")
 
 
