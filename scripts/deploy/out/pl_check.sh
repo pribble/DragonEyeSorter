@@ -5,7 +5,8 @@
 # register read-back, statistics advancing, pixel clock = CYCLES x fps, display modes 1..5 accepted; des_pwm (v7+):
 # width / enable read-back (v10: no lamp bit) and period counter; command response latencies (servo bus, stepper); v9+: stepper
 # target rewrite (TARGET = POS while moving stops there, a target behind ramps down); v11+: des_io ID, e-stop not latched,
-# encoder count steady with the belt standing. Prints PASS /
+# encoder count steady with the belt standing; v16+: CAP_ENC0/1 mapped, des_485 ID and one RS485 request
+# (address 247, nobody answers: timeout) with its on-wire duration. Prints PASS /
 # FAIL per item and a summary; exit code = failures. Uses the camera (des_tool probe in the background).
 SELF=$(readlink -f -- "$0" 2>/dev/null || echo "$0")
 DES_HOME=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd)   # 以脚本自己所在目录为准，不吃继承来的 DES_HOME
@@ -89,6 +90,29 @@ if [ "$VER" -ge 11 ]; then
     E0=$(hex "$($R r 0x520)"); sleep 0.5; E1=$(hex "$($R r 0x520)"); ERR=$(hex "$($R r 0x524)")
     [ "$E0" = "$E1" ] && pass "encoder count steady while the belt stands ($E1, A$(((ST >> 4) & 1)) B$(((ST >> 5) & 1)), err $ERR)" \
         || fail "encoder count drifts with the belt standing ($E0 -> $E1): noise on ENC_A/B?"
+fi
+
+# --- v16: encoder in the frame capture latch, RS485 (des_485)
+if [ "$VER" -ge 16 ]; then
+    CE0=$($R r 0x038); CE1=$($R r 0x03C); EN=$(hex "$($R r 0x520)")
+    if [ "$CE0" = "0xdeadbeef" ] || [ "$CE1" = "0xdeadbeef" ]; then fail "CAP_ENC0/1 not mapped ($CE0 / $CE1)"
+    else
+        pass "CAP_ENC0/1 mapped (last capture: encoder $(hex "$CE0") -> $(hex "$CE1"); now $EN)"
+        [ "$(hex "$CE1")" = "$EN" ] || echo "     note: the belt / encoder moved since the last captured frame"
+    fi
+    RID=$($R r 0x640)
+    [ "$RID" = "0x34383501" ] && pass "des_485 ID $RID" || fail "des_485 ID $RID"
+    $R 485 cfg 9600 N 30 > /dev/null
+    OUT=$($R 485 tx F7 03 00 00 00 01)   # address 247: normally nobody answers
+    echo "     485 tx F7 03 00 00 00 01 @9600: $OUT"
+    MS=$(echo "$OUT" | sed -n 's/.*request \([0-9.]*\) ms.*/\1/p')
+    case "$OUT" in
+        timeout*|ok*)
+            # 8 bytes x 10 bits / 9600 = 8.333 ms on the wire (the DE lead bit is before TX_T0)
+            awk -v m="$MS" 'BEGIN { exit !(m > 8.30 && m < 8.40) }' && pass "RS485 request on the wire ${MS} ms (8 bytes 8N1 = 8.33)" \
+                || fail "RS485 request duration ${MS} ms (expected 8.33)" ;;
+        *) echo "WARN RS485: $OUT - idle bus not quiet? (terminated bus without fail-safe bias; try with the USB-RS485 adapter)" ;;
+    esac
 fi
 
 # --- command response

@@ -11,7 +11,8 @@
 #define DES_REG_VERSION      0x004u    /* R  : 1 register channel (v1 reads 0x20261010 here), 2 integrated,
                                           3 SOF fix, 4 INCK 27 MHz (60 fps), 5 capture latch, 6 des_vision,
                                           7 des_pwm + AWB divider, 8 read mux / clk_mipi, 9 stepper TARGET == POS,
-                                          10 des_pwm w/o lamp, 11 des_io, 12 PS CAN0 pins (no register change) */
+                                          10 des_pwm w/o lamp, 11 des_io, 12 PS CAN0 pins (no register change; v13~v15
+                                          kept 12), 16 CAP_ENC0/1 + des_485 RS485 */
 #define DES_REG_SCRATCH      0x008u    /* RW */
 #define DES_REG_FREE_CNT     0x00Cu    /* R  : 75 MHz free-running counter */
 #define DES_REG_LED_CTRL     0x010u    /* RW : b0 override LED1, b1 LED1 value */
@@ -25,6 +26,8 @@
 #define DES_REG_CAP_T1       0x02Cu    /* R  : FREE_CNT at done */
 #define DES_REG_CAP_POS0     0x030u    /* R  : belt position (stepper POS) at writer start */
 #define DES_REG_CAP_POS1     0x034u    /* R  : belt position at done */
+#define DES_REG_CAP_ENC0     0x038u    /* R  : belt encoder count (des_io ENC_CNT) at writer start (v16) */
+#define DES_REG_CAP_ENC1     0x03Cu    /* R  : belt encoder count at done (v16) */
 
 /* servo_bus, PL_BASE + 0x100 */
 #define DES_SB_CTRL          0x100u    /* W  : b0 go, b1 expect reply, b2 clear, b[14:8] body bytes */
@@ -97,6 +100,32 @@
 #define DES_IO_ID            0x534u    /* R  0x494F3031 */
 #define DES_IO_CFG           0x538u    /* RW b0 IR1 polarity (0: low = blocked) b1 LIMIT1 polarity (0: low = active) */
 #define DES_IO_ID_VALUE      0x494F3031u
+
+/* des_485, PL_BASE + 0x600 (v16): RS485 Modbus-RTU on J11 (pl/soc_base/src/des/des_485.v) */
+#define DES_485_CTRL         0x600u    /* W  b0 go b1 reply wanted b2 clear counters / result b3 listen ack b4 abort
+                                          [14:8] PDU bytes 1..62 (go / len ignored while busy); R echo [14:8] b1 b0 */
+#define DES_485_STATUS       0x604u    /* R  b0 busy b1 done b2 timeout b3 CRC error b4 reply OK b5 parity / stop error
+                                          b6 overflow (>64 bytes) b7 listen frame ready [15:8] last frame bytes incl. CRC
+                                          b16 DE b17 RX line b18 receiving b19 listen CRC ok b20 listen parity / stop error */
+#define DES_485_TIMEOUT_US   0x608u    /* RW reply timeout from the last stop bit to the first start bit (100000) */
+#define DES_485_DIV          0x60Cu    /* RW clocks per bit (75 MHz / baud; 7813 = 9600) */
+#define DES_485_CFG          0x610u    /* RW [1:0] parity 0 none 1 even 2 odd */
+#define DES_485_T35_US       0x614u    /* RW bus silence that ends a frame / must precede a request (Modbus t3.5) */
+#define DES_485_TX_T0        0x618u    /* R  FREE_CNT at the first start bit */
+#define DES_485_TX_T1        0x61Cu    /* R  FREE_CNT at the end of the last stop bit (DE released) */
+#define DES_485_RX_T0        0x620u    /* R  FREE_CNT at the first start bit of the last frame received */
+#define DES_485_RX_T1        0x624u    /* R  FREE_CNT at its last byte */
+#define DES_485_CNT_TX       0x628u
+#define DES_485_CNT_OK       0x62Cu
+#define DES_485_CNT_TIMEOUT  0x630u
+#define DES_485_CNT_CRC      0x634u    /* frames with a bad CRC (replies and listen frames) */
+#define DES_485_CNT_FERR     0x638u    /* frames with a parity / stop-bit error */
+#define DES_485_CNT_LISTEN   0x63Cu    /* frames received while idle */
+#define DES_485_ID           0x640u    /* R  0x34383501 */
+#define DES_485_QUIET_US     0x644u    /* R  microseconds since the bus was last driven (saturates at 65535) */
+#define DES_485_TX_BUF       0x680u    /* W  64 bytes, little-endian words: PDU without CRC */
+#define DES_485_RX_BUF       0x6C0u    /* R  64 bytes of the last frame received (CRC included) */
+#define DES_485_ID_VALUE     0x34383501u
 #define DES_IO_ST_ESTOP_LATCHED 0x01u
 #define DES_IO_ST_ESTOP_NOW     0x02u
 #define DES_IO_ST_IR1_BLOCKED   0x04u

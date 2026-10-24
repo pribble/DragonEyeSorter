@@ -10,6 +10,7 @@ pl/soc_base/src/des/servo_bus.v
 pl/soc_base/src/des/des_vision.v
 pl/soc_base/src/des/des_pwm.v
 pl/soc_base/src/des/des_io.v
+* pl/soc_base/src/des/des_485.v
 pl/soc_base/src/des/awb_seq_div.v
 pl/soc_base/src/write_fdma/fs_cap.v
 pl/soc_base/src/write_fdma/uiFDMA.v

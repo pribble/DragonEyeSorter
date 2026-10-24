@@ -1,6 +1,7 @@
 // des_regs.v — DES register window 0x0xx (PS 0x8030_1000 + offset, docs/PL设计.md §寄存器通道).
 // ID / VERSION (top passes 12 = v11 + PS CAN0 pins, no register change) / SCRATCH / FREE_CNT /
-// LED_CTRL / FRAME_CNT+TS+PERIOD (SOF toggle CDC) / CAP_* (start/done-toggle latch of belt POS).
+// LED_CTRL / FRAME_CNT+TS+PERIOD (SOF toggle CDC) / CAP_* (start/done-toggle latch of belt POS and, v16, the
+// belt encoder count: image, stepper and encoder sampled on the same clock edge).
 // Unmapped reads return 0xDEADBEEF; combinational read mux (registered mux read stale data, v8).
 `include "des_common.vh"
 module des_regs #(parameter [31:0] VERSION = 32'd2) (
@@ -11,14 +12,16 @@ module des_regs #(parameter [31:0] VERSION = 32'd2) (
     output reg  [31:0] rdata,
     input  wire        sof_toggle, cap_start_toggle, cap_done_toggle,
     input  wire [31:0] pos,             // belt position in clk domain (stepper POS)
+    input  wire [31:0] enc,             // belt encoder count (des_io ENC_CNT, same clock)
     output wire [31:0] ts,
     output wire        led_ovr, led_val
 );
     localparam [31:0] DES_ID = 32'h44455301;
 
     reg [31:0] scratch = 0, free_cnt = 0, frame_cnt = 0, frame_ts = 0, frame_period = 0;
-    reg [31:0] cur_fcnt = 0, cur_t0 = 0, cur_pos0 = 0;
+    reg [31:0] cur_fcnt = 0, cur_t0 = 0, cur_pos0 = 0, cur_enc0 = 0;
     reg [31:0] cap_seq = 0, cap_fcnt = 0, cap_t0 = 0, cap_t1 = 0, cap_pos0 = 0, cap_pos1 = 0;
+    reg [31:0] cap_enc0 = 0, cap_enc1 = 0;
     reg [1:0]  led_ctrl = 0;
 
     // Frame / capture toggles: one 3-FF chain each, the owner tests s2 != s1 (same cycles as inline).
@@ -34,14 +37,14 @@ module des_regs #(parameter [31:0] VERSION = 32'd2) (
         if (sof_s2 != sof_s1) begin
             frame_cnt <= frame_cnt + 1'b1; frame_period <= free_cnt - frame_ts; frame_ts <= free_cnt;
         end
-        if (cs_s2 != cs_s1) begin cur_fcnt <= frame_cnt; cur_t0 <= free_cnt; cur_pos0 <= pos; end
+        if (cs_s2 != cs_s1) begin cur_fcnt <= frame_cnt; cur_t0 <= free_cnt; cur_pos0 <= pos; cur_enc0 <= enc; end
         if (cd_s2 != cd_s1) begin
             cap_seq <= cap_seq + 1'b1; cap_fcnt <= cur_fcnt; cap_t0 <= cur_t0; cap_pos0 <= cur_pos0;
-            cap_t1 <= free_cnt; cap_pos1 <= pos;
+            cap_t1 <= free_cnt; cap_pos1 <= pos; cap_enc0 <= cur_enc0; cap_enc1 <= enc;
         end
     end
 
-    // read: one word table indexed by raddr[11:2], everything above 0x034 reads 0xDEADBEEF
+    // read: one word table indexed by raddr[11:2], everything above 0x03C reads 0xDEADBEEF
     always @* begin
         case (raddr[11:2])
             10'h000: rdata = DES_ID;      10'h001: rdata = VERSION;    10'h002: rdata = scratch;
@@ -49,6 +52,7 @@ module des_regs #(parameter [31:0] VERSION = 32'd2) (
             10'h005: rdata = frame_cnt;   10'h006: rdata = frame_ts;   10'h007: rdata = frame_period;
             10'h008: rdata = cap_seq;     10'h009: rdata = cap_fcnt;   10'h00A: rdata = cap_t0;
             10'h00B: rdata = cap_t1;      10'h00C: rdata = cap_pos0;   10'h00D: rdata = cap_pos1;
+            10'h00E: rdata = cap_enc0;    10'h00F: rdata = cap_enc1;
             default: rdata = 32'hDEAD_BEEF;
         endcase
     end

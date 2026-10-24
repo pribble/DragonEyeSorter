@@ -22,6 +22,9 @@ case "${1:-des_axi}" in
   pwm)
     iverilog -g2005 -I"$D" -o "$T/sim" tb_des_pwm.v $D/des_pwm.v
     ;;
+  rs485)
+    iverilog -g2005 -I"$D" -o "$T/sim" tb_des_485.v $D/des_485.v
+    ;;
   vision)
     iverilog -g2012 -o "$T/sim" tb_des_vision.v $D/des_vision.v   # the testbench uses join_none
     ;;

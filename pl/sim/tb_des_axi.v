@@ -28,12 +28,12 @@ module tb_des_axi;
     );
 
     reg sof_toggle = 0, cap_start_toggle = 0, cap_done_toggle = 0;
-    reg [31:0] pos = 0;
+    reg [31:0] pos = 0, enc = 0;
     wire [31:0] ts;
     des_regs regs (
         .clk(des_clk), .wr(des_wr), .waddr(des_waddr), .wdata(des_wdata),
         .raddr(des_raddr), .rdata(des_rdata), .sof_toggle(sof_toggle),
-        .cap_start_toggle(cap_start_toggle), .cap_done_toggle(cap_done_toggle), .pos(pos), .ts(ts),
+        .cap_start_toggle(cap_start_toggle), .cap_done_toggle(cap_done_toggle), .pos(pos), .enc(enc), .ts(ts),
         .led_ovr(led_ovr), .led_val(led_val)
     );
 
@@ -116,20 +116,25 @@ module tb_des_axi;
         axi_read(16'h101C, r);  check("FRAME_PERIOD ~1000 cycles", (r >= 998 && r <= 1002) ? 1 : 0, 1);
 
         // capture latch: writer start -> done; values must only change on done
-        pos = 100; cap_start_toggle = ~cap_start_toggle; repeat (500) @(posedge clk);
-        pos = 150; cap_done_toggle = ~cap_done_toggle;   repeat (10) @(posedge clk);
+        pos = 100; enc = -7; cap_start_toggle = ~cap_start_toggle; repeat (500) @(posedge clk);
+        pos = 150; enc = -77; cap_done_toggle = ~cap_done_toggle;   repeat (10) @(posedge clk);
         axi_read(16'h1020, r);  check("CAP_SEQ after 1st done", r, 1);
         axi_read(16'h1024, r);  check("CAP_FCNT = FRAME_CNT at writer start", r, 3);
         axi_read(16'h1030, r);  check("CAP_POS0 at start", r, 100);
         axi_read(16'h1034, r);  check("CAP_POS1 at done", r, 150);
+        axi_read(16'h1038, r);  check("CAP_ENC0 at start (v16)", r, -7);
+        axi_read(16'h103C, r);  check("CAP_ENC1 at done (v16)", r, -77);
         axi_read(16'h1028, r2); axi_read(16'h102C, r);
         check("CAP_T1 - CAP_T0 ~500 cycles", (r - r2 >= 498 && r - r2 <= 502) ? 1 : 0, 1);
-        pos = 200; cap_start_toggle = ~cap_start_toggle; repeat (50) @(posedge clk);
+        pos = 200; enc = 40; cap_start_toggle = ~cap_start_toggle; repeat (50) @(posedge clk);
         axi_read(16'h1030, r);  check("CAP_POS0 stable while next frame is written", r, 100);
-        pos = 260; cap_done_toggle = ~cap_done_toggle;   repeat (10) @(posedge clk);
+        axi_read(16'h1038, r);  check("CAP_ENC0 stable while next frame is written", r, -7);
+        pos = 260; enc = 90; cap_done_toggle = ~cap_done_toggle;   repeat (10) @(posedge clk);
         axi_read(16'h1020, r);  check("CAP_SEQ after 2nd done", r, 2);
         axi_read(16'h1030, r);  check("CAP_POS0 of 2nd frame", r, 200);
         axi_read(16'h1034, r);  check("CAP_POS1 of 2nd frame", r, 260);
+        axi_read(16'h1038, r);  check("CAP_ENC0 of 2nd frame", r, 40);
+        axi_read(16'h103C, r);  check("CAP_ENC1 of 2nd frame", r, 90);
 
         if (errors == 0) $display("ALL TESTS PASSED"); else $display("%0d TESTS FAILED", errors);
         $finish;

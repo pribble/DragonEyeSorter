@@ -36,8 +36,8 @@ const char *des_strerror(int rc)
 {
     static const char *const s[] = {"ok", "cannot map /dev/mem", "DES_ID mismatch (bitstream lacks des_regs)",
                                     "servo reply timeout", "servo reply checksum/framing error",
-                                    "servo_bus stuck busy", "bad argument"};
-    return rc <= 0 && rc >= -6 ? s[-rc] : "unknown error";
+                                    "servo_bus stuck busy", "bad argument", "RS485 frame CRC error"};
+    return rc <= 0 && rc >= -7 ? s[-rc] : "unknown error";
 }
 
 static void sleep_us(long us)
@@ -65,6 +65,10 @@ int des_capture_read(const des_hw_t *h, des_capture_t *c)
         c->t1 = des_rd(h, DES_REG_CAP_T1);
         c->pos0 = (int32_t)des_rd(h, DES_REG_CAP_POS0);
         c->pos1 = (int32_t)des_rd(h, DES_REG_CAP_POS1);
+        if (h->version >= DES_VERSION_CAPTURE_ENC) {
+            c->enc0 = (int32_t)des_rd(h, DES_REG_CAP_ENC0);
+            c->enc1 = (int32_t)des_rd(h, DES_REG_CAP_ENC1);
+        } else c->enc0 = c->enc1 = 0;
     } while (s != des_rd(h, DES_REG_CAP_SEQ));
     c->seq = s;
     return DES_OK;
@@ -372,4 +376,107 @@ void des_step_set_vmax(des_hw_t *h, double steps_per_s)
 int32_t des_step_brake_steps(const des_hw_t *h)
 {
     return h->version >= DES_VERSION_CAPTURE ? (int32_t)des_rd(h, DES_ST_BRAKE) : -1;
+}
+
+/* ---------------- RS485 Modbus-RTU (des_485) ---------------- */
+#define ST485_BUSY   0x1u
+#define ST485_DONE   0x2u
+#define ST485_TMO    0x4u
+#define ST485_CRC    0x8u
+#define ST485_OK     0x10u
+#define ST485_FERR   0x20u
+#define ST485_OVF    0x40u
+#define ST485_LISTEN 0x80u
+#define ST485_LF_OK  (1u << 19)
+#define ST485_LF_ERR (1u << 20)
+static pthread_mutex_t g_485_lock = PTHREAD_MUTEX_INITIALIZER;
+static uint32_t g_485_char_us = 1146, g_485_t35_us = 4011, g_485_timeout_us = 100000;   /* PL reset values (9600) */
+
+int des_485_config(des_hw_t *h, uint32_t baud, int parity, uint32_t timeout_us)
+{
+    if (h->version < DES_VERSION_485 || des_rd(h, DES_485_ID) != DES_485_ID_VALUE) return DES_E_ARG;
+    if (baud < 1200 || baud > 4000000 || parity < 0 || parity > 2) return DES_E_ARG;
+    const uint32_t div = (DES_FREE_CNT_HZ + baud / 2) / baud;
+    const uint32_t char_us = (11u * 1000000u + baud - 1) / baud;            /* 11 bits: start + 8 + parity + stop */
+    const uint32_t t35 = baud > 19200 ? 1750u : (uint32_t)(3.5 * 11e6 / baud + 0.5);   /* Modbus over serial line */
+    pthread_mutex_lock(&g_485_lock);
+    des_wr(h, DES_485_DIV, div);
+    des_wr(h, DES_485_CFG, (uint32_t)parity);
+    des_wr(h, DES_485_T35_US, t35);
+    if (timeout_us) { des_wr(h, DES_485_TIMEOUT_US, timeout_us); g_485_timeout_us = timeout_us; }
+    g_485_char_us = char_us; g_485_t35_us = t35;
+    pthread_mutex_unlock(&g_485_lock);
+    return DES_OK;
+}
+static void rd485_frame(const des_hw_t *h, uint32_t st, des_485_result_t *r)
+{
+    int len = (int)((st >> 8) & 0xFF);
+    if (len > 64) len = 64;
+    for (int w = 0; w < (len + 3) / 4; w++) {
+        const uint32_t v = des_rd(h, DES_485_RX_BUF + 4u * (uint32_t)w);
+        for (int b = 0; b < 4 && 4 * w + b < len; b++) r->raw[4 * w + b] = (uint8_t)(v >> (8 * b));
+    }
+    r->n = (uint8_t)len;
+    r->t_rx0 = des_rd(h, DES_485_RX_T0);
+    r->t_rx1 = des_rd(h, DES_485_RX_T1);
+}
+static int xfer485(des_hw_t *h, const uint8_t *pdu, int n, int want_reply, des_485_result_t *r)
+{
+    if (des_rd(h, DES_485_STATUS) & ST485_BUSY) des_wr(h, DES_485_CTRL, 0x10u);   /* left over by a killed process */
+    for (int w = 0; w < (n + 3) / 4; w++) {
+        uint32_t v = 0;
+        for (int b = 0; b < 4 && 4 * w + b < n; b++) v |= (uint32_t)pdu[4 * w + b] << (8 * b);
+        des_wr(h, DES_485_TX_BUF + 4u * (uint32_t)w, v);
+    }
+    des_wr(h, DES_485_CTRL, ((uint32_t)n << 8) | (want_reply ? 2u : 0u) | 1u);
+    /* own deadline: quiet bus (t3.5, after at most one 256-byte frame of someone else) + request + reply window +
+       a 64-byte reply + t3.5, then 20 ms slack. Past it the bus never went quiet (A/B swapped, stuck low): abort. */
+    const uint64_t c = g_485_char_us;
+    uint64_t limit = g_485_t35_us + 256 * c + (uint64_t)(n + 3) * c + 20000;
+    if (want_reply) limit += g_485_timeout_us + 66 * c + g_485_t35_us;
+    const long poll = c < 200 ? 100 : 200;
+    uint64_t waited = 0;
+    uint32_t st = des_rd(h, DES_485_STATUS);
+    while ((st & ST485_BUSY) && waited < limit) {
+        sleep_us(poll);
+        waited += (uint64_t)poll;
+        st = des_rd(h, DES_485_STATUS);
+    }
+    if (st & ST485_BUSY) { des_wr(h, DES_485_CTRL, 0x10u); r->status = des_rd(h, DES_485_STATUS); return DES_E_BUSY; }
+    r->status = st;
+    r->t_tx0 = des_rd(h, DES_485_TX_T0);
+    r->t_tx1 = des_rd(h, DES_485_TX_T1);
+    if (!want_reply) return (st & ST485_DONE) ? DES_OK : DES_E_BUSY;
+    if (st & ST485_TMO) return DES_E_TIMEOUT;
+    rd485_frame(h, st, r);
+    if (st & (ST485_FERR | ST485_OVF)) return DES_E_RXERR;
+    if (!(st & ST485_OK)) return DES_E_CRC;
+    r->n = (uint8_t)(r->n - 2);   /* OK implies >= 4 bytes; drop the CRC */
+    return DES_OK;
+}
+int des_485_xfer(des_hw_t *h, const uint8_t *pdu, int n, int want_reply, des_485_result_t *r)
+{
+    des_485_result_t tmp;
+    if (!r) r = &tmp;
+    r->n = 0; r->status = 0; r->t_tx0 = r->t_tx1 = r->t_rx0 = r->t_rx1 = 0;
+    if (h->version < DES_VERSION_485 || !pdu || n < 1 || n > 62) return DES_E_ARG;
+    pthread_mutex_lock(&g_485_lock);
+    const int rc = xfer485(h, pdu, n, want_reply, r);
+    pthread_mutex_unlock(&g_485_lock);
+    return rc;
+}
+int des_485_listen(des_hw_t *h, des_485_result_t *r)
+{
+    if (h->version < DES_VERSION_485 || !r) return DES_E_ARG;
+    pthread_mutex_lock(&g_485_lock);
+    const uint32_t st = des_rd(h, DES_485_STATUS);
+    if (!(st & ST485_LISTEN)) { pthread_mutex_unlock(&g_485_lock); return 0; }
+    r->status = st; r->t_tx0 = r->t_tx1 = 0;
+    rd485_frame(h, st, r);
+    des_wr(h, DES_485_CTRL, 0x8u);   /* ack: the next idle frame can be reported */
+    pthread_mutex_unlock(&g_485_lock);
+    if (st & ST485_LF_ERR) return DES_E_RXERR;
+    if (!(st & ST485_LF_OK)) return DES_E_CRC;
+    r->n = (uint8_t)(r->n - 2);
+    return 1;
 }

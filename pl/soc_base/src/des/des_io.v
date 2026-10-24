@@ -20,7 +20,8 @@ module des_io #(
     input  wire [31:0] pos,             // stepper position
     input  wire        estop_n, ir1_in, limit1_in,
     input  wire        enc_a, enc_b, enc_z,
-    output wire        estop_out        // to stepper_ctrl.estop
+    output wire        estop_out,       // to stepper_ctrl.estop
+    output wire [31:0] enc_o            // encoder count, to des_regs frame capture (v16)
 );
     localparam integer EST_DEB = CLK_HZ / 1_000_000 * EST_DEB_US;   // 75000 clocks
     localparam integer IN_DEB  = CLK_HZ / 1_000_000 * IN_DEB_US;    // 1500 clocks
@@ -51,6 +52,7 @@ module des_io #(
     wire wr_ctrl = wr && waddr[7:2] == 6'h01;
     wire a_chg = fa != pa, b_chg = fb != pb;
     assign estop_out = est_latched;
+    assign enc_o = enc;
 
     always @(posedge clk) begin
         if (wr && waddr[7:2] == 6'h0E) begin cfg_ir_pol <= wdata[0]; cfg_lim_pol <= wdata[1]; end

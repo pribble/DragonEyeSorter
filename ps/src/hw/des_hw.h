@@ -19,6 +19,7 @@ enum {
     DES_E_RXERR = -4,      /* reply framing / checksum error */
     DES_E_BUSY = -5,       /* servo_bus never reported done (PL stuck?) */
     DES_E_ARG = -6,
+    DES_E_CRC = -7,        /* RS485 frame with a bad CRC (v16) */
 };
 
 typedef struct { volatile uint32_t *regs; int fd; uint32_t version; } des_hw_t;   /* version 0 when ID check failed */
@@ -40,7 +41,9 @@ void des_frame_read(const des_hw_t *h, des_frame_t *f);
 typedef struct {
     uint32_t seq, frame, t0, t1;
     int32_t pos0, pos1;    /* belt position (steps) at writer start / done */
+    int32_t enc0, enc1;    /* belt encoder count at writer start / done, same clock edges (v16; 0 before) */
 } des_capture_t;
+#define DES_VERSION_CAPTURE_ENC 16u
 #define DES_VERSION_CAPTURE 5u
 int des_capture_read(const des_hw_t *h, des_capture_t *c);
 
@@ -80,6 +83,28 @@ int des_estop_latched(const des_hw_t *h);          /* 1 latched, 0 not, DES_E_AR
 int des_estop_clear(des_hw_t *h);                  /* clears the latch unless the button is still pressed; returns
                                                       1 if it is still latched afterwards */
 int des_enc_zero(des_hw_t *h);
+
+/* ---- RS485 Modbus-RTU (des_485, VERSION >= 16): PL adds / checks the CRC16, drives DE, frames by t3.5 ---- */
+#define DES_VERSION_485 16u
+typedef struct {
+    uint8_t  n;            /* reply bytes in raw[]: CRC removed on success; on DES_E_CRC / DES_E_RXERR the bytes as
+                              received (CRC included, at most 64) for debugging */
+    uint8_t  raw[64];      /* [addr, func, data...] */
+    uint32_t status;       /* DES_485_STATUS as read at the end (debug) */
+    uint32_t t_tx0, t_tx1; /* FREE_CNT: first start bit / end of the last stop bit of the request */
+    uint32_t t_rx0, t_rx1; /* FREE_CNT: first start bit / last byte of the reply; latency = t_rx0 - t_tx1 */
+} des_485_result_t;
+/* baud (1200..4000000), parity 0 none / 1 even / 2 odd, reply timeout (us, 0 = keep). Sets t3.5 = 3.5 x 11 bit times
+   (fixed 1750 us above 19200 baud, Modbus spec). DES_E_ARG before v16 or out of range. */
+int des_485_config(des_hw_t *h, uint32_t baud, int parity, uint32_t timeout_us);
+/* pdu = [addr, func, data...] without CRC, n = 1..62; want_reply = 0 for broadcasts (addr 0). Blocks until the
+   reply frame ended (t3.5 silence) or the timeout. DES_OK / DES_E_TIMEOUT / DES_E_CRC / DES_E_RXERR (parity / stop
+   error, or a reply longer than 64 bytes) / DES_E_BUSY (aborted: bus never quiet, e.g. A/B swapped) / DES_E_ARG.
+   Modbus exception replies (func | 0x80) are returned as DES_OK: the caller decodes the PDU. Thread safe. */
+int des_485_xfer(des_hw_t *h, const uint8_t *pdu, int n, int want_reply, des_485_result_t *r);
+/* frame received while idle (another master on the bus): 1 and *r filled (then acknowledged), 0 none,
+   DES_E_CRC / DES_E_RXERR for a damaged one (still acknowledged), DES_E_ARG before v16. Non-blocking. */
+int des_485_listen(des_hw_t *h, des_485_result_t *r);
 
 /* ---- servo bus (Desheng protocol v4.01; PL adds FF FF header and checksum) ---- */
 typedef struct {

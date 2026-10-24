@@ -30,6 +30,10 @@ module system_top (
     // 板载 CAN 收发器（BANK33，J11）：PS CAN0 经 PL 引出
     output       CAN0_TXD,      // F20
     input        CAN0_RXD,      // F19
+    // 板载 RS485 收发器 SP3485EN（BANK33，J11 第 5 / 6 位 485_A / 485_B）：自研 des_485（v16）
+    output       RS485_TXD,     // L17：DI
+    input        RS485_RXD,     // N16：RO（上拉；DE = 1 时悬空）
+    output       RS485_DE,      // N15：DE 与 /RE 并联，1 = 发送
 
     // MIPI CSI-2 输入（LVDS IO 实现 D-PHY）
     input  wire       I_clk_hs_p,
@@ -259,7 +263,7 @@ module system_top (
     );
 
     // ---------------- 自研模块：0x8030_1000 起的 AXI-Lite 寄存器总线 ----------------
-    wire [31:0] regs_rdata, sb_rdata, st_rdata, vis_rdata, pwm_rdata, io_rdata, des_ts, st_pos;
+    wire [31:0] regs_rdata, sb_rdata, st_rdata, vis_rdata, pwm_rdata, io_rdata, rs_rdata, des_ts, st_pos, io_enc;
     wire        sb_drive_low, st_pul_n, st_dir_n, st_ena, des_estop;
 
     // 组合读多路：fvdma_ctrl 桥按 1 拍取数，不能打拍
@@ -267,12 +271,13 @@ module system_top (
                        (des_raddr[11:8] == 4'h2) ? st_rdata :
                        (des_raddr[11:8] == 4'h3) ? vis_rdata :
                        (des_raddr[11:8] == 4'h4) ? pwm_rdata :
-                       (des_raddr[11:8] == 4'h5) ? io_rdata : regs_rdata;
+                       (des_raddr[11:8] == 4'h5) ? io_rdata :
+                       (des_raddr[11:8] == 4'h6) ? rs_rdata : regs_rdata;
 
-    des_regs #(.VERSION(32'd12)) des_regs_inst (
+    des_regs #(.VERSION(32'd16)) des_regs_inst (   // 16: CAP_ENC0/1 + des_485 (0x6xx)
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h0), .waddr(des_waddr), .wdata(des_wdata),
         .raddr(des_raddr), .rdata(regs_rdata), .sof_toggle(des_sof_toggle), .ts(des_ts),
-        .cap_start_toggle(cap_start_tgl), .cap_done_toggle(cap_done_tgl), .pos(st_pos),
+        .cap_start_toggle(cap_start_tgl), .cap_done_toggle(cap_done_tgl), .pos(st_pos), .enc(io_enc),
         .led_ovr(des_led_ovr), .led_val(des_led_val)
     );
 
@@ -299,7 +304,13 @@ module system_top (
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h5), .waddr(des_waddr[7:0]), .wdata(des_wdata),
         .raddr(des_raddr[7:0]), .rdata(io_rdata), .ts(des_ts), .pos(st_pos),
         .estop_n(ESTOP_IN), .ir1_in(IR1_IN), .limit1_in(LIMIT1_IN), .enc_a(ENC_A), .enc_b(ENC_B), .enc_z(ENC_Z),
-        .estop_out(des_estop)
+        .estop_out(des_estop), .enc_o(io_enc)
+    );
+
+    des_485 rs485_inst (
+        .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h6), .waddr(des_waddr[7:0]), .wdata(des_wdata),
+        .raddr(des_raddr[7:0]), .rdata(rs_rdata), .ts(des_ts),
+        .rx_i(RS485_RXD), .tx_o(RS485_TXD), .de_o(RS485_DE)
     );
 
     des_pwm pwm_inst (

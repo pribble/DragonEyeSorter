@@ -8,6 +8,8 @@
  *   step status | vel <steps/s> [acc] | move <target> [vmax] [acc] | stop | halt | off | zero
  *   vis [mode [thr] [edge_thr] [full|x0 y0 x1 y1]]   PL vision statistics / settings (v6; modes 0 camera .. 5 edges)
  *   pwm <ch> <us> | pwm off      flap servo pulse width (v7);   io [estop-clr|enc-zero|ir1-clr|watch [sec]]  (v11)
+ *   485 [cfg <baud> [N|E|O] [timeout_ms] | tx <hex..> | bc <hex..> | soak <n> <hex..> | listen [sec] | clr]
+ *                                RS485 Modbus-RTU (v16): PDU bytes in hex without CRC (the PL adds / checks it)
  * Do not use the write commands while des_app is running (single-master servo bus / stepper).
  */
 #include <stdio.h>
@@ -50,8 +52,14 @@ static int status(void)
            rd(DES_SB_CNT_RX_ERR));
     des_capture_t c;
     if (des_capture_read(&hw, &c) == DES_OK)
-        printf("CAPTURE      seq %u, frame %u, start->done %.3f ms, belt pos %d -> %d\n", c.seq, c.frame,
-               (c.t1 - c.t0) * 1e3 / DES_FREE_CNT_HZ, c.pos0, c.pos1);
+        printf("CAPTURE      seq %u, frame %u, start->done %.3f ms, belt pos %d -> %d%s", c.seq, c.frame,
+               (c.t1 - c.t0) * 1e3 / DES_FREE_CNT_HZ, c.pos0, c.pos1, ver >= DES_VERSION_CAPTURE_ENC ? "" : "\n");
+    if (ver >= DES_VERSION_CAPTURE_ENC) printf(", encoder %d -> %d\n", c.enc0, c.enc1);
+    if (ver >= DES_VERSION_485 && rd(DES_485_ID) == DES_485_ID_VALUE)
+        printf("RS485        %u baud, parity %c | sent %u, ok %u, timeouts %u, CRC errors %u, frame errors %u, "
+               "listen %u\n", DES_FREE_CNT_HZ / rd(DES_485_DIV), "NEO?"[rd(DES_485_CFG) & 3], rd(DES_485_CNT_TX),
+               rd(DES_485_CNT_OK), rd(DES_485_CNT_TIMEOUT), rd(DES_485_CNT_CRC), rd(DES_485_CNT_FERR),
+               rd(DES_485_CNT_LISTEN));
     uint32_t s = des_step_status(&hw);
     printf("STEPPER      pos %d, status 0x%x%s%s%s", des_step_pos(&hw), s, s & DES_ST_STATUS_MOVING ? " moving" : "",
            s & DES_ST_STATUS_HALTED ? " halted" : "", s & DES_ST_STATUS_ENABLED ? " enabled" : "");
@@ -181,13 +189,111 @@ static int sb_print(const uint8_t *body, int n, int expect_reply, des_sb_result_
            r.status & 0x20 ? " overload" : "", r.status & 0x04 ? " over-temp" : "", r.status & 0x01 ? " voltage" : "");
     return rc == DES_OK ? 0 : 4;
 }
+/* ---- desreg 485 ... ---- */
+static int hex_pdu(int argc, char **argv, uint8_t *pdu)
+{
+    if (argc < 1 || argc > 62) { fprintf(stderr, "485: 1..62 PDU bytes in hex (address, function, data; no CRC)\n"); return -1; }
+    for (int i = 0; i < argc; i++) pdu[i] = (uint8_t)strtoul(argv[i], NULL, 16);
+    return argc;
+}
+static const char *err485(int rc)   /* des_strerror() words its timeout / framing texts for the servo bus */
+{
+    return rc == DES_OK ? "ok" : rc == DES_E_TIMEOUT ? "timeout (no reply)" : rc == DES_E_CRC ? "CRC error" :
+           rc == DES_E_RXERR ? "parity / stop-bit error or reply > 64 bytes" :
+           rc == DES_E_BUSY ? "bus never quiet (aborted)" : des_strerror(rc);
+}
+static void print_485(int rc, const des_485_result_t *r, int want_reply)
+{
+    printf("%s", err485(rc));
+    if (r->t_tx1) printf("  request %.3f ms", (r->t_tx1 - r->t_tx0) * 1e3 / DES_FREE_CNT_HZ);
+    if (want_reply && (rc == DES_OK || rc == DES_E_CRC || rc == DES_E_RXERR)) {
+        printf("  reply after %.3f ms:", (r->t_rx0 - r->t_tx1) * 1e3 / DES_FREE_CNT_HZ);
+        for (int i = 0; i < r->n; i++) printf(" %02X", r->raw[i]);
+        if (rc == DES_OK && r->n >= 2 && (r->raw[1] & 0x80)) printf("  (Modbus exception %u)", r->raw[2]);
+    }
+    printf("\n");
+}
+static int rs485_cmd(int argc, char **argv)
+{
+    if (hw.version < DES_VERSION_485 || rd(DES_485_ID) != DES_485_ID_VALUE) {
+        fprintf(stderr, "bitstream before v16: no des_485\n");
+        return 2;
+    }
+    uint8_t pdu[64];
+    des_485_result_t r;
+    if (argc == 0) {
+        const uint32_t st = rd(DES_485_STATUS);
+        printf("RS485 %u baud parity %c, t3.5 %u us, timeout %u us | status 0x%08x%s%s, quiet %u us\n",
+               DES_FREE_CNT_HZ / rd(DES_485_DIV), "NEO?"[rd(DES_485_CFG) & 3], rd(DES_485_T35_US),
+               rd(DES_485_TIMEOUT_US), st, st & 1 ? " busy" : "", st & 0x80 ? " listen-frame" : "", rd(DES_485_QUIET_US));
+        printf("sent %u, ok %u, timeouts %u, CRC errors %u, frame errors %u, listen %u\n", rd(DES_485_CNT_TX),
+               rd(DES_485_CNT_OK), rd(DES_485_CNT_TIMEOUT), rd(DES_485_CNT_CRC), rd(DES_485_CNT_FERR),
+               rd(DES_485_CNT_LISTEN));
+        return 0;
+    }
+    const char *s = argv[0];
+    if (!strcmp(s, "cfg") && argc >= 2) {
+        const char pc = argc > 2 ? argv[2][0] : 'N';
+        const int par = (pc == 'E' || pc == 'e') ? 1 : (pc == 'O' || pc == 'o') ? 2 : 0;
+        const int rc = des_485_config(&hw, (uint32_t)atoi(argv[1]), par, argc > 3 ? (uint32_t)(atof(argv[3]) * 1000) : 0);
+        if (rc) fprintf(stderr, "485 cfg: %s\n", des_strerror(rc));
+        return rc ? 1 : 0;
+    }
+    if (!strcmp(s, "clr")) { des_wr(&hw, DES_485_CTRL, 0x4u); return 0; }
+    if ((!strcmp(s, "tx") || !strcmp(s, "bc")) && argc >= 2) {
+        const int n = hex_pdu(argc - 1, argv + 1, pdu), want = !strcmp(s, "tx");
+        if (n < 0) return 1;
+        const int rc = des_485_xfer(&hw, pdu, n, want, &r);
+        print_485(rc, &r, want);
+        return rc == DES_OK ? 0 : 1;
+    }
+    if (!strcmp(s, "soak") && argc >= 3) {   /* n requests: success rate and reply latency for the test report */
+        const int count = atoi(argv[1]), n = hex_pdu(argc - 2, argv + 2, pdu);
+        if (n < 0 || count < 1) return 1;
+        int ok = 0, tmo = 0, crc = 0, ferr = 0, other = 0;
+        stat_t lat = {0xFFFFFFFFu, 0, 0};
+        for (int k = 0; k < count; k++) {
+            const int rc = des_485_xfer(&hw, pdu, n, 1, &r);
+            if (rc == DES_OK) { ok++; stat_add(&lat, r.t_rx0 - r.t_tx1); }
+            else if (rc == DES_E_TIMEOUT) tmo++;
+            else if (rc == DES_E_CRC) crc++;
+            else if (rc == DES_E_RXERR) ferr++;
+            else other++;
+        }
+        printf("485 soak: %d requests, ok %d (%.2f%%), timeouts %d, CRC errors %d, frame errors %d, other %d", count, ok,
+               100.0 * ok / count, tmo, crc, ferr, other);
+        if (ok) printf(" | reply latency min %.3f / avg %.3f / max %.3f ms", lat.min * 1e3 / DES_FREE_CNT_HZ,
+                       lat.sum / ok * 1e3 / DES_FREE_CNT_HZ, lat.max * 1e3 / DES_FREE_CNT_HZ);
+        printf("\n");
+        return ok == count ? 0 : 1;
+    }
+    if (!strcmp(s, "listen")) {   /* frames of another master (PC USB-RS485) while we are idle */
+        const double sec = argc > 1 ? atof(argv[1]) : 10.0;
+        for (int k = 0; k < (int)(sec * 100); k++) {
+            const int rc = des_485_listen(&hw, &r);
+            if (rc != 0) {
+                printf("%10.3f  %s:", r.t_rx0 * 1e3 / DES_FREE_CNT_HZ, rc == 1 ? "frame" : err485(rc));
+                for (int i = 0; i < r.n; i++) printf(" %02X", r.raw[i]);
+                printf("\n");
+                fflush(stdout);
+            }
+            usleep(10000);
+        }
+        return 0;
+    }
+    fprintf(stderr, "usage: desreg 485 [cfg <baud> [N|E|O] [timeout_ms] | tx <hex..> | bc <hex..> | soak <n> <hex..> | "
+                    "listen [sec] | clr]\n");
+    return 1;
+}
+
 int main(int argc, char **argv)
 {
     int orc = des_hw_open(&hw);
     if (orc == DES_E_OPEN) { perror("open/mmap /dev/mem"); return 1; }
     const char *cmd = argc > 1 ? argv[1] : "";
     int rc = 0;
-    int read_only = argc == 1 || !strcmp(cmd, "r") || !strcmp(cmd, "lat") || (!strcmp(cmd, "vis") && argc == 2);
+    int read_only = argc == 1 || !strcmp(cmd, "r") || !strcmp(cmd, "lat") || (!strcmp(cmd, "vis") && argc == 2) ||
+                    (!strcmp(cmd, "485") && argc == 2);
     if (!read_only && orc == DES_E_ID) {
         /* on a bitstream without des_regs this window aliases the camera DMA registers */
         fprintf(stderr, "refusing to write: DES_ID mismatch (0x%08x), bitstream lacks des_regs\n", rd(DES_REG_ID));
@@ -283,6 +389,8 @@ int main(int argc, char **argv)
                 usleep(200000);
             }
         }
+    } else if (!strcmp(cmd, "485")) {
+        rc = rs485_cmd(argc - 2, argv + 2);
     } else if (!strcmp(cmd, "vis")) {
         if (argc >= 3) {
             int mode = atoi(argv[2]), thr = argc > 3 ? atoi(argv[3]) : 128, ethr = argc > 4 ? atoi(argv[4]) : 200;
