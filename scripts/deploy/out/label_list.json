@@ -1,5 +1,5 @@
 {
-  "comment": "实物 5 类（2026-10-24，候选：训好、板上评估过关后替换 models/label_list.json 并与模型一起上板）。缺陷分轻 / 重两级（领域 3 高级「缺陷分级 AI ≥92%」），去向按 10_项目文档/物料与缺陷样本.md §5，其中轻脏污用户 10-24 定为返修（保守）。编号飞边放最后：加飞边两级后 = 7 类（5 gear_flash_l、6 gear_flash_h），前 5 个不变。",
+  "comment": "实物 5 类（2026-10-24 与第二版模型一起上板：板上 NPU 测试集 99.31%、OK/NG 100%；以后换类别必须与模型一起换）。缺陷分轻 / 重两级（领域 3 高级「缺陷分级 AI ≥92%」），去向按 10_项目文档/物料与缺陷样本.md §5，其中轻脏污用户 10-24 定为返修（保守）。编号飞边放最后：加飞边两级后 = 7 类（5 gear_flash_l、6 gear_flash_h），前 5 个不变。",
   "labels": [
     { "id": 0, "label": "gear_ok",      "cn": "齿轮-良品",      "kind": "gear", "verdict": "OK", "action": "arm_pick", "dest": "gear_box" },
     { "id": 1, "label": "gear_short_l", "cn": "齿轮-缺料·轻",   "kind": "gear", "verdict": "NG", "action": "flap",     "dest": "scrap" },

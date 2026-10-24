@@ -8,7 +8,7 @@
 
 **板端当前 v15（最新）**：v15 = 第三轮重构源码（`9e01d8f`，自研 + 厂家明文 RTL + `pl/sim` 框架）全量重编 + 上板（`BOOT.bin` `b0aef232…`，比特流 `e14fbb65…`；56m25s、0 error）；`pl_check.sh` 21 项回归通过、2min soak 0 error；寄存器 `VERSION` 仍 12（接口未变）。自研各域 0 违例；v14 的 HDMI 串行 −0.164ns 与 PS HP0→NPU −0.133ns 厂家路径端点已消失，NPU 软核域内 −0.093ns / 42 端点仍属厂家加密 IP；TMDS 视觉待复核 ⚠。逐版改动与上板记录见 [pl/soc_base/README](../pl/soc_base/README.md) 与 [log/](log/README.md)。2026-10-24 又对**厂家明文 RTL（非 des）**做了一轮零行为重构（源码级），随后第三轮 PL 重构把**自研 `des/` 与顶层、厂家明文 RTL、`pl/sim` 仿真框架**一起再精简（零外部行为变化）——两轮当时均未重编比特流，源码由 v15 全量重编 + 上板转正，见 [log/2026-10-24-PL厂家RTL重构](log/2026-10-24-PL厂家RTL重构.md) · [log/2026-10-24-PL第三轮重构](log/2026-10-24-PL第三轮重构.md) · [log/2026-10-24-PL第三轮重编上板v15](log/2026-10-24-PL第三轮重编上板v15.md)。
 
-**CAN 管脚（最新版已引到）**：底板 CAN 收发器接 PL 管脚 F20（TX）/ F19（RX），LVCMOS33、RX 上拉；RS485 接 L17 / N16 / N15（硬件手册 p21），尚未引出（要先定 PL UART 还是 PS UART 经 EMIO）。官方 demo 块设计没开 PS CAN（`CAN0_Available=0`，收发脚未约束）→ 最新版把 PS 硬核 `can0_tx_out` / `can0_rx_in` 经块设计引到 `system_top`，再到 F20 / F19。单节点验证：无人应答时发送错误计数按 CAN 规则累加、进 ERROR-PASSIVE 不进 BUS-OFF → 收发回路已通（明细见 log）；双节点实测等 J11 插头。注意：① ipms_canfd 驱动的错误帧把 ACK 位置码 0x19 写进 data[2]，candump 会显示成 bit-error，别被误导；② 驱动只支持 FD 模式，`ip link … fd off` 直接 EINVAL，收发经典帧不受影响（`can_up.sh` 照用）；③ 底板 B2B 管脚表（20250526）把 CAN / HDMI 管脚写反，以硬件手册 + 实测为准。
+**CAN 管脚（最新版已引到）**：底板 CAN 收发器接 PL 管脚 F20（TX）/ F19（RX），LVCMOS33、RX 上拉；RS485 接 L17 / N16 / N15（硬件手册 p21），尚未引出（要先定 PL UART 还是 PS UART 经 EMIO）。官方 demo 块设计没开 PS CAN（`CAN0_Available=0`，收发脚未约束）→ 最新版把 PS 硬核 `can0_tx_out` / `can0_rx_in` 经块设计引到 `system_top`，再到 F20 / F19。单节点验证：无人应答时发送错误计数按 CAN 规则累加、进 ERROR-PASSIVE 不进 BUS-OFF → 收发回路已通（明细见 log）；10-23 J11 接 PC USB-CAN 双节点实测通过（240/240，见 [测试与验证](测试与验证.md)）。注意：① ipms_canfd 驱动的错误帧把 ACK 位置码 0x19 写进 data[2]，candump 会显示成 bit-error，别被误导；② 驱动只支持 FD 模式，`ip link … fd off` 直接 EINVAL，收发经典帧不受影响（`can_up.sh` 照用）；③ 底板 B2B 管脚表（20250526）把 CAN / HDMI 管脚写反，以硬件手册 + 实测为准。
 
 ### 官方源码可复用性（`soc_prj/src/` 清点）
 
@@ -23,7 +23,7 @@
 |---|---|---|---|---|
 | `mipi_rx` + `isp` + `vdma` + `hdmitx` | 采集与显示 | 官方 | P0 | ✅ 官方基线 |
 | `des_regs`（含 `enc_frame_latch`） | 寄存器窗口 + 自由计数器 + 帧计数 + 拍摄锁存带位置 | 官方模板 + 自研 | P0 | ✅ 上板 |
-| `stepper_ctrl` | 步进脉冲 + 梯形 / S 曲线加减速 + 速度 / 位置模式 + 已发脉冲计数 | 自研 | P0 | ✅ 上板；TB6600 + 57 步进走带、定位准确 |
+| `stepper_ctrl` | 步进脉冲 + 梯形加减速（线性斜率）+ 速度 / 位置模式 + 已发脉冲计数 | 自研 | P0 | ✅ 上板；TB6600 + 57 步进走带、定位准确 |
 | `servo_bus`（= `servo_bus_master`） | 半双工 UART 115200 + 德晟 v4.01 帧 + SYNC WRITE / REG WRITE + ACTION + 位置 / 电流 / 温度轮询 | 自研 | P0 | ✅ 上板；6 个舵机全部应答 |
 | `des_io` | 急停去抖 + 锁存（锁存期间步进停住）、对射 / 限位去抖 + 边沿捕获、编码器 4 倍频 + 滤波 + Z 相 + 测速 | 自研 | P0 / P1 | ✅ 上板；编码器已接、手滚 4000 计数/圈；急停实按 PL 停步进已测（[log/2026-10-17](log/2026-10-17-相机安装与标定试跑.md)），界面复位流程待测；对射待接 |
 | `des_pwm` | 两个侧边导流挡板的舵机 PWM，按带位置触发 | 自研 | P1 | ✅ 上板（读回 / 50Hz）；挡板舵机未接 |
