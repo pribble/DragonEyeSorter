@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Synthetic part crops for the 8 classes (models/label_list.json), for the TOOLCHAIN SMOKE TEST only.
+"""Synthetic part crops for the classes in models/label_list.json (5: ok / short_l / short_h / dirty_l / dirty_h),
+for the TOOLCHAIN SMOKE TEST only.
 
 Same geometry as ps/src/measure/roi_crop: 56 mm square -> 224 px (0.25 mm/px), part centered, long axis along x.
 White POM gear (m1, 30 teeth, OD 32, bore 6) / rack (50 mm, 15 teeth, 15 mm high) on a dark belt, with the three
@@ -90,7 +91,12 @@ def rack_outline(short_teeth=(), fill_gaps=(), n=15, length=50.0):
 
 
 def render(rng, kind, defect):
-    """returns BGR uint8 224x224"""
+    """returns BGR uint8 224x224; defect: ok / short / flash / dirty with an optional _l / _h severity
+    suffix (5-class label_list: gear_short_l/h, gear_dirty_l/h) — _h draws the defect heavier"""
+    sev = 0
+    if defect.endswith("_l") or defect.endswith("_h"):
+        sev = 1 if defect.endswith("_h") else 0
+        defect = defect[:-2]
     big = np.zeros((N * SS, N * SS), np.uint8)
     c_px = (N / 2 + rng.uniform(-6, 6), N / 2 + rng.uniform(-6, 6))     # +-1.5 mm centering error
     if kind == "gear":
@@ -98,7 +104,7 @@ def render(rng, kind, defect):
         short, fill = [], []
         if defect == "short":
             k0 = int(rng.integers(z))
-            for j in range(int(rng.integers(1, 4))):
+            for j in range(int(rng.integers(2, 5)) if sev else int(rng.integers(1, 3))):
                 short.append(((k0 + j) % z, rng.uniform(0.8, 2.25)))
         if defect == "flash":
             for _ in range(int(rng.integers(1, 3))):
@@ -113,7 +119,7 @@ def render(rng, kind, defect):
         short, fill = [], []
         if defect == "short":
             k0 = int(rng.integers(n))
-            for j in range(int(rng.integers(1, 3))):
+            for j in range(int(rng.integers(2, 4)) if sev else int(rng.integers(1, 3))):
                 if k0 + j < n:
                     short.append((k0 + j, rng.uniform(0.8, 2.25)))
         if defect == "flash":
@@ -138,7 +144,7 @@ def render(rng, kind, defect):
     img = belt * (1 - mask) + face * mask
 
     if defect == "dirty":                            # dark spots on the face
-        for _ in range(int(rng.integers(1, 5))):
+        for _ in range(int(rng.integers(3, 6)) if sev else int(rng.integers(1, 3))):
             ang, rad = rng.uniform(0, 2 * math.pi), rng.uniform(0, face_r)
             if kind == "rack":
                 cx, cy = c_px[0] + rng.uniform(-22, 22) * PX_PER_MM, c_px[1] + rng.uniform(-4, 4) * PX_PER_MM

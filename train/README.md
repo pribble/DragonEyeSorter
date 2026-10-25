@@ -1,6 +1,6 @@
 # train/ — 零件分类模型（NPU，赛题硬性项④）
 
-**路线**：PS 用 OpenCV 定位（已在 60fps 主循环里）→ 每件按自身方向转正裁 **56×56mm → 224×224**（`ps/src/measure/roi_crop`，约 0.25mm/像素）→ NPU 跑 **YOLOv8n-cls@224（激活换成 ReLU）** 分 4 类（`models/label_list.json`：良品 / 缺料 / 飞边 / 黑点）→ 过视野时分类 3~6 次、概率软投票（`Tracker::vote`）→ 去向。
+**路线**：PS 用 OpenCV 定位（已在 60fps 主循环里）→ 每件按自身方向转正裁 **56×56mm → 224×224**（`ps/src/measure/roi_crop`，约 0.25mm/像素）→ NPU 跑 **YOLOv8n-cls@224（激活换成 ReLU）** 分 5 类（`models/label_list.json`：良品 / 缺料轻 / 缺料重 / 脏污轻 / 脏污重；飞边两级样品到位后扩 7 类）→ 过视野时分类 3~6 次、概率软投票（`Tracker::vote`）→ 去向。
 
 不用整帧检测：整帧约 0.18mm/像素，缩到 416 后约 0.84mm/像素，1mm 的黑点 / 缺料只剩 1 个像素；裁切后同样的缺陷约 4 个像素，计算量约为整帧 YOLOv8n@416 的 1/7。**训练和推理用同一个裁切函数**（`roi_crop`），归一化一致（RGB、÷255、均值 0）。
 
@@ -14,7 +14,7 @@
 
 - 算子限制（`check_onnx_model.py`）：Conv 核 1/3/5/7 方形、步长 1/2（步长 2 只能 3×3）、pad = (k−1)/2、**深度可分离卷积不加速**、输入 ≤1023×1023；Gemm transB=1；MaxPool 核 2/5/9/13；硬核激活只有 ReLU / LeakyReLU / Mish / HardSwish（**没有 SiLU**）；InstanceNorm、Erf 不支持。
 - 用官方检查器查我们的 ReLU 模型：Conv 26 / Relu 26 / Split 4 / Add 6 / Concat 4 / GlobalAveragePool 1 / Gemm 1 → **只有 GlobalAveragePool 不能加速**（尾部 1280×7×7 求平均回退 CPU，代价很小）。SiLU 版多出 Sigmoid 26 + Mul 26。
-- ⬜ int8 per-channel 对称量化（P1）：要先让 `ps/src/app/npu_cls.cpp` 支持 int8 输入（现在只认 uint8 / float32）；官方 int8 路径是 per-channel + 对称（PC 上 97.7% vs per-tensor 96.46%），等实物数据集后再做。
+- ⬜ int8 per-channel 对称量化（P1）：要先让 `ps/src/app/npu.hpp`（`NpuClassifier`）支持 int8 输入（现在只认 uint8 / float32）；官方 int8 路径是 per-channel + 对称（PC 上 97.7% vs per-tensor 96.46%），等实物数据集后再做。
 - 可选（P2，收益很小）：GlobalAveragePool 并进全连接，让整网都在 NPU 上。
 
 ## 流程
@@ -73,7 +73,7 @@ scp -r out/part_cls_refs $BOARD_HOST:/root/des/
 ssh $BOARD_HOST /root/bin/test_npu /root/des/part_cls.json /root/des/part_cls_refs 200
 ```
 
-**冒烟测试**（零件没到时验链路）：`synth_crops.py` 按 `label_list.json` 生成合成裁切图（现为齿轮 4 类），走完上面全部步骤。现 4 类：600 + 120 张 / 类、12 轮 → 4 类合成验证集（480 张）：NPU **95.42%**、OK/NG 96.0%，PC fp32 97.5% / uint8 95.6%，单次 7.80ms。合成数据**只验证工具链与 NPU 耗时**，不代表真实精度。
+**冒烟测试**（零件没到时验链路）：`synth_crops.py` 按 `label_list.json` 生成合成裁切图（现为齿轮 5 类，缺陷带轻 / 重分级），走完上面全部步骤。下列数字是 4 类时期的历史跑分（600 + 120 张 / 类、12 轮、480 张合成验证集）：NPU **95.42%**、OK/NG 96.0%，PC fp32 97.5% / uint8 95.6%，单次 7.80ms。合成数据**只验证工具链与 NPU 耗时**，不代表真实精度。
 
 ## 采集建议（每类目标 ≥300 张、≥30 个零件）
 

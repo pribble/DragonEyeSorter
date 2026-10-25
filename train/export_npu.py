@@ -28,6 +28,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 def preprocess(path, imgsz):
     """exactly what des_app does with a crop: BGR -> RGB, /255, NCHW float32"""
     bgr = cv2.imread(path, cv2.IMREAD_COLOR)
+    if bgr is None:
+        raise SystemExit(f"cannot read crop image: {path}")
     if bgr.shape[0] != imgsz or bgr.shape[1] != imgsz:
         bgr = cv2.resize(bgr, (imgsz, imgsz), interpolation=cv2.INTER_AREA)
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
@@ -144,7 +146,8 @@ def main():
         # same keys as the vendor demo JSON, for its tools
         "input_params": {"r_mean": 0.0, "g_mean": 0.0, "b_mean": 0.0,
                          "r_scale": 0.003921, "g_scale": 0.003921, "b_scale": 0.003921},
-        "weights": os.path.abspath(a.weights),
+        # basename only: this json is committed and scp'd to the board, it must not carry a host path
+        "weights": os.path.basename(a.weights),
     }
     with open(a.out + ".json", "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=1)

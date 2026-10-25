@@ -31,6 +31,16 @@ def main():
     ap.add_argument("--nrefs", type=int, default=32)
     a = ap.parse_args()
 
+    files = []
+    for d in sorted(glob.glob(os.path.join(a.val, "*"))):
+        name = os.path.basename(d)
+        if not name[:1].isdigit():   # <id>_<label>/ only: skip stray folders (.ipynb_checkpoints ...)
+            continue
+        cid = int(name.split("_", 1)[0])
+        files += [(f, cid) for f in sorted(glob.glob(os.path.join(d, "*.png")) + glob.glob(os.path.join(d, "*.jpg")))]
+    if not files:
+        raise SystemExit(f"no val crops under {a.val} (run prepare_dataset.py / synth_crops.py first)")
+
     with open(a.model + ".json", encoding="utf-8") as f:
         meta = json.load(f)
     classes = meta["classes"]
@@ -42,10 +52,6 @@ def main():
                 for k in ("fp32", "uint8")}
     inp = {k: s.get_inputs()[0].name for k, s in sessions.items()}
 
-    files = []
-    for d in sorted(glob.glob(os.path.join(a.val, "*"))):
-        cid = int(os.path.basename(d).split("_", 1)[0])
-        files += [(f, cid) for f in sorted(glob.glob(os.path.join(d, "*.png")) + glob.glob(os.path.join(d, "*.jpg")))]
     nc = len(classes)
     conf = {k: np.zeros((nc, nc), int) for k in sessions}
     agree = 0

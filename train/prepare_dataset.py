@@ -76,6 +76,11 @@ def main():
                     parts[k] = [fs[round(i * (len(fs) - 1) / max(1, per - 1))] for i in range(per)] if per > 1 else [fs[len(fs) // 2]]
             print(f"{cls_dir}: {total} training crops -> {sum(len(parts[k]) for k in tk)} ({per} per track)")
     if os.path.exists(a.out):
+        out_n = os.path.normcase(os.path.realpath(a.out))
+        for root in a.src:   # the collected crops are never deleted: refuse an --out inside a collect root
+            r_n = os.path.normcase(os.path.realpath(root))
+            if out_n == r_n or out_n.startswith(r_n + os.sep):
+                raise SystemExit("--out %s is inside collect root %s: refusing to delete the source crops" % (a.out, root))
         shutil.rmtree(a.out)
     stats = collections.defaultdict(lambda: [0, 0, 0, 0])   # train parts, train images, val parts, val images
     for key, files in parts.items():
