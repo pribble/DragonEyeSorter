@@ -140,6 +140,23 @@ JointAngles arm_from_counts(const ArmConfig &c, const std::array<uint16_t, 6> &p
     grip_mm = des::grip_mm(c, pos[5]);
     return j;
 }
+const char *arm_raise(const ArmConfig &c, const JointAngles &j, float dz, JointAngles &out)
+{
+    // the tool offset terms of arm_fk depend on q5 and the pitch only: raising the grasp point = raising the wrist
+    // pitch axis, a planar two-link solve from the shoulder
+    const float a1 = deg2rad(j.q[1]), a2 = a1 + deg2rad(j.q[2]), a3 = a2 + deg2rad(j.q[3]);
+    const float L1 = c.l_upper, L2 = c.l_fore;
+    const float wx = L1 * std::cos(a1) + L2 * std::cos(a2), wz = L1 * std::sin(a1) + L2 * std::sin(a2) + dz;
+    const float c3 = (wx * wx + wz * wz - L1 * L1 - L2 * L2) / (2 * L1 * L2);
+    if (c3 > 1.f || c3 < -1.f) return "out of reach";
+    const float q3 = j.q[2] <= 0 ? -std::acos(c3) : std::acos(c3);   // keep the taught elbow branch
+    const float q2 = std::atan2(wz, wx) - std::atan2(L2 * std::sin(q3), L1 + L2 * std::cos(q3));
+    out.q = {j.q[0], rad2deg(q2), rad2deg(q3), rad2deg(a3 - q2 - q3), j.q[4]};
+    static const char *lim[5] = {"joint 1 limit", "joint 2 limit", "joint 3 limit", "joint 4 limit", "joint 5 limit"};
+    for (int i = 0; i < 5; i++)
+        if (out.q[i] < c.joint[i].min_deg || out.q[i] > c.joint[i].max_deg) return lim[i];
+    return nullptr;
+}
 static uint16_t move_ms(const ArmConfig &c, const std::array<uint16_t, 6> &a, const std::array<uint16_t, 6> &b)
 {
     float worst = 0;
@@ -184,6 +201,12 @@ const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, 
     }
     if (tool_pitch_deg(home) > kToolDownMaxDeg) return "ready pose is not gripper-down: teach it again";
     if (tool_pitch_deg(drop) > kToolDownMaxDeg) return "bin pose is not gripper-down: teach it again";
+    // a bin below the travel height: swing over at the travel height, then straight down to it (and back up)
+    JointAngles over;
+    const float over_dz = (c.belt_z + c.z_safe) - arm_fk(c, drop).z;
+    const bool use_over = over_dz > 1.f;
+    if (use_over && arm_raise(c, drop, over_dz, over))
+        return "bin pose: cannot raise it to the travel height (z_safe): teach the bin closer to the base";
     const float held = std::max(part_wid - c.grip_squeeze, 0.f);
     ServoFrame f;
     auto add = [&](const JointAngles &j, float grip, uint16_t ms, const char *what) -> const char * {
@@ -201,8 +224,10 @@ const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, 
     out.back().check_grasp = true;
     if ((why = add(above, held, c.descend_ms, "lift"))) return why;
     out.back().belt_clear = true;
+    if (use_over && (why = add(over, held, 0, "over bin"))) return why;
     if ((why = add(drop, held, 0, "to bin"))) return why;
     if ((why = add(drop, open_mm, c.open_ms, "release"))) return why;
+    if (use_over && (why = add(over, open_mm, 0, "rise"))) return why;
     if ((why = add(home, open_mm, 0, "home"))) return why;
     return nullptr;
 }

@@ -106,9 +106,15 @@ constexpr float kToolDownMaxDeg = -40.f;   // a pick only starts from / passes t
 const char *arm_to_counts(const ArmConfig &c, const JointAngles &j, float grip_mm, std::array<uint16_t, 6> &pos);
 // servo counts -> joint angles + gripper opening (mm), the inverse of arm_to_counts (teaching by hand)
 JointAngles arm_from_counts(const ArmConfig &c, const std::array<uint16_t, 6> &pos, float &grip_mm);
-// Waypoints for one pick: above -> descend -> close -> lift (belt clear) -> bin -> open -> home. prev = counts the
-// arm is at now (sizes the first move time). Vertical first; out of reach and the closing axis tangential -> the
-// smallest tilt up to max_tilt_deg that reaches (same tilt above and down: the descent stays vertical).
+// The same pose with the grasp point dz higher (dz < 0: lower): q1, q5 and the gripper pitch kept, the shoulder /
+// elbow re-solved on the same elbow branch. nullptr on success, else why (out of reach, joint limit).
+const char *arm_raise(const ArmConfig &c, const JointAngles &j, float dz, JointAngles &out);
+// Waypoints for one pick: above -> descend -> close -> lift (belt clear) -> [over bin] -> bin -> open -> [rise] ->
+// home. A bin taught below the travel height (z_safe above the belt, e.g. a box on the table beside the belt) is
+// reached through "over bin" = the bin pose raised to that height: the swing stays at the travel height and only the
+// last move goes down (10-26: the direct joint move dipped the held gear ~50 mm below the belt next to the side
+// frame). prev = counts the arm is at now (sizes the first move time). Vertical first; out of reach and the closing
+// axis tangential -> the smallest tilt up to max_tilt_deg that reaches (same tilt above and down).
 const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, float open_mm, float part_wid,
                       int bin, const std::array<uint16_t, 6> &prev, std::vector<ServoFrame> &out,
                       float *tilt_deg = nullptr);

@@ -105,7 +105,7 @@ struct AppConfig {
     bool belt_calibrated = false;
     bool arm_home_taught = false;              // arm_home.json (HMI arm page) replaced arm.home_deg
     std::string config_dir = ".";             // folder of the loaded des_app.json (ui_params.json lives there)
-    std::vector<std::string> bins = {"gear_box", "rack_box"};          // pick destinations (arm drop poses)
+    std::vector<std::string> bins = {"gear_box"};                      // pick destinations (arm drop poses)
     std::vector<std::string> outlets = {"recheck", "scrap", "rework"};  // flap outlets, index 0 = recheck
     // product recipes (配方, recipes.json next to des_app.json): the active one sets the spec in tracker.size.
     // Without the file there is one recipe (id 1) = measure.rule of des_app.json.

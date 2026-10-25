@@ -69,9 +69,9 @@ ServoInfo ArmExec::probe(int joint)
     s.status = r.status;
     uint16_t v;
     if (des_servo_read_u16(hw_, id(joint), 0x38, &v) == DES_OK) s.pos = v;
-    if (des_servo_read_u16(hw_, id(joint), 0x2E, &v) == DES_OK) s.current_ma = v;
+    if (des_servo_read_u16(hw_, id(joint), 0x2E, &v) == DES_OK) s.raw_2e = v;
     uint8_t t;
-    if (des_servo_read(hw_, id(joint), 0x3F, 1, &t, nullptr) == DES_OK) s.temp_c = t;
+    if (des_servo_read(hw_, id(joint), 0x3F, 1, &t, nullptr) == DES_OK) s.raw_3f = t;
     return s;
 }
 int ArmExec::torque(bool on)
@@ -120,11 +120,10 @@ ArmExec::Result ArmExec::run(const std::vector<ServoFrame> &wp, bool dry, const 
                 res.why = std::string("SYNC WRITE failed: ") + des_strerror(rc); res.ms = (mono_us() - t0) * 1e-3;
                 return res;  }
             sleep_ms(f.ms + settle_ms); if (f.check_grasp) {
-                // gripper stopped on the part: position short of the closed command + holding current. Fully closed
-                // (within ~1.5 mm of the command) = nothing in the fingers. ⚠ thresholds from the arm
-                uint16_t p = 0, ma = 0; const bool rp = des_servo_read_u16(hw_, id(5), 0x38, &p) == DES_OK;
-                const bool rc2 = des_servo_read_u16(hw_, id(5), 0x2E, &ma) == DES_OK; res.grip_pos = rp ? p : -1;
-                res.grip_ma = rc2 ? ma : -1; const float per_mm = grip_counts_per_mm(cfg_, grip_mm(cfg_, f.pos[5]));
+                // gripper stopped on the part: position short of the closed command (these servos report no current).
+                // Fully closed (within ~1.5 mm of the command) = nothing in the fingers. ⚠ thresholds from the arm
+                uint16_t p = 0; const bool rp = des_servo_read_u16(hw_, id(5), 0x38, &p) == DES_OK;
+                res.grip_pos = rp ? p : -1; const float per_mm = grip_counts_per_mm(cfg_, grip_mm(cfg_, f.pos[5]));
                 res.grasped = rp && std::fabs(float(p) - float(f.pos[5])) > 1.5f * per_mm; if (!rp) res.why = "gripper did not answer (grasp unknown)";
                 else if (!res.grasped) res.why = "gripper closed fully: nothing picked";  }
         }
@@ -198,7 +197,7 @@ bool ArmManual::take_home(std::array<int, 6> &counts)
     counts = v_.home;
     return true;
 }
-void ArmManual::poll(bool full)
+void ArmManual::poll()
 {
     std::array<ArmJointView, 6> j;
     {
@@ -213,12 +212,7 @@ void ArmManual::poll(bool full)
         // one failed poll keeps the last reading: only two in a row show the servo as not answering
         j[k].alive = ok || (misses_[k] < 2 && j[k].pos >= 0);
     }
-    if (full)
-        for (int k = 0; k < 6; k++) {
-            if (!j[k].alive) { continue; } uint16_t ma;
-            uint8_t t; j[k].current_ma = des_servo_read_u16(hw_, arm_.id(k), 0x2E, &ma) == DES_OK ? ma : -1;
-            j[k].temp_c = des_servo_read(hw_, arm_.id(k), 0x3F, 1, &t, nullptr) == DES_OK ? t : -1;
-        }
+    // no current / temperature reads: these servos do not report them (0x2E follows the supply, 0x3F = 255; 10-26)
     std::lock_guard<std::mutex> lk(m_);
     for (int k = 0; k < 6; k++) {
         const int target = v_.j[k].target; v_.j[k] = j[k];
@@ -342,7 +336,7 @@ void ArmManual::loop()
         }
         if (have) { handle(r); } const double now = mono_s();
         if (active && now - last_poll >= 0.25) {
-            poll(polls_++ % 4 == 0); last_poll = now;
+            poll(); last_poll = now;
         }
     }
 }

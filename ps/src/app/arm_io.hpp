@@ -30,8 +30,10 @@ struct ServoInfo {
     bool alive = false;        // answered PING
     uint8_t status = 0;        // b5 overload, b2 over-temp, b0 voltage
     int pos = -1;              // 0x38 counts, -1 unread
-    int current_ma = -1;       // 0x2E
-    int temp_c = -1;           // 0x3F
+    // 0x2E / 0x3F are "current mA" / "temperature C" in the protocol, but these servos do not report them (10-26):
+    // 0x2E follows the supply voltage (~3150 at 4.9 V, ~4310 at 6.8 V, the same with torque off), 0x3F reads 255
+    // (gripper: 0 / 1). Raw values for des_tool arm scan only.
+    int raw_2e = -1, raw_3f = -1;
 };
 class ArmExec {
 public:
@@ -46,7 +48,7 @@ public:
     int send(const std::array<uint16_t, 6> &pos, uint16_t ms) { return sync_write_all(hw_, cfg_, pos, ms); }
     struct Result {
         bool ok = false, grasped = false;
-        int grip_pos = -1, grip_ma = -1;   // gripper read back after closing
+        int grip_pos = -1;   // gripper read back after closing
         std::string why;
         double ms = 0;
     };
@@ -68,8 +70,7 @@ struct ArmJointView {
     bool alive = false;
     int pos = -1;              // counts 0..4095, -1 never read
     int target = -1;           // last jog target
-    int current_ma = -1, temp_c = -1;
-    uint8_t status = 0;        // b5 overload, b2 over-temperature, b0 voltage
+    uint8_t status = 0;        // b5 overload, b2 over-temperature, b0 voltage (the only health data these servos give)
 };
 struct ArmManualView {
     bool shown = false, allowed = false, unlocked = false;
@@ -98,7 +99,7 @@ public:
     bool take_home(std::array<int, 6> &counts);   // worker: a new ready pose was set since the last call
 private:
     void loop();
-    void poll(bool full);
+    void poll();
     void handle(const ArmRequest &r);
     void say(const char *fmt, ...) __attribute__((format(printf, 2, 3)));
     void say_locked(const char *fmt, ...) __attribute__((format(printf, 2, 3)));
@@ -110,7 +111,6 @@ private:
     BgQueue<ArmRequest> q_{16};     // commands, dropped when the page floods the thread
     ArmManualView v_;
     std::string why_not_;
-    int polls_ = 0;
     std::array<int, 6> misses_{};   // consecutive failed position reads per joint (poll thread only)
     std::thread th_;
 };

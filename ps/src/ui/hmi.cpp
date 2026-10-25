@@ -455,10 +455,11 @@ void Hmi::page_arm(Canvas &c)
     else if (a.unlocked) { state = "已解锁 · 点 -/+ 微调；动作前确认机械臂周围无障碍"; sc = GREEN; }
     else { state = "未解锁：点右侧「解锁」后才能动"; sc = ORANGE; }
     c.text(state, 380, 9, 18, sc);
-    // 角度 = read back, 目标 = last command (dead band up to ~1 deg), 初始 = ready pose
-    const int cx[] = {175, 305, 390, 490, 590, 690, 780, 850};
-    const char *head[] = {"关节", "位置", "角度", "目标", "初始", "电流", "温度", "状态"};
-    c.header_row(head, cx, 8, 40);
+    // 角度 = read back, 目标 = last command (dead band up to ~1 deg), 初始 = ready pose. No current / temperature
+    // columns: these servos do not report them (0x2E follows the supply voltage, 0x3F = 255; 10-26)
+    const int cx[] = {175, 305, 390, 490, 590, 700};
+    const char *head[] = {"关节", "位置", "角度", "目标", "初始", "状态"};
+    c.header_row(head, cx, 6, 40);
     c.text("微调", 930, 40, 16, DIM);
     const bool can = a.allowed && a.unlocked;
     for (int k = 0; k < 6; k++) {
@@ -473,13 +474,10 @@ void Hmi::page_arm(Canvas &c)
         c.text(deg(j.pos), cx[2], y + 4, 19, YELLOW);
         c.text(deg(j.target), cx[3], y + 4, 19, CYAN);
         c.text(deg(a.home[k]), cx[4], y + 4, 19, a.home_taught ? WHITE : DIM);
-        c.text(j.current_ma < 0 ? "—" : fmt("%.0f", double(j.current_ma)), cx[5], y + 4, 19, YELLOW);
-        c.text(j.temp_c < 0 ? "—" : fmt("%.0f", double(j.temp_c)), cx[6], y + 4, 19, YELLOW);
-        c.text(flags, cx[7], y + 4, 18, flags == "正常" ? GREEN : flags == "—" ? DIM : RED);
+        c.text(flags, cx[5], y + 4, 18, flags == "正常" ? GREEN : flags == "—" ? DIM : RED);
         c.button({930, y, 64, 28}, "-", false, can ? A_ARM_JOG : 0, k * 2, 26);
         c.button({1002, y, 64, 28}, "+", false, can ? A_ARM_JOG : 0, k * 2 + 1, 26);
     }
-    c.text("电流 mA · 温度 ℃", cx[5], 264, 14, DIM);
     // right: controls
     const int x0 = 1110;
     cv::line(c.img(), {x0 - 18, 14}, {x0 - 18, H - 14}, LINE, 1);

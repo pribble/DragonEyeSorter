@@ -226,8 +226,9 @@ static int run_arm(des_hw_t &hw, const AppConfig &cfg, const Args &a)
                 continue;
             }
             alive++; float deg = j < 5 ? (i.pos - ac.joint[j].zero_count) / ac.joint[j].counts_per_deg : 0.f;
-            printf("joint %d (id %u): pos %4d (%+7.1f deg)  %4d mA  %3d C  status 0x%02x%s%s%s\n", j + 1, ex.id(j), i.pos, deg, i.current_ma, i.temp_c, i.status, i.status & 0x20 ? " OVERLOAD" : "", i.status & 0x04 ? " OVER-TEMP" : "", i.status & 0x01 ? " VOLTAGE" : "");
+            printf("joint %d (id %u): pos %4d (%+7.1f deg)  0x2E %4d  0x3F %3d  status 0x%02x%s%s%s\n", j + 1, ex.id(j), i.pos, deg, i.raw_2e, i.raw_3f, i.status, i.status & 0x20 ? " OVERLOAD" : "", i.status & 0x04 ? " OVER-TEMP" : "", i.status & 0x01 ? " VOLTAGE" : "");
         }
+        printf("0x2E / 0x3F: not current / temperature on these servos (0x2E follows the supply voltage, 0x3F = 255)\n");
         printf("%d / 6 servos answered%s\n", alive, alive ? "" : " (power, BSS138 wiring, CEP PIN19, ids 1..6? see docs/硬件与接线.md)");
         return alive == 6 ? 0 : 2;
     }

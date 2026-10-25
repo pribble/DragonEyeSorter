@@ -50,7 +50,7 @@
                          "rack_len": 50, "rack_len_tol": 1.0, "ng_outlet": "scrap",
                          "defect_recheck": true, "unjudged_recheck": true, "require": false } },
 
-  "arm_comment": "机械臂（10-22 实装与标定，过程见 docs/log/2026-10-22-机械臂零位标定.md）：零位 #1~#5 2012 / 3085 / 1977 / 1986 / 1985、计数/度 +12.47 / −12.14 / −12.33 / −12.13 / −12.6（扭矩关手摆 + 水平仪；规格书约 13.0，旧值 13.65 错）；q1 = 0 时手臂垂直指向皮带，机械臂在台面 +y 侧 → base_yaw_deg −90；#5 = 1985 时两指切向合拢、6 号舵机朝底座 → grip_axis_at_zero_deg 90、servo_side_deg 90。尺寸：base_h 106 = 底板底面 → 肩轴；l_tool 111 = #4 转轴（小臂末端下沿）→ 指尖末端 190 − l_wrist 79.05（10-20 的 106 是从夹爪座量的，作废）；tool_offset_mm 9 = 指尖中心偏 #5 轴。安装：底座垫 165mm 纸箱、底板比带面高 53；base_xy / base_yaw_deg / belt_z 是安装前估计，calib-arm（5 点，残差 rms 3.15mm）写进 calib.json 覆盖：底座台面 (437.8, 142.4)、arm +x 朝 −86.8°、belt_z −54.1。z_safe 30（工具长后安全高度处竖直最远约 150）。夹爪 grip_table：全合 2919 / 夹 32mm 2318 / 全开 61mm 1195（连杆非线性，分段线性）。初始姿态 = 姿势 B（大臂竖直、小臂水平朝皮带、夹爪竖直朝下），板上 arm_home.json 优先于 home_deg；规划拒绝夹爪不朝下（q2+q3+q4 > −40）的当前 / 初始 / 料盒姿态。max_tilt_deg 40：竖直够不着时圆形件夹爪朝外倾、两指切向合拢，按 tilt_step_deg 一档档试。joints 的 min/max_deg 先放宽到舵机行程（1~5 号 ±145°、夹爪 ±88°），#2 min −70；实测机械极限后再收紧。待做：bins_deg（料盒）是占位、要按夹爪朝下示教；纸箱换硬平台后重做 calib-arm",
+  "arm_comment": "机械臂（10-22 实装与标定，过程见 docs/log/2026-10-22-机械臂零位标定.md）：零位 #1~#5 2012 / 3085 / 1977 / 1986 / 1985、计数/度 +12.47 / −12.14 / −12.33 / −12.13 / −12.6（扭矩关手摆 + 水平仪；规格书约 13.0，旧值 13.65 错）；q1 = 0 时手臂垂直指向皮带，机械臂在台面 +y 侧 → base_yaw_deg −90；#5 = 1985 时两指切向合拢、6 号舵机朝底座 → grip_axis_at_zero_deg 90、servo_side_deg 90。尺寸：base_h 106 = 底板底面 → 肩轴；l_tool 111 = #4 转轴（小臂末端下沿）→ 指尖末端 190 − l_wrist 79.05（10-20 的 106 是从夹爪座量的，作废）；tool_offset_mm 9 = 指尖中心偏 #5 轴。安装：底座垫 165mm 纸箱、底板比带面高 53；base_xy / base_yaw_deg / belt_z 是安装前估计，calib-arm（5 点，残差 rms 3.15mm）写进 calib.json 覆盖：底座台面 (437.8, 142.4)、arm +x 朝 −86.8°、belt_z −54.1。z_safe 30（工具长后安全高度处竖直最远约 150）。夹爪 grip_table：全合 2919 / 夹 32mm 2318 / 全开 61mm 1195（连杆非线性，分段线性）。初始姿态 = 姿势 B（大臂竖直、小臂水平朝皮带、夹爪竖直朝下），板上 arm_home.json 优先于 home_deg；规划拒绝夹爪不朝下（q2+q3+q4 > −40）的当前 / 初始 / 料盒姿态。max_tilt_deg 40：竖直够不着时圆形件夹爪朝外倾、两指切向合拢，按 tilt_step_deg 一档档试。joints 的 min/max_deg 先放宽到舵机行程（1~5 号 ±145°、夹爪 ±88°），#2 min −70；实测机械极限后再收紧。料盒 bins_deg（10-26 手摆示教，夹爪朝下）：gear_box = 良品盒，桌面上底座下游 13.5cm、带边外 5cm，夹爪尖在盒口上方 1~2cm（比带面低 57mm）；比抓取行程高度 z_safe 低的料盒，规划自动加「over bin」（同底座转角 / 腕旋、抬到 z_safe）→ 竖直放下 → 松开 → 「rise」回到上方再回初始姿态。待做：纸箱换硬平台后重做 calib-arm",
   "arm": {
     "base_h": 106, "l_upper": 82.85, "l_fore": 82.85, "l_wrist": 79.05, "l_tool": 111,
     "tool_offset_mm": 9, "servo_side_deg": 90,
@@ -69,7 +69,7 @@
     "z_safe": 30, "z_grasp": 3, "joint_speed": 120,
     "min_ms": 150, "descend_ms": 400, "close_ms": 300, "open_ms": 250,
     "home_deg": [0, 91, -91, -90, 90],
-    "bins_deg": [[120, 40, -100, -30, 0], [-120, 40, -100, -30, 0]]
+    "bins_deg": [[113.2, 9.0, -38.0, -62.7, 89.8]]
   },
 
   "flaps_comment": "侧边导流挡板（平摆，des_pwm 通道 = 挡板序号，MG996R；10_项目文档/侧边导流挡板方案.md §2c）：pivot_xy = 转轴台面坐标（对侧带边 y≈-150）、len_mm = 摆杆长、closed_deg / open_deg = 合上 / 打开角度（从上游方向朝皮带中线量）、hold_mm = 零件碰到摆杆后保持合上的带行程（0 = 按摆杆斜面滑出估算，装好后看零件实际滑出再填）；move_ms = 开合渐变时间（软起停）、stagger_ms = 两块错开起步、margin_mm = 各项判断留的余量。零件在进入扫过区前合好、来不及 / 够不着 / 有别的件（含去抓取线的良品）会进扫过区则这件改走复检；合上后后面来了件则提前打开。TODO 装好后：量转轴位置 / 摆杆长 / 角度填进来，desreg pwm 实测开 / 合脉宽，点动皮带核对碰件点，再开 enabled",
@@ -87,7 +87,7 @@
              "lamp_coils": [0, 1, 2, 3], "poll_ms": 200, "buzzer_s": 2, "inputs": 0 },
   "storage": { "enabled": true, "images": "ng", "jpeg_quality": 92, "max_queue": 256, "feed_port": 9500 },
 
-  "bins": ["gear_box", "rack_box"],
+  "bins": ["gear_box"],
   "outlets": ["recheck", "scrap", "rework"],
   "recipe_comment": "启动配方号（recipes.json 里的 id；界面上次选的优先）。recipes.json 缺失时只有配方 1 = 上面 measure.rule 的规格",
   "recipe": 1,
