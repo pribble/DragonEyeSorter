@@ -33,7 +33,7 @@ struct Rs485Config {
                                      // lamp_coil relays are ever written
     int lamp_coil[4] = {0, 1, 2, 3}; // relay of green / yellow / red / buzzer (-1 = not wired)
     int poll_ms = 200;               // read-back period
-    float buzzer_s = 2;              // buzzer this long when an alarm starts (0 = never, < 0 = as long as the alarm)
+    float buzzer_s = 1;              // buzzer this long when an alarm starts (0 = never, < 0 = as long as the alarm)
     int inputs = 0;                  // digital inputs to read (FC 02) on a "4 in 4 out" module, 0 = none
 };
 enum : uint8_t { LAMP_GREEN = 1, LAMP_YELLOW = 2, LAMP_RED = 4, LAMP_BUZZER = 8 };
