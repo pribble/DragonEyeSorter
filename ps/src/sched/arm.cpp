@@ -275,7 +275,9 @@ const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, 
     if ((why = add(drop, held, 0, "to bin"))) return why;
     if ((why = add(drop, open_mm, c.open_ms, "release"))) return why;
     if (use_over && (why = add(over, open_mm, 0, "rise"))) return why;
-    if ((why = add(home, open_mm, 0, "home"))) return why;
+    // back at the ready pose with the taught opening, not the part's: at posture B the fingers close radially and
+    // the inner one points at the black board under the base, ~2 cm away at 40 mm open (10-26)
+    if ((why = add(home, c.home_grip_count >= 0 ? grip_mm(c, c.home_grip_count) : open_mm, 0, "home"))) return why;
     return nullptr;
 }
 ArmBaseFit fit_arm_base(const std::vector<Vec3> &arm, const std::vector<Vec2> &table, float marker_h)

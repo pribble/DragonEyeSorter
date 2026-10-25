@@ -257,9 +257,12 @@ static int run_arm(des_hw_t &hw, const AppConfig &cfg, const Args &a)
     }
     std::vector<ServoFrame> wp;
     if (s == "home" || s == "goto") {
-        JointAngles target; float grip = ac.grip_max_open;
+        // gripper: home = the taught ready-pose opening (fully open the inner finger can reach the black board under
+        // the base, 10-26), goto = left as it is
+        JointAngles target; float grip = grip_mm(ac, now[5]);
         if (s == "home") {
             target.q = ac.home_deg;
+            if (ac.home_grip_count >= 0) grip = grip_mm(ac, ac.home_grip_count);
         } else {
             if (a.npos < 2) { usage_tool(); return 1; }
             float z = a.npos > 2 ? a.pos[2] : ac.z_safe; float axis = a.npos > 3 ? a.pos[3] * kPi / 180 : 0.f;

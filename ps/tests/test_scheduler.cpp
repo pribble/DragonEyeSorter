@@ -1144,6 +1144,16 @@ static void test_arm()
         arm_to_counts(c, up, 40, upc);
         why = plan_move(c, upc, hm, 40, 1500, "home", w);
         CHECK(why && strstr(why, "60 deg"), "gripper up -> down refused: %s", why ? why : "planned");
+        // back home with the taught opening, not the part's (posture B: the inner finger points at the board)
+        {
+            ArmConfig hg = c;
+            hg.home_grip_count = std::round(grip_count(hg, 20));
+            why = plan_pick(hg, target, 0.f, 46, 38, 0, at_home, w);
+            CHECK(!why && !w.empty() && !strcmp(w.back().what, "home") &&
+                      std::abs(int(w.back().pos[5]) - int(hg.home_grip_count)) <= 1 && w[0].pos[5] != w.back().pos[5],
+                  "home frame gripper %u = taught %.0f (part opening %u)", w.empty() ? 0u : unsigned(w.back().pos[5]),
+                  hg.home_grip_count, w.empty() ? 0u : unsigned(w[0].pos[5]));
+        }
         // a pick that starts at the bin (an interrupted one): straight up first, then the usual frames
         why = plan_pick(c, target, 0.f, 40, 30, 0, at_bin, w);
         CHECK(!why && !w.empty() && !strcmp(w[0].what, "rise first") && !strcmp(w[1].what, "above"),
