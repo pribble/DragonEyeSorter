@@ -15,6 +15,6 @@ b8c08ca34a61119e2b3a7836cae8b205  /root/des/recipes.json
 
 # ---- 手动上板：测试 / 回归脚本（**不进清单**，部署器不传；scp 到 /root/des/，用法见 README.md）----
 522e31a58e187219ed0f666bc011fcff  /root/des/pl_check.sh
-002719c7c67bb73b6c9a31bd6ef9fdc4  /root/des/soak.sh
+e146d7c06d3005049171a5f94ec6ba1c  /root/des/soak.sh
 405ede119e67f18f71edc71282d951ae  /root/des/display_check.sh
 693394b139b81bfa97237213dda11378  /root/des/des_tool.sh

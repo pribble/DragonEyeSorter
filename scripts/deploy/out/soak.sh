@@ -72,7 +72,11 @@ ip -s -d link show "$IF" > "$OUT/can_after.txt"
                     if ($0 ~ /plc-link/) link++ }
          END {printf "PLC side: STATUS frames %d, lost %d, duplicated %d, with plc-link %d\n", n, lost, dup, link}' "$OUT/plc.log"
     grep "^COUNTS.*recheck [0-9]*$" "$OUT/plc.log" | tail -1
-    # interface counters since can_up (loopback: every TX frame should come back as RX)
-    awk -v iface="$IF" '/RX:/ {getline; rx = $2} /TX:/ {getline; tx = $2} END {printf "%s packets TX %d RX %d (loopback difference %d)\n", iface, tx, rx, tx - rx}' "$OUT/can_after.txt"
+    # interface counters during this run (after - before: the kernel keeps them across can_up, since boot; loopback:
+    # every TX frame should come back as RX)
+    awk -v iface="$IF" 'FNR == 1 {f++} /RX:/ {getline; rx[f] = $2} /TX:/ {getline; tx[f] = $2}
+        END {dtx = tx[2] - tx[1]; drx = rx[2] - rx[1]
+             printf "%s packets during the run: TX %d RX %d (loopback difference %d; since boot TX %d RX %d)\n",
+                    iface, dtx, drx, dtx - drx, tx[2], rx[2]}' "$OUT/can_before.txt" "$OUT/can_after.txt"
 } | tee "$OUT/summary.txt"
 # the EXIT trap restarts the service
