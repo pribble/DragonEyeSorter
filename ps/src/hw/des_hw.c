@@ -455,6 +455,22 @@ void des_step_move(des_hw_t *h, int32_t target, double vmax, double acc)
 }
 void des_step_stop(des_hw_t *h) { des_wr(h, DES_ST_CTRL, ST_EN | ST_STOP | (des_rd(h, DES_ST_CTRL) & (ST_POS | ST_NEG))); }
 void des_step_halt(des_hw_t *h) { des_wr(h, DES_ST_CTRL, ST_EN | ST_HALT | (des_rd(h, DES_ST_CTRL) & (ST_POS | ST_NEG))); }
+int des_step_stop_release(des_hw_t *h, unsigned timeout_ms)
+{
+    int rc = DES_OK;
+    if (des_step_status(h) & DES_ST_STATUS_MOVING) {
+        des_step_stop(h);   /* ramp down with the driver enabled: releasing at speed lets the belt coast */
+        const uint64_t t_end = mono_us() + (uint64_t)timeout_ms * 1000u;
+        while ((des_step_status(h) & DES_ST_STATUS_MOVING) && mono_us() < t_end) sleep_us(5000);
+        if (des_step_status(h) & DES_ST_STATUS_MOVING) {
+            des_step_halt(h);
+            sleep_us(1000);
+            rc = DES_E_TIMEOUT;
+        }
+    }
+    des_step_enable(h, 0);
+    return rc;
+}
 void des_step_zero(des_hw_t *h) { des_wr(h, DES_ST_CTRL, (des_rd(h, DES_ST_CTRL) & (ST_EN | ST_POS | ST_NEG)) | ST_ZERO); }
 void des_step_set_target(des_hw_t *h, int32_t target) { des_wr(h, DES_ST_TARGET, (uint32_t)target); }
 int32_t des_step_pos(const des_hw_t *h) { return (int32_t)des_rd(h, DES_ST_POS); }

@@ -732,7 +732,7 @@ int run_live(des_hw_t &hw, const AppConfig &cfg, CameraRig &cam, const LiveOptio
     sh.cv.notify_all();
     th.join();
     input.stop();
-    if (opt.belt_mm_s != 0 && !opt.run) des_step_stop(&hw);
+    if (opt.belt_mm_s != 0 && !opt.run) des_step_stop_release(&hw, 3000);   // ramp down, then ENA off
     runner.reset();   // stops the arm thread and the belt
     hdmi.close();
     double el = mono_s() - t_start;

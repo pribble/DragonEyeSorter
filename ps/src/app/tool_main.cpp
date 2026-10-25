@@ -863,6 +863,9 @@ int main(int argc, char **argv)
         usage_tool();
         rc = 1;
     }
+    // des_tool owns the stepper while it runs (des_app is stopped): a belt mode leaves the driver enabled
+    // (belt_prepare / belt_move / des_step_stop) -> stand still, then release it, as des_app does on exit
+    if (des_step_status(&hw) & DES_ST_STATUS_ENABLED) des_step_stop_release(&hw, 3000);
     des_hw_close(&hw);
     return rc;
 }

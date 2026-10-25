@@ -31,7 +31,8 @@ Runner::~Runner()
     rs485_.reset();   // lamps off, bus thread joined
     jobs_.close_and_clear();
     if (arm_thread_.joinable()) arm_thread_.join();
-    des_step_stop(hw_);
+    // stand still, then release the driver: nobody drives the belt after exit (no holding current, 10-26)
+    if (des_step_stop_release(hw_, 3000) != DES_OK) fprintf(stderr, "runner: belt did not ramp down in 3 s, halted\n");
     if (can_fd_ >= 0) can_close(can_fd_);
 }
 std::string Runner::start()

@@ -166,6 +166,11 @@ void     des_step_set_target(des_hw_t *h, int32_t target);
 void     des_step_set_vmax(des_hw_t *h, double steps_per_s);
 void     des_step_stop(des_hw_t *h);                           /* ramp down */
 void     des_step_halt(des_hw_t *h);                           /* immediate, no more pulses */
+/* For program exit: ramp down if moving (waits up to timeout_ms for standstill, else halts), then release the
+ * driver (ENA off). des_step_stop / des_step_halt keep the driver enabled, so a program that ends with them leaves
+ * holding current in the motor (TB6600 warm, PSU fan up) until something releases it. DES_OK, or DES_E_TIMEOUT
+ * when it had to halt. */
+int      des_step_stop_release(des_hw_t *h, unsigned timeout_ms);
 void     des_step_zero(des_hw_t *h);
 int32_t  des_step_pos(const des_hw_t *h);
 uint32_t des_step_status(const des_hw_t *h);
