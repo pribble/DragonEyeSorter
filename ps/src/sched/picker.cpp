@@ -126,9 +126,13 @@ bool Picker::flying_ok(const Tracker &tr, const Track &t, double belt_mm, float 
     return fingers_clear(tr, t, belt_mm, cfg_.flying_axis, open_mm);
 }
 
-Picker::Output Picker::tick(Tracker &tr, const Input &in)
+const Picker::Output &Picker::tick(Tracker &tr, const Input &in)
 {
-    Output out;
+    Output &out = out_;
+    out.belt = BeltPlan{};
+    out.have_job = false;
+    out.job = PickJob{};
+    out.flaps.clear();
     const double B = in.belt_mm;
     if (!in.arm_clear) {   // arm down on the belt: nothing moves until it lifts
         out.belt.kind = BeltPlan::Hold;
@@ -196,7 +200,6 @@ Picker::Output Picker::tick(Tracker &tr, const Input &in)
         }
     }
     // NG / recheck parts: an outlet with a side gate is served there, everything else rides to the belt end
-    out.flaps.clear();
     flap_tracks_.clear();
     const double move_mm = std::max({in.speed_mm_s, in.cruise_mm_s, 1.0}) * cfg_.gate_move_s;
     const double m = cfg_.gate_margin;

@@ -31,7 +31,7 @@ uint8_t coils_to_lamps(uint32_t coils, const Rs485Config &c)
 {
     uint8_t l = 0;
     for (int k = 0; k < 4; k++)
-        if (c.lamp_coil[k] >= 0 && c.lamp_coil[k] < 32 && (coils >> c.lamp_coil[k] & 1)) l |= uint8_t(1u << k);
+        if (c.lamp_coil[k] >= 0 && c.lamp_coil[k] < c.coils && (coils >> c.lamp_coil[k] & 1)) l |= uint8_t(1u << k);
     return l;
 }
 RtuXfer rs485_hw_xfer(des_hw_t *hw, const Rs485Config &c, std::string &err)
@@ -54,9 +54,10 @@ RtuXfer rs485_hw_xfer(des_hw_t *hw, const Rs485Config &c, std::string &err)
         memcpy(r.raw, x.raw, size_t(r.n));
         r.rc = rc == DES_OK ? RTU_OK : rc == DES_E_TIMEOUT ? RTU_TIMEOUT : rc == DES_E_CRC ? RTU_CRC
              : rc == DES_E_RXERR ? RTU_RXERR : RTU_FAIL;
-        // FREE_CNT ticks at 75 MHz; unsigned differences survive its wrap
-        r.resp_ms = rc == DES_OK && expect ? uint32_t(x.t_rx0 - x.t_tx1) / 75000.0 : -1;
-        r.wire_ms = rc == DES_OK && expect ? uint32_t(x.t_rx1 - x.t_tx0) / 75000.0 : uint32_t(x.t_tx1 - x.t_tx0) / 75000.0;
+        // FREE_CNT ticks at DES_FREE_CNT_HZ; unsigned differences survive its wrap
+        const double cnt_per_ms = DES_FREE_CNT_HZ / 1000.0;
+        r.resp_ms = rc == DES_OK && expect ? uint32_t(x.t_rx0 - x.t_tx1) / cnt_per_ms : -1;
+        r.wire_ms = rc == DES_OK && expect ? uint32_t(x.t_rx1 - x.t_tx0) / cnt_per_ms : uint32_t(x.t_tx1 - x.t_tx0) / cnt_per_ms;
     };
 #else
     (void)hw; (void)c;

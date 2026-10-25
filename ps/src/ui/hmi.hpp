@@ -24,7 +24,7 @@
 
 namespace des {
 
-struct HmiParams {                        // operator-editable, persisted in ui_params.json (11 keys, unchanged)
+struct HmiParams {                        // operator-editable, persisted in ui_params.json (12 keys)
     double belt_speed = 50;               // mm/s (run mode)
     bool size_rule = false;
     float gear_od = 32, gear_od_tol = 0.15f, gear_bore = 6, gear_bore_tol = 0.3f;
@@ -32,6 +32,7 @@ struct HmiParams {                        // operator-editable, persisted in ui_
     uint8_t images = 1;                   // 0 none, 1 NG + recheck, 2 all
     uint8_t pl_mode = 0;                  // des_vision display: 0 camera 1 gray 2 Gaussian 3 binary 4 Sobel 5 edges
     uint8_t pl_thr = 128;                 // des_vision binary threshold
+    uint16_t pl_edge_thr = 200;           // des_vision Sobel / edge threshold (no HMI button: ui_params.json only)
     int recipe = 1;                       // active recipe id (recipes.json); switching it also resets the four sizes
 };
 

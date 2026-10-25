@@ -33,6 +33,13 @@
 static uint32_t CAMERA_CLEAR_INTR_REG = CAMERA_CLEAR_INTR;
 
 static mipicam_drv_buffer_t s_mipicam_register;
+/* user-supplied register offsets (WRITE_REG / READ_REG / CLEAR_IRQ ioctl) are bounds- and alignment-checked:
+ * virt_addr is an ioremapped window of s_mipicam_register.size bytes, 32-bit registers only */
+static int reg_offset_ok(uint32_t off)
+{
+	return s_mipicam_register.size >= sizeof(uint32_t) &&
+	       off <= s_mipicam_register.size - sizeof(uint32_t) && (off & 3U) == 0;
+}
 #define ReadRegister(addr) \
 	(*(volatile unsigned int *)(s_mipicam_register.virt_addr + addr))
 #define WriteRegister(addr, val)                                             \
@@ -158,6 +165,11 @@ static long mipicam_ioctl(struct file *filp, u_int cmd, u_long arg)
 			ret = -EFAULT;
 			break;
 		}
+		if (!reg_offset_ok(rw.addr)) {
+			dev_err(mipicam_devp, "WRITE_REG offset out of range / unaligned: 0x%x\n", rw.addr);
+			ret = -EINVAL;
+			break;
+		}
 		WriteRegister(rw.addr, rw.data);
 		break;
 	case MIPICAM_IOCTL_READ_REG:
@@ -166,6 +178,11 @@ static long mipicam_ioctl(struct file *filp, u_int cmd, u_long arg)
 		if (ret != 0) {
 			dev_err(mipicam_devp, "copy_from_user failed\n");
 			ret = -EFAULT;
+			break;
+		}
+		if (!reg_offset_ok(rw.addr)) {
+			dev_err(mipicam_devp, "READ_REG offset out of range / unaligned: 0x%x\n", rw.addr);
+			ret = -EINVAL;
 			break;
 		}
 		rw.data = ReadRegister(rw.addr);
@@ -178,6 +195,11 @@ static long mipicam_ioctl(struct file *filp, u_int cmd, u_long arg)
 		}
 		break;
 	case MIPICAM_IOCTL_CLEAR_IRQ_REG_OFFSET:
+		if (!reg_offset_ok((uint32_t)arg)) {
+			dev_err(mipicam_devp, "CLEAR_IRQ offset out of range / unaligned: 0x%lx\n", (unsigned long)arg);
+			ret = -EINVAL;
+			break;
+		}
 		CAMERA_CLEAR_INTR_REG = arg;
 		break;
 	default:

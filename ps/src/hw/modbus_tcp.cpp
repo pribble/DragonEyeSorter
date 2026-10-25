@@ -192,7 +192,7 @@ void ModbusTcp::loop()
                 else {
                     const ssize_t r = recv(conns[i].fd, conns[i].in + conns[i].len, kInSize - conns[i].len, 0);
                     if (r > 0) { conns[i].len += size_t(r); dead = !handle(conns[i]); }
-                    else dead = r == 0 || (errno != EAGAIN && errno != EWOULDBLOCK);
+                    else dead = r == 0 || errno != EAGAIN;   // EWOULDBLOCK == EAGAIN on Linux
                 }
             }
             if (dead) {

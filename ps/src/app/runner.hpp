@@ -76,7 +76,7 @@ private:
     uint8_t alarm_ = 0, hb_ = 0;
     uint32_t prev_status_ = 0;
     double t0_ = 0, last_status_ = 0, last_counts_ = 0, last_plc_hb_ = -1e9;
-    canp_counts_t counts_{0, 0, 0, 0};
+    struct { uint32_t total = 0, ok = 0, ng = 0, recheck = 0; } cnt_;   // 32 bit (Modbus IR 2..9 reads hi/lo); CAN COUNTS truncates to u16 per protocol v1
     std::set<int> reported_;     // track ids already sent as PART
     std::string last_event_;
     double speed_mm_s_ = 0;      // last set belt speed (0 = config run_speed)

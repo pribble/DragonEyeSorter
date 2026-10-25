@@ -8,6 +8,7 @@
 // Belt travel B [mm] = POS * mm_per_step * dir (same as the camera / tracker side).
 #pragma once
 #include <cstdint>
+#include <mutex>
 #include "config.hpp"
 #include "des_hw.h"
 #include "picker.hpp"
@@ -21,6 +22,10 @@ public:
     // manual jog while the line is stopped (HMI): +1 = forward (parts toward the arm), -1 = reverse, at the cruise
     // speed; 0 = ramp down. A change of direction ramps down first and starts on a later call. Call every cycle.
     void jog(int dir);
+    // accumulated belt travel [mm]: the PL POS is a 32-bit step counter that wraps (2^31 steps ≈ 44 km ≈ 10 days at
+    // 50 mm/s), so the PS chains wrap-safe deltas into an int64 step count. Anchored at the PL counter zero (a
+    // restart without an FPGA reconfiguration keeps the raw POS): the same origin as the camera side's frame-latch
+    // chains in live.cpp — tracker and picker must stay in one frame.
     double belt_mm() const;
     double speed_mm_s() const;
     double brake_mm() const;            // distance needed to stop from the current speed
@@ -41,6 +46,11 @@ private:
     BeltPlan::Kind last_kind_ = BeltPlan::Hold;
     int32_t last_target_ = 0;
     int jog_dir_ = 0;           // direction of the running jog move, 0 = none
+    // belt_mm accumulator: the cycle thread and the arm thread's intercept wait both read it
+    mutable std::mutex pos_m_;
+    mutable bool pos_init_ = false;
+    mutable int32_t last_pos_ = 0;
+    mutable int64_t steps_ = 0;
 };
 // Picker::Input for one control cycle. belt != nullptr = production (run): brake distance from the PL's
 // des_step_brake_steps. belt == nullptr = dry mode (live without Runner, `live --belt`): brake distance from

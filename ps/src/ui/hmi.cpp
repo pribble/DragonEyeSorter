@@ -95,6 +95,7 @@ void Hmi::load_params()
         p_.images = uint8_t(std::clamp(j.value("images", int(p_.images)), 0, 2));
         p_.pl_mode = uint8_t(std::clamp(j.value("pl_mode", int(p_.pl_mode)), 0, 5));
         p_.pl_thr = uint8_t(std::clamp(j.value("pl_thr", int(p_.pl_thr)), 0, 255));
+        p_.pl_edge_thr = uint16_t(std::clamp(j.value("pl_edge_thr", int(p_.pl_edge_thr)), 0, 2047));
         const int rc = j.value("recipe", p_.recipe);
         if (find_recipe(cfg_.recipes, rc)) p_.recipe = rc;   // a recipe removed from recipes.json: keep the default
     } catch (const std::exception &) {
@@ -105,7 +106,7 @@ void Hmi::save_params() const
     nlohmann::json j = {{"belt_speed", p_.belt_speed}, {"size_rule", p_.size_rule}, {"gear_od", p_.gear_od},
                         {"gear_od_tol", p_.gear_od_tol}, {"gear_bore", p_.gear_bore}, {"gear_bore_tol", p_.gear_bore_tol},
                         {"min_conf", p_.min_conf}, {"images", p_.images}, {"pl_mode", p_.pl_mode},
-                        {"pl_thr", p_.pl_thr}, {"recipe", p_.recipe}};
+                        {"pl_thr", p_.pl_thr}, {"pl_edge_thr", p_.pl_edge_thr}, {"recipe", p_.recipe}};
     std::ofstream f(params_path_);
     if (f) f << j.dump(1) << "\n";
 }

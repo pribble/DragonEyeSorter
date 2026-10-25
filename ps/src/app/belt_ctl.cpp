@@ -21,7 +21,20 @@ int32_t BeltDriver::steps_for(double belt_mm) const
 {
     return int32_t(std::lround(belt_mm / (cfg_.mm_per_step * sign_)));
 }
-double BeltDriver::belt_mm() const { return des_step_pos(hw_) * cfg_.mm_per_step * sign_; }
+double BeltDriver::belt_mm() const
+{
+    const int32_t pos = des_step_pos(hw_);
+    std::lock_guard<std::mutex> lk(pos_m_);
+    if (!pos_init_) {   // first read adopts the raw PL position: the accumulator is anchored at the PL counter zero
+        pos_init_ = true;   // (a restart without an FPGA reconfiguration keeps the POS, so any other origin would
+        last_pos_ = pos;    // leave the picker and the camera side in frames that differ by a constant)
+        steps_ = pos;
+    } else {
+        steps_ += int32_t(uint32_t(pos) - uint32_t(last_pos_));   // unsigned difference of a monotonic counter: wrap-safe, no UB
+        last_pos_ = pos;
+    }
+    return double(steps_) * cfg_.mm_per_step * sign_;
+}
 double BeltDriver::speed_mm_s() const
 {
     return stopped() ? 0.0 : des_step_speed(hw_) * cfg_.mm_per_step;   // CUR_INC keeps VMIN after a stop
@@ -69,7 +82,10 @@ void BeltDriver::apply(const BeltPlan &plan)
         break;
     }
     case BeltPlan::StopAt: {
-        const int32_t t = steps_for(plan.stop_belt_mm); const bool behind = int64_t(t - pos) * sign_ < 0;
+        // the plan lives in the accumulated frame (belt_mm()) which outlives the PL's 32-bit POS: express the target
+        // relative to the raw position the PL knows
+        const int32_t t = pos + steps_for(plan.stop_belt_mm - belt_mm());
+        const bool behind = int64_t(t - pos) * sign_ < 0;
         if (moving) {
             if (last_kind_ != BeltPlan::StopAt || t != last_target_) {
                 // Writing TARGET == POS mid-move latches MOVING forever on PL v8 and older;

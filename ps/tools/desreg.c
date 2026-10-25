@@ -352,13 +352,17 @@ int main(int argc, char **argv)
                des_ticks_us(rd(DES_SB_TX_T1) - rd(DES_SB_TX_T0)));
         rc = rc ? 5 : 0;
     } else if (!strcmp(cmd, "pwm") && argc >= 3) {
+        int usage = 0;
         if (!strcmp(argv[2], "off")) rc = des_pwm_enable(&hw, 0) ? 2 : 0;
-        else if (argc >= 4) {
+        else if (argc >= 4 && (!strcmp(argv[2], "0") || !strcmp(argv[2], "1"))) {   // PL has two flap channels
             int ch = atoi(argv[2]);
             rc = des_pwm_set(&hw, ch, atoi(argv[3])) ? 2 : 0;
             if (!rc) rc = des_pwm_enable(&hw, (rd(DES_PWM_CTRL) & 3u) | (1u << ch)) ? 2 : 0;
+        } else {
+            fprintf(stderr, "usage: desreg pwm <ch 0|1> <us> | desreg pwm off\n");
+            usage = rc = 1;
         }
-        if (rc) fprintf(stderr, "bitstream before v7: no des_pwm\n");
+        if (rc && !usage) fprintf(stderr, "bitstream before v7: no des_pwm\n");
     } else if (!strcmp(cmd, "io")) {
         des_io_t io;
         if (des_io_read(&hw, &io) != DES_OK) {

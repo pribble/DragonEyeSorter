@@ -80,6 +80,12 @@ std::string NpuClassifier::load(const std::string &json_path)
         ex_.reset(); return "output has " + std::to_string(out_n_) + " values, json lists " + std::to_string(classes_.size()) +
                " classes";
     }
+    if (in_u8_)   // the quantization map is a constant of the loaded model: build it once, not once per crop
+        for (int c = 0; c < 3; c++)
+            for (int v = 0; v < 256; v++) {
+                const float x = (v - mean_[c]) * scale_[c];
+                lut_[c][v] = uint8_t(std::clamp(int(std::lround(x / in_scale_)) + in_zero_, 0, 255));
+            }
     return "";
 }
 std::string NpuClassifier::describe() const
@@ -103,10 +109,8 @@ std::vector<float> NpuClassifier::classify(const cv::Mat &crop_bgr, double *pre_
     for (int c = 0; c < 3; c++) {
         const int bgr_ch = 2 - c;   // R from channel 2
         if (in_u8_) {
-            uint8_t *dst = static_cast<uint8_t *>(ib->virt_addr) + c * plane; uint8_t lut[256];
-            for (int v = 0; v < 256; v++) {
-                const float x = (v - mean_[c]) * scale_[c]; lut[v] = uint8_t(std::clamp(int(std::lround(x / in_scale_)) + in_zero_, 0, 255));
-            }
+            const uint8_t *lut = lut_[c];
+            uint8_t *dst = static_cast<uint8_t *>(ib->virt_addr) + c * plane;
             for (int y = 0; y < h_; y++) {
                 const uint8_t *s = src.ptr<uint8_t>(y); for (int x = 0; x < w_; x++) dst[y * w_ + x] = lut[s[3 * x + bgr_ch]];
             }

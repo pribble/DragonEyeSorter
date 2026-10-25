@@ -107,7 +107,9 @@ public:
         PickJob job;
         std::vector<FlapEvent> flaps;   // pending, ordered by belt_mm
     };
-    Output tick(Tracker &tr, const Input &in);
+    // Returns the member output, valid until the next tick(): callers copy what they keep (a vector copy assign
+    // reuses its capacity, so both sides are allocation-free in steady state).
+    const Output &tick(Tracker &tr, const Input &in);
     void job_done(Tracker &tr, int track_id, bool ok);   // arm finished; failed picks fall through to recheck
     // Gripper closing direction and opening for track t, checked against every other part on the belt.
     // Returns nullptr when a collision-free grip exists, else the reason ("too wide", "crowded").
@@ -134,6 +136,7 @@ private:
     // false = never
     bool sweep_window(const Track &o, int g, double &b0, double &b1) const;
     PickerConfig cfg_;
+    Output out_;                 // tick's return value (flaps keep their buffer across ticks: no per-cycle allocation)
     int committed_id_ = 0;       // target the belt has already been told to stop for
     std::vector<Track *> flap_tracks_;   // track of each pending FlapEvent (same order before the final sort)
     std::vector<int> committed_;         // tracks whose gate event passed its close_b

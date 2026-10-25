@@ -44,6 +44,7 @@ private:
     bool in_u8_ = false, out_u8_ = false;
     float in_scale_ = 1, out_scale_ = 1;
     int in_zero_ = 0, out_zero_ = 0;
+    uint8_t lut_[3][256] = {};   // value -> quantized byte per channel, built once in load() (mean / scale / in quantization are model constants)
     size_t out_n_ = 0;
 };
 // One finished classification, copied to the worker with no heap traffic (8 slots = the class count of
