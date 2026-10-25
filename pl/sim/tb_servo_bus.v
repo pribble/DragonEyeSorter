@@ -61,6 +61,20 @@ module tb_servo_bus;
         end
     endtask
 
+    // reply with a caller-chosen LEN (payload bytes 2..len-1 are 0x11), for the invalid-LEN tests
+    task srv_reply_len(input [7:0] id, input [7:0] len);
+        reg [7:0] sum; integer q;
+        begin
+            #(100000);
+            servo_tx = 1;
+            srv_tx_byte(8'hFF); srv_tx_byte(8'hF5); srv_tx_byte(id); srv_tx_byte(len);
+            sum = id + len;
+            for (q = 2; q < len; q = q + 1) begin srv_tx_byte(8'h11); sum = sum + 8'h11; end
+            srv_tx_byte(~sum);
+            servo_tx = 0;
+        end
+    endtask
+
     initial begin : servo_model
         reg [7:0] b;
         integer n;
@@ -75,10 +89,12 @@ module tb_servo_bus;
                     frame_len = 4;
                     for (n = 0; n < frame[3]; n = n + 1) begin srv_rx_byte(b); frame[4 + n] = b; frame_len = frame_len + 1; end
                     frames_seen = frames_seen + 1;
-                    // frame[4] = INSTR
-                    if (frame[4] == 8'h01 && frame[2] == 8'h01) srv_reply(8'h01, 8'h00, 0, 16'h0, 0);
-                    else if (frame[4] == 8'h02 && frame[2] == 8'h01) srv_reply(8'h01, 8'h00, 2, 16'h07FF, 0);
-                    else if (frame[4] == 8'h02 && frame[2] == 8'h09) srv_reply(8'h09, 8'h20, 2, 16'h0123, 1);
+                // frame[4] = INSTR
+                if (frame[4] == 8'h01 && frame[2] == 8'h01) srv_reply(8'h01, 8'h00, 0, 16'h0, 0);
+                else if (frame[4] == 8'h02 && frame[2] == 8'h01) srv_reply(8'h01, 8'h00, 2, 16'h07FF, 0);
+                else if (frame[4] == 8'h02 && frame[2] == 8'h09) srv_reply(8'h09, 8'h20, 2, 16'h0123, 1);
+                else if (frame[4] == 8'h03 && frame[2] == 8'h0A) srv_reply_len(8'h0A, 8'd1);   // LEN < 2
+                else if (frame[4] == 8'h03 && frame[2] == 8'h0B) srv_reply_len(8'h0B, 8'd40);  // LEN > 30
                 end
             end
         end
@@ -173,6 +189,22 @@ module tb_servo_bus;
         reg_rd(8'h04, r); check("bad checksum -> RX_ERR", r[3], 1); check("status byte captured (overload b5)", r[23:16], 8'h20);
         reg_rd(8'h1C, r); check("rx error counter", r, 1);
         reg_rd(8'h20, r); check("frames sent", r, 5);
+
+        // 6) invalid reply LEN (1 and 40) -> RX_ERR each, then a good reply recovers.
+        //    These are the paths that bound the RX write index: LEN in [2,30] means idx <= 31 = rx_buf size - 1.
+        body[0] = 8'h0A; body[1] = 8'h02; body[2] = 8'h03;
+        send(3, 1);
+        #(BIT_NS * 12);                    // DUT leaves S_RX one byte early and restarts after a 10-bit
+        reg_rd(8'h04, r); check("LEN=1 reply -> RX_ERR", r[3], 1);   // guard; let the tail drain first
+        body[0] = 8'h0B;
+        send(3, 1);
+        reg_rd(8'h04, r); check("LEN=40 reply -> RX_ERR", r[3], 1);
+        #(BIT_NS * 400);                   // 39 bytes still on the wire; DUT already left S_RX
+        reg_rd(8'h1C, r); check("rx error counter", r, 3);
+        body[0] = 8'h01; body[1] = 8'h02; body[2] = 8'h01;
+        send(3, 1);
+        reg_rd(8'h04, r); check("good reply after LEN errors", r[4], 1);
+        reg_rd(8'h20, r); check("frames sent", r, 8);
 
         if (errors == 0) $display("ALL TESTS PASSED"); else $display("%0d TESTS FAILED", errors);
         $finish;

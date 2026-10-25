@@ -26,10 +26,10 @@ case "${1:-des_axi}" in
     iverilog -g2005 -I"$D" -o "$T/sim" tb_des_485.v $D/des_485.v
     ;;
   vision)
-    iverilog -g2012 -o "$T/sim" tb_des_vision.v $D/des_vision.v   # the testbench uses join_none
+    iverilog -g2012 -I"$D" -o "$T/sim" tb_des_vision.v $D/des_vision.v   # the testbench uses join_none
     ;;
   vision2)
-    iverilog -g2012 -Ptb_des_vision.LANES=2 -o "$T/sim" tb_des_vision.v $D/des_vision.v   # half-width variant
+    iverilog -g2012 -I"$D" -Ptb_des_vision.LANES=2 -o "$T/sim" tb_des_vision.v $D/des_vision.v   # half-width variant
     ;;
   awb)   # vendor ISP white balance vs our patch (awb_seq_div); vendor primitives as behavioural models
     # 厂家原版 awb.v 取自 git（初次入库那一版）；仓库里的工作副本是我们的改版

@@ -114,7 +114,7 @@ module servo_bus #(
                             if (sr[7:0] == 8'hF5 && rx_hdr == 1) begin rx_hdr <= 2; idx <= 0; sum <= 0; end
                             else rx_hdr <= (sr[7:0] == 8'hFF) ? 1 : 0;
                         end else begin
-                            if (idx < 32) rx_buf[idx[4:0]] <= sr[7:0];
+                            rx_buf[idx[4:0]] <= sr[7:0];   // idx <= rx_len+1 <= 31: LEN is range-checked at idx==1
                             idx <= idx + 1'b1;
                             if (idx == 2) rx_status <= sr[7:0];
                             if (idx == 1) begin                      // LEN: sum it, validate, remember LEN

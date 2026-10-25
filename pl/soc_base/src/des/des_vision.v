@@ -5,7 +5,8 @@
 // reuses itself, row above 0 = previous frame's last row). gray Y=(77R+150G+29B)>>8; window from two row buffers
 // (ERAM WIDTH/4x64b); Gaussian [1 2 1;2 4 2;1 2 1]/16, Sobel |Gx|+|Gy| over 3 pipeline stages; statistics on the
 // binary image in ROI/FULL published each SOF. LANES=4 every pixel; LANES=2 pixels 0,2 only (half logic, result on
-// 2px, window steps 2px, PS scales by 4/LANES).
+// 2px, window steps 2px, PS scales by 4/LANES.
+`include "des_common.vh"
 module des_vision #(
     parameter integer WIDTH = 1920, HEIGHT = 1080, LANES = 4
 ) (
@@ -45,11 +46,10 @@ module des_vision #(
             6'h04: r_apply <= ~r_apply;
         endcase
     end
-    reg [2:0] ap_sync = 3'd0; reg ap_seen = 1'b0;
-    always @(posedge pclk) begin
-        ap_sync <= {ap_sync[1:0], r_apply};
-        if (ap_sync[2] != ap_seen) begin ap_seen <= ap_sync[2]; p_cfg <= r_cfg; end
-    end
+    // APPLY toggle into the pixel domain: common 3-FF chain, payload latched on the edge (seen-compare).
+    wire ap_s1, ap_s2; reg ap_seen = 1'b0;
+    des_togsync u_ap (.clk(pclk), .tin(r_apply), .s1(ap_s1), .s2(ap_s2));
+    always @(posedge pclk) if (ap_s2 != ap_seen) begin ap_seen <= ap_s2; p_cfg <= r_cfg; end
     wire [2:0] a_mode = a_cfg[F_MODE +: 3]; wire a_full = a_cfg[F_FULL];
     wire [7:0] a_thr = a_cfg[F_THR +: 8]; wire [10:0] a_ethr = a_cfg[F_ETHR +: 11];
 
@@ -168,12 +168,12 @@ module des_vision #(
         end
     end
 
-    // Published results cross into the register clock on the res_tgl toggle.
-    reg [2:0] res_sync = 3'd0;
+    // Published results cross into the register clock on the res_tgl toggle (common 3-FF chain, s2 != s1 edge).
+    wire rs_s1, rs_s2;
+    des_togsync u_rs (.clk(clk), .tin(res_tgl), .s1(rs_s1), .s2(rs_s2));
     reg [31:0] o_seq = 0, o_area = 0, o_bx = 0, o_by = 0, o_sx = 0, o_sy = 0, o_edges = 0, o_cyc = 0, o_active = 0;
     always @(posedge clk) begin
-        res_sync <= {res_sync[1:0], res_tgl};
-        if (res_sync[2] != res_sync[1]) begin
+        if (rs_s2 != rs_s1) begin
             o_seq <= o_seq + 1'b1; o_area <= {11'd0, res_area};
             o_bx <= {{(16-XW){1'b0}}, res_x1, {(16-XW){1'b0}}, res_x0};
             o_by <= {{(16-YW){1'b0}}, res_y1, {(16-YW){1'b0}}, res_y0};
