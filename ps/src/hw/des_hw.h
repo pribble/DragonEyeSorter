@@ -20,6 +20,7 @@ enum {
     DES_E_BUSY = -5,       /* servo_bus never reported done (PL stuck?) */
     DES_E_ARG = -6,
     DES_E_CRC = -7,        /* RS485 frame with a bad CRC (v16) */
+    DES_E_VERIFY = -8,     /* a servo never confirmed a command (read-back still wrong after the re-sends) */
 };
 
 typedef struct { volatile uint32_t *regs; int fd; uint32_t version; } des_hw_t;   /* version 0 when ID check failed */
@@ -129,6 +130,27 @@ int des_servo_write(des_hw_t *h, uint8_t id, uint8_t addr, const uint8_t *data, 
 int des_servo_torque(des_hw_t *h, uint8_t id, int on);
 /* SYNC WRITE 0x83 to 0x2A: per servo target position (0..4095) and move time (ms). n <= 11. */
 int des_servo_sync_pos(des_hw_t *h, const uint8_t *ids, const uint16_t *pos, const uint16_t *ms, int n);
+
+/* ---- robustness against a noisy bus (2026-10-26: the belt's TB6600 chopper corrupts ~2..8 % of the frames while it
+   is energised, both directions; writes are never acknowledged, so a lost one went unnoticed) ---- */
+/* PING / READ are retried this many times after a timeout or a damaged reply (default 2; 0 = raw, for diagnostics).
+   Before each retry the servo gets its quiet window: it may have heard the request and only the reply was lost. */
+void des_servo_set_retries(unsigned n);
+typedef struct {
+    uint32_t retries;        /* PING / READ attempts repeated */
+    uint32_t read_failures;  /* PING / READ that still failed after all retries */
+    uint32_t resends;        /* servo commands sent again after a wrong read-back */
+    uint32_t unconfirmed;    /* servo commands never confirmed (DES_E_VERIFY) */
+} des_sb_stats_t;
+void des_sb_stats(des_sb_stats_t *s);   /* this process, since start */
+/* SYNC WRITE as above, then each servo's goal register (0x2A) is read back and the command is sent again to the
+   servos that do not report it, up to `rounds` sends in total (<= 0: 3). DES_OK when all confirmed, DES_E_VERIFY when
+   some never did (they keep their previous goal: the caller must not assume the move happened). Costs one READ per
+   servo (~1.6 ms each) on top of the SYNC WRITE. */
+int des_servo_sync_pos_checked(des_hw_t *h, const uint8_t *ids, const uint16_t *pos, const uint16_t *ms, int n,
+                               int rounds);
+/* torque on / off (broadcast), then 0x28 read back from each listed servo; re-sent while some disagree (3 rounds) */
+int des_servo_torque_checked(des_hw_t *h, const uint8_t *ids, int n, int on);
 /* ---- stepper (belt) ---- */
 #define DES_ST_STATUS_MOVING    0x01u
 #define DES_ST_STATUS_AT_TARGET 0x04u

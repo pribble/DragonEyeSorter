@@ -45,6 +45,13 @@ struct BeltConfig {
     double run_speed = 50;       // mm/s
     double accel = 400;          // mm/s^2
     SpeedAdaptConfig adapt;      // slow down instead of stopping while the arm is busy (sched/picker.hpp)
+    // Release the stepper driver (ENA off, no holding current) once the belt has stood still this long: an energised
+    // TB6600 chops 2 A even at standstill and that noise corrupted 2..8 % of the servo-bus frames (2026-10-26); the
+    // arm mostly works while the belt is stopped, so this keeps those moves on a clean bus. Before the next start the
+    // driver is enabled and given enable_settle_ms. The belt does not creep without holding current (friction).
+    bool release_idle = true;
+    double release_after_ms = 300;
+    double enable_settle_ms = 50;
     // measuring-wheel encoder on the belt (des_io, v11): E6B2-CWZ6C 1000 P/R decoded x4, 200 mm wheel (nominal);
     // des_tool calib-enc measures the real scale against the stepper (calib.json "encoder")
     int enc_counts_per_rev = 4000;

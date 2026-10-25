@@ -32,11 +32,13 @@ void sleep_ms(double ms)
     nanosleep(&ts, nullptr);
 }
 }  // namespace
+// Every move goes out read-back checked: the belt's stepper driver corrupts a few % of the bus frames while it is
+// energised and a SYNC WRITE has no reply, so a lost one would otherwise go unnoticed (2026-10-26).
 int sync_write(des_hw_t *hw, const ArmConfig &cfg, const uint16_t *pos, const uint16_t *ms, int n)
 {
     uint8_t ids[6];
     for (int j = 0; j < n && j < 6; j++) ids[j] = cfg.joint[j].id;
-    return des_servo_sync_pos(hw, ids, pos, ms, n);
+    return des_servo_sync_pos_checked(hw, ids, pos, ms, n, 0);
 }
 int sync_write_all(des_hw_t *hw, const ArmConfig &cfg, const std::array<uint16_t, 6> &pos, uint16_t ms)
 {
@@ -46,7 +48,7 @@ int sync_write_all(des_hw_t *hw, const ArmConfig &cfg, const std::array<uint16_t
 int sync_write_one(des_hw_t *hw, const ArmConfig &cfg, int joint, uint16_t pos, uint16_t ms)
 {
     const uint8_t id = cfg.joint[joint].id;
-    return des_servo_sync_pos(hw, &id, &pos, &ms, 1);
+    return des_servo_sync_pos_checked(hw, &id, &pos, &ms, 1, 0);
 }
 bool read_counts(des_hw_t *hw, const ArmConfig &cfg, std::array<uint16_t, 6> &pos)
 {
@@ -72,7 +74,12 @@ ServoInfo ArmExec::probe(int joint)
     if (des_servo_read(hw_, id(joint), 0x3F, 1, &t, nullptr) == DES_OK) s.temp_c = t;
     return s;
 }
-int ArmExec::torque(bool on) { return des_servo_torque(hw_, DES_SERVO_BROADCAST, on); }
+int ArmExec::torque(bool on)
+{
+    uint8_t ids[6];
+    for (int j = 0; j < 6; j++) ids[j] = id(j);
+    return des_servo_torque_checked(hw_, ids, 6, on);   // broadcast + 0x28 read-back from each, re-sent if needed
+}
 ArmExec::Result ArmExec::simulate(const std::vector<ServoFrame> &wp, const std::function<void()> &on_belt_clear,
                                   const WaitBelt &wait_belt)
 {
@@ -199,9 +206,12 @@ void ArmManual::poll(bool full)
     }
     for (int k = 0; k < 6; k++) {   // positions first: frames to different servos need no quiet time in between
         uint8_t d[2]; des_sb_result_t r;
-        j[k].alive = des_servo_read(hw_, arm_.id(k), 0x38, 2, d, &r) == DES_OK; if (j[k].alive) {
-            j[k].pos = (d[0] << 8) | d[1]; j[k].status = r.status;
-        }
+        const bool ok = des_servo_read(hw_, arm_.id(k), 0x38, 2, d, &r) == DES_OK;   // already retried in des_hw
+        if (ok) {
+            j[k].pos = (d[0] << 8) | d[1]; j[k].status = r.status; misses_[k] = 0;
+        } else misses_[k]++;
+        // one failed poll keeps the last reading: only two in a row show the servo as not answering
+        j[k].alive = ok || (misses_[k] < 2 && j[k].pos >= 0);
     }
     if (full)
         for (int k = 0; k < 6; k++) {

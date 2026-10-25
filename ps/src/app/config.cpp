@@ -81,7 +81,9 @@ std::string load_config(const std::string &path, AppConfig &cfg)
         BeltConfig &belt = cfg.belt;
         if (const json *c = sec_gets(j, "belt", "mm_per_step", belt.mm_per_step, "dir", belt.dir, "run_speed",
                                      belt.run_speed, "accel", belt.accel, "enc_counts_per_rev",
-                                     belt.enc_counts_per_rev, "enc_wheel_mm", belt.enc_wheel_mm))
+                                     belt.enc_counts_per_rev, "enc_wheel_mm", belt.enc_wheel_mm, "release_idle",
+                                     belt.release_idle, "release_after_ms", belt.release_after_ms, "enable_settle_ms",
+                                     belt.enable_settle_ms))
             if (const json *ad = ji::sec(*c, "adapt"))   // belt speed adaptation (picker.hpp adapt_speed)
                 ji::gets(*ad, "enabled", belt.adapt.enabled, "min_mm_s", belt.adapt.min_mm_s, "change_frac", belt.adapt.change_frac);
         TrackerConfig &trk = cfg.tracker;

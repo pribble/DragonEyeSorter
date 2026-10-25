@@ -16,7 +16,9 @@
 
   "belt_comment": "mm_per_step = 10-16 尺量：主动轴 4 圈（12800 步）皮带走约 265mm → 0.0207（有效辊径约 21mm）；dir = -1（前进 = 步进位置递减，10-16 实测）。des_tool calib-belt 用相机实测后写进 calib.json 覆盖这里",
   "belt_adapt_comment": "adapt：机械臂还在忙、下一个良品又快到抓取线时，先把带速降到「零件到线时臂刚好空出来」（不低于 min_mm_s），减少整停整起（赛题领域 3 高级「流水线速度自适应」）；停在抓取线仍由调度器的定点停带保证",
+  "belt_release_comment": "release_idle：皮带停稳超过 release_after_ms 就关步进驱动器使能（无保持电流）；2026-10-26 实测 TB6600 通电斩波会打坏 2~8% 的舵机总线帧（驱动器关 0），机械臂多在停带时动作，这样那段时间总线干净；下次起步前先使能、等 enable_settle_ms 再发脉冲。皮带靠摩擦不会自己走",
   "belt": { "mm_per_step": 0.0207, "dir": -1, "run_speed": 50, "accel": 400,
+            "release_idle": true, "release_after_ms": 300, "enable_settle_ms": 50,
             "adapt": { "enabled": true, "min_mm_s": 15, "change_frac": 0.05 } },
 
   "tracker_comment": "decide_x：零件中心过这条线时定去向（挡板 1 要在零件进入摆杆扫过区之前合好 → 中线零件 50mm/s 下最晚约 x 208、60mm/s 约 x 203（画面中心约 x 187 测完后即可判），启动日志「[run] gate」行给出各带速下的最晚判定位置）；tail_x：带尾（10-22 实测约 813，复检箱）",

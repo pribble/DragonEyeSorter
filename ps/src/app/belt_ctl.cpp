@@ -1,6 +1,7 @@
 // belt_ctl.cpp — see belt_ctl.hpp
 #include "belt_ctl.hpp"
 #include <cmath>
+#include "util.hpp"
 namespace des {
 static constexpr int32_t kFar = 10000000;       // steps ahead for "run" (~207 m at 0.0207 mm/step)
 static constexpr int32_t kReextend = kFar / 2;  // re-extend the far target when this close
@@ -10,7 +11,36 @@ BeltDriver::BeltDriver(des_hw_t *hw, const BeltConfig &cfg) : hw_(hw), cfg_(cfg)
     sps_ = cfg.run_speed / cfg.mm_per_step;
     acc_ = cfg.accel / cfg.mm_per_step;
 }
-void BeltDriver::enable(bool on) { des_step_enable(hw_, on); }
+void BeltDriver::enable(bool on)
+{
+    des_step_enable(hw_, on);
+    released_ = !on;
+    if (on) enabled_at_ = mono_s();
+    still_since_ = -1;
+}
+bool BeltDriver::ready_to_start()
+{
+    if (released_) {
+        enable(true);   // TB6600: coils energised again before the first pulse
+        return false;
+    }
+    return (mono_s() - enabled_at_) * 1000.0 >= cfg_.enable_settle_ms;
+}
+void BeltDriver::idle_release(bool busy)
+{
+    if (!cfg_.release_idle || released_) return;
+    if (busy) {
+        still_since_ = -1;
+        return;
+    }
+    const double now = mono_s();
+    if (still_since_ < 0) still_since_ = now;
+    else if ((now - still_since_) * 1000.0 >= cfg_.release_after_ms) {
+        des_step_enable(hw_, 0);   // POS keeps counting from where it is: no pulses while released
+        released_ = true;
+        stats.releases++;
+    }
+}
 void BeltDriver::set_speed(double mm_s)
 {
     if (mm_s <= 0) return;
@@ -60,6 +90,7 @@ void BeltDriver::jog(int dir)
     if (dir == 0 || (moving && dir != jog_dir_)) {   // stop, or still running the other way: ramp down first
         if (moving) { des_step_stop(hw_); } jog_dir_ = 0;
     } else if (!moving) {
+        if (!ready_to_start()) return;
         move_to(pos + dir * sign_ * kFar); jog_dir_ = dir;
     } else if (int64_t(last_target_ - pos) * dir * sign_ < kReextend) {
         last_target_ = pos + dir * sign_ * kFar; des_step_set_target(hw_, last_target_);
@@ -71,9 +102,12 @@ void BeltDriver::apply(const BeltPlan &plan)
     jog_dir_ = 0;
     const int32_t pos = des_step_pos(hw_);
     const bool moving = !stopped();
+    bool start_wanted = false;   // stopped but this plan moves the belt: the driver must stay enabled
     switch (plan.kind) {
     case BeltPlan::Run: {
         int32_t remaining = (last_target_ - pos) * sign_; if (!moving) {
+            start_wanted = true;
+            if (!ready_to_start()) break;
             move_to(pos + sign_ * kFar); stats.runs++;
         } else if (last_kind_ != BeltPlan::Run || remaining < kReextend) {
             last_target_ = pos + sign_ * kFar;   // a stop that is no longer wanted, or the far target getting close
@@ -100,6 +134,8 @@ void BeltDriver::apply(const BeltPlan &plan)
             if (behind) {
                 if (last_kind_ != BeltPlan::StopAt || t != last_target_) stats.late++;   // never reverse
                 last_target_ = t;  } else {
+                start_wanted = true;
+                if (!ready_to_start()) break;
                 move_to(t); stats.stops++;
             }
         }
@@ -111,6 +147,7 @@ void BeltDriver::apply(const BeltPlan &plan)
         }
         break;
     }
+    idle_release(moving || start_wanted);
     last_kind_ = plan.kind;
 }
 Picker::Input picker_input(const BeltDriver *belt, des_hw_t *hw, const BeltConfig &cfg)

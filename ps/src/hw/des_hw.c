@@ -36,8 +36,9 @@ const char *des_strerror(int rc)
 {
     static const char *const s[] = {"ok", "cannot map /dev/mem", "DES_ID mismatch (bitstream lacks des_regs)",
                                     "servo reply timeout", "servo reply checksum/framing error",
-                                    "servo_bus stuck busy", "bad argument", "RS485 frame CRC error"};
-    return rc <= 0 && rc >= -7 ? s[-rc] : "unknown error";
+                                    "servo_bus stuck busy", "bad argument", "RS485 frame CRC error",
+                                    "servo never confirmed the command"};
+    return rc <= 0 && rc >= -8 ? s[-rc] : "unknown error";
 }
 
 static void sleep_us(long us)
@@ -272,21 +273,64 @@ int des_sb_xfer(des_hw_t *h, const uint8_t *body, int n, int expect_reply, des_s
     pthread_mutex_unlock(&g_sb_lock);
     return rc;
 }
+/* ---- noisy-bus robustness (see des_hw.h): retried reads, read-back checked writes ---- */
+static unsigned g_retries = 2;
+static des_sb_stats_t g_stats;
+void des_servo_set_retries(unsigned n) { g_retries = n > 10 ? 10 : n; }
+void des_sb_stats(des_sb_stats_t *s)
+{
+    pthread_mutex_lock(&g_sb_lock);
+    *s = g_stats;
+    pthread_mutex_unlock(&g_sb_lock);
+}
+static void stats_add(uint32_t *field, uint32_t n)
+{
+    pthread_mutex_lock(&g_sb_lock);
+    *field += n;
+    pthread_mutex_unlock(&g_sb_lock);
+}
+/* a failed exchange: the servo may have heard the request (only the reply got lost or damaged - and a damaged reply
+   can carry a wrong ID, so sb_xfer may have stamped another servo), so it gets its quiet window before the retry */
+static void failed_exchange(uint8_t id)
+{
+    if (id == DES_SERVO_BROADCAST) return;
+    pthread_mutex_lock(&g_sb_lock);
+    g_reply_us[id] = mono_us();
+    pthread_mutex_unlock(&g_sb_lock);
+}
+static int retryable(int rc) { return rc == DES_E_TIMEOUT || rc == DES_E_RXERR; }
 int des_servo_ping(des_hw_t *h, uint8_t id, des_sb_result_t *r)
 {
     uint8_t b[3] = { id, 2, 0x01 };
-    return des_sb_xfer(h, b, 3, 1, r);
+    int rc = DES_E_ARG;
+    for (unsigned a = 0; a <= g_retries; a++) {
+        if (a) stats_add(&g_stats.retries, 1);
+        rc = des_sb_xfer(h, b, 3, 1, r);
+        if (!retryable(rc)) return rc;
+        failed_exchange(id);
+    }
+    stats_add(&g_stats.read_failures, 1);
+    return rc;
 }
 int des_servo_read(des_hw_t *h, uint8_t id, uint8_t addr, uint8_t n, uint8_t *out, des_sb_result_t *r)
 {
     des_sb_result_t tmp;
     if (!r) r = &tmp;
     uint8_t b[5] = { id, 4, 0x02, addr, n };
-    int rc = des_sb_xfer(h, b, 5, 1, r);
-    if (rc) return rc;
-    if (r->n < 4 + n || r->raw[0] != id) return DES_E_RXERR;   /* reply: ID LEN STATUS data[n] CHK */
-    for (int i = 0; i < n; i++) out[i] = r->raw[3 + i];
-    return DES_OK;
+    int rc = DES_E_ARG;
+    for (unsigned a = 0; a <= g_retries; a++) {
+        if (a) stats_add(&g_stats.retries, 1);
+        rc = des_sb_xfer(h, b, 5, 1, r);
+        if (rc == DES_OK && (r->n < 4 + n || r->raw[0] != id)) rc = DES_E_RXERR;   /* reply: ID LEN STATUS data[n] CHK */
+        if (rc == DES_OK) {
+            for (int i = 0; i < n; i++) out[i] = r->raw[3 + i];
+            return DES_OK;
+        }
+        if (!retryable(rc)) return rc;
+        failed_exchange(id);
+    }
+    stats_add(&g_stats.read_failures, 1);
+    return rc;
 }
 int des_servo_read_u16(des_hw_t *h, uint8_t id, uint8_t addr, uint16_t *v)
 {
@@ -330,6 +374,53 @@ int des_servo_sync_pos(des_hw_t *h, const uint8_t *ids, const uint16_t *pos, con
         b[k++] = ms[i] & 0xff;
     }
     return des_sb_xfer(h, b, k, 0, NULL);
+}
+int des_servo_sync_pos_checked(des_hw_t *h, const uint8_t *ids, const uint16_t *pos, const uint16_t *ms, int n,
+                               int rounds)
+{
+    if (n < 1 || n > 11) return DES_E_ARG;
+    if (rounds <= 0) rounds = 3;
+    uint8_t pid[11];
+    uint16_t ppos[11], pms[11];
+    int np = n;
+    for (int i = 0; i < n; i++) { pid[i] = ids[i]; ppos[i] = pos[i] > 4095 ? 4095 : pos[i]; pms[i] = ms[i]; }
+    for (int round = 0; round < rounds && np > 0; round++) {
+        if (round) stats_add(&g_stats.resends, (uint32_t)np);
+        const int rc = des_servo_sync_pos(h, pid, ppos, pms, np);
+        if (rc != DES_OK) return rc;            /* bus stuck: nothing to check */
+        int left = 0;
+        for (int i = 0; i < np; i++) {          /* goal register = what the servo is now heading for */
+            uint16_t g;
+            if (des_servo_read_u16(h, pid[i], 0x2A, &g) == DES_OK && g == ppos[i]) continue;
+            pid[left] = pid[i]; ppos[left] = ppos[i]; pms[left] = pms[i]; left++;
+        }
+        np = left;
+    }
+    if (!np) return DES_OK;
+    stats_add(&g_stats.unconfirmed, (uint32_t)np);
+    return DES_E_VERIFY;
+}
+int des_servo_torque_checked(des_hw_t *h, const uint8_t *ids, int n, int on)
+{
+    if (n < 1 || n > 32) return DES_E_ARG;
+    uint8_t pid[32];
+    int np = n;
+    for (int i = 0; i < n; i++) pid[i] = ids[i];
+    for (int round = 0; round < 3 && np > 0; round++) {
+        if (round) stats_add(&g_stats.resends, (uint32_t)np);
+        const int rc = des_servo_torque(h, DES_SERVO_BROADCAST, on);   /* broadcast: no reply */
+        if (rc != DES_OK) return rc;
+        int left = 0;
+        for (int i = 0; i < np; i++) {
+            uint8_t v;
+            if (des_servo_read(h, pid[i], 0x28, 1, &v, NULL) == DES_OK && (v != 0) == (on != 0)) continue;
+            pid[left++] = pid[i];
+        }
+        np = left;
+    }
+    if (!np) return DES_OK;
+    stats_add(&g_stats.unconfirmed, (uint32_t)np);
+    return DES_E_VERIFY;
 }
 /* ---------------- stepper ---------------- */
 #define ST_EN 0x01u

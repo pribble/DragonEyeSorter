@@ -17,6 +17,8 @@ class BeltDriver {
 public:
     BeltDriver(des_hw_t *hw, const BeltConfig &cfg);
     void enable(bool on);
+    // driver released after standing still (BeltConfig::release_idle): no holding current, a quiet servo bus
+    bool released() const { return released_; }
     void apply(const BeltPlan &plan);   // once per control cycle
     void set_speed(double mm_s);        // cruise speed used from the next move / retarget (CAN / UI)
     // manual jog while the line is stopped (HMI): +1 = forward (parts toward the arm), -1 = reverse, at the cruise
@@ -36,9 +38,14 @@ public:
         uint64_t stops = 0;       // StopAt targets written
         uint64_t late = 0;        // StopAt targets already behind the belt (PL ramps down past them / no reverse)
         uint64_t holds = 0;       // Hold while moving (should stay 0)
+        uint64_t releases = 0;    // driver released after standing still (release_idle)
     } stats;
 private:
     void move_to(int32_t target);
+    // before a start from standstill: a released driver is enabled first and the start waits enable_settle_ms
+    // (returns false: try again on a later cycle)
+    bool ready_to_start();
+    void idle_release(bool busy);   // busy = moving or about to start
     des_hw_t *hw_;
     BeltConfig cfg_;
     int sign_;                  // +1: forward travel = increasing POS
@@ -46,6 +53,9 @@ private:
     BeltPlan::Kind last_kind_ = BeltPlan::Hold;
     int32_t last_target_ = 0;
     int jog_dir_ = 0;           // direction of the running jog move, 0 = none
+    bool released_ = false;     // ENA off after standing still
+    double enabled_at_ = 0;     // mono_s() of the last enable
+    double still_since_ = -1;   // mono_s() since the belt stands still, -1 = moving / just enabled
     // belt_mm accumulator: the cycle thread and the arm thread's intercept wait both read it
     mutable std::mutex pos_m_;
     mutable bool pos_init_ = false;

@@ -5,6 +5,9 @@
  *   steplat [n]                  PS issues a 10-step move -> first step pulse (polls STEPS)
  *   steptgt                      stepper target rewrite while moving: TARGET = POS stops at once (v9+); behind ramps down past
  *   ping <id> | sread <id> <addr> <n> | swrite <id> <addr> <b..> | sync <pos> <ms> <id...>   servo bus (READ 0x38 2 = pos)
+ *   svsync [n]                   read-back checked SYNC WRITE of servos 1..6 to where they are (nothing moves), n times:
+ *                                re-sends / unconfirmed / read retries (bus robustness under stepper noise)
+ *   env DES_SB_RETRIES=<n>       read retries (default 2; 0 = raw single attempts, for error-rate measurements)
  *   step status | vel <steps/s> [acc] | move <target> [vmax] [acc] | stop | halt | off | zero
  *   vis [mode [thr] [edge_thr] [full|x0 y0 x1 y1]]   PL vision statistics / settings (v6; modes 0 camera .. 5 edges)
  *   pwm <ch> <us> | pwm off      flap servo pulse width (v7);   io [estop-clr|enc-zero|ir1-clr|watch [sec]]  (v11)
@@ -289,6 +292,7 @@ static int rs485_cmd(int argc, char **argv)
 int main(int argc, char **argv)
 {
     int orc = des_hw_open(&hw);
+    if (getenv("DES_SB_RETRIES")) des_servo_set_retries((unsigned)atoi(getenv("DES_SB_RETRIES")));
     if (orc == DES_E_OPEN) { perror("open/mmap /dev/mem"); return 1; }
     const char *cmd = argc > 1 ? argv[1] : "";
     int rc = 0;
@@ -340,6 +344,30 @@ int main(int argc, char **argv)
         b[2] = 0x03;
         for (int i = 0; i < np; i++) b[3 + i] = (uint8_t)strtoul(argv[3 + i], NULL, 0);
         rc = sb_print(b, 3 + np, b[0] != DES_SERVO_BROADCAST, NULL);
+    } else if (!strcmp(cmd, "svsync")) {
+        /* goal = the position each servo reports, read twice and only used when both agree: nothing moves */
+        const int rounds = argc > 2 ? atoi(argv[2]) : 50;
+        uint8_t ids[6];
+        uint16_t pos[6], ms[6];
+        int n = 0;
+        for (uint8_t id = 1; id <= 6; id++) {
+            uint16_t a, b;
+            if (des_servo_read_u16(&hw, id, 0x38, &a) != DES_OK || des_servo_read_u16(&hw, id, 0x38, &b) != DES_OK ||
+                a != b) {
+                printf("servo %u: position not read twice the same, left out\n", id);
+                continue;
+            }
+            ids[n] = id; pos[n] = a; ms[n] = 300; n++;
+        }
+        int fail = 0;
+        for (int k = 0; k < rounds && n > 0; k++)
+            if (des_servo_sync_pos_checked(&hw, ids, pos, ms, n, 0) != DES_OK) fail++;
+        des_sb_stats_t st;
+        des_sb_stats(&st);
+        printf("svsync: %d servos x %d commands: %d not confirmed | re-sent %u, unconfirmed %u, read retries %u, "
+               "reads failed after retries %u\n", n, rounds, fail, st.resends, st.unconfirmed, st.retries,
+               st.read_failures);
+        rc = fail ? 1 : 0;
     } else if (!strcmp(cmd, "sync") && argc >= 5) {
         unsigned pos = strtoul(argv[2], NULL, 0), ms = strtoul(argv[3], NULL, 0);
         int nid = argc - 4;

@@ -111,6 +111,7 @@ private:
     ArmManualView v_;
     std::string why_not_;
     int polls_ = 0;
+    std::array<int, 6> misses_{};   // consecutive failed position reads per joint (poll thread only)
     std::thread th_;
 };
 }  // namespace des
