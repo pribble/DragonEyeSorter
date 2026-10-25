@@ -299,11 +299,28 @@ void ArmManual::handle(const ArmRequest &r)
             }
         }
         std::array<uint16_t, 6> target{}; const uint16_t t = uint16_t(std::clamp(r.ms, 2000, 5000));   // all six together: never faster than 2 s
-        for (int k = 0; k < 6; k++) target[k] = uint16_t(std::clamp(v.home[k], 0, 4095));
-        const int rc = sync_write_all(hw_, ac, target, t); std::lock_guard<std::mutex> lk(m_);
+        std::array<uint16_t, 6> now{};
+        for (int k = 0; k < 6; k++) {
+            target[k] = uint16_t(std::clamp(v.home[k], 0, 4095)); now[k] = uint16_t(std::clamp(v.j[k].pos, 0, 4095));
+        }
+        // from a low pose (a taught bin) straight up first, then home: one joint move from there drags the gripper
+        // and the #6 servo below the belt surface along the belt edge (10-26)
+        float g; std::vector<ServoFrame> fr;
+        if (const char *why = plan_move(ac, now, arm_from_counts(ac, target, g), g, t, "home", fr)) {
+            say("不复位：%s", why); return;
+        }
+        fr.back().pos = target;   // exactly the taught counts
+        int rc = DES_OK; double total = 0;
+        for (size_t i = 0; i < fr.size() && rc == DES_OK; i++) {
+            rc = sync_write_all(hw_, ac, fr[i].pos, fr[i].ms); total += fr[i].ms;
+            if (rc == DES_OK && i + 1 < fr.size()) {
+                say("复位：先竖直抬到皮带上方（%.1f s）", fr[i].ms / 1000.0); sleep_ms(fr[i].ms + 150);
+            }
+        }
+        std::lock_guard<std::mutex> lk(m_);
         for (int k = 0; k < 6; k++) v_.j[k].target = target[k];
-        if (rc == DES_OK) say_locked("复位：6 个关节回初始姿态（%.1f s）", t / 1000.0);
-        else { say_locked("复位：6 个关节回初始姿态（%.1f s）%s", t / 1000.0, des_strerror(rc)); } return;
+        if (rc == DES_OK) say_locked(fr.size() > 1 ? "复位：先竖直抬起，再回初始姿态（%.1f s）" : "复位：6 个关节回初始姿态（%.1f s）", total / 1000.0);
+        else { say_locked("复位：%s", des_strerror(rc)); } return;
     }
     // Jog: from the last target (exact steps; the servo dead band does not add up), else from the read-back
     // position, but only while the servo is near it: after a pick, a hand move or a blocked move the target is

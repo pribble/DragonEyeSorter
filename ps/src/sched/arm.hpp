@@ -118,6 +118,12 @@ const char *arm_raise(const ArmConfig &c, const JointAngles &j, float dz, JointA
 const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, float open_mm, float part_wid,
                       int bin, const std::array<uint16_t, 6> &prev, std::vector<ServoFrame> &out,
                       float *tilt_deg = nullptr);
+// A manual move (HMI reset, des_tool home / goto) from the counts `prev` to the joint angles `to`, the gripper at
+// grip_mm: refused if the gripper direction changes > 60 deg (swing through horizontal); a gripper below the travel
+// height goes straight up first ("rise first"), a low target is reached from straight above ("over target"). Every
+// frame takes at least min_ms. A pick (plan_pick) starts with the same "rise first" when the arm is low.
+const char *plan_move(const ArmConfig &c, const std::array<uint16_t, 6> &prev, const JointAngles &to, float grip_mm,
+                      uint16_t min_ms, const char *what, std::vector<ServoFrame> &out);
 // Hand-eye calibration (des_tool calib-arm): the grasp point of taught poses (forward kinematics, arm frame) and the
 // same marker positions seen by the camera (table frame). Least-squares 2D rigid fit table = base + R(yaw) * arm
 // (the convention of table_to_arm), belt height from the touched marker tops. Needs >= 3 points spread >= 40 mm.

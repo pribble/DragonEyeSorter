@@ -929,6 +929,9 @@ static ArmConfig arm_cfg()
     ArmConfig c;
     for (int i = 0; i < 6; i++) { c.joint[i].id = uint8_t(i + 1); c.joint[i].min_deg = -180; c.joint[i].max_deg = 180; }
     c.bins = {{{90, 40, -100, -30, 0}}, {{120, 40, -100, -30, 0}}};
+    // ready pose above the travel height (z_safe above the belt), as on the arm (posture B is 52 mm above the belt):
+    // the default one sits below it and every plan would start with "rise first"
+    c.home_deg = {0, 100, -90, -100, 0};
     return c;
 }
 
@@ -1102,6 +1105,49 @@ static void test_arm()
         far.bins = {{{90.f, 0.f, 0.f, -90.f, 0.f}}};   // arm stretched out, gripper down
         why = plan_pick(far, target, 0.f, 40, 30, 0, home, w);
         CHECK(why && strstr(why, "cannot raise"), "unreachable over-bin refused: %s", why ? why : "planned");
+    }
+    {   // manual moves (HMI reset, des_tool home / goto) and a pick starting low: straight up first (10-26)
+        JointAngles bin, hm;
+        bin.q = c.bins[0];
+        hm.q = c.home_deg;
+        std::array<uint16_t, 6> at_bin{}, at_home{};
+        arm_to_counts(c, bin, 40, at_bin);
+        arm_to_counts(c, hm, 40, at_home);
+        const float travel = c.belt_z + c.z_safe;
+        std::vector<ServoFrame> w;
+        float g;
+        why = plan_move(c, at_bin, hm, 40, 2000, "home", w);
+        bool ok = !why && w.size() == 2 && !strcmp(w[0].what, "rise first") && !strcmp(w[1].what, "home");
+        CHECK(ok, "bin -> home: %s, %zu frames", why ? why : "ok", w.size());
+        if (ok) {
+            const Vec3 pu = arm_fk(c, arm_from_counts(c, w[0].pos, g)), pb = arm_fk(c, bin);
+            CHECK(std::fabs(pu.z - travel) < 0.5f && std::hypot(pu.x - pb.x, pu.y - pb.y) < 0.5f && w[0].pos[5] == at_bin[5],
+                  "rise first: straight above the bin at the travel height (%.1f mm off, z %.1f vs %.1f), gripper kept",
+                  std::hypot(pu.x - pb.x, pu.y - pb.y), pu.z, travel);
+            CHECK(w[0].ms >= 2000 && w[1].ms >= 2000, "manual frames at least min_ms");
+        }
+        why = plan_move(c, at_home, bin, 40, 1500, "goto", w);
+        ok = !why && w.size() == 2 && !strcmp(w[0].what, "over target");
+        CHECK(ok, "home -> bin: over target first (%s, %zu frames)", why ? why : "ok", w.size());
+        if (ok) {
+            const Vec3 po = arm_fk(c, arm_from_counts(c, w[0].pos, g)), pb = arm_fk(c, bin);
+            CHECK(std::fabs(po.z - travel) < 0.5f && std::hypot(po.x - pb.x, po.y - pb.y) < 0.5f, "over target above the bin");
+        }
+        JointAngles hm2 = hm;
+        hm2.q[0] += 20;   // high -> high: one frame
+        CHECK(arm_fk(c, hm).z > travel, "test ready pose above the travel height");
+        why = plan_move(c, at_home, hm2, 40, 1500, "goto", w);
+        CHECK(!why && w.size() == 1, "high -> high: a single frame (%s, %zu)", why ? why : "ok", w.size());
+        JointAngles up;
+        up.q = {0, 90, 0, 0, 0};   // gripper up
+        std::array<uint16_t, 6> upc{};
+        arm_to_counts(c, up, 40, upc);
+        why = plan_move(c, upc, hm, 40, 1500, "home", w);
+        CHECK(why && strstr(why, "60 deg"), "gripper up -> down refused: %s", why ? why : "planned");
+        // a pick that starts at the bin (an interrupted one): straight up first, then the usual frames
+        why = plan_pick(c, target, 0.f, 40, 30, 0, at_bin, w);
+        CHECK(!why && !w.empty() && !strcmp(w[0].what, "rise first") && !strcmp(w[1].what, "above"),
+              "pick from the bin pose starts with rise first (%s)", why ? why : "ok");
     }
 
     // tilted grasp: out of the vertical reach, fingers closing tangentially

@@ -166,6 +166,52 @@ static uint16_t move_ms(const ArmConfig &c, const std::array<uint16_t, 6> &a, co
     }
     return uint16_t(std::min(std::max(worst / c.joint_speed * 1000.f, float(c.min_ms)), 5000.f));
 }
+// gripper below the travel height (taught bin, an interrupted pick): straight up to it first, so the next joint
+// move cannot drag the gripper / #6 servo sideways below the belt surface along the belt edge or the box (10-26:
+// bin -> ready pose directly dipped ~45 mm below the belt next to the side frame). The gripper count is kept.
+static const char *rise_first(const ArmConfig &c, const std::array<uint16_t, 6> &prev, std::vector<ServoFrame> &out,
+                              uint16_t min_ms)
+{
+    float g;
+    const JointAngles now = arm_from_counts(c, prev, g);
+    const float dz = (c.belt_z + c.z_safe) - arm_fk(c, now).z;
+    if (dz <= 1.f) return nullptr;
+    JointAngles up;
+    if (arm_raise(c, now, dz, up)) return "gripper is low and cannot go straight up from here: move the arm up by hand";
+    ServoFrame f;
+    if (const char *w = arm_to_counts(c, up, g, f.pos)) return w;
+    f.pos[5] = prev[5];
+    f.ms = std::max(move_ms(c, prev, f.pos), min_ms);
+    f.what = "rise first";
+    out.push_back(f);
+    return nullptr;
+}
+const char *plan_move(const ArmConfig &c, const std::array<uint16_t, 6> &prev, const JointAngles &to, float grip_mm,
+                      uint16_t min_ms, const char *what, std::vector<ServoFrame> &out)
+{
+    out.clear();
+    float g;
+    const float pn = tool_pitch_deg(arm_from_counts(c, prev, g)), pt = tool_pitch_deg(to);
+    if (std::fabs(pn - pt) > 60.f)   // one joint move would swing the 190 mm gripper through horizontal (10-22)
+        return "gripper direction differs more than 60 deg from the target: move the arm by hand first";
+    if (const char *w = rise_first(c, prev, out, min_ms)) return w;
+    ServoFrame f;
+    auto add = [&](const JointAngles &j, const char *name) -> const char * {
+        f = ServoFrame{};
+        if (const char *w = arm_to_counts(c, j, grip_mm, f.pos)) return w;
+        f.ms = std::max(move_ms(c, out.empty() ? prev : out.back().pos, f.pos), min_ms);
+        f.what = name;
+        out.push_back(f);
+        return nullptr;
+    };
+    const float dz = (c.belt_z + c.z_safe) - arm_fk(c, to).z;
+    if (dz > 1.f && pt <= kToolDownMaxDeg) {   // a low target (a bin): from straight above it
+        JointAngles over;
+        if (arm_raise(c, to, dz, over)) return "target is low and cannot be reached from straight above";
+        if (const char *w = add(over, "over target")) return w;
+    }
+    return add(to, what);
+}
 const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, float open_mm, float part_wid,
                       int bin, const std::array<uint16_t, 6> &prev, std::vector<ServoFrame> &out, float *tilt_deg)
 {
@@ -218,6 +264,7 @@ const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, 
         return nullptr;
     };
     const char *why;
+    if ((why = rise_first(c, prev, out, 0))) return why;   // starting low (e.g. stopped at the bin): up first
     if ((why = add(above, open_mm, 0, "above"))) return why;
     if ((why = add(down, open_mm, c.descend_ms, "descend"))) return why;
     if ((why = add(down, held, c.close_ms, "close"))) return why;

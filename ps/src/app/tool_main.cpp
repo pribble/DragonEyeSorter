@@ -249,8 +249,9 @@ static int run_arm(des_hw_t &hw, const AppConfig &cfg, const Args &a)
         return rc == DES_OK ? 0 : 2;
     }
     // ---- motion
-    std::array<uint16_t, 6> now{}; bool have_now = !dry && ex.read_positions(now);
-    if (!have_now) {   // dry run / no read back: assume the arm sits at home
+    // where the arm really is, also for a dry run (reading moves nothing): the plan depends on it (rise first)
+    std::array<uint16_t, 6> now{}; bool have_now = ex.read_positions(now);
+    if (!have_now) {   // no read back: assume the arm sits at home
         JointAngles h; h.q = ac.home_deg;
         arm_to_counts(ac, h, ac.grip_max_open, now);
     }
@@ -267,10 +268,11 @@ static int run_arm(des_hw_t &hw, const AppConfig &cfg, const Args &a)
                 return 2;
             }
         }
-        ServoFrame f;
-        if (const char *why = arm_to_counts(ac, target, grip, f.pos)) { fprintf(stderr, "%s\n", why); return 2; }
-        f.ms = 1500;   // single moves from an unknown pose: slow on purpose
-        f.what = s == "home" ? "home" : "goto"; wp.push_back(f);
+        // slow on purpose (>= 1.5 s per frame); from a low pose straight up first, a low target from above
+        if (const char *why = plan_move(ac, now, target, grip, 1500, s == "home" ? "home" : "goto", wp)) {
+            fprintf(stderr, "%s\n", why);
+            return 2;
+        }
     } else if (s == "pick") {
         if (a.npos < 2) { usage_tool(); return 1; }
         float axis = a.npos > 2 ? a.pos[2] * kPi / 180 : 0.f; int bin = a.npos > 3 ? int(a.pos[3]) : 0;
