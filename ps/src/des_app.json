@@ -21,8 +21,8 @@
             "release_idle": true, "release_after_ms": 300, "enable_settle_ms": 50,
             "adapt": { "enabled": true, "min_mm_s": 15, "change_frac": 0.05 } },
 
-  "tracker_comment": "decide_x：零件中心过这条线时定去向（挡板 1 要在零件进入摆杆扫过区之前合好 → 中线零件 50mm/s 下最晚约 x 208、60mm/s 约 x 203（画面中心约 x 187 测完后即可判），启动日志「[run] gate」行给出各带速下的最晚判定位置）；tail_x：带尾（10-22 实测约 813，复检箱）",
-  "tracker": { "fov_x0": 0, "fov_x1": 300, "edge_margin": 10, "decide_x": 195, "tail_x": 813,
+  "tracker_comment": "decide_x：零件中心过这条线时定去向（挡板 1 要在零件进入摆杆扫过区之前合好 → 中线零件 50mm/s 下最晚约 x 208、60mm/s 约 x 203（画面中心约 x 187 测完后即可判），启动日志「[run] gate」行给出各带速下的最晚判定位置）；tail_x：带尾（10-26 用户实测底座中心 → 带尾辊最外缘 277mm，底座台面 x 437.8 → 715；原 813 偏大约 10cm；复检箱）",
+  "tracker": { "fov_x0": 0, "fov_x1": 300, "edge_margin": 10, "decide_x": 195, "tail_x": 715,
                "gate_s": 12, "gate_y": 12, "min_hits": 3, "max_miss_new": 2, "max_miss": 8,
                "min_conf": 0.5, "pick_unclassified": false, "unclassified_bin": 0 },
 
