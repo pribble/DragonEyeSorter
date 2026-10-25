@@ -83,7 +83,7 @@ def draw():
            's = x − B → 停带 / 挡板调度', 'ps')
 
     y, h = ROW['r3']
-    fk.box(ax, PS_L, y, PS_LW, h, 'NPU 线程\nROI 224²\n7.8ms / 件', 'npu')
+    fk.box(ax, PS_L, y, PS_LW, h, 'NPU 线程\nROI 224²\n7.9ms / 件', 'npu')
     fk.box(ax, PS_R, y, PS_RW, h, 'CAN 状态机\n10Hz 状态\n每件结果', 'ps')
 
     y, h = ROW['r4']

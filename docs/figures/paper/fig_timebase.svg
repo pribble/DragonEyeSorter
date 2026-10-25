@@ -124,7 +124,7 @@ z
     <text style="font-weight: 700; font-size: 8.5px; font-family: 'Times New Roman', 'SimHei'; text-anchor: middle; fill: #111111" x="294" y="16.087891" transform="rotate(-0 294 16.087891)">NPU 结果</text>
    </g>
    <g id="text_9">
-    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: middle; fill: #4a4a4a" x="294" y="28.209961" transform="rotate(-0 294 28.209961)">7.8ms · 异步</text>
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: middle; fill: #4a4a4a" x="294" y="28.209961" transform="rotate(-0 294 28.209961)">7.9ms · 异步</text>
    </g>
    <g id="text_10">
     <text style="font-weight: 700; font-size: 8.5px; font-family: 'Times New Roman', 'SimHei'; text-anchor: middle; fill: #111111" x="380" y="16.054688" transform="rotate(-0 380 16.054688)">判定 → 停带 / 挡板</text>
@@ -184,7 +184,7 @@ z
     <text style="font-weight: 700; font-size: 7.5px; font-family: 'Times New Roman', 'SimHei'; text-anchor: start; fill: #111111" x="234" y="176.5875" transform="rotate(-0 234 176.5875)">·</text>
    </g>
    <g id="text_29">
-    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #4a4a4a" x="241" y="176.709961" transform="rotate(-0 241 176.709961)">硬件在环停带误差 ≤ 0.04mm（1~2 步）</text>
+    <text style="font-size: 7.5px; font-family: 'Times New Roman', 'SimSun', 'Microsoft YaHei'; text-anchor: start; fill: #4a4a4a" x="241" y="176.709961" transform="rotate(-0 241 176.709961)">硬件在环停带误差 ≤ 0.08mm（≤4 步）</text>
    </g>
    <g id="patch_6">
     <path d="M 44 38.7 

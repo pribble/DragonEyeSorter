@@ -9,7 +9,7 @@
 | 层 | 产物 | 谁在什么场景执行 | 失败长什么样 | 构建目标 | 上板方式 |
 |---|---|---|---|---|---|
 | ① 产品运行时 | **`des_app`**（只有 `run` / `live`） | 开机自启、无人值守；演示 | 服务重启 / 停线 | `build/des_app` | 进部署清单 [manifest.tsv](../scripts/deploy/manifest.tsv) → `/root/des/` |
-| ② 人工运维 / 现场工具 | **`des_tool`**（`probe` / `locate` / `track` / `display` / `collect` / `measure` / `calib-cam` / `calib-belt` / `calib-arm` / `arm` / `ik`） | 人看着输出、有交互；到货 / 标定 / 排障 / 采训练图 | 人读打印、自己决定下一步 | `build/des_tool` | **不进清单**，手动 `scp` 到 `/root/bin/`（启动器 `des_tool.sh` → `/root/des/`） |
+| ② 人工运维 / 现场工具 | **`des_tool`**（`probe` / `locate` / `track` / `display` / `collect` / `measure` / `calib-cam` / `calib-belt` / `calib-enc` / `calib-beam` / `calib-flat` / `calib-arm` / `arm` / `ik`） | 人看着输出、有交互；到货 / 标定 / 排障 / 采训练图 | 人读打印、自己决定下一步 | `build/des_tool` | **不进清单**，手动 `scp` 到 `/root/bin/`（启动器 `des_tool.sh` → `/root/des/`） |
 | ③ 自动断言测试 | **`test_*`**：scheduler / modbus / rs485 / calib / measure / belt_hil / can / npu / servo_gap | 回归 / 硬件在环；无交互 | 退出码 = 失败项数 | `build/test_*` | 手动 `scp` 到 `/root/bin/` |
 | ④ 底层调试与协议模拟 | **`desreg`** / **`canplc`** | 绕过业务语义读写寄存器 / 总线帧；扮 PLC 对端 | 人看打印的寄存器值与延迟 | `build/desreg` / `build/canplc` | 手动 `scp` 到 `/root/bin/` |
 
@@ -19,7 +19,7 @@
 
 | 位置 | 内容 |
 |---|---|
-| ★ 入口 | `src/app/main.cpp`（`des_app`：只 `run` / `live`）、`src/app/tool_main.cpp`（`des_tool`：13 个模式） |
+| ★ 入口 | `src/app/main.cpp`（`des_app`：只 `run` / `live`）、`src/app/tool_main.cpp`（`des_tool`：14 个模式） |
 | 共用实现 | `src/{app,hw,sched,measure,ui,vision}/` 编进两个入口（静态链接） |
 | 支撑 | `kernel/`（`mipicam.ko`）、`tools/`（第④层）、`tests/`（第③层）、`vendor/`（非自研，只有 `json.hpp` 编入）、`build/`（`make` 输出，已忽略） |
 
@@ -59,7 +59,7 @@ ps/
 
 其他参数（`-c` / `--vmax` / `--exp` / `--gain` / `--no-rt`）见「开关速查」。**运维 / 测试模式不在 `des_app` 里**：`des_app probe` 之类会明确报错并提示用 `des_tool`。
 
-## `des_tool`（人工运维 / 现场工具：13 个模式）
+## `des_tool`（人工运维 / 现场工具：14 个模式）
 
 | 模式 | 作用 |
 |---|---|
@@ -71,8 +71,11 @@ ps/
 | `measure [-n 帧] [--image f.png] [--out raw.png] [--dump report.png]` | 每个零件测一遍（定位 → ROI → 测量），打印外径 / 孔径 / 偏心 / 齿数 / 缺陷；`-n` > 1 时零件不动、统计均值 / σ / 极差；`--out` 存原始帧供 `--image` 离线复测 |
 | `calib-cam --board 9x6 --square <mm> [--travel right] [--image f.png] [--dump x.png]` | 棋盘格平放皮带上 → 像素→台面毫米单应矩阵，写 `calib.json`；坐标系与操作见 [视觉与检测](../docs/视觉与检测.md)「相机标定」 |
 | `calib-belt [--belt mm/s] [--steps N]` | 相机标定后：零件放视野上游 → 皮带短走 / 长走 / 退回，出 mm/步、方向、往返误差、横向漂移、等效辊径，写 `calib.json` 的 `belt` 段 |
+| `calib-enc [-n 3]` | 编码器标定：**空皮带**往返走（默认 300mm × 3 次），出 mm/计数，写 `calib.json` 的 `encoder` 段；之后界面带速显示、曲线页绿线用编码器实测 |
+| `calib-beam -n 3 --od <卡尺外径>` | 对射光束位置标定：已知外径的齿轮放光束上游 → 皮带带它过光束再退回（3 轮），写 `calib.json` 的 `beam` 段；操作见 [到货联调清单](../docs/到货联调清单.md) §3.9 |
+| `calib-flat` | 平场采集：空白 A4 横放盖住视野上游边 → 皮带带纸走过视野再退回，写 `flat.json`；换相机 / 灯光 / 曝光后重做 |
 | `calib-arm [-n 4] [--marker-h mm]` | 手眼标定（交互）：标记物放视野 → 相机定位 → 手掰夹爪尖碰标记 → 读关节角；≥3 点拟合底座位置 / 朝向（+ 带面高度），写 `calib.json` 的 `arm` 段 |
-| `arm scan / read / teach / torque-on / torque-off / home / goto x y / pick x y [角度] [料盒] [--go]` | 机械臂上电调试：扫舵机、读位置与角度、手掰示教、回零、走点、整套取放。默认只打印舵机码，加 `--go` 才动 |
+| `arm scan / read / teach / torque-on / torque-off / home / goto x y [z] / pick x y [角度] [料盒] [--go]` | 机械臂上电调试：扫舵机、读位置与角度、手掰示教、回零、走点、整套取放。默认只打印舵机码，加 `--go` 才动 |
 | `ik <x> <y> [z] [角度]` | 台面坐标 → 关节角 / 舵机码（纯计算，不碰 PL） |
 
 上板启动器 `des_tool.sh <模式> …`（源 `scripts/deploy/out/`，手动 `scp` 到 `/root/des/`）：先取本目录 `des.env` 的路径、缺 `/dev/mipicam` 时 `insmod`、已有 `des_app` / `des_tool` 在跑时拒绝启动；`des_tool` 本体在 `/root/bin/`（与 `desreg` / `canplc` / `test_*` 一致）。
@@ -99,7 +102,7 @@ ps/
 
 ## 开关速查
 
-参数解析在 `src/app/cli_common.cpp`，usage 文本在 `cli_common.cpp`（`des_app` 的 run / live）与 `src/app/tool_main.cpp`（`des_tool` 的 11 模式）。
+参数解析在 `src/app/cli_common.cpp`，usage 文本在 `cli_common.cpp`（`des_app` 的 run / live）与 `src/app/tool_main.cpp`（`des_tool` 的 14 个模式）。
 
 | 开关 | 用在哪 | 含义 |
 |---|---|---|
@@ -123,7 +126,7 @@ ps/
 - 坐标约定见 `src/sched/geom.hpp`：图像 px → 台面 mm（单应矩阵，配置 `px_to_table`），件在带上 `s = x − B`（B = 带走过的距离），停带 / 反转无需特殊处理；停带 = 给步进位置模式写「停在 B = 抓取线 − s」，减速由 PL 梯形曲线完成；目标写得太晚（已在身后）时 PL 减速停在它之后，调度器按刹车距离判断来不及就转复检、不倒车。
 - 取帧：厂家帧 DMA「提交一块写一帧」，完成后立即重提下一块（4 块环形缓冲）。每帧带锁存的拍摄时刻带位置（`CAP_*`），旧比特流自动退回「完成后读」。帧率与丢帧见 [测试与验证](../docs/测试与验证.md)。
 - 定位：1/4 降采样灰度 + Otsu（下限钳位）+ 开运算 + 外轮廓 + minAreaRect；耗时见 [测试与验证](../docs/测试与验证.md)。
-- 几何测量：`src/measure/measure`（外径 / 根径 / 孔径 / 偏心 / 规格齿数 / 缺料·缺齿·飞边，含视差校正），已接入 live / run（`track_measure`：每件取离光轴最近那帧，结果进跟踪表与 CAN；`measure.rule` 尺寸 / 规格判定默认关）。方法见 [视觉与检测](../docs/视觉与检测.md)「几何测量」。
+- 几何测量：`src/measure/measure`（外径 / 根径 / 孔径 / 偏心 / 规格齿数 / 缺料·缺齿·飞边，含视差校正），已接入 live / run（`track_measure`：每件取离光轴最近那帧，结果进跟踪表与 CAN；`measure.rule` 尺寸 / 规格判定，`des_app.json` 里默认开）。方法见 [视觉与检测](../docs/视觉与检测.md)「几何测量」。
 - 网口：`des_app run` 起 Modbus-TCP 从站（`des_app.json` 的 `plc.modbus_port`，0 = 关；寄存器表 `ps/src/hw/modbus_tcp.hpp`，协议见 [软件与UI](../docs/软件与UI.md)「Modbus-TCP」）；网口实时上传（NetFeed）并入 `part_log`，供 PC 取记录（`pc/feed/des_feed.py`）。
 - 配置：`src/des_app.json`（标定值，标 TODO 的待实物标定）、`src/recipes.json`（产品配方，换型停机切换）、类别表 `scripts/deploy/out/label_list.json`（`config.cpp` 解析）；部署到 `/root/des/` 走 [scripts/deploy](../scripts/deploy/README.md) 的清单。
 
@@ -142,7 +145,7 @@ ps/
 
 ## 工具（第④层）
 
-`tools/desreg`：读写 PL 寄存器（状态 / `r <off>` / `w <off> <val>` / `led on|off|auto` / `lat [n]` 测 PS→PL 读延迟 / 舵机 `ping|sread|swrite|sync` / 步进 `step ...`）。写前核对 `DES_ID`，比特流里没有 `des_regs` 时拒绝写 —— 否则该窗口别名到厂家相机 DMA 寄存器，写入会写乱内存。⚠ 运行期间只用 `r` 只读。
+`tools/desreg`：读写 PL 寄存器（状态 / `r <off>` / `w <off> <val>` / `led on|off|auto` / `lat [n]` PS→PL 读延迟 / `cmdlat`·`steplat`·`steptgt` 命令与脉冲延迟 / 舵机 `ping|sread|swrite|sync|svsync|sstress` / 步进 `step status|vel|move|stop|halt|off|zero` / `vis` PL 视觉统计 / `pwm` 挡板脉宽 / `io [watch n]` / `485 cfg|tx|bc|soak|listen|clr` RS485；全表见 `desreg.c` 文件头）。写前核对 `DES_ID`，比特流里没有 `des_regs` 时拒绝写 —— 否则该窗口别名到厂家相机 DMA 寄存器，写入会写乱内存。运行期规则见上文四层表：只用 `r` 只读。
 
 `tools/canplc`：扮「产线 PLC」的命令行（`canplc <if> start|stop|pause|resume|reset|speed <mm/s>|recipe <n>|monitor [sec]`），板上回环测试与 `soak.sh` 的陪测对端，也是 `pc/plc_sim` 的协议参考实现。
 

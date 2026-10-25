@@ -11,7 +11,7 @@
 每个 fig_*.py 要暴露 draw() 与 REGIONS，并能单独 `python docs/figures/fig_xxx.py [--paper]` 跑。
 
 两套主题共用同一份坐标：slide（默认，浅色编辑风，PPT 用）与 paper（期刊线稿，报告用）。
-报告 `docs/技术文档.md` 引用的是 `figures/paper/` 那一套；PPT 用本目录这一套。
+报告 `submission/技术文档.md` 引用的是 `figures/paper/` 那一套；PPT 用本目录这一套。
 """
 import importlib
 import os

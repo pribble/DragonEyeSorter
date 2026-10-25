@@ -145,7 +145,7 @@ z
     <text style="font-weight: 700; font-size: 8.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #0e1b2b" x="294" y="16.004883" transform="rotate(-0 294 16.004883)">NPU 结果</text>
    </g>
    <g id="text_9">
-    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #5f7285" x="294" y="28.099805" transform="rotate(-0 294 28.099805)">7.8ms · 异步</text>
+    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #5f7285" x="294" y="28.099805" transform="rotate(-0 294 28.099805)">7.9ms · 异步</text>
    </g>
    <g id="text_10">
     <text style="font-weight: 700; font-size: 8.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #0e1b2b" x="380" y="15.97168" transform="rotate(-0 380 15.97168)">判定 → 停带 / 挡板</text>
@@ -205,7 +205,7 @@ z
     <text style="font-weight: 700; font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #2563eb" x="234" y="176.435156" transform="rotate(-0 234 176.435156)">·</text>
    </g>
    <g id="text_29">
-    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #5f7285" x="241" y="176.521289" transform="rotate(-0 241 176.521289)">硬件在环停带误差 ≤ 0.04mm（1~2 步）</text>
+    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #5f7285" x="241" y="176.521289" transform="rotate(-0 241 176.521289)">硬件在环停带误差 ≤ 0.08mm（≤4 步）</text>
    </g>
    <g id="patch_7">
     <path d="M 44 38.7 

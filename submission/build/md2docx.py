@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""docs/技术文档.md → submission/out/龙瞳分拣_作品报告.docx（竞赛作品报告排版）。
+"""submission/技术文档.md → submission/out/龙瞳分拣_作品报告.docx（竞赛作品报告排版）。
 
-内容源只有一份：docs/技术文档.md（本脚本只读它，从不改写）。插图按 Markdown 里的
-相对路径相对 docs/ 解析。脚本只认技术文档实际用到的 Markdown 写法——
+内容源只有一份：submission/技术文档.md（本脚本只读它，从不改写）。插图按 Markdown 里的
+相对路径相对源文件所在目录解析。脚本只认技术文档实际用到的 Markdown 写法——
 `#` 封面标题、`##` 章、`###` 节、普通段落、**加粗**、行内 `代码`、`![alt](图)`
 加下一行 *斜体图注*、`| … |` 表格、`- `/`1. ` 列表、`---` 分隔线——
 不写通用大而全的解析器：遇到没见过的写法直接报错退出，不会静默丢内容。
@@ -74,8 +74,7 @@ for _stream in (sys.stdout, sys.stderr):
 BUILD_DIR = Path(__file__).resolve().parent          # submission/build/
 SUBMISSION = BUILD_DIR.parent                        # submission/
 REPO = SUBMISSION.parent                             # 仓库根（按相对位置推导）
-DOCS_DIR = REPO / "docs"
-DEFAULT_SOURCE = DOCS_DIR / "技术文档.md"
+DEFAULT_SOURCE = SUBMISSION / "技术文档.md"
 DEFAULT_OUT = SUBMISSION / "out" / "龙瞳分拣_作品报告.docx"
 
 # ---------------------------------------------------------------- 设计令牌
@@ -1381,9 +1380,9 @@ def build(source: Path, out_path: Path, caption_clean=True, caption_rules=None,
                 par.add_run("\t")
                 add_runs(par, item, size_pt=BODY_PT)
         elif kind == "image":
-            src = (DOCS_DIR / payload).resolve()
+            src = (source.parent / payload).resolve()
             if not src.is_file():
-                raise SystemExit("插图不存在：%s（按相对 docs/ 解析）" % payload)
+                raise SystemExit("插图不存在：%s（相对源文件所在目录解析）" % payload)
             render_image(doc, src, fig_w)
             counts["images"] += 1
             figures.append(src)

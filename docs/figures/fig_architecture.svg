@@ -937,7 +937,7 @@ z
     <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #5f7285" x="292" y="145.486523" transform="rotate(-0 292 145.486523)">ROI 224²</text>
    </g>
    <g id="text_56">
-    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #5f7285" x="292" y="155.017969" transform="rotate(-0 292 155.017969)">7.8ms / 件</text>
+    <text style="font-size: 7.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #5f7285" x="292" y="155.017969" transform="rotate(-0 292 155.017969)">7.9ms / 件</text>
    </g>
    <g id="text_57">
     <text style="font-weight: 700; font-size: 8.5px; font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #0e1b2b" x="357" y="135.213047" transform="rotate(-0 357 135.213047)">CAN 状态机</text>

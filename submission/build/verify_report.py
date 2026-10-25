@@ -19,7 +19,7 @@
  13 **逐页底部空白分析**（信息项：每页数值 + >20% 的页及原因）+ 正文页不被撑空（填充 ≥ 50%）
  14 代码包与 README 登记
 
-计数类检查不再写死数字（docs/技术文档.md 的内容在持续优化，章 / 表数量可能变）：
+计数类检查不再写死数字（submission/技术文档.md 的内容在持续优化，章 / 表数量可能变）：
 一律从 out/_md2docx.json 读生成侧实际值，对 docx 结构对账，再给「下限」兜底；
 H1 / 表 / 图再与源 Markdown 独立数出来的数对比。
 
@@ -45,7 +45,7 @@ REPO = BUILD.parent.parent
 OUT = REPO / "submission" / "out"
 DOCX = OUT / "龙瞳分拣_作品报告.docx"
 PDF = OUT / "龙瞳分拣_作品报告.pdf"
-SOURCE = REPO / "docs" / "技术文档.md"
+SOURCE = REPO / "submission" / "技术文档.md"
 STATS = OUT / "_md2docx.json"
 PDF_STATS = OUT / "_word_to_pdf.json"
 

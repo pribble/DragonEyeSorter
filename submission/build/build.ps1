@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    作品报告一键生成：docs/技术文档.md → submission/out/龙瞳分拣_作品报告.docx → 同名 PDF → 插图高清化。
+    作品报告一键生成：submission/技术文档.md → submission/out/龙瞳分拣_作品报告.docx → 同名 PDF → 插图高清化。
 
 .DESCRIPTION
     三步串起来跑，最后打印产物路径 / 页数 / 大小（含插图等效 dpi）：
@@ -40,8 +40,7 @@ $ErrorActionPreference = 'Stop'
 $BuildDir = $PSScriptRoot                                   # submission/build/
 $Submission = Split-Path -Parent $BuildDir                  # submission/
 $Repo = Split-Path -Parent $Submission                      # 仓库根
-$DocsDir = Join-Path $Repo 'docs'
-$Source = Join-Path $DocsDir '技术文档.md'
+$Source = Join-Path $Submission '技术文档.md'
 $OutDir = Join-Path $Submission 'out'
 $Stem = '龙瞳分拣_作品报告'
 $Docx = Join-Path $OutDir "$Stem.docx"
