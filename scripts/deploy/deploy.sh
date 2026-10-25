@@ -71,7 +71,36 @@ trap 'rm -rf "$tmpd"' EXIT INT TERM
 
 # ---------- .env（BOARD_HOST）：只有要连板子的模式才必须（--stage 不联网） ----------
 if [ -f "$repo/.env" ]; then
-    tr -d '\r' < "$repo/.env" | grep -v '^[[:space:]]*#' | grep -v '^[[:space:]]*$' > "$tmpd/env"
+    # 只认 KEY=值 行，值剥掉成对引号后整体再加单引号 source：带空格的路径不拆词，值里的 shell 元字符不展开
+    # （与 generate_env_make.sh / env_loader.ps1 同一语义：值原样进变量，不做转义展开）
+    tr -d '\r' < "$repo/.env" | sed -e 's/^\xEF\xBB\xBF//' | awk '
+        BEGIN { q = sprintf("%c", 39) }
+        /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+        {
+            i = index($0, "=")
+            if (i < 2 || substr($0, 1, i - 1) !~ /^[A-Za-z_][A-Za-z0-9_]*$/) {
+                printf ".env 里这行不合 KEY=值 格式，已跳过：%s\n", $0 > "/dev/stderr"; next
+            }
+            k = substr($0, 1, i - 1); v = substr($0, i + 1)
+            c1 = substr(v, 1, 1)
+            if ((c1 == "\"" || c1 == q) && length(v) >= 2 && substr(v, length(v), 1) == c1) v = substr(v, 2, length(v) - 2)
+            # 受限展开：值里的 $NAME / ${NAME} 只替换 shell 环境里已有的名字（单遍；找不到原样保留）。
+            # $() / 反引号不执行——不再 source 原文件的原因就在这。
+            out = ""
+            while (match(v, /\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/)) {
+                m = substr(v, RSTART, RLENGTH); name = m
+                gsub(/\$\{?|\}?/, "", name)
+                out = out substr(v, 1, RSTART - 1) ((name in ENVIRON) ? ENVIRON[name] : m)
+                v = substr(v, RSTART + RLENGTH)
+            }
+            v = out v
+            # 值里的每个单引号写成 '\''（逐字符拼，不用 gsub：gsub 替换串的 \\ 处理各 awk 有歧义）
+            r = ""
+            n = length(v)
+            for (j = 1; j <= n; j++) { ch = substr(v, j, 1); if (ch == q) r = r q "\\" q q; else r = r ch }
+            print k "=" q r q
+        }
+    ' > "$tmpd/env"
     set -a; . "$tmpd/env"; set +a
 fi
 if [ "$MODE" != stage ]; then
@@ -323,7 +352,7 @@ echo "== 安装到位"
     while IFS="$TAB" read -r src dst kind restart; do
         case "$kind" in script|bin|tool) m=700 ;; *) m=600 ;; esac
         # mkdir -p：第一次上板（新卡 / eMMC 救生艇）时目标目录可能还不存在
-        echo "mkdir -p \$(dirname $dst) && cp -f /tmp/desdeploy/$(basename "$src") $dst && chmod $m $dst"
+        echo "mkdir -p \"\$(dirname '$dst')\" && cp -f \"/tmp/desdeploy/$(basename "$src")\" '$dst' && chmod $m '$dst'"
     done < "$tmpd/send"
     echo 'sync'
 } > "$tmpd/install.sh"

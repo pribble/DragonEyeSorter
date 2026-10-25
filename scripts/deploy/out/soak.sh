@@ -13,6 +13,8 @@ DES_HOME=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd)   # 以脚本自己所�
 [ -f "$DES_HOME/des.env" ] || { echo "soak: 缺 $DES_HOME/des.env（路径都从它取，源文件见 scripts/deploy/out/des.env）" >&2; exit 1; }
 . "$DES_HOME/des.env"
 DIR=$DES_HOME
+[ -x "$DES_TOOLS/canplc" ] || { echo "soak: 缺 $DES_TOOLS/canplc（PLC 陪测对端，部署清单不带它：手动 scp /root/bin/canplc）" >&2; exit 1; }
+[ -x "$DES_TOOLS/desreg" ] || { echo "soak: 缺 $DES_TOOLS/desreg（采 PL 帧号用；手动 scp /root/bin/desreg）" >&2; exit 1; }
 OUT=${2:-$DES_DATA/soak-$(cut -d. -f1 /proc/uptime)}
 mkdir -p "$OUT" || exit 1
 cd "$DIR" || exit 1
@@ -71,6 +73,6 @@ ip -s -d link show "$IF" > "$OUT/can_after.txt"
          END {printf "PLC side: STATUS frames %d, lost %d, duplicated %d, with plc-link %d\n", n, lost, dup, link}' "$OUT/plc.log"
     grep "^COUNTS.*recheck [0-9]*$" "$OUT/plc.log" | tail -1
     # interface counters since can_up (loopback: every TX frame should come back as RX)
-    awk '/RX:/ {getline; rx = $2} /TX:/ {getline; tx = $2} END {printf "can0 packets TX %d RX %d (loopback difference %d)\n", tx, rx, tx - rx}' "$OUT/can_after.txt"
+    awk -v iface="$IF" '/RX:/ {getline; rx = $2} /TX:/ {getline; tx = $2} END {printf "%s packets TX %d RX %d (loopback difference %d)\n", iface, tx, rx, tx - rx}' "$OUT/can_after.txt"
 } | tee "$OUT/summary.txt"
 # the EXIT trap restarts the service

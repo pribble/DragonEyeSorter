@@ -25,7 +25,10 @@ $ErrorActionPreference = 'Stop'
 if (-not $DES_ENV_LOADED -and (Test-Path "$PSScriptRoot\..\..\.env")) {
     . "$PSScriptRoot\..\env_loader.ps1"
 }
-if (-not $FdRoot) { $FdRoot = if ($env:FD_ROOT) { $env:FD_ROOT } else { 'C:\Anlogic\FD_2026.1_SP1' } }
+if (-not $FdRoot) {
+    if (-not $env:FD_ROOT) { throw "FD_ROOT 未设置：用 -FdRoot <FD 安装目录>，或在仓库根 .env 里配好（本脚本会经 env_loader.ps1 读它）" }
+    $FdRoot = $env:FD_ROOT
+}
 $parts   = Join-Path $PSScriptRoot 'parts'
 $bootgen = Join-Path $FdRoot 'tools\bootgen\albg1.exe'
 $tc      = Join-Path $FdRoot 'toolchain\gcc\aarch64_linux\bin\aarch64-linux-gnu'
@@ -66,10 +69,11 @@ function New-UBootElf {
         [IO.File]::WriteAllBytes("$tmp\uboot.bin", $ub)
         "SECTIONS`n{`n  . = 0x200000;`n  .text : { *(.text) }`n}`n" | Set-Content "$tmp\u.ld" -Encoding ascii
         Push-Location $tmp
-        # contents 标志不能省，否则段内容会被丢成全 0
-        & "$tc-objcopy.exe" -I binary -O elf64-littleaarch64 -B aarch64 --rename-section .data=.text,contents,alloc,load,readonly,code uboot.bin u.o
-        & "$tc-ld.exe" -T u.ld -e 0x200000 u.o -o u-boot.elf
-        Pop-Location
+        try {
+            # contents 标志不能省，否则段内容会被丢成全 0
+            & "$tc-objcopy.exe" -I binary -O elf64-littleaarch64 -B aarch64 --rename-section .data=.text,contents,alloc,load,readonly,code uboot.bin u.o
+            & "$tc-ld.exe" -T u.ld -e 0x200000 u.o -o u-boot.elf
+        } finally { Pop-Location }
         Copy-Item "$tmp\u-boot.elf" "$parts\u-boot.elf" -Force
     } finally { Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue }
     $h2 = (Get-FileHash "$parts\u-boot.elf" -Algorithm MD5).Hash
@@ -126,8 +130,9 @@ try {
     Copy-Item "$parts\u-boot.elf" "$work\u-boot.elf"
     Copy-Item "$PSScriptRoot\boot.bif" "$work\boot.bif"
     Push-Location $work
-    & $bootgen -arch dr1p104 -image boot.bif -o BOOT.bin -w | Out-Null
-    Pop-Location
+    try {
+        & $bootgen -arch dr1p104 -image boot.bif -o BOOT.bin -w | Out-Null
+    } finally { Pop-Location }
     if (-not (Test-Path "$work\BOOT.bin")) { throw "BootGen 打包失败" }
     Copy-Item "$work\BOOT.bin" $Out -Force
     "OK: $Out  ($((Get-Item $Out).Length) bytes, md5 $((Get-FileHash $Out -Algorithm MD5).Hash))"

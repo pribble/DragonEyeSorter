@@ -27,15 +27,18 @@ phase() {   # $1 = name, $2 = seconds
     touch /tmp/display_check.stop
     wait $W 2>/dev/null
 }
+# 检查前服务本来在不在跑：中断 / 结束都按原状恢复（原来无条件 stop + start，会把没跑的服务意外拉起）
+running=0
+if ./des_service.sh status | grep -q "^des_service: running"; then running=1; fi
 restore() {
     touch /tmp/display_check.stop
     kill $(pidof des_app) $(pidof des_tool) 2>/dev/null
     sleep 1
-    ./des_service.sh start > /dev/null
+    if [ $running -eq 1 ]; then ./des_service.sh start > /dev/null; else ./des_service.sh stop > /dev/null 2>&1; fi
 }
 trap 'restore; exit 1' HUP INT TERM
 
-./des_service.sh stop > /dev/null
+if [ $running -eq 1 ]; then ./des_service.sh stop > /dev/null; fi
 echo "阶段 1/3（${N} 秒）：屏幕应是 Linux 控制台（黑底文字 / 企鹅），不经过我们的程序。请看这段有没有黑屏。"
 phase console "$N"
 echo "阶段 2/3（${N} 秒）：屏幕应是全屏相机画面、底部没有界面。请看这段有没有黑屏。"
@@ -49,3 +52,7 @@ phase run "$N"
 echo "完成。VDMA 状态变化记录："
 cat "$LOG"
 echo "请回复：三段里各自大约黑了几次。"
+if [ $running -eq 0 ]; then
+    echo "（检查前自启服务没在跑：按原状停回去了）"
+    ./des_service.sh stop > /dev/null
+fi

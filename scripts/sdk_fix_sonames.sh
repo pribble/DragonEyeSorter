@@ -20,8 +20,10 @@ SDK=${1:?libs dir}
 READELF=${2:-aarch64-linux-gnu-readelf}
 
 # 父目录（同时含两个库）→ 扫两个子目录；单个库目录（ARMNN_LIB / OPENCV_LIB / $BOARD_LIBS）→ 扫它自己
+# DIRS 按行分隔、here-doc 逐行读（不是管道，n_created 才留在本 shell）：路径里带空格也不拆词
 if [ -d "$SDK/armnn_lib/lib" ] && [ -d "$SDK/ffmpeg_opencv4.7.0_aarch64/lib" ]; then
-    DIRS="$SDK/armnn_lib/lib $SDK/ffmpeg_opencv4.7.0_aarch64/lib"
+    DIRS="$SDK/armnn_lib/lib
+$SDK/ffmpeg_opencv4.7.0_aarch64/lib"
 elif [ -d "$SDK/lib" ]; then
     DIRS="$SDK/lib"   # ARMNN_LIB / OPENCV_LIB are library roots: the .so files are in lib/ (ps/Makefile: -L$(ARMNN_LIB)/lib)
 else
@@ -29,13 +31,17 @@ else
 fi
 n_created=0
 
-for dir in $DIRS; do
+while IFS= read -r dir; do
+    [ -n "$dir" ] || continue
     # lib*.so* 同时覆盖 libX.so.4.7.0（SDK）与 libX.so（板上库拷下来只剩链接名的情况）
     for f in "$dir"/lib*.so*; do
         [ -f "$f" ] || continue
         soname=$("$READELF" -d "$f" 2>/dev/null | sed -n 's/.*(SONAME).*\[\(.*\)\].*/\1/p')
         base=$(basename "$f")
         plain=${base%%.so*}.so   # libopencv_core.so.4.7.0 → libopencv_core.so；libfreetype.so → 自己
+        if [ -z "$soname" ]; then
+            echo "  warning: $base 没读到 SONAME（readelf 不可用 / 不是 ELF？）——只建链接名 $plain" >&2
+        fi
         for name in $soname $plain; do
             if [ -n "$name" ] && [ ! -e "$dir/$name" ]; then
                 cp "$f" "$dir/$name"
@@ -43,6 +49,8 @@ for dir in $DIRS; do
             fi
         done
     done
-done
+done <<EOF
+$DIRS
+EOF
 
-printf 'sdk_fix_sonames: scanned %s, created %d file(s)\n' "$DIRS" "$n_created"
+printf 'sdk_fix_sonames: created %d file(s)\n' "$n_created"

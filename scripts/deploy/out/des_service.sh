@@ -92,7 +92,10 @@ start)
     mkdir -p "$(dirname "$PIDF")"   # 全新部署没有 data/，先建目录再写 PID（否则 status/stop 失效）
     setsid "$0" _supervise < /dev/null > /dev/null 2>&1 &
     echo $! > "$PIDF"
-    echo "des_service: started (pid $!, log $LOG)"
+    i=0
+    while ! running && [ $i -lt 10 ]; do sleep 1; i=$((i + 1)); done   # setsid 可能 fork：等 _supervise 用自己的 pid 覆写
+    if running; then echo "des_service: started (pid $(cat "$PIDF"), log $LOG)"
+    else rm -f "$PIDF"; echo "des_service: 没起来（$LOG 里应有原因；重试：$0 start）"; fi
     ;;
 stop)
     if ! running; then echo "des_service: not running"; rm -f "$PIDF"; exit 0; fi
@@ -101,7 +104,14 @@ stop)
     i=0
     while kill -0 "$pid" 2>/dev/null && [ $i -lt 10 ]; do sleep 1; i=$((i + 1)); done
     if kill -0 "$pid" 2>/dev/null; then
-        kill -KILL "$pid"; kill -KILL $(pidof des_app) 2>/dev/null; log "stop: killed"   # BusyBox: no pkill
+        # KILL 兜底只杀**本目录**这一份（--dest 测试目录里可能还有一份在跑，见 des.env "两份服务不打架"）：
+        # des_app 的命令行带着本目录的 des_app.json（des_app.sh exec -c "$DES_CONFIG"）
+        for p in $(pidof des_app 2>/dev/null); do
+            # "DIR/*" 带路径分隔：/root/des 不能子串匹配到 /root/des-test 的测试份
+            case $(tr '\0' ' ' < /proc/$p/cmdline 2>/dev/null) in
+                *"$DIR"/*) kill -KILL "$p"; log "stop: killed des_app pid $p" ;;
+            esac
+        done
     fi
     rm -f "$PIDF"
     echo "des_service: stopped"

@@ -26,6 +26,11 @@ grep -v '^#' "$ENV_FILE" | grep -v '^[[:space:]]*$' | while IFS='=' read -r key 
     # shell 写法 $HOME / ${HOME} → make 的 $(HOME)（make 里 $HOME 会被读成 $H + "OME"）
     value=$(echo "$value" | sed -E 's/\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?/$(\1)/g')
 
+    # make 把值里的 # 当注释开头：转义成 \#（make 读回时还原成 #），否则 BOARD_HOST 一类的值会被悄悄截断
+    case $value in
+        *'#'*) value=$(printf '%s' "$value" | sed 's/#/\\#/g'); echo "   （$key 的值含 #，已转义成 \\#）" ;;
+    esac
+
     echo "export $key := $value" >> "$OUTPUT_FILE"
 done
 

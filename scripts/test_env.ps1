@@ -152,7 +152,7 @@ foreach ($test in $tests) {
 }
 
 # ===== 总结 =====
-Write-Host "`n" + ("=" * 60) -ForegroundColor Gray
+Write-Host ("`n" + ("=" * 60)) -ForegroundColor Gray
 Write-Host "总计: " -NoNewline
 Write-Host "$passed 通过  " -NoNewline -ForegroundColor Green
 Write-Host "$warnings 警告  " -NoNewline -ForegroundColor Yellow

@@ -4,19 +4,17 @@
 # 左列 = 哈希（脚本/配置/数据类去掉 CR 后算），右列 = 这个文件该去的板端路径
 # 清单指纹：scripts/deploy/manifest.tsv 的 MD5 = 17bac1bb058bc7bad3d479973928713f
 05d94e131f387b2a83cbfcfe002d1ef7  /root/des/des.env
-f12e08c32d51edc12a0e5292852d9e7a  /root/des/des_service.sh
+f1593de981563ab3d28a4c26213a08f4  /root/des/des_service.sh
 33dea57fd3f6aa6e1f936751ca37490e  /root/des/can_up.sh
 97b15a5f12a767a99a036912e03de753  /root/des/des_app.sh
 227b885f39f3cf2d4de80b92e14cbbf9  /root/des/shutdown.sh
-f15ab5dca77ca06b5007d0b5f36865d0  /root/des/des_app
+e6ee3fc4dc994ad80f1259c0ccfeda61  /root/des/des_app
 16b00b65925a63e827624e66dbb60dcc  /root/des/des_app.json
 b8c08ca34a61119e2b3a7836cae8b205  /root/des/recipes.json
 848989e05a61890b52d9efddf975ba1c  /root/des/label_list.json
-a6b141fd23674f90f1c379e2e491fb2b  /root/des/part_cls.json
-01d653467984017f8175ca70d0cac195  /root/des/part_cls_uint8.onnx
 
 # ---- 手动上板：测试 / 回归脚本（**不进清单**，部署器不传；scp 到 /root/des/，用法见 README.md）----
-477767e92998776fb6baf16e2dcd1456  /root/des/pl_check.sh
-abc0b1d619a512bfc5ffc873700335b7  /root/des/soak.sh
-38b098d26ce1bccb90b98721092da123  /root/des/display_check.sh
+522e31a58e187219ed0f666bc011fcff  /root/des/pl_check.sh
+002719c7c67bb73b6c9a31bd6ef9fdc4  /root/des/soak.sh
+405ede119e67f18f71edc71282d951ae  /root/des/display_check.sh
 693394b139b81bfa97237213dda11378  /root/des/des_tool.sh
