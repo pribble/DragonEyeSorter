@@ -10,8 +10,7 @@ struct FlatField;   // flat_field.hpp
 struct MeasureConfig {
     float camera_h_mm = 0;       // camera height above the belt; 0 = no parallax correction  ⚠ measure (H)
     Vec2 axis_table{150, 0};     // where the optical axis meets the belt, table mm (default: image center)
-    float gear_h_mm = 10;        // part heights (top face above the belt)  ⚠ caliper, per recipe
-    float rack_h_mm = 12;
+    float gear_h_mm = 10;        // part height (top face above the belt)  ⚠ caliper, per recipe
     bool walls_visible = true;   // side walls bright in the image (silhouette = sweep) vs only the top face  ⚠ lighting
     float max_smear_mm = 0.8;    // above this parallax smear, tooth / gap defects are not judged
     float judge_max_dist_mm = 0; // and only within this distance of the optical axis (0 = no limit): with dark
@@ -47,7 +46,8 @@ struct ColorClass {
 struct TrackMeasureConfig {
     bool enabled = true;
     int per_frame = 1;           // parts measured per worker frame (4~5 ms each on the A35)
-    float gear_ratio = 0.6f;     // fused blob wid / len above this = gear, else rack
+    float gear_ratio = 0.6f;     // fused blob wid / len above this = round -> measured as a gear; below (0 = always):
+                                 // not measured -> the size rule's unjudged / require paths (racks are gone)
     float margin_mm = 3;         // ROI margin around the part footprint
     float improve = 0.75f;       // re-measure when the axis distance drops below improve * stored - 1 mm
     bool axis_from_image = true; // optical axis = image center mapped to the table (else m.axis_table as given)

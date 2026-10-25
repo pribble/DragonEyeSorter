@@ -7,7 +7,6 @@
 namespace des {
 namespace {
 const char *kGearQ[] = {"OD", "root", "bore", "ecc", "teeth"};
-const char *kRackQ[] = {"length", "height", "pitch", "teeth"};
 std::vector<cv::Point> to_px(const std::vector<Vec2> &pts, const Homography &hinv)
 {
     std::vector<cv::Point> out;
@@ -48,9 +47,7 @@ std::vector<PartResult> measure_parts(const cv::Mat &gray, const std::vector<Det
         if (roi.x < 2 || roi.y < 2 || roi.br().x > gray.cols - 2 || roi.br().y > gray.rows - 2) continue;
         PartResult r;
         r.p = d.p;
-        r.kind = d.len > 0 && d.wid / d.len > cfg.measure.gear_ratio ? 'g' : 'r';
-        if (r.kind == 'g') r.g = measure_gear(gray, roi, cfg.px_to_table, mc, &r.r_theta);
-        else r.r = measure_rack(gray, roi, cfg.px_to_table, mc);
+        r.g = measure_gear(gray, roi, cfg.px_to_table, mc, &r.r_theta);
         out.push_back(std::move(r));
     }
     return out;
@@ -58,22 +55,12 @@ std::vector<PartResult> measure_parts(const cv::Mat &gray, const std::vector<Det
 std::string describe(const PartResult &r)
 {
     char b[320];
-    if (r.kind == 'g') {
-        const GearMeasure &g = r.g;
-        if (!g.ok) snprintf(b, sizeof b, "gear at (%6.1f, %6.1f): FAILED %s", r.p.x, r.p.y, g.err.c_str());
-        else
-            snprintf(b, sizeof b, "gear at (%6.1f, %6.1f): OD %.3f root %.3f bore %.3f ecc %.3f | teeth %d short %d missing %d "
-                     "flash %d%s | fit rms %.3f smear %.2f", r.p.x, r.p.y, g.od, g.root_d, g.bore_d, g.ecc, g.teeth, g.short_teeth, g.missing_teeth,
-                     g.flash_gaps, g.teeth_judged ? "" : " (NOT judged: off-axis)", g.fit_rms, g.smear_mm);
-    } else {
-        const RackMeasure &k = r.r;
-        if (!k.ok) snprintf(b, sizeof b, "rack at (%6.1f, %6.1f): FAILED %s", r.p.x, r.p.y, k.err.c_str());
-        else
-            snprintf(b, sizeof b, "rack at (%6.1f, %6.1f): length %.3f height %.3f pitch %.4f | teeth %d short %d missing %d "
-                     "flash %d%s | axis %.1f deg smear %.2f",
-                     r.p.x, r.p.y, k.length, k.height, k.pitch, k.teeth, k.short_teeth, k.missing_teeth, k.flash_gaps,
-                     k.teeth_judged ? "" : " (NOT judged: off-axis)", k.axis * 180 / kPi, k.smear_mm);
-    }
+    const GearMeasure &g = r.g;
+    if (!g.ok) snprintf(b, sizeof b, "gear at (%6.1f, %6.1f): FAILED %s", r.p.x, r.p.y, g.err.c_str());
+    else
+        snprintf(b, sizeof b, "gear at (%6.1f, %6.1f): OD %.3f root %.3f bore %.3f ecc %.3f | teeth %d short %d missing %d "
+                 "flash %d%s | fit rms %.3f smear %.2f", r.p.x, r.p.y, g.od, g.root_d, g.bore_d, g.ecc, g.teeth, g.short_teeth, g.missing_teeth,
+                 g.flash_gaps, g.teeth_judged ? "" : " (NOT judged: off-axis)", g.fit_rms, g.smear_mm);
     return b;
 }
 void draw_parts(cv::Mat &bgr, const std::vector<PartResult> &res, const Homography &px_to_table)
@@ -83,7 +70,7 @@ void draw_parts(cv::Mat &bgr, const std::vector<PartResult> &res, const Homograp
     for (const PartResult &r : res) {
         Vec2 at = hinv.map(r.p);
         char t[96];
-        if (r.kind == 'g' && r.g.ok) {
+        if (r.g.ok) {
             const GearMeasure &g = r.g;
             std::vector<std::vector<cv::Point>> polys = {to_px(circle_pts(g.center, g.od / 2), hinv)};
             cv::polylines(bgr, polys, true, cv::Scalar(0, 220, 0), 1, cv::LINE_AA);
@@ -117,16 +104,8 @@ void draw_parts(cv::Mat &bgr, const std::vector<PartResult> &res, const Homograp
                 cv::putText(bgr, t, cv::Point(x0, y0 - 6), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255), 1);
                 inset++;
             }
-        } else if (r.kind == 'r' && r.r.ok) {
-            const RackMeasure &k = r.r;
-            ORect box{k.center, k.length / 2, k.height / 2, k.axis};
-            auto c = box.corners();
-            std::vector<std::vector<cv::Point>> polys = {to_px(std::vector<Vec2>(c.begin(), c.end()), hinv)};
-            cv::polylines(bgr, polys, true, cv::Scalar(0, 220, 0), 1, cv::LINE_AA);
-            snprintf(t, sizeof t, "L %.2f p %.3f teeth %d%s", k.length, k.pitch, k.teeth, k.teeth_judged ? "" : " ?");
-            cv::putText(bgr, t, cv::Point(int(at.x) - 120, int(at.y) - 70), cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 0), 1, cv::LINE_AA);
         } else {
-            cv::putText(bgr, r.kind == 'g' ? r.g.err : r.r.err, cv::Point(int(at.x) - 100, int(at.y)),
+            cv::putText(bgr, r.g.err, cv::Point(int(at.x) - 100, int(at.y)),
                         cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 0, 255), 1, cv::LINE_AA);
         }
     }
@@ -136,36 +115,30 @@ void RepeatStats::add(const std::vector<PartResult> &res)
     for (const PartResult &r : res) {
         Acc *a = nullptr;
         for (Acc &q : parts_)
-            if (q.kind == r.kind && norm(q.p - r.p) < 3) a = &q;
+            if (norm(q.p - r.p) < 3) a = &q;
         if (!a) {
             parts_.push_back({});
             a = &parts_.back();
             a->p = r.p;
-            a->kind = r.kind;
-            a->v.resize(r.kind == 'g' ? 5 : 4);
+            a->v.resize(5);
         }
         if (!r.ok()) { a->fails++; continue; }
-        if (r.kind == 'g') {
-            const double q[] = {r.g.od, r.g.root_d, r.g.bore_d, r.g.ecc, double(r.g.teeth)};
-            for (int i = 0; i < 5; i++) a->v[i].push_back(q[i]);
-            char k[64];
-            if (r.g.teeth_judged)
-                snprintf(k, sizeof k, "short %d missing %d flash %d", r.g.short_teeth, r.g.missing_teeth, r.g.flash_gaps);
-            else snprintf(k, sizeof k, "not judged");
-            auto it = std::find_if(a->verdicts.begin(), a->verdicts.end(), [&](const auto &e) { return e.first == k; });
-            if (it == a->verdicts.end()) a->verdicts.push_back({k, 1});
-            else it->second++;
-        } else {
-            const double q[] = {r.r.length, r.r.height, r.r.pitch, double(r.r.teeth)};
-            for (int i = 0; i < 4; i++) a->v[i].push_back(q[i]);
-        }
+        const double q[] = {r.g.od, r.g.root_d, r.g.bore_d, r.g.ecc, double(r.g.teeth)};
+        for (int i = 0; i < 5; i++) a->v[i].push_back(q[i]);
+        char k[64];
+        if (r.g.teeth_judged)
+            snprintf(k, sizeof k, "short %d missing %d flash %d", r.g.short_teeth, r.g.missing_teeth, r.g.flash_gaps);
+        else snprintf(k, sizeof k, "not judged");
+        auto it = std::find_if(a->verdicts.begin(), a->verdicts.end(), [&](const auto &e) { return e.first == k; });
+        if (it == a->verdicts.end()) a->verdicts.push_back({k, 1});
+        else it->second++;
     }
 }
 void RepeatStats::print() const
 {
     printf("\n== repeatability (still parts, same frame position)\n");
     for (const Acc &a : parts_) {
-        printf("%s at (%.1f, %.1f): %zu ok, %d failed\n", a.kind == 'g' ? "gear" : "rack", a.p.x, a.p.y,
+        printf("gear at (%.1f, %.1f): %zu ok, %d failed\n", a.p.x, a.p.y,
                a.v.empty() ? size_t(0) : a.v[0].size(), a.fails);
         for (size_t i = 0; i < a.v.size(); i++) {
             const auto &s = a.v[i];
@@ -175,7 +148,7 @@ void RepeatStats::print() const
             m /= s.size();
             for (double x : s) sq += (x - m) * (x - m);
             const double sd = s.size() > 1 ? std::sqrt(sq / (s.size() - 1)) : 0;
-            printf("   %-7s mean %9.4f  sigma %.4f  range %.4f (%.4f .. %.4f)\n", a.kind == 'g' ? kGearQ[i] : kRackQ[i], m, sd, hi - lo, lo, hi);
+            printf("   %-7s mean %9.4f  sigma %.4f  range %.4f (%.4f .. %.4f)\n", kGearQ[i], m, sd, hi - lo, lo, hi);
         }
         for (const auto &e : a.verdicts) printf("   verdict %-28s %d frame(s)\n", e.first.c_str(), e.second);
     }

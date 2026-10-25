@@ -1,4 +1,4 @@
-// fit.hpp — internals shared by measure_gear.cpp / measure_rack.cpp: pixel sampling, sub-pixel edge scan, robust
+// fit.hpp — internals shared by the measurement (measure_gear.cpp): pixel sampling, sub-pixel edge scan, robust
 // statistics, contour search and the per-thread scratch. Not a public interface — measure.hpp is.
 #pragma once
 #include <cstddef>
@@ -16,10 +16,9 @@ struct Scratch {
     std::vector<std::vector<cv::Point>> cs; std::vector<cv::Vec4i> hier; cv::Mat bin;   // find_part
     std::vector<cv::Point> outer, hole; std::vector<Edge> oe, he;                       // contours / edges
     std::vector<Vec2> pts, tip_pts, root_pts, hp, near;                                 // gear
-    std::vector<float> prof, rad, widths, tips, centers, spacing, vmins, ph, single, tmp;
-    std::vector<int> bin_of, tooth_of, gap_of; std::vector<Run> runs, kept, all_runs;
+    std::vector<float> prof, rad, widths, tips, centers, spacing, vmins, ph, single;
+    std::vector<int> bin_of, tooth_of, gap_of; std::vector<Run> runs, kept;
     std::vector<std::pair<int, int>> gaps;
-    std::vector<cv::Point2f> cvp; std::vector<float> us, vs, ua, ub, top, bot;          // rack
 };
 Scratch &scratch();                                    // the caller's thread-local buffers
 float bilinear(const cv::Mat &g, float x, float y);    // -1 outside the image

@@ -388,7 +388,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
                 } else if (t.meas.valid && t.meas.kind == 'g')
                     snprintf(tv.meas, sizeof tv.meas, "OD%.2f off-axis", t.meas.size);
                 else if (t.meas.valid)
-                    snprintf(tv.meas, sizeof tv.meas, "L%.2f p%.3f%s", t.meas.size, t.meas.pitch, t.meas.teeth_judged ? "" : "?");
+                    snprintf(tv.meas, sizeof tv.meas, "%.2f mm", t.meas.size);
                 s->tracks.push_back(tv);
             }
             if (pl_vision && (t.state == TrackState::Tracking || t.state == TrackState::New) && !t.merged && t.n_geom > 0) {

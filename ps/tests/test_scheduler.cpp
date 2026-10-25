@@ -97,13 +97,6 @@ static PartMeasure meas_gear(int teeth, float od, float ecc, int shorts, bool ju
     return m;
 }
 
-static PartMeasure meas_rack(float len)
-{
-    PartMeasure m;
-    m.valid = true; m.kind = 'r'; m.teeth_judged = true; m.size = len; m.teeth = 15; m.pitch = 3.14f;
-    return m;
-}
-
 struct SizeCase { int cls; PartMeasure m; Disposition disp; int dest; const char *what; };
 
 // runs the parts through the tracker (measurement injected mid-view) and checks every disposition
@@ -273,13 +266,6 @@ static void test_size_rule()
         {0, meas_gear(30, 32.0f, 0.05f, 0, false), Disposition::Recheck, 0, "NPU OK, teeth not judged (far off-axis)"},
         {0, meas_gear(30, 32.5f, 0.05f, 0, false), Disposition::Recheck, 0, "off-axis OD is not trusted for scrap"},
         {0, meas_gear(28, 30.0f, 0.05f, 0, false), Disposition::Recheck, 0, "off-axis tooth count is not a spec NG"},
-        {0, meas_rack(48.0f), Disposition::Flap, 1, "48 mm rack"},
-        {0, meas_rack(50.1f), Disposition::Pick, 0, "50 mm rack"},
-        // racks are cut at whole teeth (pitch 3.125 mm, 16 teeth = 50.0): hand-cut 16-tooth parts scatter a few
-        // tenths, a tooth more or less is 3.1 mm -> tolerance 1.0 (2026-10-17)
-        {0, meas_rack(50.8f), Disposition::Pick, 0, "16-tooth rack, hand-cut +0.8"},
-        {0, meas_rack(46.875f), Disposition::Flap, 1, "15-tooth rack"},
-        {0, meas_rack(53.125f), Disposition::Flap, 1, "17-tooth rack"},
         {2, meas_gear(30, 32.0f, 0.05f, 0, true), Disposition::Flap, 2, "NPU flash stays NPU flash"},
         {0, PartMeasure{}, Disposition::Pick, 0, "not measured, require off"},
     }, "size rule:");
@@ -307,7 +293,6 @@ static void test_recipes()
     check_size_cases(cfg, {
         {0, meas_gear(28, 30.02f, 0.05f, 0, true), Disposition::Pick, 0, "28-tooth gear is good now"},
         {0, meas_gear(30, 32.0f, 0.05f, 0, true), Disposition::Flap, 1, "30-tooth gear is the mix-up now"},
-        {0, meas_rack(50.0f), Disposition::Pick, 0, "rack unchanged"},
     }, "recipe 2:");
     find_recipe(list, 3)->apply(cfg.size);
     check_size_cases(cfg, {

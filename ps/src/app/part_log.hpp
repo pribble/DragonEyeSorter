@@ -43,7 +43,7 @@ struct PartRecord {
     int16_t votes = 0;    float npu_ms = 0, lat_ms = 0;  uint8_t recipe = 0;
     int8_t beam = 0;      float beam_err = 0;   // through-beam (Track::beam, sched/beam.hpp); err only when beam == 2
 };
-const char *csv_header();   // the 45 column names, one line (part_stats.py / des_feed.py read them by name)
+const char *csv_header();   // the 44 column names, one line (part_stats.py / des_feed.py read them by name)
 const char *beam_status(int8_t beam);   // CSV text of Track::beam: "" (off) / waiting / matched / missed / na
 class PartLog {
 public:

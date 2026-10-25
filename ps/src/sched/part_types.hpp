@@ -34,16 +34,15 @@ struct ClassRule {
 // (smallest parallax smear). Plain numbers, so this library stays free of OpenCV.
 struct PartMeasure {
     bool valid = false;
-    char kind = 0;              // 'g' gear, 'r' rack
+    char kind = 0;              // 'g' gear
     bool teeth_judged = false;  // false: parallax smear too large, the defect counts are not valid
     float axis_dist = 1e9f;     // mm from the optical axis when measured (selects the best frame)
     float smear = 0;            // mm, parallax smear of that frame
     uint32_t frame = 0;
     int count = 0;              // how many times this part was measured
-    float size = 0;             // gear: OD; rack: length (mm)
-    float bore = 0, ecc = 0;    // gear
-    float pitch = 0;            // rack: mean pitch
-    int teeth = 0;              // gear: spec count from the pitch; rack: tooth slots
+    float size = 0;             // gear OD (mm)
+    float bore = 0, ecc = 0;
+    int teeth = 0;              // spec count from the pitch
     int short_teeth = 0, missing_teeth = 0, flash_gaps = 0;
     float hue = -1, sat = -1;   // part colour from its crop (deg, 0..255); -1 = no crop
     int color = -1;             // index into measure.colors, -1 = none matched / not classified
@@ -55,7 +54,6 @@ struct SizeSpec {
     float gear_od = 32, gear_od_tol = 0.2f;    // 2026-10-24 user: ±0.2 (one gear flipped over reads 0.12 apart)
     float gear_bore = 6, gear_bore_tol = 0.3f;
     float gear_max_ecc = 0.3f;
-    float rack_len = 50, rack_len_tol = 1.0f;
 };
 // Size / spec NG from the measurement (docs/视觉与检测.md 类别表: 尺寸类 NG 不进 NPU 类别, 由测量判 → 报废), applied only to
 // parts the class vote would pick: it never upgrades an NPU NG.

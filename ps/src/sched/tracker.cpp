@@ -85,8 +85,6 @@ void Tracker::apply_size(Track &t) const
         else if (m.bore > 0 && std::fabs(m.bore - r.gear_bore) > r.gear_bore_tol)
             snprintf(buf, sizeof buf, "bore %.2f", m.bore);
         else if (m.ecc > r.gear_max_ecc) snprintf(buf, sizeof buf, "ecc %.2f", m.ecc);
-    } else if (m.kind == 'r') {
-        if (std::fabs(m.size - r.rack_len) > r.rack_len_tol) snprintf(buf, sizeof buf, "length %.1f", m.size);
     }
     if (buf[0]) {
         t.disp = Disposition::Flap;

@@ -416,9 +416,8 @@ void Hmi::page_records(Canvas &c)
     if (!m.valid) {
         line("未测量", DIM);
     } else {
-        line(std::string(m.kind == 'g' ? "外径 " : "长度 ") + fmt("%.3f mm", m.size), WHITE);
-        if (m.kind == 'g') line(fmt("孔径 %.3f", m.bore) + fmt("  偏心 %.3f", m.ecc), WHITE);
-        else line(fmt("齿距 %.4f mm", m.pitch), WHITE);
+        line(std::string("外径 ") + fmt("%.3f mm", m.size), WHITE);
+        line(fmt("孔径 %.3f", m.bore) + fmt("  偏心 %.3f", m.ecc), WHITE);
         line(m.teeth_judged ? fmt("齿数 %.0f", double(m.teeth)) + fmt("  缺料 %.0f", double(m.short_teeth)) +
                                   fmt("  缺齿 %.0f", double(m.missing_teeth)) + fmt("  飞边 %.0f", double(m.flash_gaps))
                             : std::string("齿未判（离光轴过远）"),

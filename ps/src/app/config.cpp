@@ -32,7 +32,7 @@ template <class... A> const json *sec_gets(const json &j, const char *key, A &&.
 template <class S> void get_spec(const json &j, S &s)
 {
     ji::gets(j, "gear_teeth", s.gear_teeth, "gear_od", s.gear_od, "gear_od_tol", s.gear_od_tol, "gear_bore", s.gear_bore,
-             "gear_bore_tol", s.gear_bore_tol, "gear_max_ecc", s.gear_max_ecc, "rack_len", s.rack_len, "rack_len_tol", s.rack_len_tol);
+             "gear_bore_tol", s.gear_bore_tol, "gear_max_ecc", s.gear_max_ecc);
 }
 // label_list.json (single source: scripts/deploy/out/): class id -> label + disposition; an unknown action / destination is never sorted blindly
 std::string load_rules(const std::string &path, AppConfig &cfg)
@@ -193,7 +193,7 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             // after "outlets": the size rule names its outlet
             MeasureConfig &m = t.m;
             if (c->contains("axis_table")) { ji::vec2(*c, "axis_table", m.axis_table); t.axis_from_image = false; }
-            ji::gets(*c, "camera_h_mm", m.camera_h_mm, "gear_h_mm", m.gear_h_mm, "rack_h_mm", m.rack_h_mm,
+            ji::gets(*c, "camera_h_mm", m.camera_h_mm, "gear_h_mm", m.gear_h_mm,
                      "walls_visible", m.walls_visible, "max_smear_mm", m.max_smear_mm, "judge_max_dist_mm", m.judge_max_dist_mm,
                      "short_tooth_mm",
                      m.short_tooth_mm, "flash_mm", m.flash_mm, "od_offset_mm", m.od_offset_mm, "bore_offset_mm",

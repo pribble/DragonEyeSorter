@@ -22,7 +22,7 @@ namespace {
 const char *csv_header()
 {
     return "wall_ms,t_s,track,frame_first,frame_last,cls,label,conf,disp,dest,why,"
-           "meas_valid,kind,size_mm,bore_mm,ecc_mm,pitch_mm,teeth,short,missing,flash,teeth_judged,smear_mm,"
+           "meas_valid,kind,size_mm,bore_mm,ecc_mm,teeth,short,missing,flash,teeth_judged,smear_mm,"
            "axis_dist_mm,meas_frame,meas_count,s_mm,y_mm,axis_deg,len_mm,wid_mm,pl_area_px,pl_d_mm,pl_w_mm,pl_h_mm,"
            "image,votes,npu_ms,lat_ms,recipe,hue_deg,sat,color,beam,beam_err_mm";
 }
@@ -315,10 +315,10 @@ void PartLog::write(const Item &it)
     char line[2048];
     int n = snprintf(line, sizeof line,
                     "%lld,%.3f,%d,%u,%u,%d,%s,%.3f,%s,%s,%s,"
-                    "%d,%c,%.3f,%.3f,%.3f,%.4f,%d,%d,%d,%d,%d,%.2f,"
+                    "%d,%c,%.3f,%.3f,%.3f,%d,%d,%d,%d,%d,%.2f,"
                     "%.1f,%u,%d,%.2f,%.2f,%.1f,%.1f,%.1f,%u,%.2f,%.2f,%.2f,%s,%d,%.2f,%.1f,%d,%.0f,%.0f,%d,%s,%s",
                     (long long)r.wall_ms, r.t_s, r.track_id, r.frame_first, r.frame_last, r.cls, lab, r.conf,
-                    to_str(r.disp), dst, why, int(m.valid), m.kind ? m.kind : '-', m.size, m.bore, m.ecc, m.pitch,
+                    to_str(r.disp), dst, why, int(m.valid), m.kind ? m.kind : '-', m.size, m.bore, m.ecc,
                     m.teeth, m.short_teeth, m.missing_teeth, m.flash_gaps, int(m.teeth_judged), m.smear,
                     m.axis_dist < 1e8f ? m.axis_dist : -1.f, m.frame, m.count, r.s, r.y, r.axis * 57.29578f, r.len,
                     r.wid, r.pl_area, r.pl_d_mm, r.pl_w_mm, r.pl_h_mm, img.c_str(), r.votes, r.npu_ms, r.lat_ms,

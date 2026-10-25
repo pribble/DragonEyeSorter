@@ -1,4 +1,4 @@
-// test_measure: gear / rack measurement on synthetic images with a known ground truth (4x supersampled polygons,
+// test_measure: gear measurement on synthetic images with a known ground truth (4x supersampled polygons,
 // anti-aliased, blurred, noisy; optional parallax: union of the slices from the bottom face to the top face magnified
 // about the optical axis, or the top face only).  ./test_measure     exit code = failed checks
 #include <algorithm>
@@ -76,39 +76,6 @@ static Poly circle(Vec2 c, float r)
     for (int i = 0; i < 720; i++) {
         float th = 2 * kPi * i / 720;
         out.push_back({c.x + r * std::cos(th), c.y + r * std::sin(th)});
-    }
-    return out;
-}
-
-// rack on its side: back at v = 0, root line at 12.75, tips at 15; teeth centers 2.5 + k*pi; tip[k] overrides height,
-// fill[k] > 0 raises the floor of the gap after tooth k, fill[k] < 0 stands a blob of that height in its middle
-static Poly rack(Vec2 c, float len, int n, float ang, std::vector<float> tip, std::vector<float> fill = {})
-{
-    if (tip.empty()) tip.assign(n, 15.f);
-    if (fill.empty()) fill.assign(n, 0.f);
-    const float hb = 12.75f;
-    std::vector<Vec2> loc{{0, 0}, {len, 0}, {len, hb}};
-    for (int k = n - 1; k >= 0; k--) {
-        float uc = 2.5f + k * kPi;
-        float yr = fill[k] > 0 ? fill[k] : hb, yl = k > 0 && fill[k - 1] > 0 ? fill[k - 1] : hb;
-        if (fill[k] < 0 && k + 1 < n) {   // blob in the middle of the gap after tooth k
-            float gc = uc + kPi / 2;
-            loc.push_back({gc + 0.35f, hb});
-            loc.push_back({gc + 0.25f, -fill[k]});
-            loc.push_back({gc - 0.25f, -fill[k]});
-            loc.push_back({gc - 0.35f, hb});
-        }
-        loc.push_back({uc + 1.0f, yr});
-        loc.push_back({uc + 0.5f, tip[k]});
-        loc.push_back({uc - 0.5f, tip[k]});
-        loc.push_back({uc - 1.0f, yl});
-    }
-    loc.push_back({0, hb});
-    Poly out;
-    float ca = std::cos(ang), sa = std::sin(ang);
-    for (Vec2 q : loc) {
-        Vec2 d{q.x - len / 2, q.y - 7.5f};
-        out.push_back({c.x + ca * d.x - sa * d.y, c.y + sa * d.x + ca * d.y});
     }
     return out;
 }
@@ -338,43 +305,6 @@ int main()
         GearMeasure gn = measure_gear(sn.img, sn.roi, h, tc);
         CHECK(gn.ok && gn.teeth_judged && gn.teeth == 30, "36 mm off within judge_max_dist: judged %d", gn.teeth_judged);
     }
-    {   // E: rack 50 mm, 15 teeth, 25 deg
-        Scene s = render(rack({150, 80}, 50, 15, 25 * kPi / 180, {}), {}, 1.f);
-        RackMeasure r = measure_rack(s.img, s.roi, h, cfg);
-        auto t0 = std::chrono::steady_clock::now();
-        for (int i = 0; i < 20; i++) measure_rack(s.img, s.roi, h, cfg);
-        printf("[timing] measure_rack %.2f ms/part (ROI %dx%d)\n", std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() / 20, s.roi.width, s.roi.height);
-        printf("[rack50] ok %d length %.3f height %.3f pitch %.4f teeth %d short %d flash %d\n", r.ok, r.length, r.height, r.pitch, r.teeth, r.short_teeth, r.flash_gaps);
-        CHECK(r.ok, "rack failed: %s", r.err.c_str());
-        CHECK(std::fabs(r.length - 50 - GROW) < TOL, "length %.3f", r.length);
-        CHECK(std::fabs(r.height - 15 - GROW) < TOL, "height %.3f", r.height);
-        CHECK(std::fabs(r.pitch - kPi) < 0.005f, "pitch %.4f", r.pitch);
-        CHECK(r.teeth == 15 && r.short_teeth == 0, "teeth %d short %d", r.teeth, r.short_teeth);
-    }
-    {   // F: rack 48 mm (length out of tolerance) with tooth 7 short
-        std::vector<float> tip(14, 15.f);
-        tip[7] = 14.f;
-        Scene s = render(rack({120, 70}, 48, 14, -10 * kPi / 180, tip), {}, 1.f);
-        RackMeasure r = measure_rack(s.img, s.roi, h, cfg);
-        printf("[rack48] length %.3f pitch %.4f teeth %d short %d\n", r.length, r.pitch, r.teeth, r.short_teeth);
-        CHECK(r.ok && std::fabs(r.length - 48 - GROW) < TOL, "length %.3f", r.length);
-        CHECK(r.short_teeth == 1, "short %d", r.short_teeth);
-        CHECK(r.teeth == 14 && r.missing_teeth == 0 && r.flash_gaps == 0, "teeth %d missing %d flash %d", r.teeth, r.missing_teeth, r.flash_gaps);
-    }
-    {   // G: rack 50 mm, tooth 4 missing, gap after tooth 9 filled 1 mm above the root, gap after tooth 12 filled
-        //    almost to the tips, a blob in the middle of the gap after tooth 6
-        std::vector<float> tip(15, 15.f), fill(15, 0.f);
-        tip[4] = 12.75f;
-        fill[9] = 13.75f;
-        fill[12] = 14.7f;
-        fill[6] = -14.5f;
-        Scene s = render(rack({140, 60}, 50, 15, 70 * kPi / 180, tip, fill), {}, 1.f);
-        RackMeasure r = measure_rack(s.img, s.roi, h, cfg);
-        printf("[rack defects] teeth %d missing %d flash %d short %d pitch %.4f\n", r.teeth, r.missing_teeth, r.flash_gaps, r.short_teeth, r.pitch);
-        CHECK(r.ok && r.teeth == 15, "teeth %d (%s)", r.teeth, r.err.c_str());
-        CHECK(r.missing_teeth == 1 && r.flash_gaps == 3 && r.short_teeth == 0, "missing %d flash %d short %d", r.missing_teeth, r.flash_gaps, r.short_teeth);
-        CHECK(std::fabs(r.pitch - kPi) < 0.01f, "pitch %.4f", r.pitch);
-    }
     {   // I: rolling shutter, exaggerated (0.005 mm per row: 1 mm shear across the gear)
         Vec2 c{110, 70};
         const float mpr = 0.005f, row0 = 540;
@@ -390,11 +320,11 @@ int main()
         CHECK(std::fabs(g.center.x - c.x - SHIFT) < 0.02f && std::fabs(g.center.y - c.y - SHIFT) < 0.02f, "center back at the row0 instant (%.3f, %.3f)", g.center.x - c.x - SHIFT, g.center.y - c.y - SHIFT);
         CHECK(g.ecc < 0.02f && g.teeth == 30 && g.short_teeth + g.missing_teeth + g.flash_gaps == 0, "ecc %.3f teeth %d defects %d/%d/%d", g.ecc, g.teeth, g.short_teeth, g.missing_teeth, g.flash_gaps);
     }
-    {   // J: TrackMeasurer end to end: full frame (BGRA), tracker tracks -> ROI from the track footprint -> gear /
-        //    rack by shape -> cropped homography -> results applied to the tracks; best-frame selection
-        Vec2 cg = AXIS + Vec2{-30, 10}, cr = AXIS + Vec2{45, -25};
+    {   // J: TrackMeasurer end to end: full frame (BGRA), tracker tracks -> ROI from the track footprint -> cropped
+        //    homography -> results applied to the tracks; best-frame selection (two gears, 30 and 28 teeth)
+        Vec2 cg = AXIS + Vec2{-30, 10}, c2 = AXIS + Vec2{45, -25};
         Scene a = render(gear(cg, 30, 16, 13.75f, 0.2f, {}, {}), circle(cg, 3), 1.f);
-        Scene b = render(rack(cr, 50, 15, 25 * kPi / 180, {}), {}, 1.f);
+        Scene b = render(gear(c2, 28, 15, 12.75f, 0.5f, {}, {}), circle(c2, 3), 1.f);
         cv::Mat gray = cv::max(a.img, b.img), bgra;
         cv::cvtColor(gray, bgra, cv::COLOR_GRAY2BGRA);
         if (const char *save = getenv("TEST_MEASURE_SAVE"))   // frame for des_tool measure --image (px_to_table = S)
@@ -406,7 +336,7 @@ int main()
             FrameObs o;
             o.frame = f;
             Detection dg; dg.p = cg; dg.len = 32; dg.wid = 32; dg.axis = 0;
-            Detection dr; dr.p = cr; dr.len = 50; dr.wid = 15; dr.axis = wrap_axis(25 * kPi / 180);
+            Detection dr; dr.p = c2; dr.len = 30; dr.wid = 30; dr.axis = 0;
             o.dets = {dg, dr};
             tr.update(o);
         }
@@ -422,12 +352,12 @@ int main()
         const PartMeasure *mg = nullptr, *mr = nullptr;
         for (const Track &t : tr.tracks()) {
             if (norm(Vec2{t.s, t.y} - cg) < 2) mg = &t.meas;
-            if (norm(Vec2{t.s, t.y} - cr) < 2) mr = &t.meas;
+            if (norm(Vec2{t.s, t.y} - c2) < 2) mr = &t.meas;
         }
-        printf("[track measurer] %d results in %d calls, %.2f ms last | gear %c OD %.3f z%d | rack %c L %.3f p %.4f\n", results, calls, tm.last_ms, mg ? mg->kind : '-', mg ? mg->size : 0, mg ? mg->teeth : 0, mr ? mr->kind : '-', mr ? mr->size : 0, mr ? mr->pitch : 0);
+        printf("[track measurer] %d results in %d calls, %.2f ms last | gear30 %c OD %.3f z%d | gear28 %c OD %.3f z%d\n", results, calls, tm.last_ms, mg ? mg->kind : '-', mg ? mg->size : 0, mg ? mg->teeth : 0, mr ? mr->kind : '-', mr ? mr->size : 0, mr ? mr->teeth : 0);
         CHECK(results == 2, "each part measured once (still parts: no nearer frame), got %d", results);
-        CHECK(mg && mg->valid && mg->kind == 'g' && std::fabs(mg->size - 32 - GROW) < TOL && mg->teeth == 30, "gear via tracker");
-        CHECK(mr && mr->valid && mr->kind == 'r' && std::fabs(mr->size - 50 - GROW) < TOL && mr->teeth == 15, "rack via tracker");
+        CHECK(mg && mg->valid && mg->kind == 'g' && std::fabs(mg->size - 32 - GROW) < TOL && mg->teeth == 30, "gear30 via tracker");
+        CHECK(mr && mr->valid && mr->kind == 'g' && std::fabs(mr->size - 30 - GROW) < TOL && mr->teeth == 28, "gear28 via tracker");
         CHECK(mg && std::fabs(mg->axis_dist - norm(cg - AXIS)) < 0.5f, "gear axis distance %.2f", mg ? mg->axis_dist : -1.f);
         // the gear moves 20 mm toward the axis -> clearly nearer (31.6 -> ~13) -> measured again
         for (Track &t : tr.tracks())
@@ -512,12 +442,12 @@ int main()
             if (lines == 1) continue;
             int commas = 0;
             for (char *c = buf; *c; c++) commas += *c == ',';
-            fields_ok += commas == 44;   // 45 columns, the comma in "why" was replaced
+            fields_ok += commas == 43;   // 44 columns, the comma in "why" was replaced
             if (strstr(buf, ".jpg")) with_img++;
         }
         if (f) fclose(f);
         printf("[storage] %s: %d lines, %d with image, written %llu images %llu dropped %llu errors %llu\n", log.csv_path.c_str(), lines, with_img, (unsigned long long)log.written.load(), (unsigned long long)log.images.load(), (unsigned long long)log.dropped.load(), (unsigned long long)log.errors.load());
-        CHECK(lines == 4 && fields_ok == 3, "csv lines %d, rows with 45 columns %d", lines, fields_ok);
+        CHECK(lines == 4 && fields_ok == 3, "csv lines %d, rows with 44 columns %d", lines, fields_ok);
         CHECK(with_img == 2 && log.images == 2, "images only for flap / recheck (%d)", with_img);
         int nr = 0, ni = 0, jpg_ok = 0;
         Frame fr;

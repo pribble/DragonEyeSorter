@@ -68,22 +68,14 @@ std::vector<MeasureResult> TrackMeasurer::measure(const Tracker &tr, const uint8
         bool ok = false;
         Vec2 center{c.t->x_at(belt_mm), c.t->y};
         float axis = c.t->axis;
-        if (c.t->len > 0 && c.t->wid / c.t->len > cfg_.gear_ratio) {
+        // every part is a round gear (racks dropped 2026-10-18; gear_ratio 0 in des_app.json = measure anything
+        // round-ish). A blob below the ratio is not measured: valid stays false -> the size rule's unjudged path.
+        if (c.t->len > 0 && c.t->wid > 0 && c.t->wid / c.t->len > cfg_.gear_ratio) {
             const GearMeasure r = measure_gear(g, all, hs, mc);
             if ((ok = r.ok)) {
                 center = r.center;
                 pm.kind = 'g';
-                pm.size = r.od; pm.bore = r.bore_d; pm.ecc = r.ecc; pm.pitch = 0;
-                pm.teeth = r.teeth; pm.short_teeth = r.short_teeth; pm.missing_teeth = r.missing_teeth;
-                pm.flash_gaps = r.flash_gaps; pm.teeth_judged = r.teeth_judged; pm.smear = r.smear_mm;
-            }
-        } else {
-            const RackMeasure r = measure_rack(g, all, hs, mc);
-            if ((ok = r.ok)) {
-                center = r.center;
-                axis = r.axis;
-                pm.kind = 'r';
-                pm.size = r.length; pm.bore = 0; pm.ecc = 0; pm.pitch = r.pitch;
+                pm.size = r.od; pm.bore = r.bore_d; pm.ecc = r.ecc;
                 pm.teeth = r.teeth; pm.short_teeth = r.short_teeth; pm.missing_teeth = r.missing_teeth;
                 pm.flash_gaps = r.flash_gaps; pm.teeth_judged = r.teeth_judged; pm.smear = r.smear_mm;
             }
