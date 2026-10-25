@@ -40,7 +40,7 @@ static void usage_tool()
             "             (default belt.run_speed): measuring-wheel encoder vs stepper -> calib.json \"encoder\"\n  calib-flat: a blank white sheet covering the upstream edge of the view; the belt carries it across\n"
             "             in --steps steps (default 40 mm) and back: white level of the view -> flat.json (crops)\n  calib-arm: interactive hand-eye calibration (camera calibrated, joint zeros right): -n <points, >= 3>\n"
             "             --carry <mm> (belt carries each located marker downstream to the arm before the touch)\n             --marker-h <mm> (marker top above the belt; also fits arm.belt_z)  --out <calib.json>\n"
-            "  arm: scan | read | teach | torque-on | torque-off | home | goto x y [z] [axis] | pick x y [axis] [bin]\n       motion commands only print the servo frames unless --go\n  collect: --cls <label> (one class per session)  --every <frames>  --max <crops per part>\n"
+            "  arm: scan | read | teach | torque-on | torque-off | home | goto x y [z] [axis] | pick x y [axis] [bin] [open_mm] [part_mm]\n       motion commands only print the servo frames unless --go\n  collect: --cls <label> (one class per session)  --every <frames>  --max <crops per part>\n"
             "           --full <frames> (also full frames + YOLO boxes)  --out <dir>  --belt <mm/s>\n  measure: -n <frames> (still parts: repeatability)  --image <file> (instead of the camera)\n           --out <raw.png> (keep the frame for --image later)  --dump <report.png>\n"
             "  --version  print the build date/time\nproduct runtime (run / live) is des_app\n");
 }
@@ -279,7 +279,12 @@ static int run_arm(des_hw_t &hw, const AppConfig &cfg, const Args &a)
     } else if (s == "pick") {
         if (a.npos < 2) { usage_tool(); return 1; }
         float axis = a.npos > 2 ? a.pos[2] * kPi / 180 : 0.f; int bin = a.npos > 3 ? int(a.pos[3]) : 0;
-        if (const char *why = plan_pick(ac, {a.pos[0], a.pos[1]}, axis, 40.f, 30.f, bin, now, wp)) {
+        // opening before the grasp and the part width (closes to part - grip_squeeze): a wider opening for a first
+        // pick tolerates the hand-eye error (10-26: 52 mm on a 32 mm gear = 10 mm each side)
+        const float open = a.npos > 4 ? a.pos[4] : 40.f, part = a.npos > 5 ? a.pos[5] : 30.f;
+        printf("pick at (%.1f, %.1f), axis %.0f deg, bin %d, open %.1f mm, part %.1f mm\n", a.pos[0], a.pos[1],
+               axis * 180 / kPi, bin, open, part);
+        if (const char *why = plan_pick(ac, {a.pos[0], a.pos[1]}, axis, open, part, bin, now, wp)) {
             fprintf(stderr, "plan_pick: %s\n", why);
             return 2;
         }

@@ -27,7 +27,7 @@ struct Args {
     int vmax = -1, exp_us = -1, gain = -1;
     bool rt = true;
     double belt = 0;
-    std::array<float, 5> pos{};   // plain numbers after the sub-command (goto / pick / ik); extras are ignored
+    std::array<float, 6> pos{};   // plain numbers after the sub-command (goto / pick / ik); extras are ignored
     uint8_t npos = 0;             // valid entries in pos (0..5)
     std::string cls;           // collect: class label
     int every = 6, maxpp = 10, full = 0;
