@@ -1042,11 +1042,13 @@ static void test_arm()
     Vec2 target = {c.base_xy.x + 10.f, c.base_xy.y + 120.f};   // 120 mm in front of the base
     const char *why = plan_pick(c, target, 0.f, 40, 30, 1, home, wp);
     CHECK(!why, "plan_pick: %s", why ? why : "");
-    // the test bins sit below the travel height (z_safe above the belt): reached through "over bin" / left by "rise"
-    static const char *kSteps[] = {"above", "descend", "close", "lift", "over bin", "to bin", "release", "rise", "home"};
-    bool names = wp.size() == 9;
+    // the test bins sit below the travel height (z_safe above the belt): reached through "over bin" / left by "rise";
+    // the bin is 90 deg round: the base turns at the wider of the two radii ("turn" at the pick's, "back" at the bin's)
+    static const char *kSteps[] = {"above", "descend", "close", "lift", "turn", "over bin", "to bin",
+                                   "release", "rise", "back", "home"};
+    bool names = wp.size() == 11;
     for (size_t i = 0; names && i < wp.size(); i++) names = !strcmp(wp[i].what, kSteps[i]);
-    CHECK(names, "waypoints %zu: above descend close lift over-bin to-bin release rise home", wp.size());
+    CHECK(names, "waypoints %zu: above descend close lift turn over-bin to-bin release rise back home", wp.size());
     if (wp.size() >= 4) {
         CHECK(wp[3].belt_clear && !wp[2].belt_clear, "belt clear flag on lift");
         CHECK(wp[2].check_grasp, "grasp check after close");
@@ -1055,26 +1057,44 @@ static void test_arm()
     }
     if (names) {   // over bin = the taught bin pose raised to the travel height, straight above it
         float g;
-        const JointAngles jo = arm_from_counts(c, wp[4].pos, g), jd = arm_from_counts(c, wp[5].pos, g),
-                          jl = arm_from_counts(c, wp[3].pos, g);
+        const JointAngles jo = arm_from_counts(c, wp[5].pos, g), jd = arm_from_counts(c, wp[6].pos, g),
+                          jl = arm_from_counts(c, wp[3].pos, g), jt = arm_from_counts(c, wp[4].pos, g);
         const Vec3 po = arm_fk(c, jo), pd = arm_fk(c, jd), pl = arm_fk(c, jl);
         CHECK(std::fabs(po.z - (c.belt_z + c.z_safe)) < 0.5f && std::hypot(po.x - pd.x, po.y - pd.y) < 0.5f,
               "over bin %.1f mm above the belt, %.2f mm beside the drop point", po.z - c.belt_z,
               std::hypot(po.x - pd.x, po.y - pd.y));
-        CHECK(wp[4].pos[0] == wp[5].pos[0] && wp[4].pos[4] == wp[5].pos[4] && wp[7].pos[0] == wp[5].pos[0],
+        CHECK(wp[5].pos[0] == wp[6].pos[0] && wp[5].pos[4] == wp[6].pos[4] && wp[8].pos[0] == wp[6].pos[0],
               "over bin / rise keep the base turn and the wrist of the bin pose");
         CHECK(std::fabs(tool_pitch_deg(jo) - tool_pitch_deg(jd)) < 0.3f, "over bin keeps the gripper pitch");
-        CHECK(wp[6].pos[5] > wp[5].pos[5] && wp[7].pos[5] == wp[6].pos[5], "opens at the drop point, rises open");
-        // the swing (lift -> over bin) stays near the travel height; the old direct move lift -> drop went far lower
+        CHECK(wp[7].pos[5] > wp[6].pos[5] && wp[8].pos[5] == wp[7].pos[5], "opens at the drop point, rises open");
+        // "turn" = the lift's shape at the bin's base turn: lift -> turn is a pure turn at the pick's radius
+        bool same = wp[4].pos[0] == wp[5].pos[0] && wp[4].pos[4] == wp[5].pos[4];
+        for (int i = 1; i < 4; i++) same = same && wp[4].pos[i] == wp[3].pos[i];
+        CHECK(same, "turn: the lift's shape at the bin's base turn / wrist");
+        // "back" = the rise shape at the ready pose's base turn; back -> home is then a radial move in
+        same = wp[9].pos[0] == wp[10].pos[0] && wp[9].pos[4] == wp[10].pos[4];
+        for (int i = 1; i < 4; i++) same = same && wp[9].pos[i] == wp[8].pos[i];
+        CHECK(same, "back: the bin's travel shape at the ready pose's base turn / wrist");
+        float rmin = 1e9f, rmax = 0;
+        for (int k = 0; k <= 40; k++) {
+            JointAngles a;
+            for (int i = 0; i < 5; i++) a.q[i] = jl.q[i] + (jt.q[i] - jl.q[i]) * (k / 40.f);
+            const Vec3 pa = arm_fk(c, a);
+            rmin = std::fmin(rmin, std::hypot(pa.x, pa.y));
+            rmax = std::fmax(rmax, std::hypot(pa.x, pa.y));
+        }
+        CHECK(rmax - rmin < 1.f, "the turn keeps its radius (%.1f .. %.1f mm)", rmin, rmax);
+        // the way to the bin (lift -> turn -> over bin) stays near the travel height; the old direct lift -> drop did not
         float swing_min = 1e9f, direct_min = 1e9f;
         for (int k = 0; k <= 40; k++) {
             const float t = k / 40.f;
-            JointAngles a, b;
+            JointAngles a, a2, b;
             for (int i = 0; i < 5; i++) {
-                a.q[i] = jl.q[i] + (jo.q[i] - jl.q[i]) * t;
+                a.q[i] = jl.q[i] + (jt.q[i] - jl.q[i]) * t;
+                a2.q[i] = jt.q[i] + (jo.q[i] - jt.q[i]) * t;
                 b.q[i] = jl.q[i] + (jd.q[i] - jl.q[i]) * t;
             }
-            swing_min = std::fmin(swing_min, arm_fk(c, a).z);
+            swing_min = std::fmin(swing_min, std::fmin(arm_fk(c, a).z, arm_fk(c, a2).z));
             direct_min = std::fmin(direct_min, arm_fk(c, b).z);
         }
         CHECK(swing_min > std::fmin(pl.z, po.z) - 15.f && direct_min < swing_min - 30.f,
@@ -1117,20 +1137,24 @@ static void test_arm()
         std::vector<ServoFrame> w;
         float g;
         why = plan_move(c, at_bin, hm, 40, 2000, "home", w);
-        bool ok = !why && w.size() == 2 && !strcmp(w[0].what, "rise first") && !strcmp(w[1].what, "home");
-        CHECK(ok, "bin -> home: %s, %zu frames", why ? why : "ok", w.size());
+        bool ok = !why && w.size() == 3 && !strcmp(w[0].what, "rise first") && !strcmp(w[1].what, "turn") &&
+                  !strcmp(w[2].what, "home");
+        CHECK(ok, "bin -> home: rise first, turn, home (%s, %zu frames)", why ? why : "ok", w.size());
         if (ok) {
             const Vec3 pu = arm_fk(c, arm_from_counts(c, w[0].pos, g)), pb = arm_fk(c, bin);
             CHECK(std::fabs(pu.z - travel) < 0.5f && std::hypot(pu.x - pb.x, pu.y - pb.y) < 0.5f && w[0].pos[5] == at_bin[5],
                   "rise first: straight above the bin at the travel height (%.1f mm off, z %.1f vs %.1f), gripper kept",
                   std::hypot(pu.x - pb.x, pu.y - pb.y), pu.z, travel);
-            CHECK(w[0].ms >= 2000 && w[1].ms >= 2000, "manual frames at least min_ms");
+            CHECK(w[0].ms >= 2000 && w[1].ms >= 2000 && w[2].ms >= 2000, "manual frames at least min_ms");
+            bool same = w[1].pos[0] == w[2].pos[0] && w[1].pos[4] == w[2].pos[4];
+            for (int i = 1; i < 4; i++) same = same && w[1].pos[i] == w[0].pos[i];
+            CHECK(same, "turn: the risen shape at the ready pose's base turn / wrist");
         }
         why = plan_move(c, at_home, bin, 40, 1500, "goto", w);
-        ok = !why && w.size() == 2 && !strcmp(w[0].what, "over target");
-        CHECK(ok, "home -> bin: over target first (%s, %zu frames)", why ? why : "ok", w.size());
+        ok = !why && w.size() == 3 && !strcmp(w[0].what, "out") && !strcmp(w[1].what, "over target");
+        CHECK(ok, "home -> bin: out, over target, goto (%s, %zu frames)", why ? why : "ok", w.size());
         if (ok) {
-            const Vec3 po = arm_fk(c, arm_from_counts(c, w[0].pos, g)), pb = arm_fk(c, bin);
+            const Vec3 po = arm_fk(c, arm_from_counts(c, w[1].pos, g)), pb = arm_fk(c, bin);
             CHECK(std::fabs(po.z - travel) < 0.5f && std::hypot(po.x - pb.x, po.y - pb.y) < 0.5f, "over target above the bin");
         }
         JointAngles hm2 = hm;
@@ -1156,8 +1180,9 @@ static void test_arm()
         }
         // a pick that starts at the bin (an interrupted one): straight up first, then the usual frames
         why = plan_pick(c, target, 0.f, 40, 30, 0, at_bin, w);
-        CHECK(!why && !w.empty() && !strcmp(w[0].what, "rise first") && !strcmp(w[1].what, "above"),
-              "pick from the bin pose starts with rise first (%s)", why ? why : "ok");
+        CHECK(!why && w.size() > 2 && !strcmp(w[0].what, "rise first") && !strcmp(w[1].what, "out") &&
+                  !strcmp(w[2].what, "above"),
+              "pick from the bin pose: rise first, out (turn wide), above (%s)", why ? why : "ok");
     }
 
     // tilted grasp: out of the vertical reach, fingers closing tangentially
@@ -1178,7 +1203,7 @@ static void test_arm()
         float used = -1;
         t.max_tilt_deg = 40;
         why = plan_pick(t, tp, arm_tangential_axis(t, tp), 40, 32, 0, h, wt, &used);
-        CHECK(!why && used > 0 && used <= 40 && wt.size() == 9, "plan_pick 200 mm: %s, tilt %.0f deg, %zu frames",
+        CHECK(!why && used > 0 && used <= 40 && wt.size() == 11, "plan_pick 200 mm: %s, tilt %.0f deg, %zu frames",
               why ? why : "ok", used, wt.size());
         CHECK(plan_pick(t, tp, arm_tangential_axis(t, tp) + kPi / 2, 40, 32, 0, h, wt) != nullptr,
               "radial closing axis at 200 mm: out of reach");

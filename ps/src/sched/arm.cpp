@@ -186,6 +186,29 @@ static const char *rise_first(const ArmConfig &c, const std::array<uint16_t, 6> 
     out.push_back(f);
     return nullptr;
 }
+static float tip_r(const ArmConfig &c, const JointAngles &j)
+{
+    const Vec3 p = arm_fk(c, j);
+    return std::hypot(p.x, p.y);
+}
+// Turning the base a long way near it: the black board under the base reaches ~7 cm in front of and ~9 cm downstream
+// of the base axis, above the travel height (10-26: a diagonal joint move between the ready pose / pick line and the
+// bin cuts across its corner below its top). Turn at the larger of the two radii instead: the frame (if any) that
+// makes the next move a pure turn (the start's shape at the end's base turn) or follows a pure radial move out (the
+// end's shape at the start's base turn). Both gripper-down; small turns and equal radii need nothing.
+static bool wide_turn(const ArmConfig &c, const JointAngles &from, const JointAngles &to, JointAngles &via,
+                      const char *&name)
+{
+    if (std::fabs(from.q[0] - to.q[0]) <= 15.f) return false;
+    const float rf = tip_r(c, from), rt = tip_r(c, to);
+    if (std::fabs(rf - rt) <= 5.f) return false;
+    if (rf > rt) {
+        via = from; via.q[0] = to.q[0]; via.q[4] = to.q[4]; name = "turn";
+    } else {
+        via = to; via.q[0] = from.q[0]; via.q[4] = from.q[4]; name = "out";
+    }
+    return true;
+}
 const char *plan_move(const ArmConfig &c, const std::array<uint16_t, 6> &prev, const JointAngles &to, float grip_mm,
                       uint16_t min_ms, const char *what, std::vector<ServoFrame> &out)
 {
@@ -204,12 +227,21 @@ const char *plan_move(const ArmConfig &c, const std::array<uint16_t, 6> &prev, c
         out.push_back(f);
         return nullptr;
     };
+    JointAngles dest = to, over;
     const float dz = (c.belt_z + c.z_safe) - arm_fk(c, to).z;
-    if (dz > 1.f && pt <= kToolDownMaxDeg) {   // a low target (a bin): from straight above it
-        JointAngles over;
+    const bool low = dz > 1.f && pt <= kToolDownMaxDeg;   // a low target (a bin): from straight above it
+    if (low) {
         if (arm_raise(c, to, dz, over)) return "target is low and cannot be reached from straight above";
-        if (const char *w = add(over, "over target")) return w;
+        dest = over;
     }
+    if (pn <= kToolDownMaxDeg && pt <= kToolDownMaxDeg) {
+        JointAngles via;
+        const char *name = nullptr;
+        if (wide_turn(c, arm_from_counts(c, out.empty() ? prev : out.back().pos, g), dest, via, name))
+            if (const char *w = add(via, name)) return w;
+    }
+    if (low)
+        if (const char *w = add(over, "over target")) return w;
     return add(to, what);
 }
 const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, float open_mm, float part_wid,
@@ -265,16 +297,32 @@ const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, 
     };
     const char *why;
     if ((why = rise_first(c, prev, out, 0))) return why;   // starting low (e.g. stopped at the bin): up first
+    if (!out.empty()) {   // ... and from there round to the pick line at the wider radius
+        float g;
+        JointAngles via;
+        const char *via_name = nullptr;
+        if (wide_turn(c, arm_from_counts(c, out.back().pos, g), above, via, via_name) &&
+            (why = add(via, grip_mm(c, out.back().pos[5]), 0, via_name)))
+            return why;
+    }
     if ((why = add(above, open_mm, 0, "above"))) return why;
     if ((why = add(down, open_mm, c.descend_ms, "descend"))) return why;
     if ((why = add(down, held, c.close_ms, "close"))) return why;
     out.back().check_grasp = true;
     if ((why = add(above, held, c.descend_ms, "lift"))) return why;
     out.back().belt_clear = true;
-    if (use_over && (why = add(over, held, 0, "over bin"))) return why;
+    JointAngles via;
+    const char *via_name = nullptr;
+    if (use_over) {   // the bin is ~110 deg round: out to its radius first, turn there (wide_turn)
+        if (wide_turn(c, above, over, via, via_name) && (why = add(via, held, 0, via_name))) return why;
+        if ((why = add(over, held, 0, "over bin"))) return why;
+    }
     if ((why = add(drop, held, 0, "to bin"))) return why;
     if ((why = add(drop, open_mm, c.open_ms, "release"))) return why;
-    if (use_over && (why = add(over, open_mm, 0, "rise"))) return why;
+    if (use_over) {   // up, turn back at the bin's radius, then straight in to the ready pose
+        if ((why = add(over, open_mm, 0, "rise"))) return why;
+        if (wide_turn(c, over, home, via, via_name) && (why = add(via, open_mm, 0, "back"))) return why;
+    }
     // back at the ready pose with the taught opening, not the part's: at posture B the fingers close radially and
     // the inner one points at the black board under the base, ~2 cm away at 40 mm open (10-26)
     if ((why = add(home, c.home_grip_count >= 0 ? grip_mm(c, c.home_grip_count) : open_mm, 0, "home"))) return why;
