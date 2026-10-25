@@ -10,7 +10,7 @@
 |---|---|---|---|---|---|
 | ① 产品运行时 | **`des_app`**（只有 `run` / `live`） | 开机自启、无人值守；演示 | 服务重启 / 停线 | `build/des_app` | 进部署清单 [manifest.tsv](../scripts/deploy/manifest.tsv) → `/root/des/` |
 | ② 人工运维 / 现场工具 | **`des_tool`**（`probe` / `locate` / `track` / `display` / `collect` / `measure` / `calib-cam` / `calib-belt` / `calib-arm` / `arm` / `ik`） | 人看着输出、有交互；到货 / 标定 / 排障 / 采训练图 | 人读打印、自己决定下一步 | `build/des_tool` | **不进清单**，手动 `scp` 到 `/root/bin/`（启动器 `des_tool.sh` → `/root/des/`） |
-| ③ 自动断言测试 | **`test_*`**：scheduler / modbus / calib / measure / belt_hil / can / npu / servo_gap | 回归 / 硬件在环；无交互 | 退出码 = 失败项数 | `build/test_*` | 手动 `scp` 到 `/root/bin/` |
+| ③ 自动断言测试 | **`test_*`**：scheduler / modbus / rs485 / calib / measure / belt_hil / can / npu / servo_gap | 回归 / 硬件在环；无交互 | 退出码 = 失败项数 | `build/test_*` | 手动 `scp` 到 `/root/bin/` |
 | ④ 底层调试与协议模拟 | **`desreg`** / **`canplc`** | 绕过业务语义读写寄存器 / 总线帧；扮 PLC 对端 | 人看打印的寄存器值与延迟 | `build/desreg` / `build/canplc` | 手动 `scp` 到 `/root/bin/` |
 
 `des_app` 与 `des_tool` 共用同一批对象（`build/obj/*.o`），区别只在**入口与可执行命令集**：产品二进制里没有任何会动机械臂 / 皮带的运维命令。**`des_app` / `des_tool` 运行期间 `desreg` 只用 `r` 只读**（舵机总线 / 步进只能有一个主人），写操作统一由 `des_app` / `des_tool` 执行。
@@ -40,7 +40,7 @@ ps/
 ├── src/vision/     # 厂家 face_detection demo 的 4 个改造件（见下）
 ├── src/des_app.json# 配置模板（板上与二进制同目录）
 ├── tools/          # desreg、canplc
-├── tests/          # test_scheduler / test_modbus / test_calib / test_measure / test_belt_hil /
+├── tests/          # test_scheduler / test_modbus / test_rs485 / test_calib / test_measure / test_belt_hil /
 │                   #   test_can / test_npu / test_servo_gap
 ├── kernel/         # mipicam 驱动源码 + 唯一一份 mipicam_module.h
 └── vendor/         # json.hpp（nlohmann 单头，编入；厂家 demo 留档已删）
@@ -135,7 +135,7 @@ ps/
 
 构建步骤、`.env`、SDK 依赖与 sdk_fix_sonames 见 [开发环境与构建](../docs/开发环境与构建.md)「PS：构建」与 [scripts/README](../scripts/README.md)。要点：
 
-- **`make -C ps all` 出 10 个产物**：`des_app`、`des_tool`、`desreg`、`canplc` + 6 个 `test_*`（scheduler / modbus / calib / measure / belt_hil / can）。只有 `des_app` 属于板端产品运行时（进部署清单）；其余要用时手动 `scp`。`test_npu` 与 `test_servo_gap` 不在 `all` 里，要显式点名。
+- **`make -C ps all` 出 11 个产物**：`des_app`、`des_tool`、`desreg`、`canplc` + 7 个 `test_*`（scheduler / modbus / rs485 / calib / measure / belt_hil / can）。只有 `des_app` 属于板端产品运行时（进部署清单）；其余要用时手动 `scp`。`test_npu` 与 `test_servo_gap` 不在 `all` 里，要显式点名。
 - 两个入口共享的源码各编一次成 `build/obj/*.o`（`-MMD -MP` 自动头文件依赖）；源文件由 Makefile 的 `wildcard` 自动收集（新增 / 删除 `.cpp` 不用改 Makefile，**唯一约束仍是 basename 唯一**），只有 `OPS_SRC`（`calib.cpp` / `measure_tool.cpp` / `tool_util.cpp`）显式列给 `des_tool`，**不链进产品**。第二遍 `make` 应是 no-op。
 - `des_app` / `des_tool` 需要厂家 NPU demo 的 `libs/`（OpenCV 4.7 + ArmNN），Makefile 变量 `SDK` 指向它；不入库。Windows 解压丢 `.so` 软链接时先跑 `sh scripts/sdk_fix_sonames.sh <SDK> <readelf>`。
 - 运行时库路径已写进 rpath（`/opt/armnn_lib/lib`、`/opt/ffmpeg_opencv4.7.0_aarch64/lib`），板上不用设 `LD_LIBRARY_PATH`；`/dev/mipicam` 独占打开，`des_app` / `des_tool` / 厂家 demo 同一时刻只能跑一个。

@@ -8,7 +8,7 @@
 
 **板端当前 v15（最新）**：v15 = 第三轮重构源码（`9e01d8f`，自研 + 厂家明文 RTL + `pl/sim` 框架）全量重编 + 上板（`BOOT.bin` `b0aef232…`，比特流 `e14fbb65…`；56m25s、0 error）；`pl_check.sh` 21 项回归通过、2min soak 0 error；寄存器 `VERSION` 仍 12（接口未变）。自研各域 0 违例；v14 的 HDMI 串行 −0.164ns 与 PS HP0→NPU −0.133ns 厂家路径端点已消失，NPU 软核域内 −0.093ns / 42 端点仍属厂家加密 IP；TMDS 视觉待复核 ⚠。逐版改动与上板记录见 [pl/soc_base/README](../pl/soc_base/README.md) 与 [log/](log/README.md)。2026-10-24 又对**厂家明文 RTL（非 des）**做了一轮零行为重构（源码级），随后第三轮 PL 重构把**自研 `des/` 与顶层、厂家明文 RTL、`pl/sim` 仿真框架**一起再精简（零外部行为变化）——两轮当时均未重编比特流，源码由 v15 全量重编 + 上板转正，见 [log/2026-10-24-PL厂家RTL重构](log/2026-10-24-PL厂家RTL重构.md) · [log/2026-10-24-PL第三轮重构](log/2026-10-24-PL第三轮重构.md) · [log/2026-10-24-PL第三轮重编上板v15](log/2026-10-24-PL第三轮重编上板v15.md)。
 
-**v16（源码已完成、仿真全过，比特流待编 / 上板前先问用户）**：新增 `des_485`（RS485 Modbus-RTU，窗口 `0x6xx`，J11 第 5 / 6 位）与帧起始锁存的编码器计数（`CAP_ENC0/1`），`VERSION` 16；对原有全部输出的整顶层等价回归逐拍一致。分支 `v16-rs485`，回退点 tag `v15-board-20261024` + 本机 `work/v15_archive/`。见下面「RS485 `des_485`」。
+**v16（比特流已编：BOOT `71f41a20` / 比特流 `f0f63c91`；未上板，上板前先问人）**：新增 `des_485`（RS485 Modbus-RTU，窗口 `0x6xx`，J11 第 5 / 6 位）与帧起始锁存的编码器计数（`CAP_ENC0/1`），`VERSION` 16；对原有全部输出的整顶层等价回归逐拍一致。（开发分支 `v16-rs485` 已并入 main）回退点 tag `v15-board-20261024` + 本机 `work/v15_archive/`。见下面「RS485 `des_485`」。
 
 **CAN 管脚（最新版已引到）**：底板 CAN 收发器接 PL 管脚 F20（TX）/ F19（RX），LVCMOS33、RX 上拉；RS485 接 L17（TX）/ N16（RX）/ N15（DE，1 = 发送；与 /RE 并联，原理图 p14）（硬件手册 p21），v16 起由 PL `des_485` 驱动。官方 demo 块设计没开 PS CAN（`CAN0_Available=0`，收发脚未约束）→ 最新版把 PS 硬核 `can0_tx_out` / `can0_rx_in` 经块设计引到 `system_top`，再到 F20 / F19。单节点验证：无人应答时发送错误计数按 CAN 规则累加、进 ERROR-PASSIVE 不进 BUS-OFF → 收发回路已通（明细见 log）；10-23 J11 接 PC USB-CAN 双节点实测通过（240/240，见 [测试与验证](测试与验证.md)）。注意：① ipms_canfd 驱动的错误帧把 ACK 位置码 0x19 写进 data[2]，candump 会显示成 bit-error，别被误导；② 驱动只支持 FD 模式，`ip link … fd off` 直接 EINVAL，收发经典帧不受影响（`can_up.sh` 照用）；③ 底板 B2B 管脚表（20250526）把 CAN / HDMI 管脚写反，以硬件手册 + 实测为准。
 
@@ -151,7 +151,7 @@
 
 [pl/soc_base/src/des/des_pwm.v](../pl/soc_base/src/des/des_pwm.v)：2 路 50Hz 舵机 PWM（两个侧边导流挡板，MG996R；通道 = 挡板序号）。脉宽单位 µs，新值在下一周期开头生效（不出半截脉冲），钳位 2550µs；周期计数供 PS 确认已生效。对应领域 3 中级「NG 不良品输出 IO 控制；不良品实时分拣触发」。
 
-- 管脚：#16 `FORK_PWM` = PIN18 Y6、#18 `FLAP2_PWM` = PIN20 Y8（信号名沿用原拨叉 / 翻板，现为侧边导流挡板）。
+- 管脚：#16 `FLAP1_PWM` = PIN18 Y6、#18 `FLAP2_PWM` = PIN20 Y8（侧边导流挡板）。
 - PS 侧 `src/sched/flap`：零件到拦截点前 110mm 合上、滑出后 190mm 打开（`des_app.json` 的 `flaps.prepare_mm` / `clear_mm`，见 [运动控制与分拣](运动控制与分拣.md)）。
 - 光源为**人工手动**开关 / 调光，不接 PL：`des_pwm` 无光源位，PIN17 / Y7 释放为空闲 IO。
 

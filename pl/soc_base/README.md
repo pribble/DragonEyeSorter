@@ -16,7 +16,7 @@
 | v13 | 10-23 | `48c6bc7b…`（比特流 `6afcb26f…`）；`BOOT.bin.prev` = v12 `a026ead4…` | 75MHz +0.292ns / 像素 +0.116ns / HDMI +0.055ns；自研 0 违例（NPU 软核域内 −0.340 新增，见 log） | 0 失败 |
 | v14 | 10-23 | `a72e00f7…`（比特流 `a8a29533…`）；`BOOT.bin.prev` = v13 `48c6bc7b…` | 75MHz +0.341ns / 像素 +0.129ns / 150M +0.140ns；HDMI 串行 −0.164ns（1 端点，厂家路径 ⚠，TMDS 视觉待复核） | 0 失败（21 项） |
 | v15 | 10-24 | `b0aef232…`（比特流 `e14fbb65…`）；`BOOT.bin.prev` = v14 `a72e00f7…` | 75MHz +0.112ns / 像素 +0.106ns / 150M +0.187ns；自研 0 违例（v14 的 HDMI 串行与 PS HP0→NPU 端点消失；NPU 软核域内 −0.093ns / 42 端点仍属厂家 IP，见 log） | 0 失败（21 项） |
-| v16 | 10-24 | `71f41a20…`（比特流 `f0f63c91…`）**未上板**（分支 `v16-rs485`）；回退 = 板上 v15 `b0aef232…`（本机 `work/v15_archive/`） | 75MHz +0.126ns / 像素 +0.117ns / HDMI +0.006ns / NPU 域内 +0.054ns；违例只剩厂家 VTC ↔ NPU / 150M 跨时钟（保持 −2.594 与原版同） | 待测（`pl_check.sh` 加 v16 段） |
+| v16 | 10-24 | `71f41a20…`（比特流 `f0f63c91…`）**未上板**（源码已并入本分支，`654ac28`）；回退 = 板上 v15 `b0aef232…`（本机 `work/v15_archive/`） | 75MHz +0.126ns / 像素 +0.117ns / HDMI +0.006ns / NPU 域内 +0.054ns；违例只剩厂家 VTC ↔ NPU / 150M 跨时钟（保持 −2.594 与原版同） | 待测（`pl_check.sh` 加 v16 段） |
 
 v13 为本次 PL 重构后全量重编版；PL 寄存器 `VERSION` 仍读 12（重构未改寄存器接口）。
 
@@ -34,7 +34,7 @@ v12 上板记录原在 PL设计「基线」段，10-20 文档收敛移入本表�
 - `al_ip/` — 安路 IP 参数（PLL、NPU_SOFT 等）
 - `src/` — 明文 RTL：`system_top.v`、`hdmi_tx/`、`MIPI_V2/`（`mipi_rx/` + `src/` 只剩 `csi_unpacket.v` 与 `design_top_wrapper.v`）、`write_fdma/`、`ui_isp/`、`pwm.v`（2026-10 两轮零行为重构，见 [log/2026-10-24-PL厂家RTL重构](../../docs/log/2026-10-24-PL厂家RTL重构.md) · [log/2026-10-24-PL第三轮重构](../../docs/log/2026-10-24-PL第三轮重构.md)）
 - `src/ui_isp/` — ISP 链路**平铺一层**：`isp_top.v`、`raw10_unpacket_4lane.v` 与 8 个单文件模块（`BLC.v`、`image_cut.v`、`contrast_adj.v`、`Brightness_adjustment.v`、`Saturation_adj.v`、`image_correction.v`、`data96_128.v`、`data128_96.v`）直接放根目录；`gamma/`（2 个 `.v`：`gamma.v` + 唯一在用的 `lut_2_2.v`）、`demosaic_4x_2_0/`（6 个 `.v` + 2 个厂家 `blk_mem_gen` IP）、`awb_1_1/`（2 个 `.v` + 1 个 IP）因多文件 / IP 保留子目录
-- `src/des/` — **自研模块**：des_regs、servo_bus、stepper_ctrl、des_vision、des_pwm、des_io、awb_seq_div（已登记进 `soc_prj.al`）；`des_common.vh`（同步 / 去抖公共模块，被 des_regs / des_io 引用，纯 `include` 无需单独登记）
+- `src/des/` — **自研模块**：des_regs、servo_bus、stepper_ctrl、des_vision、des_pwm、des_io、des_485（v16）、awb_seq_div（已登记进 `soc_prj.al`）；`des_common.vh`（同步 / 去抖公共模块，被 des_regs / des_io 引用，纯 `include` 无需单独登记）
 - `src/constraint/` — 管脚 `io.adc`（CEP = BANK11 3.3V）、时序 `timing.sdc`
 - `soc_prj_Runs/syn_1/soc_prj.prj` 与 `soc_prj_Runs/phy_1/soc_prj.prj` — 综合 / 布局布线工程文件（`*_Runs/` 被 ignore，改动要 `git add -f`）
 
@@ -65,7 +65,7 @@ v12 上板记录原在 PL设计「基线」段，10-20 文档收敛移入本表�
 - 时钟：`des_clk` = `fvdma_ctrl` 的 AXI 时钟（`pll_75m`，75MHz）
 - PS 地址：`0x8030_1000 + 偏移`（GP0 上 `fvdma_ctrl` 的窗口是 `0x8030_0000~0x8030_FFFF`；`0x0000~0x0FFF` 仍是厂家寄存器，供 `mipicam` 驱动使用，厂家写入已排除我们的地址段）
 - 寄存器定义见 [docs/PL设计.md](../../docs/PL设计.md)
-- 仿真：[pl/sim/tb_des_axi.v](../sim/tb_des_axi.v)（`run_sim.sh des_axi`）；全部 8 项 `bash pl/sim/run_all.sh`
+- 仿真：[pl/sim/tb_des_axi.v](../sim/tb_des_axi.v)（`run_sim.sh des_axi`）；全部 9 项 `bash pl/sim/run_all.sh`
 
 ## 当前对厂家的改动摘要
 
