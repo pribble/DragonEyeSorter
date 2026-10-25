@@ -55,6 +55,10 @@ def data_frame(arb_id, data, ch=0, ext=False, rtr=False, fd=False, brs=False, si
     d = bytes(data)
     if len(d) > (64 if fd else 8):
         raise ValueError("too much data")
+    if fd and len(d) > 8:
+        # the adapter expects the nominal FD DLC code (12/16/.../64 bytes -> 9..15) in b1, not the byte count;
+        # not implemented (the project runs classic CAN only) — fail loudly instead of sending a wrong frame
+        raise ValueError("CAN FD payloads over 8 bytes are not supported by this backend")
     b1 = (ch & 1) << 7 | len(d)
     b2 = (1 if single else 0) << 6 | ((ch >> 1) & 3) << 3 | ext << 2 | rtr << 1 | brs
     i = (arb_id & (0x1FFFFFFF if ext else 0x7FF)) | (0x80000000 if fd else 0)

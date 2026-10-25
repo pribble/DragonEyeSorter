@@ -5,7 +5,7 @@ The board (des_app run, des_app.json storage.feed_port, default 9500) is the ser
 record and part image under <out>/<session>/ (parts.csv + img/), prints one line per part and the board's status every
 2 s, and reconnects when the board restarts. Standard library only.
 
-    python pc/feed/des_feed.py                       # board at 192.168.137.100:9500, saves to ./received
+    python pc/feed/des_feed.py                       # board at $BOARD_IP:9500 (see .env), saves to ./received
     python pc/feed/des_feed.py --host des-board --out D:/data/received --quiet
 """
 import argparse
@@ -46,6 +46,9 @@ def run(a):
         while True:
             ftype, name, payload = read_frame(sock)
             if ftype == 'H':
+                if csv:
+                    csv.close()   # the board restarted its session: do not leak the old handle
+                    csv = None
                 session_dir = os.path.join(a.out, name or 'session')
                 os.makedirs(os.path.join(session_dir, 'img'), exist_ok=True)
                 path = os.path.join(session_dir, 'parts.csv')
@@ -80,14 +83,19 @@ def run(a):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
-    ap.add_argument('--host', default='192.168.137.100')
+    ap.add_argument('--host', default=os.environ.get('BOARD_IP'))
     ap.add_argument('--port', type=int, default=9500)
     ap.add_argument('--out', default='received')
     ap.add_argument('--quiet', action='store_true', help='no per-part lines')
     ap.add_argument('--once', action='store_true', help='exit on disconnect instead of reconnecting')
     ap.add_argument('--seconds', type=float, default=0, help='stop after this long (0 = run until Ctrl-C)')
     a = ap.parse_args()
-    sys.stdout.reconfigure(line_buffering=True)   # live lines also when piped
+    if not a.host:
+        ap.error("--host 未指定，环境变量 BOARD_IP 也没设（仓库根 .env 有；或 --host <板子IP>）")
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)   # live lines also when piped
+    except (AttributeError, ValueError):
+        pass
     if a.seconds > 0:   # test runs: hard stop after the given time
         import threading
         t = threading.Timer(a.seconds, lambda: os._exit(0))

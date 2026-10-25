@@ -104,6 +104,8 @@ class Bus:
         if rep[0] != pdu[0]:
             return None, "reply from address %d" % rep[0], ms
         if rep[1] == pdu[1] | 0x80:
+            if len(rep) < 3:
+                return None, "short exception reply", ms
             return None, "exception %d (%s)" % (rep[2], EXC.get(rep[2], "?")), ms
         return rep, "", ms
 
@@ -258,6 +260,8 @@ def main():
             if len(a.args) != 2 or a.args[1] not in ("on", "off"):
                 sys.exit("set <relay> on|off")
             k = int(a.args[0])
+            if not 0 <= k <= 255:
+                sys.exit("set <relay 0..255> on|off")
             rep, err, ms = bus.xact(bytes([a.addr, 5, 0, k, 0xFF if a.args[1] == "on" else 0, 0]))
             print("relay %d %s: %s, %.1f ms" % (k, a.args[1], "ok" if rep else err, ms))
             return 0 if rep else 1

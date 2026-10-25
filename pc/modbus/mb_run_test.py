@@ -2,7 +2,7 @@
 """mb_run_test.py — on-hardware check of the Modbus-TCP line interface: the belt really starts / changes speed /
 pauses / stops on PLC writes, and the board rejects writes the run rules forbid. MOVES THE BELT (keep it clear).
 
-    python mb_run_test.py [--host 192.168.137.100] [--speeds 30,80] [--hold 5]
+    python mb_run_test.py [--host <板子IP>] [--speeds 30,80] [--hold 5]     （--host 缺省取环境变量 BOARD_IP）
 
 Each step writes through Client.write_checked (waits until the board executed it, returns the ACK code) and then
 reads the input registers. The board's actual belt speed register (IR17) comes from the stepper; compare it with
@@ -20,12 +20,22 @@ import mb_client as M  # noqa: E402
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--host", default="192.168.137.100")
+    ap.add_argument("--host", default=os.environ.get("BOARD_IP"))
     ap.add_argument("--port", type=int, default=502)
     ap.add_argument("--speeds", default="30,80", help="set points to try while running, mm/s")
     ap.add_argument("--hold", type=float, default=5.0, help="seconds at each speed")
     a = ap.parse_args()
-    c = M.Client(a.host, a.port)
+    if not a.host:
+        ap.error("--host 未指定，环境变量 BOARD_IP 也没设（仓库根 .env 有；或 --host <板子IP>）")
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")   # ✗ / 中文明细在 GBK 重定向下会中断
+    except (AttributeError, ValueError):
+        pass
+    try:
+        c = M.Client(a.host, a.port)
+    except OSError as e:
+        print("连不上 %s:%d：%s（板上 des_app run 在跑吗？des_app.json 的 plc.modbus_port）" % (a.host, a.port, e))
+        return 2
     fails = []
     t0 = time.time()
 

@@ -7,7 +7,7 @@ PC 扮演产线 PLC，经 CAN（500 kbit/s，协议见 [软件与UI](../../docs/
 - 统计（测试报告「总线稳定性」）：收发帧数、命令 ACK 往返（平均 / 最大）、STATUS 间隔 >150ms 次数、未应答命令。
 
 ```bash
-python plc_gui.py --backend virtual        # 无硬件：进程内模拟板子（规则与 ps/src/app/runner.cpp 相同）
+python plc_gui.py --backend virtual        # 无硬件：进程内模拟板子（规则与 ps/src/app/runner.cpp 相同；短帧假板直接丢弃不回 ACK，真板回 ACK 2）
 python plc_gui.py --backend zqwl [--port COM9]   # ZQWL-UCAN-101E：USB 虚拟串口 + 厂家串口协议（zqwl.py），免驱动 / DLL
 python plc_gui.py --backend controlcan --dll <ControlCAN.dll 路径> --dev-type 4 --can-index 0
 python plc_gui.py --backend python-can --iface socketcan --channel can0   # Linux / 其他 python-can 设备

@@ -37,7 +37,7 @@ def load_labels(path):
     try:
         with open(path, encoding='utf-8') as f:
             return {l['label']: l for l in json.load(f)['labels']}
-    except OSError:
+    except (OSError, KeyError, ValueError):
         return {}
 
 
@@ -294,7 +294,8 @@ def main():
         out['size_' + key] = d
         out['cpk_' + key] = c
         label = name[:2] + ('（%s）' % tag if tag else '')
-        md.append('| %s | 尺寸（规格 %.2f±%.2f） | %s | %s |' % (label, nom, tol, fmt_dist(d), '%.2f' % c if c else '—'))
+        md.append('| %s | 尺寸（规格 %.2f±%.2f） | %s | %s |' % (label, nom, tol, fmt_dist(d),
+                '∞' if c == float('inf') else '%.2f' % c if c is not None else '—'))
         if kind == 'g':
             bores = [num(r, 'bore_mm') for r in judged if num(r, 'bore_mm', 0) > 0]
             if bores:

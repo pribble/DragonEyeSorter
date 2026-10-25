@@ -210,7 +210,8 @@ class App:
         self.state_lbl.config(text=name, bg=STATE_COLORS.get(name, "#616161"))
         f = v["flags"]
         flags = " ".join(n for b, n in ((P.FLAG_BELT_MOVING, "皮带运行"), (P.FLAG_ARM_BUSY, "机械臂忙"),
-                                        (P.FLAG_ALARM, "报警"), (P.FLAG_PLC_LINK, "PLC 链路正常")) if f & b)
+                                        (P.FLAG_ALARM, "报警"), (P.FLAG_PLC_LINK, "PLC 链路正常"),
+                                        (P.FLAG_CALIBRATED, "已标定"), (P.FLAG_RS485, "RS485 在线")) if f & b)
         self.info.config(text=f"带速 {v['speed']:.1f} mm/s   运行 {v['uptime_s']} s   报警码 {v['alarm']}   {flags}")
 
     def on_counts(self, v):

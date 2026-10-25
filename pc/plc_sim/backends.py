@@ -42,6 +42,8 @@ class VirtualBoard:
     def send(self, arb_id, data):
         d = bytes(data)
         if arb_id == P.ID_CMD:
+            if len(d) < 2:
+                return   # short frame: drop (the real board ACKs BAD_VALUE; keep the fake simple)
             c, seq = d[0], d[1]
             ok = 0
             if c == P.CMD_START:
@@ -60,10 +62,14 @@ class VirtualBoard:
             else: ok = 3
             self.rx.put(P.ack(arb_id, seq, ok))
         elif arb_id == P.ID_SPEED:
+            if len(d) < 3:
+                return
             v = (d[0] | d[1] << 8) / 10.0
             if 0 < v <= 200: self.speed = v
             self.rx.put(P.ack(arb_id, d[2], 0 if 0 < v <= 200 else 2))
         elif arb_id == P.ID_RECIPE:   # same rules as Runner::select_recipe: known id, not while running
+            if len(d) < 2:
+                return
             r = d[0]
             res = 2 if r not in self.recipes else 1 if self.state == 1 else 0
             if res == 0:
@@ -72,6 +78,8 @@ class VirtualBoard:
         elif arb_id == P.ID_PLC_HB:
             self.last_plc_hb = time.time()
         elif arb_id == P.ID_TIME:
+            if len(d) < 6:
+                return
             self.clock_offset_ms = P.time_ms(d) - int(time.time() * 1000)
 
     def recv(self, timeout):

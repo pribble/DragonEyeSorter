@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """mb_client.py — Modbus-TCP client for DragonEyeSorter (plays the line PLC / SCADA over Ethernet).
 
-Register map: ps/src/hw/modbus_map.h (docs/软件与UI.md「Modbus-TCP」). Only the standard library: the same
+Register map: ps/src/hw/modbus_tcp.hpp (docs/软件与UI.md「Modbus-TCP」). Only the standard library: the same
 requests any PLC (Siemens MB_CLIENT, Mitsubishi / Omron Modbus-TCP, KingView / WinCC ...) would send.
 
   python mb_client.py status                    one read of all input + holding registers, decoded
@@ -13,9 +13,10 @@ requests any PLC (Siemens MB_CLIENT, Mitsubishi / Omron Modbus-TCP, KingView / W
   python mb_client.py lamp red buzzer           tower light on the RS485 relay module (Ethernet -> RS485), any of
                                                 green / yellow / red / buzzer / off; "lamp auto" = back to the line state
   python mb_client.py bench [-n 1000]           round-trip time of a full status read
-Options: --host 192.168.137.100 --port 502
+Options: --host <板子IP> --port 502   （--host 缺省取环境变量 BOARD_IP，仓库根 .env 有）
 """
 import argparse
+import os
 import socket
 import struct
 import sys
@@ -64,9 +65,11 @@ class Client:
         self.tid = (self.tid + 1) & 0xFFFF
         self.s.sendall(struct.pack(">HHHB", self.tid, 0, len(pdu) + 1, self.unit) + pdu)
         tid, proto, n, _unit = struct.unpack(">HHHB", self._recv(7))
-        body = self._recv(n - 1)
         if tid != self.tid or proto != 0:
             raise ModbusError("bad reply header")
+        if n < 3:   # MBAP length covers unit id + function code + at least one data byte
+            raise ModbusError("short reply (MBAP length %d)" % n)
+        body = self._recv(n - 1)
         if body[0] & 0x80:
             raise ModbusError("exception %d (function %d)" % (body[1], body[0] & 0x7F))
         return body
@@ -139,7 +142,7 @@ def decode(ir, hr):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--host", default="192.168.137.100")
+    ap.add_argument("--host", default=os.environ.get("BOARD_IP"))
     ap.add_argument("--port", type=int, default=502)
     sub = ap.add_subparsers(dest="op", required=True)
     sub.add_parser("status")
@@ -157,9 +160,11 @@ def main():
     b = sub.add_parser("bench")
     b.add_argument("-n", type=int, default=1000)
     a = ap.parse_args()
+    if not a.host:
+        ap.error("--host 未指定，环境变量 BOARD_IP 也没设（仓库根 .env 有；或 --host <板子IP>）")
     try:
-        sys.stdout.reconfigure(line_buffering=True)
-    except AttributeError:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+    except (AttributeError, ValueError):
         pass
 
     try:
@@ -205,7 +210,7 @@ def main():
             end = time.time() + a.seconds if a.seconds > 0 else None
             last_state, last_seq, last_hb, stale = None, None, None, 0
             while end is None or time.time() < end:
-                ir = cl.read_input(0, N_IR)
+                ir = read_status(cl)   # v1.0 (24 寄存器) 的板子也能 watch，不被异常 02 打断
                 if ir[IR_STATE] != last_state:
                     print("%s 状态 -> %s" % (time.strftime("%H:%M:%S"), STATES.get(ir[IR_STATE], ir[IR_STATE])))
                     last_state = ir[IR_STATE]
