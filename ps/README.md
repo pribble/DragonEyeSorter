@@ -28,13 +28,13 @@ ps/
 ├── Makefile        # 唯一构建入口
 ├── src/app/        # 入口与编排：main / tool_main / cli_common / tool_util（仅 des_tool）/
 │                   #   runner（CAN + Modbus 状态机总装）/ live（60fps 主循环）/ camera_rig / locate /
-│                   #   config / part_log（含网口上传）/ belt_ctl / arm_io（机械臂执行 + 手动调试）/
-│                   #   npu（NPU 分类 + 异步线程）/ collector（采集，含异步 JPEG 写盘）/
-│                   #   util（时钟 / 文件 / 格式化）/ json_io / bg_queue
+│                   #   config / part_log（含网口上传）/ belt_ctl（含 PosAccum 带行程累加）/ arm_io（机械臂执行 + 手动调试）/
+│                   #   rs485_io（塔灯继电器）/ npu（NPU 分类 + 异步线程）/ collector（采集，含异步 JPEG 写盘）/
+│                   #   util（时钟 / 文件 / 格式化 / stats1d）/ json_io / bg_queue
 ├── src/hw/         # 硬件契约：des_hw + des_regs（↔ PL）/ can_link + can_proto（↔ PLC）/
-│                   #   modbus_tcp（Modbus-TCP 从站 + 寄存器表）
-├── src/sched/      # 纯逻辑库（无硬件 / OpenCV 依赖）：part_types / tracker / picker（含挡板 / 带速自适应）/ arm（IK）/ geom
-├── src/measure/    # 几何测量与标定：measure_gear / measure_rack / fit / track_measure / roi_crop / flat_field /
+│                   #   modbus_tcp（Modbus-TCP 从站 + 寄存器表）/ modbus_rtu（RTU PDU）/ tcp_listen（监听 + 唤醒公共件）
+├── src/sched/      # 纯逻辑库（无硬件 / OpenCV 依赖）：part_types / tracker / picker（含挡板 / 带速自适应）/ arm（IK）/ geom / beam（对射光电）
+├── src/measure/    # 几何测量与标定（齿轮，齿条已删）：measure_gear / fit / track_measure / roi_crop / flat_field /
 │                   #   measure_tool + calib（后两个仅 des_tool）
 ├── src/ui/         # 界面：hmi / ui_input / ui_text（FreeType 中文 + 绘制辅助）/ display（HDMI 输出 + 3/4 缩放）
 ├── src/vision/     # 厂家 face_detection demo 的 4 个改造件（见下）

@@ -26,7 +26,7 @@ def check(cond, what):
 
 
 COLS = ("wall_ms,t_s,track,frame_first,frame_last,cls,label,conf,disp,dest,why,"
-        "meas_valid,kind,size_mm,bore_mm,ecc_mm,pitch_mm,teeth,short,missing,flash,teeth_judged,smear_mm,"
+        "meas_valid,kind,size_mm,bore_mm,ecc_mm,teeth,short,missing,flash,teeth_judged,smear_mm,"
         "axis_dist_mm,meas_frame,meas_count,s_mm,y_mm,axis_deg,len_mm,wid_mm,pl_area_px,pl_d_mm,pl_w_mm,pl_h_mm,"
         "image,votes,npu_ms,lat_ms,recipe,hue_deg,sat,color,beam,beam_err_mm").split(',')
 # part_log 恒写 %.3f 数值：未测量件是 0，不是空串

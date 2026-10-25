@@ -1,6 +1,6 @@
 # pc/report — 测试报告出数
 
-赛题硬性项⑥要「同步精度 / 采集延迟 / AI 耗时 / 总线稳定性」四类实测数据：`des_app live / run` 每判定一件就往 `/root/des/data/log/<日期>/parts_<会话>.csv` 写一行（45 列，定义见 `ps/src/app/part_log.cpp` 的 `csv_header()`），本目录脚本把 CSV 变成报告里的表。
+赛题硬性项⑥要「同步精度 / 采集延迟 / AI 耗时 / 总线稳定性」四类实测数据：`des_app live / run` 每判定一件就往 `/root/des/data/log/<日期>/parts_<会话>.csv` 写一行（44 列，定义见 `ps/src/app/part_log.cpp` 的 `csv_header()`），本目录脚本把 CSV 变成报告里的表。
 
 ```bash
 scp -r $BOARD_HOST:/root/des/data/log ./records
@@ -18,7 +18,7 @@ scp -r $BOARD_HOST:/root/des/data/log ./records
 | `--md out.md --json out.json` | 表格 / 数字另存 |
 | `--plots figs` | 报告图（PNG，需 matplotlib）：`ai_time`（推理与帧完成→结果延迟分布，标 p50 / p95）、`size_gear`（逐件尺寸趋势 + 规格线 + Cpk）、`confusion`（有真值时）、`throughput`（单文件累计件数）；有配方号列时概况表多一行「配方」 |
 
-自检（无板，退出码 = 失败项数）：`python test_part_stats.py` —— 45 列真实格式夹具实跑出 Markdown / JSON + 坏 label_list 优雅降级。同款自检还有 `pc/feed/test_des_feed.py`、`pc/modbus/test_mb_client.py`（假板 / 假从站注入帧）。
+自检（无板，退出码 = 失败项数）：`python test_part_stats.py` —— 44 列真实格式夹具实跑出 Markdown / JSON + 坏 label_list 优雅降级。同款自检还有 `pc/feed/test_des_feed.py`、`pc/modbus/test_mb_client.py`（假板 / 假从站注入帧）。
 
 尺寸规格按每条记录的 `recipe` 列取 `ps/src/recipes.json` 里该配方的值（换型前后的记录分组统计，图也分开出；现 5 条配方全为齿轮，齿条已取消）；记录没有配方号时才用脚本内置缺省 32±0.15（`part_stats.py` 的 `DEFAULT_SPEC`）；`--gear-od/--gear-tol` 等对所有记录强制覆盖；类别名、OK/NG 判定来自 `scripts/deploy/out/label_list.json`。
 
