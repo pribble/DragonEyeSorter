@@ -21,6 +21,7 @@ struct CropSpec {
     float side_mm = 56;
     int out_px = 224;
     const FlatField *flat = nullptr;   // white level of the view (flat_field.hpp): crop * ref / white; null = raw
+    const Homography *hinv = nullptr;  // precomputed px_to_table.inverse() (process-lifetime constant); null = invert here
 };
 
 // src: BGRA (camera buffer, may be uncached: only the bounding box is read, once) or BGR; returns BGR out_px x out_px

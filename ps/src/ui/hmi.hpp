@@ -4,7 +4,8 @@
 // + drawing helpers (ui_text.hpp): 总览 counts/yield/throughput/state/per class/last parts · 曲线 OD+bore trends +
 // worker/NPU time + belt speed · 参数 recipe/speed/tolerances/size rule/confidence/images/run control/PL display ·
 // 记录 last parts with reason/sizes/crop · 机械臂 manual jogging/torque/teach (app/arm_io.hpp). Everything runs on the
-// worker thread (core 1): render() (~8 Hz) draws into a FRESH BGR image the capture thread only copies to the display.
+// worker thread (core 1): render() (~8 Hz) draws into a FRESH BGR image the capture thread only copies to the display
+// (a reused buffer would alias snapshots still alive in live.cpp's pool: mid-blit tearing).
 // Types stay light: fixed-capacity rings (no per-part heap churn), frozen POD PartRecord, uint8_t ui_params enums.
 #pragma once
 

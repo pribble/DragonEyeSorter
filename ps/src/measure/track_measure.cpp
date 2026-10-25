@@ -7,17 +7,6 @@
 #include "measure.hpp"
 #include "roi_crop.hpp"
 namespace des {
-namespace {
-// H * T(ox, oy): pixels of an image cropped at (ox, oy) -> table mm
-Homography shifted(const Homography &H, double ox, double oy)
-{
-    Homography r = H;
-    r.h[2] = H.h[0] * ox + H.h[1] * oy + H.h[2];
-    r.h[5] = H.h[3] * ox + H.h[4] * oy + H.h[5];
-    r.h[8] = H.h[6] * ox + H.h[7] * oy + H.h[8];
-    return r;
-}
-}  // namespace
 TrackMeasurer::TrackMeasurer(const TrackMeasureConfig &cfg, const Homography &px_to_table,
                              const Homography &px_to_part)
     : cfg_(cfg), h_(px_to_table), hp_(px_to_part), hpinv_(px_to_part.inverse())
@@ -52,14 +41,14 @@ std::vector<MeasureResult> TrackMeasurer::measure(const Tracker &tr, const uint8
     cv::Mat src(height, width, CV_8UC4, const_cast<uint8_t *>(bgra), size_t(stride));
     MeasureConfig mc = cfg_.m;   // one copy per frame; row0 is set per ROI below
     mc.belt_mm_per_row = float(belt_span_mm / height);
-    CropSpec cs;   // same for every candidate
-    cs.side_mm = cfg_.crop_side_mm; cs.out_px = cfg_.crop_px; cs.flat = cfg_.flat.get();
+    CropSpec cs;   // same for every candidate; hpinv_ saves the per-crop matrix inversion
+    cs.side_mm = cfg_.crop_side_mm; cs.out_px = cfg_.crop_px; cs.flat = cfg_.flat.get(); cs.hinv = &hpinv_;
     out.reserve(std::min<size_t>(cands.size(), size_t(cfg_.per_frame)));
     cv::Mat g;   // reused across candidates (cvtColor re-creates only when the ROI size changes)
     for (size_t k = 0; k < cands.size() && int(k) < cfg_.per_frame; k++) {
         const Cand &c = cands[k];
         cv::cvtColor(src(c.roi), g, cv::COLOR_BGRA2GRAY);   // one pass over the (uncached) camera buffer
-        const Homography hs = shifted(h_, c.roi.x, c.roi.y);
+        const Homography hs = h_.translated(c.roi.x, c.roi.y);   // pixels of the cropped image -> table mm
         mc.row0 = 0.5f * height - float(c.roi.y);   // mid-frame row = the tracker's belt position
         const cv::Rect all(0, 0, g.cols, g.rows);
         PartMeasure pm = c.t->meas;   // a failed attempt keeps the previous result

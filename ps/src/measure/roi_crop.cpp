@@ -15,7 +15,7 @@ cv::Mat crop_part(const cv::Mat &src, const Homography &px_to_table, Vec2 center
     const double h0 = 0.5 * N - 0.5;
     const double A[9] = {ux * s, dx * s, center.x - (ux + dx) * s * h0,   // A: crop px (i, j, 1) -> table mm
                          uy * s, dy * s, center.y - (uy + dy) * s * h0, 0, 0, 1};
-    const Homography hi = px_to_table.inverse();
+    const Homography hi = spec.hinv ? *spec.hinv : px_to_table.inverse();
     double M[9];   // crop px -> image px = Hinv * A
     for (int r = 0; r < 3; r++)
         for (int c = 0; c < 3; c++)

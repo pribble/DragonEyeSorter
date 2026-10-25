@@ -138,8 +138,7 @@ void Hmi::add_part(const PartRecord &r, const cv::Mat &crop, double now)
         od_.push({r.meas.size, r.disp != Disposition::Pick});
         if (r.meas.bore > 0) bore_.push({r.meas.bore, r.disp != Disposition::Pick});
     }
-    part_times_.push(now);
-    while (!part_times_.empty() && now - part_times_.front() > 60) part_times_.pop_front();
+    part_times_.push(now);   // trimmed to the 60 s window in status(), which runs every cycle
 }
 void Hmi::status(const HmiStatus &s, double now)
 {
@@ -236,8 +235,8 @@ std::vector<HmiAction> Hmi::handle(const std::vector<UiEvent> &ev)
 }
 cv::Mat Hmi::render()
 {
-    cv::Mat img(H, W, CV_8UC3, BG);   // a FRESH buffer every call: live.cpp uses .data as its dirty flag
-    hits_.clear();
+    cv::Mat img(H, W, CV_8UC3, BG);   // a FRESH buffer every call: live.cpp uses .data as its dirty flag, and reused
+    hits_.clear();                    // buffers would alias pool snapshots (mid-blit tearing)
     cv::line(img, {0, 0}, {W - 1, 0}, ACCENT, 2);
     Canvas c(img, txt_, hits_);
     c.text("DragonEyeSorter", 12, 8, 17, DIM);   // navigation + status

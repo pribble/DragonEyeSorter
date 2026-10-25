@@ -58,7 +58,7 @@ struct Homography {
         for (int i = 0; i < 9; i++) r.h[i] = h[i] / h[8];
         return r;
     }
-    Homography translated(double dx, double dy) const   // pre-translate the source frame (track_measure shifted())
+    Homography translated(double dx, double dy) const   // pre-translate the source frame (track_measure's crop origin)
     {
         Homography r = *this;
         r.h[2] = h[0] * dx + h[1] * dy + h[2]; r.h[5] = h[3] * dx + h[4] * dy + h[5]; r.h[8] = h[6] * dx + h[7] * dy + h[8];

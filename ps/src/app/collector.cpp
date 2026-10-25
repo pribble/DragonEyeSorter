@@ -78,6 +78,7 @@ Collector::Collector(const CollectOptions &opt, const AppConfig &cfg)
     // 相对的输出目录按 des_app.json 所在目录解析（与 storage.dir / label_list 同规矩）： 生产配置 → /root/des/data/collect；测试目录部署的副本 → 写自己的，不混进生产数据
     if (!opt_.out.empty() && opt_.out[0] != '/') opt_.out = cfg.config_dir + "/" + opt_.out;
     spec_.side_mm = cfg.measure.crop_side_mm; spec_.out_px = cfg.measure.crop_px > 0 ? cfg.measure.crop_px : 224;
+    spec_.hinv = &hinv_;   // saves the per-crop matrix inversion (process-lifetime constant)
     spec_.flat = cfg.measure.flat.get();
 }
 Collector::~Collector() = default;
