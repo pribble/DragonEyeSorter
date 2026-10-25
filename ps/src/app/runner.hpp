@@ -69,6 +69,7 @@ private:
     BeltDriver belt_;
     ArmExec arm_;
     ArmConfig arm_cfg_;          // worker thread only: copied into every ArmJob
+    bool wrist_dirty_ = false;   // set_home changed #5: the picker's wrist line follows in the next cycle
     int can_fd_ = -1;
     std::deque<canp_frame_t> txq_, ackq_;
     uint64_t tx_dropped_ = 0;

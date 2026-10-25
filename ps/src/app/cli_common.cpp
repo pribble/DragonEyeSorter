@@ -40,7 +40,9 @@ bool parse(int argc, char **argv, Args &a)
         else if (k == "--marker-h" && (v = val())) a.marker_h = float(atof(v));
         else if (k == "--carry" && (v = val())) a.carry_mm = float(atof(v));
         else if (k == "--od" && (v = val())) a.part_od = float(atof(v));
-        else if (a.mode.empty() && k[0] != '-') a.mode = k;   // first plain word is the mode
+        else if (!a.mode.empty() && (k == "keep" || k == "nan")) {   // goto / pick / ik axis: keep the wrist
+            if (a.npos < a.pos.size()) a.pos[a.npos++] = NAN;
+        } else if (a.mode.empty() && k[0] != '-') a.mode = k;   // first plain word is the mode
         else if (a.sub.empty() && isalpha((unsigned char)k[0])) a.sub = k;   // then an optional sub-command
         else if (k[0] != '-' || (k.size() > 1 && (isdigit(k[1]) || k[1] == '.'))) {
             if (a.npos < a.pos.size()) a.pos[a.npos++] = float(atof(k.c_str()));   // goto / pick / ik arguments

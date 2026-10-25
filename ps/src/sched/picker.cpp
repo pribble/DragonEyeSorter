@@ -74,40 +74,47 @@ bool Picker::committed(int track_id) const
 }
 
 const char *Picker::plan_grip(const Tracker &tr, const Track &t, double belt_mm, float &close_axis,
-                              float &open_mm) const
+                              float &open_mm, float *alt_axis) const
 {
     // pure function of (tracks, belt travel): between two ticks nothing moves while the belt is stopped
     if (grip_tr_ == &tr && grip_id_ == t.id && grip_rev_ == tr.rev() && grip_belt_ == belt_mm) {
         close_axis = grip_axis_;
         open_mm = grip_open_;
+        if (alt_axis) *alt_axis = grip_alt_;
         return grip_why_;
     }
-    float axis = 0, open = 0;
+    float axis = 0, open = 0, alt = NAN;
     const char *why = nullptr;
     const bool round = t.wid > 0 && t.len / t.wid < cfg_.round_ratio;
     open = (round ? t.len : t.wid) + 2 * cfg_.grip_clear;
     if (open > cfg_.max_open) {
         why = "too wide";
     } else {
-        // elongated part: close across its width; round part: any angle, try every 15 deg (starting tangential to the
-        // arm base when tilted grasps are enabled: only that axis keeps both fingertips level while leaning)
+        // elongated part: close across its width; round part: any angle, try every 15 deg, starting at the line the
+        // wrist already has at the ready pose (no wrist turn), else tangential to the arm base when tilted grasps are
+        // enabled (only that axis keeps both fingertips level while leaning), else the vision axis
         const Vec2 c{t.x_at(belt_mm), t.y};
-        float cand[12];
-        int n = 0;
-        if (round) {
-            const float a0 = cfg_.tangential_first ? arm_tangential_axis(cfg_.arm_base, c) : t.axis;
-            for (int k = 0; k < 12; k++) cand[n++] = a0 + k * kPi / 12;
-        } else {
-            cand[n++] = t.axis + kPi / 2;
+        const bool wrist = round && !std::isnan(cfg_.wrist_rel);
+        auto first_clear = [&](float a0, int n, float &found) {
+            for (int k = 0; k < n; k++)
+                if (fingers_clear(tr, t, belt_mm, a0 + k * kPi / 12, open)) { found = wrap_axis(a0 + k * kPi / 12); return true; }
+            return false;
+        };
+        float a0 = t.axis + kPi / 2;
+        if (round)
+            a0 = wrist ? arm_wrist_axis(cfg_.arm_base, cfg_.wrist_rel, cfg_.wrist_tau, c)
+                       : cfg_.tangential_first ? arm_tangential_axis(cfg_.arm_base, c) : t.axis;
+        why = first_clear(a0, round ? 12 : 1, axis) ? nullptr : "crowded";
+        if (!why && wrist && cfg_.tangential_first) {   // fallback for points only a tilted grasp reaches
+            float a;
+            if (first_clear(arm_tangential_axis(cfg_.arm_base, c), 1, a)) alt = a;
         }
-        why = "crowded";
-        for (int i = 0; i < n; i++)
-            if (fingers_clear(tr, t, belt_mm, cand[i], open)) { axis = wrap_axis(cand[i]); why = nullptr; break; }
     }
     grip_tr_ = &tr; grip_id_ = t.id; grip_rev_ = tr.rev(); grip_belt_ = belt_mm;
-    grip_why_ = why; grip_axis_ = axis; grip_open_ = open;
+    grip_why_ = why; grip_axis_ = axis; grip_open_ = open; grip_alt_ = alt;
     close_axis = axis;
     open_mm = open;
+    if (alt_axis) *alt_axis = alt;
     return why;
 }
 
@@ -153,19 +160,19 @@ const Picker::Output &Picker::tick(Tracker &tr, const Input &in)
     }
     // pick candidates: drop those that can no longer be picked, keep the most downstream one
     Track *target = nullptr;
-    float grip_axis = 0, grip_open = 0;
+    float grip_axis = 0, grip_open = 0, grip_alt = NAN;
     for (Track &t : tr.tracks()) {
         if (t.state != TrackState::Decided || t.disp != Disposition::Pick) continue;
         float x = t.x_at(B);
         if (t.y < cfg_.reach_y0 || t.y > cfg_.reach_y1) { to_recheck(t, "out of reach"); stats.out_of_reach++; continue; }
         if (x > cfg_.pick_x + cfg_.pick_tol) { to_recheck(t, "missed pick line"); stats.missed++; continue; }
-        float ax, op;
-        if (const char *why = plan_grip(tr, t, B, ax, op)) {
+        float ax, op, alt;
+        if (const char *why = plan_grip(tr, t, B, ax, op, &alt)) {
             to_recheck(t, why);
             if (!strcmp(why, "too wide")) stats.too_wide++; else stats.crowded++;
             continue;
         }
-        if (!target || x > target->x_at(B)) { target = &t; grip_axis = ax; grip_open = op; }
+        if (!target || x > target->x_at(B)) { target = &t; grip_axis = ax; grip_open = op; grip_alt = alt; }
     }
     // intercept: an early qualifying part keeps the belt running; dispatched once it is need .. need + window away
     // (need = the arm's way down at the current speed). Too late or arm busy: stop and pick as below.
@@ -205,7 +212,7 @@ const Picker::Output &Picker::tick(Tracker &tr, const Input &in)
                 target->state = TrackState::Picking;
                 out.have_job = true;
                 out.job.track_id = target->id; out.job.p = {target->x_at(B), target->y};
-                out.job.close_axis = grip_axis; out.job.open_mm = grip_open;
+                out.job.close_axis = grip_axis; out.job.alt_axis = grip_alt; out.job.open_mm = grip_open;
                 out.job.part_wid = grip_open - 2 * cfg_.grip_clear;
                 out.job.bin = target->dest; out.job.cls = target->cls;
                 stats.jobs++;

@@ -6,18 +6,22 @@
 
 namespace des {
 
-const char *arm_ik(const ArmConfig &c, Vec3 p, float close_axis, JointAngles &out, float tilt)
+const char *arm_ik(const ArmConfig &c, Vec3 p, float close_axis, JointAngles &out, float tilt, float q5_pref_deg)
 {
     const float az = std::atan2(p.y, p.x), R = std::hypot(p.x, p.y);
     if (tilt != 0 && std::fabs(wrap_axis(close_axis - az - kPi / 2)) > deg2rad(10.f))
         return "tilted grasp needs a tangential closing axis";
     const float lt = c.l_wrist + c.l_tool, D = c.tool_offset, a3 = -kPi / 2 + tilt;
     const bool beside = std::fabs(std::fabs(c.servo_side) - kPi / 2) < 0.1f;   // servo beside the finger plane
+    const bool pref = !std::isnan(q5_pref_deg);
+    const float q5p = pref ? deg2rad(q5_pref_deg) : 0.f;
+    const float lo5 = c.joint[4].min_deg, hi5 = c.joint[4].max_deg;
     // the offset moves the grasp point out of the arm plane: q1 aims the plane at p, q5 / q1 coupled (fixed-point)
     float q1 = az, q5 = 0, phi = 0, rho = R;
     auto aim = [&](float flip) -> const char * {   // flip: q5 + 180 deg = same closing line, servo on the other side
         for (int it = 0; it < 8; it++) {
-            q5 = wrap_axis(close_axis - q1 - c.grip_axis_at_zero) + flip;
+            const float line = close_axis - q1 - c.grip_axis_at_zero;   // q5 of the closing line, modulo 180 deg
+            q5 = (pref ? q5p + wrap_axis(line - q5p) : wrap_axis(line)) + flip;
             if (tilt != 0 && beside) q5 = wrap_pi(-c.grip_axis_at_zero - c.servo_side);   // servo on the upper side
             phi = q5 + c.grip_axis_at_zero + c.servo_side;
             const float tau = D * std::sin(phi);
@@ -27,11 +31,19 @@ const char *arm_ik(const ArmConfig &c, Vec3 p, float close_axis, JointAngles &ou
         }
         return nullptr;
     };
-    if (const char *w = aim(0)) return w;
+    float flip = 0;
+    if (const char *w = aim(flip)) return w;
+    // the angle nearest the preference can lie past the #5 stop: the other one of the same line
+    if (pref && !(tilt != 0 && beside) && (rad2deg(q5) > hi5 || rad2deg(q5) < lo5)) {
+        flip = q5 > 0 ? -kPi : kPi;
+        q1 = az;
+        if (const char *w = aim(flip)) return w;
+    }
     // vertical tool: more than 60 deg toward the base near it -> the other q5 for the same closing line (if allowed)
     if (tilt == 0 && beside && std::cos(phi) < -0.5f && R < c.servo_in_min_r) {
-        const float flip = q5 <= 0 ? kPi : -kPi, f5 = rad2deg(q5 + flip);
-        if (f5 < c.joint[4].min_deg || f5 > c.joint[4].max_deg) return "servo would face the base (joint 5 limit)";
+        const float f = q5 <= 0 ? kPi : -kPi, f5 = rad2deg(q5 + f);
+        if (f5 < lo5 || f5 > hi5) return "servo would face the base (joint 5 limit)";
+        flip += f;
         q1 = az;
         if (const char *w = aim(flip)) return w;
     }
@@ -75,6 +87,13 @@ Vec2 arm_to_table(const ArmConfig &c, Vec3 p)
 }
 float table_axis_to_arm(const ArmConfig &c, float axis_table) { return wrap_axis(axis_table - c.base_yaw); }
 float arm_tangential_axis(const ArmConfig &c, Vec2 p) { return arm_tangential_axis(c.base_xy, p); }
+float arm_wrist_axis(const ArmConfig &c, Vec2 p, float q5_deg)
+{
+    // arm_ik: q5 = closing line - q1 - grip_axis_at_zero, q1 = direction of p - atan2(tau, rho); in the table frame
+    // the arm's directions are turned by base_yaw, so the line is (direction base -> p) - atan2(tau, rho) + q5 + g0
+    const float rel = deg2rad(q5_deg) + c.grip_axis_at_zero;
+    return arm_wrist_axis(c.base_xy, rel, c.tool_offset * std::sin(rel + c.servo_side), p);
+}
 
 // grip_table sorted by opening once (it only changes with the configuration); piecewise linear, extrapolated from
 // the end segments. Mutates the cache in ArmConfig: nullptr = no measured table = use the straight line.
@@ -251,10 +270,12 @@ const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, 
     const float ax = table_axis_to_arm(c, close_axis_table);
     JointAngles above, down, home, drop;
     const char *vertical_why = nullptr;
+    // of the two wrist angles for the closing line, the one nearer the ready pose's: the wrist does not half-turn
+    const float q5_home = c.home_deg[4];
     for (float t = 0;; t += c.tilt_step_deg) {
         const float tr = deg2rad(t);
-        const char *why = arm_ik(c, table_to_arm(c, p_table, c.z_safe), ax, above, tr);
-        if (!why) why = arm_ik(c, table_to_arm(c, p_table, c.z_grasp), ax, down, tr);
+        const char *why = arm_ik(c, table_to_arm(c, p_table, c.z_safe), ax, above, tr, q5_home);
+        if (!why) why = arm_ik(c, table_to_arm(c, p_table, c.z_grasp), ax, down, tr, q5_home);
         if (!why) {
             if (tilt_deg) *tilt_deg = t;
             break;

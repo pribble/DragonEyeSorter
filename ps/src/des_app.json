@@ -26,10 +26,10 @@
                "gate_s": 12, "gate_y": 12, "min_hits": 3, "max_miss_new": 2, "max_miss": 8,
                "min_conf": 0.5, "pick_unclassified": false, "unclassified_bin": 0 },
 
-  "picker_comment": "pick_after_fov_mm > 0 时抓取线 = 标定出的视野下游边 fov_x1 + 该值（10-11 先定 80，10-22 手眼标定后改 65 = 机械臂底座正前方），pick_x 被覆盖",
+  "picker_comment": "pick_after_fov_mm > 0 时抓取线 = 标定出的视野下游边 fov_x1 + 该值（10-11 先定 80，10-22 手眼标定后改 65 = 机械臂底座正前方），pick_x 被覆盖。keep_wrist（10-26 用户提）：圆形件按初始姿态的腕部朝向合拢（两指横跨皮带），抓取全程 #5 不转；两侧有别的零件挡着才每 15° 换一个方向；false = 旧做法（先试切向，腕部要转约 90°）",
   "picker": { "pick_after_fov_mm": 65, "pick_x": 380, "pick_tol": 3, "reach_y0": -80, "reach_y1": 80, "brake_margin": 5,
               "finger_w": 12, "finger_t": 6, "grip_clear": 4, "max_open": 60, "round_ratio": 1.3,
-              "neighbor_gap": 2,
+              "neighbor_gap": 2, "keep_wrist": true,
               "flying_comment": "拦截式不停带夹取（docs/运动控制与分拣.md）：竖直可达区（离底座轴 r0~r1）的圆形良品，夹爪提前下探到抓取线、两指横跨皮带（axis_deg 90）张到最大，零件从两指间穿入，带位置到「到线 − 带速 × close_lead_s」时合爪，皮带不停；ready_s = 从初始姿态到下探就位的时间（按当前带速提前派活），gap_mm 内有别的零件就不拦截。不符合 / 来不及 / 臂忙的仍停带抓取。⚠ 停带抓取跑通、底座装好后再开，r0 / r1 按实测可达范围改",
               "flying": { "enabled": false, "r0": 50, "r1": 150, "axis_deg": 90, "ready_s": 1.6, "window_mm": 40,
                           "gap_mm": 60, "close_lead_s": 0.12 } },
@@ -50,7 +50,7 @@
                          "ng_outlet": "scrap",
                          "defect_recheck": true, "unjudged_recheck": true, "require": false } },
 
-  "arm_comment": "机械臂（10-22 实装与标定，过程见 docs/log/2026-10-22-机械臂零位标定.md）：零位 #1~#5 2012 / 3085 / 1977 / 1986 / 1985、计数/度 +12.47 / −12.14 / −12.33 / −12.13 / −12.6（扭矩关手摆 + 水平仪；规格书约 13.0，旧值 13.65 错）；q1 = 0 时手臂垂直指向皮带，机械臂在台面 +y 侧 → base_yaw_deg −90；#5 = 1985 时两指切向合拢、6 号舵机朝底座 → grip_axis_at_zero_deg 90、servo_side_deg 90。尺寸：base_h 106 = 底板底面 → 肩轴；l_tool 111 = #4 转轴（小臂末端下沿）→ 指尖末端 190 − l_wrist 79.05（10-20 的 106 是从夹爪座量的，作废）；tool_offset_mm 9 = 指尖中心偏 #5 轴。安装：底座垫 165mm 纸箱、底板比带面高 53；base_xy / base_yaw_deg / belt_z 是安装前估计，calib-arm（5 点，残差 rms 3.15mm）写进 calib.json 覆盖：底座台面 (437.8, 142.4)、arm +x 朝 −86.8°、belt_z −54.1。z_safe 30（工具长后安全高度处竖直最远约 150）。夹爪 grip_table：全合 2919 / 夹 32mm 2318 / 全开 61mm 1195（连杆非线性，分段线性）。初始姿态 = 姿势 B（大臂竖直、小臂水平朝皮带、夹爪竖直朝下），板上 arm_home.json 优先于 home_deg；规划拒绝夹爪不朝下（q2+q3+q4 > −40）的当前 / 初始 / 料盒姿态。max_tilt_deg 40：竖直够不着时圆形件夹爪朝外倾、两指切向合拢，按 tilt_step_deg 一档档试。joints 的 min/max_deg 先放宽到舵机行程（1~5 号 ±145°、夹爪 ±88°），#2 min −70；实测机械极限后再收紧。料盒 bins_deg（10-26 手摆示教，夹爪朝下）：gear_box = 良品盒，桌面上底座下游 13.5cm、带边外 5cm，夹爪尖在盒口上方 1~2cm（比带面低 57mm）；比抓取行程高度 z_safe 低的料盒，规划自动加「over bin」（同底座转角 / 腕旋、抬到 z_safe）→ 竖直放下 → 松开 → 「rise」回到上方再回初始姿态。待做：纸箱换硬平台后重做 calib-arm",
+  "arm_comment": "机械臂（10-22 实装与标定，过程见 docs/log/2026-10-22-机械臂零位标定.md）：零位 #1~#5 2012 / 3085 / 1977 / 1986 / 1985、计数/度 +12.47 / −12.14 / −12.33 / −12.13 / −12.6（扭矩关手摆 + 水平仪；规格书约 13.0，旧值 13.65 错）；q1 = 0 时手臂垂直指向皮带，机械臂在台面 +y 侧 → base_yaw_deg −90；#5 = 1985 时两指切向合拢、6 号舵机朝底座 → grip_axis_at_zero_deg 90、servo_side_deg 90。尺寸：base_h 106 = 底板底面 → 肩轴；l_tool 111 = #4 转轴（小臂末端下沿）→ 指尖末端 190 − l_wrist 79.05（10-20 的 106 是从夹爪座量的，作废）；tool_offset_mm 9 = 指尖中心偏 #5 轴。安装：底座垫 165mm 纸箱、底板比带面高 53；base_xy / base_yaw_deg / belt_z 是安装前估计，calib-arm（5 点，残差 rms 3.15mm）写进 calib.json 覆盖：底座台面 (437.8, 142.4)、arm +x 朝 −86.8°、belt_z −54.1。z_safe 30（工具长后安全高度处竖直最远约 150）。夹爪 grip_table：全合 2919 / 夹 32mm 2318 / 全开 61mm 1195（连杆非线性，分段线性）。初始姿态 = 姿势 B（大臂竖直、小臂水平朝皮带、夹爪竖直朝下），板上 arm_home.json 优先于 home_deg；规划拒绝夹爪不朝下（q2+q3+q4 > −40）的当前 / 初始 / 料盒姿态。max_tilt_deg 40：竖直够不着时圆形件夹爪朝外倾、两指切向合拢，按 tilt_step_deg 一档档试。joints 的 min/max_deg 先放宽到舵机行程（1~5 号 ±145°、夹爪 ±88°），#2 min −70；实测机械极限后再收紧。料盒 bins_deg（10-26 手摆示教，夹爪朝下）：gear_box = 良品盒，桌面上底座下游 13.5cm、带边外 5cm，夹爪尖在盒口上方 1~2cm（比带面低 57mm）；比抓取行程高度 z_safe 低的料盒，规划自动加「over bin」（同底座转角 / 腕旋、抬到 z_safe）→ 竖直放下 → 松开 → 「rise」回到上方再回初始姿态。z_grasp −2（10-26 真抓：抓取线处指尖实际比模型高约 7mm，按 3 只夹到 10mm 齿轮的上沿，−2 夹在厚度中间、两次都稳）。⚠ 倾斜下探在这台臂上用不上：要 #5 转到 ±180°（6 号舵机朝上），超出 ±145° 行程 → 抓取只用竖直。待做：纸箱换硬平台后重做 calib-arm",
   "arm": {
     "base_h": 106, "l_upper": 82.85, "l_fore": 82.85, "l_wrist": 79.05, "l_tool": 111,
     "tool_offset_mm": 9, "servo_side_deg": 90,
@@ -66,7 +66,7 @@
     ],
     "grip_open_count": 1195, "grip_closed_count": 2919, "grip_max_open": 61, "grip_squeeze": 2,
     "grip_table": [[2919, 0], [2318, 32], [1195, 61]],
-    "z_safe": 30, "z_grasp": 3, "joint_speed": 120,
+    "z_safe": 30, "z_grasp": -2, "joint_speed": 120,
     "min_ms": 150, "descend_ms": 400, "close_ms": 300, "open_ms": 250,
     "home_deg": [0, 91, -91, -90, 90],
     "bins_deg": [[113.2, 9.0, -38.0, -62.7, 89.8]]

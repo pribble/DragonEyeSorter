@@ -1252,6 +1252,122 @@ static void test_arm()
     }
 }
 
+// the arm as calibrated 10-22 / 10-26 (des_app.json + calib.json + arm_home.json): servo #6 beside the fingers,
+// 9 mm offset, ready pose at counts 2012 2152 2906 3096 864 (q5 ~ 89 deg: fingers closing radially = across the belt)
+static ArmConfig real_arm_cfg()
+{
+    ArmConfig c;
+    c.base_h = 106; c.l_upper = 82.85f; c.l_fore = 82.85f; c.l_wrist = 79.05f; c.l_tool = 111;
+    c.tool_offset = 9; c.servo_side = kPi / 2; c.grip_axis_at_zero = kPi / 2;
+    c.base_xy = {437.8f, 142.4f}; c.base_yaw = -86.8f * kPi / 180; c.belt_z = -54.1f;
+    c.max_tilt_deg = 40; c.tilt_step_deg = 5; c.z_safe = 30; c.z_grasp = -2;
+    const float zero[6] = {2012, 3085, 1977, 1986, 1985, 2048}, cpd[6] = {12.47f, -12.14f, -12.33f, -12.13f, -12.6f, 22.75f};
+    for (int i = 0; i < 6; i++) {
+        c.joint[i] = {uint8_t(i + 1), zero[i], cpd[i], -145, 145};
+    }
+    c.joint[1].min_deg = -70; c.joint[5].min_deg = -88; c.joint[5].max_deg = 88;
+    c.grip_max_open = 61; c.grip_table = {{{2919, 0}}, {{2318, 32}}, {{1195, 61}}};
+    const float home[5] = {2012, 2152, 2906, 3096, 864};
+    for (int i = 0; i < 5; i++) c.home_deg[i] = (home[i] - zero[i]) / cpd[i];
+    c.home_grip_count = 2008;
+    c.bins = {{{113.2f, 9.0f, -38.0f, -62.7f, 89.8f}}};
+    return c;
+}
+
+// round parts keep the ready pose's wrist (user 10-26: vertical grasps should not turn #5): arm_wrist_axis, the q5
+// preference of arm_ik / plan_pick, and the picker's first candidate
+static void test_keep_wrist()
+{
+    const ArmConfig c = real_arm_cfg();
+    const float q5h = c.home_deg[4];
+    CHECK(std::fabs(q5h - 88.97f) < 0.05f, "ready pose q5 %.2f deg", q5h);
+    // the wrist line at the pick line: IK with it gives the ready pose's q5 back (y across the guided lane)
+    for (float y : {-5.f, 0.f, 15.f, 30.f}) {
+        const Vec2 p{438, y};
+        const float ax = arm_wrist_axis(c, p, q5h);
+        JointAngles j;
+        const char *w = arm_ik(c, table_to_arm(c, p, c.z_grasp), table_axis_to_arm(c, ax), j, 0, q5h);
+        CHECK(!w && std::fabs(j.q[4] - q5h) < 0.1f, "wrist line at y %+.0f: %s, q5 %.2f (ready %.2f)", y,
+              w ? w : "ok", j.q[4], q5h);
+        CHECK(std::fabs(wrap_axis(ax - kPi / 2)) < 6 * kPi / 180, "wrist line at y %+.0f is across the belt (%.1f deg)",
+              y, ax * 180 / kPi);
+    }
+    // across the belt (90 deg, the intercept axis) sits at the +-90 fold of q5: the preference keeps the servo side
+    {
+        const Vec3 pa = table_to_arm(c, {438, 15}, c.z_grasp);
+        const float ax = table_axis_to_arm(c, kPi / 2);
+        JointAngles jp, jm;
+        const char *wp = arm_ik(c, pa, ax, jp, 0, q5h), *wm = arm_ik(c, pa, ax, jm, 0, -q5h);
+        CHECK(!wp && jp.q[4] > 60 && jp.q[4] < 120, "across, preference +89: q5 %.1f (%s)", jp.q[4], wp ? wp : "ok");
+        CHECK(!wm && jm.q[4] < -60 && jm.q[4] > -120, "across, preference -89: q5 %.1f (%s)", jm.q[4], wm ? wm : "ok");
+        for (const JointAngles *j : {&jp, &jm}) {
+            const Vec3 q = arm_fk(c, *j);
+            CHECK(std::hypot(std::hypot(q.x - pa.x, q.y - pa.y), q.z - pa.z) < 0.05f, "across: ik/fk round trip");
+            const float closing = (j->q[0] + j->q[4]) * kPi / 180 + c.grip_axis_at_zero;
+            CHECK(std::fabs(wrap_axis(closing - ax)) < 1e-3f, "across: fingers still close across the belt");
+        }
+    }
+    // the angle nearest the preference past the #5 stop: the other one of the same line
+    {
+        const Vec3 pa = table_to_arm(c, {438, 15}, c.z_grasp);
+        JointAngles j;
+        const float ax = table_axis_to_arm(c, arm_wrist_axis(c, {438, 15}, 170));   // nearest to 140: 170 > 145
+        const char *w = arm_ik(c, pa, ax, j, 0, 140);   // ~-10 (the other side moves the offset: q1 shifts ~1 deg)
+        const float closing = (j.q[0] + j.q[4]) * kPi / 180 + c.grip_axis_at_zero;
+        CHECK(!w && std::fabs(j.q[4] - (-10)) < 3 && std::fabs(wrap_axis(closing - ax)) < 1e-3f,
+              "past the stop: q5 %.1f (want ~-10, same closing line) %s", j.q[4], w ? w : "ok");
+    }
+    // a whole pick along the wrist line: #5 never leaves the ready pose's angle (old default axis 0: ~89 deg turn)
+    {
+        std::array<uint16_t, 6> now{};
+        JointAngles h;
+        h.q = c.home_deg;
+        arm_to_counts(c, h, 32, now);
+        std::vector<ServoFrame> wp;
+        const Vec2 p{438, 20};
+        const char *w = plan_pick(c, p, arm_wrist_axis(c, p, q5h), 52, 32, 0, now, wp);
+        CHECK(!w, "plan_pick along the wrist line: %s", w ? w : "ok");
+        int worst = 0;
+        for (const ServoFrame &f : wp) worst = std::max(worst, std::abs(int(f.pos[4]) - int(now[4])));
+        CHECK(!w && worst <= 12, "wrist line: #5 within %d counts of the ready pose over %zu frames (bin pose 89.8 deg)",
+              worst, wp.size());
+        w = plan_pick(c, p, 0.f, 52, 32, 0, now, wp);   // closing along the belt: the wrist has to turn
+        worst = 0;
+        for (const ServoFrame &f : wp) worst = std::max(worst, std::abs(int(f.pos[4]) - int(now[4])));
+        CHECK(!w && worst > 1000, "along the belt: #5 turns %d counts (~%.0f deg)", worst, worst / 12.6);
+    }
+    // the picker: a round part starts at the wrist line; tilts possible -> the tangential axis as the fallback
+    {
+        std::mt19937 rng(7);
+        Tracker tr(tracker_cfg());
+        PickerConfig pc;
+        pc.tangential_first = true;
+        pc.arm_base = c.base_xy;
+        arm_home_wrist(c, pc.wrist_rel, pc.wrist_tau);
+        Picker pk(pc);
+        const std::vector<SimPart> parts = {{-30, 20, 32, 32, 0.7f, 0}};
+        double B = 0;
+        for (uint32_t f = 0; f < 60; f++, B += 2) tr.update(observe(parts, B, f, rng));
+        const Track *t = nullptr;
+        for (const Track &x : tr.tracks())
+            if (x.n_geom > 0) t = &x;
+        CHECK(t != nullptr, "keep wrist: no track for the round part");
+        if (t) {
+            float ax = 0, op = 0, alt = 0;
+            const char *w = pk.plan_grip(tr, *t, B, ax, op, &alt);
+            const Vec2 pt{float(t->x_at(B)), t->y};
+            const float want = arm_wrist_axis(c, pt, q5h), tang = arm_tangential_axis(c, pt);
+            CHECK(!w && std::fabs(wrap_axis(ax - want)) < 1e-4f, "keep wrist: axis %.1f deg (wrist line %.1f) %s",
+                  ax * 180 / kPi, want * 180 / kPi, w ? w : "ok");
+            CHECK(std::fabs(wrap_axis(alt - tang)) < 1e-4f, "keep wrist: tangential fallback %.1f (want %.1f)",
+                  alt * 180 / kPi, tang * 180 / kPi);
+            pk.set_wrist(NAN, 0);   // switched off: the old order (tangential first)
+            w = pk.plan_grip(tr, *t, B, ax, op, &alt);
+            CHECK(!w && std::fabs(wrap_axis(ax - tang)) < 1e-4f && std::isnan(alt), "keep wrist off: tangential first");
+        }
+    }
+}
+
 // round parts: with tilted grasps enabled the picker tries the closing axis tangential to the arm base first
 static void test_picker_tangential()
 {
@@ -1431,6 +1547,7 @@ int main()
     test_picker();
     test_picker_flying();
     test_picker_tangential();
+    test_keep_wrist();
     test_arm();
     test_arm_base_fit();
     test_beam();

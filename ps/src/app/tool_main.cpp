@@ -40,7 +40,7 @@ static void usage_tool()
             "             (default belt.run_speed): measuring-wheel encoder vs stepper -> calib.json \"encoder\"\n  calib-flat: a blank white sheet covering the upstream edge of the view; the belt carries it across\n"
             "             in --steps steps (default 40 mm) and back: white level of the view -> flat.json (crops)\n  calib-arm: interactive hand-eye calibration (camera calibrated, joint zeros right): -n <points, >= 3>\n"
             "             --carry <mm> (belt carries each located marker downstream to the arm before the touch)\n             --marker-h <mm> (marker top above the belt; also fits arm.belt_z)  --out <calib.json>\n"
-            "  arm: scan | read | teach | torque-on | torque-off | home | goto x y [z] [axis] | pick x y [axis] [bin] [open_mm] [part_mm]\n       motion commands only print the servo frames unless --go\n  collect: --cls <label> (one class per session)  --every <frames>  --max <crops per part>\n"
+            "  arm: scan | read | teach | torque-on | torque-off | home | goto x y [z] [axis] | pick x y [axis] [bin] [open_mm] [part_mm]\n       axis (deg, table frame) omitted or keep = the line the wrist already has (goto: now, pick: the ready pose)\n       motion commands only print the servo frames unless --go\n  collect: --cls <label> (one class per session)  --every <frames>  --max <crops per part>\n"
             "           --full <frames> (also full frames + YOLO boxes)  --out <dir>  --belt <mm/s>\n  measure: -n <frames> (still parts: repeatability)  --image <file> (instead of the camera)\n           --out <raw.png> (keep the frame for --image later)  --dump <report.png>\n"
             "  --version  print the build date/time\nproduct runtime (run / live) is des_app\n");
 }
@@ -264,8 +264,14 @@ static int run_arm(des_hw_t &hw, const AppConfig &cfg, const Args &a)
             if (ac.home_grip_count >= 0) grip = grip_mm(ac, ac.home_grip_count);
         } else {
             if (a.npos < 2) { usage_tool(); return 1; }
-            float z = a.npos > 2 ? a.pos[2] : ac.z_safe; float axis = a.npos > 3 ? a.pos[3] * kPi / 180 : 0.f;
-            if (const char *why = arm_ik(ac, table_to_arm(ac, {a.pos[0], a.pos[1]}, z), table_axis_to_arm(ac, axis), target)) {
+            // no axis / keep: the wrist stays where it is (only q1 turns the closing line)
+            float g0;
+            const float q5_now = arm_from_counts(ac, now, g0).q[4];
+            float z = a.npos > 2 ? a.pos[2] : ac.z_safe;
+            const bool keep = a.npos <= 3 || std::isnan(a.pos[3]);
+            const float axis = keep ? arm_wrist_axis(ac, {a.pos[0], a.pos[1]}, q5_now) : a.pos[3] * kPi / 180;
+            if (const char *why = arm_ik(ac, table_to_arm(ac, {a.pos[0], a.pos[1]}, z), table_axis_to_arm(ac, axis), target,
+                                         0, q5_now)) {
                 fprintf(stderr, "unreachable: %s\n", why);
                 return 2;
             }
@@ -277,12 +283,15 @@ static int run_arm(des_hw_t &hw, const AppConfig &cfg, const Args &a)
         }
     } else if (s == "pick") {
         if (a.npos < 2) { usage_tool(); return 1; }
-        float axis = a.npos > 2 ? a.pos[2] * kPi / 180 : 0.f; int bin = a.npos > 3 ? int(a.pos[3]) : 0;
+        // no axis / keep: close along the ready pose's wrist line (a round part needs no wrist turn)
+        const bool keep = a.npos <= 2 || std::isnan(a.pos[2]);
+        const float axis = keep ? arm_wrist_axis(ac, {a.pos[0], a.pos[1]}, ac.home_deg[4]) : a.pos[2] * kPi / 180;
+        int bin = a.npos > 3 ? int(a.pos[3]) : 0;
         // opening before the grasp and the part width (closes to part - grip_squeeze): a wider opening for a first
         // pick tolerates the hand-eye error (10-26: 52 mm on a 32 mm gear = 10 mm each side)
         const float open = a.npos > 4 ? a.pos[4] : 40.f, part = a.npos > 5 ? a.pos[5] : 30.f;
-        printf("pick at (%.1f, %.1f), axis %.0f deg, bin %d, open %.1f mm, part %.1f mm\n", a.pos[0], a.pos[1],
-               axis * 180 / kPi, bin, open, part);
+        printf("pick at (%.1f, %.1f), axis %.1f deg%s, bin %d, open %.1f mm, part %.1f mm\n", a.pos[0], a.pos[1],
+               axis * 180 / kPi, keep ? " (ready pose wrist)" : "", bin, open, part);
         if (const char *why = plan_pick(ac, {a.pos[0], a.pos[1]}, axis, open, part, bin, now, wp)) {
             fprintf(stderr, "plan_pick: %s\n", why);
             return 2;
@@ -810,11 +819,14 @@ static int run_ik(const AppConfig &cfg, const Args &a)
     if (a.npos < 2) { usage_tool(); return 1; }
     Vec2 p{a.pos[0], a.pos[1]};
     float z = a.npos > 2 ? a.pos[2] : cfg.arm.z_grasp;
-    float axis = a.npos > 3 ? a.pos[3] * kPi / 180 : 0.f;
+    // as plan_pick: no axis / keep = the ready pose's wrist line, of the two wrist angles the one nearer the ready pose
+    const bool keep = a.npos <= 3 || std::isnan(a.pos[3]);
+    const float axis = keep ? arm_wrist_axis(cfg.arm, p, cfg.arm.home_deg[4]) : a.pos[3] * kPi / 180;
     const float tilt = a.npos > 4 ? a.pos[4] * kPi / 180 : 0.f;   // lean the tool away from the base (reach scans)
     Vec3 pa = table_to_arm(cfg.arm, p, z);
     JointAngles j;
-    const char *why = arm_ik(cfg.arm, pa, table_axis_to_arm(cfg.arm, axis), j, tilt);
+    const char *why = arm_ik(cfg.arm, pa, table_axis_to_arm(cfg.arm, axis), j, tilt, cfg.arm.home_deg[4]);
+    if (keep) printf("axis %.1f deg (ready pose wrist)\n", axis * 180 / kPi);
     printf("table (%.1f, %.1f, z %.1f) -> arm (%.1f, %.1f, %.1f)\n", p.x, p.y, z, pa.x, pa.y, pa.z);
     printf("q = %.1f %.1f %.1f %.1f %.1f deg  %s\n", j.q[0], j.q[1], j.q[2], j.q[3], j.q[4], why ? why : "ok");
     if (why) return 2;

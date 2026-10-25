@@ -332,6 +332,12 @@ void Runner::cycle(Tracker &tr, Picker &pk)
         send(canp_part(&p)); last_part_ = p;
         part_seq_++;
     };
+    if (wrist_dirty_) {   // ready pose re-taught: round parts close along its wrist line from now on
+        float rel, tau;
+        arm_home_wrist(arm_cfg_, rel, tau);
+        if (pk.config().keep_wrist) pk.set_wrist(rel, tau);
+        wrist_dirty_ = false;
+    }
     if (state_ == CANP_ST_RUN) {
         jog_dir_ = 0; Picker::Input in = picker_input(&belt_, hw_, cfg_.belt);
         in.cruise_mm_s = speed_mm_s_ > 0 ? speed_mm_s_ : cfg_.belt.run_speed;
@@ -417,6 +423,7 @@ void Runner::set_home(const std::array<int, 6> &counts)
         const JointCal &jc = arm_cfg_.joint[k]; arm_cfg_.home_deg[k] = (counts[k] - jc.zero_count) / jc.counts_per_deg;
     }
     arm_cfg_.home_grip_count = float(counts[5]);
+    wrist_dirty_ = true;
 }
 void Runner::arm_loop()
 {
@@ -428,7 +435,13 @@ void Runner::arm_loop()
             std::array<uint16_t, 6> now; if (arm_.read_positions(now)) arm_counts_ = now;
         }
         const char *why = plan_pick(ac, job.p.p, job.p.close_axis, job.p.open_mm, job.p.part_wid, job.p.bin, arm_counts_,
-                                    wp, &tilt); if (!why && job.p.flying) {   // intercept: vertical only; the close frame waits for the part
+                                    wp, &tilt);
+        if (why && !job.p.flying && !std::isnan(job.p.alt_axis)) {   // round part out of the vertical reach along
+            const char *why2 = plan_pick(ac, job.p.p, job.p.alt_axis, job.p.open_mm, job.p.part_wid, job.p.bin,
+                                         arm_counts_, wp, &tilt);   // the wrist line: tangential, tilted
+            if (!why2) why = nullptr;
+        }
+        if (!why && job.p.flying) {   // intercept: vertical only; the close frame waits for the part
             if (tilt != 0) { why = "intercept point needs a tilted grasp"; } for (ServoFrame &f : wp)
                 if (!strcmp(f.what, "close")) { f.wait_belt = true; f.belt_mm = job.p.arrive_belt_mm; }
         }

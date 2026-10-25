@@ -83,13 +83,35 @@ struct ServoFrame {
 // Inverse kinematics for a grasp point p (arm frame, mm), gripper pointing down (tilted away from the base by tilt,
 // rad), fingers closing along close_axis (arm frame, rad; with tilt != 0 it must be tangential within 10 deg).
 // Returns nullptr on success, else the reason.
-const char *arm_ik(const ArmConfig &c, Vec3 p, float close_axis, JointAngles &out, float tilt = 0);
+// One closing line has two wrist angles 180 deg apart (the #6 servo on one side or the other). q5_pref_deg (NaN =
+// none) picks the one nearer to it, e.g. the ready pose's #5: no half turn of the wrist on the way down (10-26:
+// closing across the belt sits at the -90 / +90 fold, so the plain fold flipped the wrist by a hair). Joint 5 limits
+// and the servo-toward-the-base rule near the base still choose the other one when they must.
+const char *arm_ik(const ArmConfig &c, Vec3 p, float close_axis, JointAngles &out, float tilt = 0,
+                   float q5_pref_deg = NAN);
 // Closing axis (table frame, rad) tangential to the arm base at table point p: the one a tilted grasp can use.
 float arm_tangential_axis(const ArmConfig &c, Vec2 p_table);
 // The same for an arm base given directly (the picker only keeps PickerConfig::arm_base).
 inline float arm_tangential_axis(Vec2 base_xy, Vec2 p_table)
 {
     return wrap_axis(std::atan2(p_table.y - base_xy.y, p_table.x - base_xy.x) + kPi / 2);
+}
+// Closing axis (table frame, rad) of a vertical grasp at table point p with the wrist (#5) at q5_deg: a round part
+// picked along it needs no wrist turn from a pose with that #5 (the ready pose). Only q1 changes the axis then.
+float arm_wrist_axis(const ArmConfig &c, Vec2 p_table, float q5_deg);
+// The same from the two numbers the picker keeps: rel = q5 + grip_axis_at_zero (rad), tau = the sideways part of the
+// tool offset at that q5 (tool_offset * sin(rel + servo_side), mm), base_xy = the arm base in the table frame.
+inline float arm_wrist_axis(Vec2 base_xy, float rel, float tau, Vec2 p_table)
+{
+    const float dx = p_table.x - base_xy.x, dy = p_table.y - base_xy.y, R = std::hypot(dx, dy);
+    const float rho = std::sqrt(std::max(R * R - tau * tau, 1.f));
+    return wrap_axis(std::atan2(dy, dx) - std::atan2(tau, rho) + rel);
+}
+// rel / tau of the ready pose's wrist (home_deg[4]) for the picker (PickerConfig::wrist_rel / wrist_tau)
+inline void arm_home_wrist(const ArmConfig &c, float &rel, float &tau)
+{
+    rel = deg2rad(c.home_deg[4]) + c.grip_axis_at_zero;
+    tau = c.tool_offset * std::sin(rel + c.servo_side);
 }
 Vec3 arm_fk(const ArmConfig &c, const JointAngles &j);   // forward kinematics of the grasp point (tests / UI)
 Vec3 table_to_arm(const ArmConfig &c, Vec2 p_table, float z_above_belt);

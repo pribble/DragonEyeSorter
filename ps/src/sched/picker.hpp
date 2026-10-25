@@ -46,6 +46,13 @@ struct PickerConfig {
     float round_ratio = 1.3f;    // len / wid below this: treat as round (gear), any closing angle
     bool tangential_first = false;   // round parts: try the axis tangential to the arm base first (what a tilted
     Vec2 arm_base{0, 0};             // grasp needs; set from arm.base_xy / max_tilt_deg in load_config), table mm
+    // round parts: close along the line the wrist already has at the ready pose (arm_wrist_axis): no wrist turn on
+    // the way down (user 10-26). NaN = off (the vision axis, or tangential first). Set in load_config from
+    // arm.home_deg[4] and kept current by Picker::set_wrist when the ready pose is re-taught. When tilted grasps
+    // are possible the tangential axis goes along as PickJob::alt_axis for points out of the vertical reach.
+    bool keep_wrist = true;      // picker.keep_wrist in des_app.json (false: the old order)
+    float wrist_rel = NAN;       // q5 + grip_axis_at_zero of the ready pose (rad)
+    float wrist_tau = 0;         // sideways part of the tool offset there (mm)
     float neighbor_gap = 2;      // keep-out grown around other parts
     float tail_x = 600;          // belt end: parts no gate takes fall into the recheck box there
     int recheck_outlet = 0;      // outlet index for Disposition::Recheck
@@ -70,6 +77,8 @@ struct PickJob {
     int track_id = 0;
     Vec2 p;                      // table mm (x == pick line once stopped)
     float close_axis = 0;        // direction the fingers close along (rad, table frame)
+    float alt_axis = NAN;        // round part: a second clear axis (tangential: tilted grasps) when close_axis is out
+                                 // of the vertical reach; NaN = none
     float open_mm = 0;           // opening before descending
     float part_wid = 0;          // expected width between fingers when closed (grasp check)
     int bin = 0;
@@ -125,7 +134,16 @@ public:
     void job_done(Tracker &tr, int track_id, bool ok);   // arm finished; failed picks fall through to recheck
     // Gripper closing direction and opening for track t, checked against every other part on the belt.
     // Returns nullptr when a collision-free grip exists, else the reason ("too wide", "crowded").
-    const char *plan_grip(const Tracker &tr, const Track &t, double belt_mm, float &close_axis, float &open_mm) const;
+    // Round parts start at the wrist axis (wrist_rel) when set; alt_axis (optional) = the tangential fallback.
+    const char *plan_grip(const Tracker &tr, const Track &t, double belt_mm, float &close_axis, float &open_mm,
+                          float *alt_axis = nullptr) const;
+    // ready pose re-taught: the wrist axis of round parts follows (see PickerConfig::wrist_rel)
+    void set_wrist(float rel, float tau)
+    {
+        cfg_.wrist_rel = rel;
+        cfg_.wrist_tau = tau;
+        grip_tr_ = nullptr;   // cached grip plans used the old one
+    }
     // Intercept possible for t (round, within flying_r0..r1 of the arm base at the pick line, fingers wide open across
     // the belt clear of every other part, nothing within flying_gap along the belt)? open_mm = the opening to use.
     bool flying_ok(const Tracker &tr, const Track &t, double belt_mm, float &open_mm) const;
@@ -158,7 +176,7 @@ private:
     mutable uint32_t grip_rev_ = 0;
     mutable double grip_belt_ = 0;
     mutable const char *grip_why_ = nullptr;
-    mutable float grip_axis_ = 0, grip_open_ = 0;
+    mutable float grip_axis_ = 0, grip_open_ = 0, grip_alt_ = NAN;
     // Gate contact geometry (closed / sweep x-ranges, reach) is a pure function of (gate, y, r) and one search is
     // 60 golden-section + 2 x 40 bisection steps; a tick asks for the same pairs repeatedly (the event pass, the
     // conflict loop, every sweep_window) -> remember the last answer per gate (same key = same result, bit for bit).

@@ -97,7 +97,8 @@ std::string load_config(const std::string &path, AppConfig &cfg)
                                      cfg.pick_after_fov, "reach_y0", pk.reach_y0, "reach_y1", pk.reach_y1,
                                      "brake_margin", pk.brake_margin, "finger_w", pk.finger_w, "finger_t",
                                      pk.finger_t, "grip_clear", pk.grip_clear, "max_open", pk.max_open,
-                                     "round_ratio", pk.round_ratio, "neighbor_gap", pk.neighbor_gap))
+                                     "round_ratio", pk.round_ratio, "neighbor_gap", pk.neighbor_gap, "keep_wrist",
+                                     pk.keep_wrist))
             if (const json *fl = ji::sec(*c, "flying")) {   // intercept picks (docs/运动控制与分拣.md 拦截式不停带夹取)
                 ji::gets(*fl, "enabled", pk.flying, "r0", pk.flying_r0, "r1", pk.flying_r1, "ready_s",
                          pk.flying_ready_s, "window_mm", pk.flying_window, "gap_mm", pk.flying_gap, "close_lead_s", pk.flying_close_lead_s);
@@ -297,6 +298,9 @@ std::string load_config(const std::string &path, AppConfig &cfg)
     cfg.picker.tail_x = cfg.tracker.tail_x; cfg.picker.recheck_outlet = 0; cfg.picker.arm_base = cfg.arm.base_xy;
     // after calib.json (calib-arm may have moved it)
     cfg.picker.tangential_first = cfg.arm.max_tilt_deg > 0;
+    // round parts close along the ready pose's wrist line (after arm_home.json: the taught #5)
+    if (cfg.picker.keep_wrist) arm_home_wrist(cfg.arm, cfg.picker.wrist_rel, cfg.picker.wrist_tau);
+    else cfg.picker.wrist_rel = NAN;
     cfg.picker.gate_move_s = cfg.flaps.move_s(); cfg.picker.gate_margin = cfg.flaps.margin_mm;
     cfg.npu.model = resolve(dir, cfg.npu.model); return load_rules(resolve(dir, cfg.label_list), cfg);
 }
