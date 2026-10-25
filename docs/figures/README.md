@@ -45,10 +45,9 @@ python docs/figures/make_figures.py --paper    # paper 主题 → figures/paper/
 | `fig_layout.py` | 图 7-1 工位布局（俯视，按比例） |
 | `paper/` | `--paper` 主题的输出（5 张 SVG + PNG + `fig_meta.json`），报告引用这一套 |
 | `make_system_wiring.py` | `fig_system_wiring.png`（整机接线：市电 / 24V / 急停 / 步进 / 舵机 6.8V / 5V / 编码器 / 电平转换 / 挡板 / J12 引脚 / J11 CAN；实线已接、虚线待接） |
-| `make_step_wiring.py` / `make_servo_lv_wiring.py` | 步进四信号、BSS138 低压侧三针在 J12 上的位置（叠加厂家位号图） |
 
 单张调试：`python docs/figures/fig_timebase.py`（跑单张 + 打印该图门禁），加 `--paper` 出报告那套。导出 SVG（矢量、文字可编辑）+ PNG 宽 3200px（报告满版心 15.8cm 时 ≈514 dpi）。两套 `fig_meta.json` 是下游依据：画布尺寸、`px_per_pt`、最小字号，以及 slide 版的 **PPT 重点框区域**（`regions`，源 PNG 像素、左上原点）。`submission/build/make_ppt.py` 读 `fig_meta.json`，`verify_report.py` 读 `paper/fig_meta.json` 的 `min_fs_pt`。**改插图后两套都重跑。**
 
-## 接线图（厂家资料叠加）
+## 接线图
 
-`make_step_wiring.py` / `make_servo_lv_wiring.py` 的位号图 PDF 路径用命令行参数传，仓库内不放厂家资料。`make_system_wiring.py` 与三张接线图沿用旧口径（引脚号、电压、路径以 [硬件与接线](../硬件与接线.md) 与 [scripts/deploy/manifest.tsv](../../scripts/deploy/manifest.tsv) 为准；改数值先改文档再改脚本），尚未按 1:1 字号门槛重画——它们是实物照片的补充，不占报告版心。
+`make_system_wiring.py` 生成 `fig_system_wiring.png`（整机接线），沿用旧口径（引脚号、电压、路径以 [硬件与接线](../硬件与接线.md) 与 [scripts/deploy/manifest.tsv](../../scripts/deploy/manifest.tsv) 为准；改数值先改文档再改脚本），尚未按 1:1 字号门槛重画——它是实物照片的补充，不占报告版心。
