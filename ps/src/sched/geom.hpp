@@ -34,8 +34,6 @@ inline float wrap_pi(float a)
     while (a < -kPi) a += 2 * kPi;
     return a;
 }
-inline float ang_diff(float a, float b) { return wrap_pi(a - b); }   // a - b folded to [-pi, pi)
-inline bool near_ang(float a, float b, float eps) { return std::fabs(ang_diff(a, b)) <= eps; }
 // Planar homography, row-major 3x3, mapping image px -> table mm (calibration result).
 struct Homography {
     std::array<double, 9> h{{1, 0, 0, 0, 1, 0, 0, 0, 1}};

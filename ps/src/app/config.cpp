@@ -136,26 +136,29 @@ std::string load_config(const std::string &path, AppConfig &cfg)
         }
         ji::gets(j, "bins", cfg.bins, "outlets", cfg.outlets, "label_list", cfg.label_list); FlapConfig &fcp = cfg.flaps;
         if (const json *c = sec_gets(j, "flaps", "enabled", fcp.enabled, "move_ms", fcp.move_ms, "stagger_ms",
-                                     fcp.stagger_ms, "margin_mm", fcp.margin_mm))
-            if (c->contains("gates")) {
-                fcp.gates.clear();
+                                     fcp.stagger_ms, "margin_mm", fcp.margin_mm)) {
+            pk.gates_on = fcp.enabled;   // gates stay loaded (the [run] startup print) but are only trusted once mounted
+            if (c->contains("gates")) {   // the single gate table: the picker and the flap sequencer share it
+                pk.gates.clear();
                 for (const json &gj : (*c)["gates"]) {
-                    FlapConfig::Gate g;
+                    Gate g;
+                    std::string outlet_name = "scrap";
                     float closed_deg = rad2deg(g.geom.closed), open_deg = rad2deg(g.geom.open);
-                    ji::gets(gj, "outlet", g.outlet_name, "len_mm", g.geom.len, "closed_deg", closed_deg, "open_deg",
+                    ji::gets(gj, "outlet", outlet_name, "len_mm", g.geom.len, "closed_deg", closed_deg, "open_deg",
                              open_deg, "hold_mm", g.hold_mm, "open_us", g.open_us, "closed_us", g.closed_us);
                     ji::vec2(gj, "pivot_xy", g.geom.pivot);
                     g.geom.closed = deg2rad(closed_deg);
                     g.geom.open = deg2rad(open_deg);
                     if (std::fabs(closed_deg - open_deg) >= 180)
                         return path + ": flaps.gates: |closed_deg - open_deg| must be < 180 (convex swept sector)";
-                    g.outlet = index_of(cfg.outlets, g.outlet_name);
-                    if (g.outlet < 0) return path + ": flaps.gates outlet \"" + g.outlet_name + "\" is not in outlets";
+                    g.outlet = int8_t(index_of(cfg.outlets, outlet_name));
+                    if (g.outlet < 0) return path + ": flaps.gates outlet \"" + outlet_name + "\" is not in outlets";
                     if (g.outlet == 0) return path + ": flaps.gates: the recheck outlet is the belt end, not a gate";
-                    fcp.gates.push_back(g);
+                    pk.gates.push_back(g);
                 }
-                if (fcp.gates.size() > 2) return path + ": flaps.gates: at most 2 (des_pwm has 2 channels)";
+                if (pk.gates.size() > 2) return path + ": flaps.gates: at most 2 (des_pwm has 2 channels)";
             }
+        }
         if (const json *c = ji::sec(j, "plc")) ji::get(*c, "modbus_port", cfg.plc.modbus_port);
         BeamConfig &bm = cfg.beam;   // x_mm comes from calib.json (des_tool calib-beam); a hand-set one also counts
         if (const json *c = sec_gets(j, "beam", "enabled", bm.enabled, "match_mm", bm.match_mm, "expire_mm", bm.expire_mm,
@@ -293,10 +296,7 @@ std::string load_config(const std::string &path, AppConfig &cfg)
     cfg.beam.fov_x0 = cfg.tracker.fov_x0;
     cfg.picker.tail_x = cfg.tracker.tail_x; cfg.picker.recheck_outlet = 0; cfg.picker.arm_base = cfg.arm.base_xy;
     // after calib.json (calib-arm may have moved it)
-    cfg.picker.tangential_first = cfg.arm.max_tilt_deg > 0; cfg.picker.gates.clear();
-    // side gates exist for the picker only once mounted
-    if (cfg.flaps.enabled)
-        for (const FlapConfig::Gate &g : cfg.flaps.gates) cfg.picker.gates.push_back({g.geom, g.outlet, g.hold_mm});
+    cfg.picker.tangential_first = cfg.arm.max_tilt_deg > 0;
     cfg.picker.gate_move_s = cfg.flaps.move_s(); cfg.picker.gate_margin = cfg.flaps.margin_mm;
     cfg.npu.model = resolve(dir, cfg.npu.model); return load_rules(resolve(dir, cfg.label_list), cfg);
 }

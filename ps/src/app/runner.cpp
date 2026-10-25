@@ -16,7 +16,7 @@ static const char *state_name(uint8_t s)
 }
 Runner::Runner(des_hw_t *hw, const AppConfig &cfg, const RunOptions &opt)
     : hw_(hw), cfg_(cfg), opt_(opt), belt_(hw, cfg.belt), arm_(hw, cfg.arm), arm_cfg_(cfg.arm), ir_(MB_N_IR, 0),
-      flaps_(cfg.flaps)
+      flaps_(cfg.flaps, cfg.picker.gates)
 {
     if (opt.speed_mm_s > 0) belt_.set_speed(opt.speed_mm_s);
     JointAngles home;
@@ -64,13 +64,13 @@ std::string Runner::start()
     }
     // side gates: where a part of the spec gear OD on the belt centre line meets each one, and how early it must be decided
     const double v = speed_mm_s_ > 0 ? speed_mm_s_ : cfg_.belt.run_speed;
-    for (size_t g = 0; g < cfg_.flaps.gates.size(); g++) {
-        const FlapConfig::Gate &G = cfg_.flaps.gates[g];
+    for (size_t g = 0; g < cfg_.picker.gates.size(); g++) {
+        const Gate &G = cfg_.picker.gates[g];
         const float r = 0.5f * cfg_.tracker.size.gear_od, m = cfg_.flaps.margin_mm;
         const XRange c = gate_closed_range(G.geom, 0, r), s = gate_sweep_range(G.geom, 0, r + m);
         const double latest = s.x0 - v * cfg_.flaps.move_s();
         printf("[run] gate %zu (%s%s): part at y 0 meets it at x %.0f, sweep x %.0f..%.0f, hold %.0f mm; "
-               "decide by x %.0f at %.0f mm/s (decide_x %.0f)%s\n", g + 1, G.outlet_name.c_str(),
+               "decide by x %.0f at %.0f mm/s (decide_x %.0f)%s\n", g + 1, cfg_.outlets[size_t(G.outlet)].c_str(),
                cfg_.flaps.enabled ? "" : ", disabled", c.x0, s.x0, s.x1,
                G.hold_mm > 0 ? G.hold_mm : gate_slide_mm(G.geom, 0), latest, v, cfg_.tracker.decide_x,
                c.hit && s.hit && latest > cfg_.tracker.decide_x ? "" : "  <- WARNING: parts reach it undecided");
@@ -318,7 +318,7 @@ void Runner::cycle(Tracker &tr, Picker &pk)
     // Newly decided part: counts + PART frame (decision time; a later failed pick is counted as recheck)
     auto report_part = [&](const Track &t) {
         if (t.state == TrackState::New || t.state == TrackState::Tracking || t.disp == Disposition::None) return;
-        if (!cfg_.picker.gates.empty() && t.disp == Disposition::Flap && !t.flap_final) return;   // gate not final yet
+        if (cfg_.picker.gates_active() && t.disp == Disposition::Flap && !t.flap_final) return;   // gate not final yet
         if (!reported_.insert(t.id).second) return;
         cnt_.total++; if (t.disp == Disposition::Flap) cnt_.ng++;
         else if (t.disp == Disposition::Recheck) cnt_.recheck++;
@@ -369,9 +369,9 @@ void Runner::cycle(Tracker &tr, Picker &pk)
     }
     // side diverter gates (des_pwm channel = gate), in every state: open from the start, a gate closed for a part
     // keeps it until the belt has carried that part past its release (no-op before v7 or when disabled)
-    if (cfg_.flaps.enabled && !cfg_.flaps.gates.empty()) {
+    if (cfg_.picker.gates_active()) {
         const FlapSequencer::State &fs = flaps_.update(flap_events_, belt_.belt_mm(), now);
-        const int n = int(std::min<size_t>(cfg_.flaps.gates.size(), 2));
+        const int n = int(std::min<size_t>(cfg_.picker.gates.size(), 2));
         for (int ch = 0; ch < n; ch++)
             if (fs.us[ch] != flap_us_[ch]) {
                 des_pwm_set(hw_, ch, fs.us[ch]);

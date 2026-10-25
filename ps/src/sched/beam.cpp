@@ -6,7 +6,7 @@ namespace des {
 const char *to_str(BeamKind k)
 {
     static const char *n[] = {"matched", "repeat", "no_track", "missed", "lost"};
-    return size_t(k) < 5 ? n[size_t(k)] : "?";
+    return n[size_t(k)];
 }
 float beam_part_r(const Track &t)
 {

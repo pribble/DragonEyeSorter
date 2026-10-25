@@ -444,10 +444,10 @@ static void test_gate_geometry()
 static void test_flaps()
 {
     FlapConfig fc;   // move 300 ms, stagger 120 ms
-    fc.gates.resize(2);
-    fc.gates[0].outlet = 1; fc.gates[0].open_us = 1000; fc.gates[0].closed_us = 1900;
-    fc.gates[1].outlet = 2; fc.gates[1].open_us = 1100; fc.gates[1].closed_us = 1800;
-    FlapSequencer fs(fc);
+    std::vector<Gate> gates(2);
+    gates[0].outlet = 1; gates[0].open_us = 1000; gates[0].closed_us = 1900;
+    gates[1].outlet = 2; gates[1].open_us = 1100; gates[1].closed_us = 1800;
+    FlapSequencer fs(fc, gates);
     std::vector<FlapEvent> ev;
     FlapEvent e1;   // part 1 -> gate 0: close from belt 100, release at 400
     e1.track_id = 1; e1.outlet = 1; e1.gate = 0; e1.belt_mm = 200; e1.close_b = 100; e1.release_b = 400;
@@ -489,9 +489,9 @@ static void test_flaps()
     FlapConfig f0;
     f0.move_ms = 0;
     f0.stagger_ms = 0;
-    f0.gates.resize(1);
-    f0.gates[0].outlet = 1; f0.gates[0].open_us = 1000; f0.gates[0].closed_us = 1900;
-    FlapSequencer f0s(f0);
+    std::vector<Gate> g0(1);
+    g0[0].outlet = 1; g0[0].open_us = 1000; g0[0].closed_us = 1900;
+    FlapSequencer f0s(f0, g0);
     FlapEvent e0; e0.track_id = 7; e0.outlet = 1; e0.gate = 0; e0.belt_mm = 200; e0.close_b = 100; e0.release_b = 400;
     std::vector<FlapEvent> ev0 = {e0};
     FlapSequencer::State st0 = f0s.update(ev0, 0, 20.0);

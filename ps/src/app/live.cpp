@@ -95,7 +95,6 @@ constexpr int kPanelX = kVidW, kPanelW = 1920 - kVidW, kPanelH = Hmi::Y0;
 cv::Mat render_panel(const Snapshot &s, const Shared &sh, uint32_t pl_frame, uint64_t lag, double belt_mm,
                      const std::string &run_line)
 {
-    static const char *plans[] = {"run", "stop-at", "hold"};
     cv::Mat panel(kPanelH, kPanelW, CV_8UC3, cv::Scalar(34, 31, 29));
     cv::line(panel, {0, 0}, {0, kPanelH - 1}, cv::Scalar(80, 76, 72), 2);
     int y = 40;
@@ -124,7 +123,7 @@ cv::Mat render_panel(const Snapshot &s, const Shared &sh, uint32_t pl_frame, uin
     snprintf(b, sizeof b, "pick %llu   flap %llu   recheck %llu", (unsigned long long)s.st.decided_pick,
              (unsigned long long)s.st.decided_flap, (unsigned long long)s.st.decided_recheck);
     line(b, white);
-    snprintf(b, sizeof b, "noise %llu   belt plan %s", (unsigned long long)s.st.noise, s.plan_on ? plans[s.plan.kind] : "-");
+    snprintf(b, sizeof b, "noise %llu   belt plan %s", (unsigned long long)s.st.noise, s.plan_on ? to_str(s.plan.kind) : "-");
     line(b, white);
     snprintf(b, sizeof b, "saved %llu  (images %llu)", (unsigned long long)s.logged, (unsigned long long)s.log_images);
     line(b, white, 0.62, 48);
@@ -327,7 +326,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
         s->tracks.clear();
         for (const Track &t : tr.tracks()) {   // one pass: records, snapshot view, PL ROI candidate
             // a Flap part's record waits until its gate is decided for good (else it may still go to recheck)
-            const bool gate_pending = !cfg.picker.gates.empty() && t.disp == Disposition::Flap && !t.flap_final;
+            const bool gate_pending = cfg.picker.gates_active() && t.disp == Disposition::Flap && !t.flap_final;
             if (t.state != TrackState::New && t.state != TrackState::Tracking && t.disp != Disposition::None &&
                 !gate_pending && logged.insert(t.id).second) {
                 PartRecord rec;

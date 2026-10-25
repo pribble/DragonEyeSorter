@@ -10,12 +10,12 @@ namespace des {
 const char *to_str(TrackState s)
 {
     static const char *n[] = {"new", "tracking", "decided", "picking", "done"};
-    return size_t(s) < 5 ? n[size_t(s)] : "?";
+    return n[size_t(s)];
 }
 const char *to_str(Disposition d)
 {
     static const char *n[] = {"-", "pick", "flap", "recheck"};
-    return size_t(d) < 4 ? n[size_t(d)] : "?";
+    return n[size_t(d)];
 }
 
 bool Tracker::vote(int track_id, const float *probs, int n)

@@ -10,6 +10,7 @@ namespace des {
 
 int Picker::gate_for(int outlet) const
 {
+    if (!cfg_.gates_on) return -1;   // table loaded but the gates are not mounted: everything rides to the belt end
     for (size_t g = 0; g < cfg_.gates.size(); g++) if (cfg_.gates[g].outlet == outlet) return int(g);
     return -1;
 }
@@ -23,26 +24,38 @@ void Picker::to_recheck(Track &t, const char *why)
 
 static float part_r(const Track &t) { return 0.5f * std::max(t.len, t.wid); }
 
+const Picker::GateAns &Picker::gate_geom_at(int gi, float y, float r) const
+{
+    GateAns &a = gans_[size_t(gi) & 1];
+    if (!a.valid || a.gate != gi || a.y != y || a.r != r) {
+        const GateGeom &g = cfg_.gates[size_t(gi)].geom;
+        const float m = cfg_.gate_margin;
+        a = GateAns{int8_t(gi), y, r, true, gate_reaches(g, y, m), gate_closed_range(g, y, r),
+                    gate_sweep_range(g, y, r + m)};
+    }
+    return a;
+}
+
 bool Picker::gate_event(const Track &t, int gi, double move_mm, FlapEvent &e, const char *&why, bool strict) const
 {
-    const PickerConfig::Gate &G = cfg_.gates[size_t(gi)];
-    const float r = part_r(t), m = cfg_.gate_margin;
-    const XRange c = gate_closed_range(G.geom, t.y, r), s = gate_sweep_range(G.geom, t.y, r + m);
-    if (strict && (!gate_reaches(G.geom, t.y, m) || !c.hit || !s.hit)) {
+    const Gate &G = cfg_.gates[size_t(gi)];
+    const GateAns &a = gate_geom_at(gi, t.y, part_r(t));
+    if (strict && (!a.reaches || !a.closed.hit || !a.sweep.hit)) {
         why = "beyond gate reach";
         return false;
     }
     // not strict (already committed): never fails, falls back to the sector / the pivot
-    const float x_meet = c.hit ? c.x0 : (s.hit ? s.x1 : G.geom.pivot.x), x_in = s.hit ? s.x0 : x_meet;
+    const float x_meet = a.closed.hit ? a.closed.x0 : (a.sweep.hit ? a.sweep.x1 : G.geom.pivot.x),
+                x_in = a.sweep.hit ? a.sweep.x0 : x_meet;
     e.belt_mm = x_meet - t.s;              // its disc meets the closed paddle
     e.close_b = (x_in - t.s) - move_mm;    // closed before the disc (+ margin) enters the swept sector
-    e.release_b = e.belt_mm + (G.hold_mm > 0 ? G.hold_mm : gate_slide_mm(G.geom, t.y)) + m;
+    e.release_b = e.belt_mm + (G.hold_mm > 0 ? G.hold_mm : gate_slide_mm(G.geom, t.y)) + cfg_.gate_margin;
     return true;
 }
 
 bool Picker::sweep_window(const Track &o, int g, double &b0, double &b1) const
 {
-    const XRange s = gate_sweep_range(cfg_.gates[size_t(g)].geom, o.y, part_r(o) + cfg_.gate_margin);
+    const XRange &s = gate_geom_at(g, o.y, part_r(o)).sweep;
     if (!s.hit) return false;
     b0 = s.x0 - o.s;
     b1 = s.x1 - o.s;
@@ -319,9 +332,9 @@ int FlapSequencer::us_at(int g, double now) const
 
 const FlapSequencer::State &FlapSequencer::update(const std::vector<FlapEvent> &events, double belt_mm, double now)
 {
-    const int n = int(std::min<size_t>(cfg_.gates.size(), 2));
+    const int n = int(std::min<size_t>(gates_.size(), 2));
     if (!started_) {   // position unknown: straight to open, no ramp
-        for (int g = 0; g < n; g++) ramp_[g] = {cfg_.gates[g].open_us, cfg_.gates[g].open_us, -1e18};
+        for (int g = 0; g < n; g++) ramp_[g] = {gates_[g].open_us, gates_[g].open_us, -1e18};
         started_ = true;
     }
     const double T = cfg_.move_ms / 1000.0, stagger = cfg_.stagger_ms / 1000.0;
@@ -353,7 +366,7 @@ const FlapSequencer::State &FlapSequencer::update(const std::vector<FlapEvent> &
             release_[g] = -1e18;
         }
         // pulse: ramp to the wanted end; a new ramp does not start within stagger of the other gate's start
-        const int want = st_.track_id[g] >= 0 ? cfg_.gates[g].closed_us : cfg_.gates[g].open_us;
+        const int want = st_.track_id[g] >= 0 ? gates_[g].closed_us : gates_[g].open_us;
         if (want != ramp_[g].to) {
             const bool other_just_started = n == 2 && now - ramp_[1 - g].t0 < stagger;
             if (!other_just_started) ramp_[g] = {us_at(g, now), want, now};

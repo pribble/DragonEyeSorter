@@ -48,15 +48,19 @@ struct PartMeasure {
     float hue = -1, sat = -1;   // part colour from its crop (deg, 0..255); -1 = no crop
     int color = -1;             // index into measure.colors, -1 = none matched / not classified
 };
-// Size / spec NG from the measurement (docs/视觉与检测.md 类别表: 尺寸类 NG 不进 NPU 类别, 由测量判 → 报废), applied only to
-// parts the class vote would pick: it never upgrades an NPU NG.
-struct SizeRule {
-    bool enabled = false;           // ⚠ turn on once the camera height and calibration are real
+// The spec fields of the size rule (part_types): shared with Recipe, which is exactly these plus id / name —
+// Recipe::apply() / from_rule() copy this base only (policy fields stay as configured).
+struct SizeSpec {
     int gear_teeth = 30;            // spec (28-tooth parts = 规格混料)
     float gear_od = 32, gear_od_tol = 0.2f;    // 2026-10-24 user: ±0.2 (one gear flipped over reads 0.12 apart)
     float gear_bore = 6, gear_bore_tol = 0.3f;
     float gear_max_ecc = 0.3f;
     float rack_len = 50, rack_len_tol = 1.0f;
+};
+// Size / spec NG from the measurement (docs/视觉与检测.md 类别表: 尺寸类 NG 不进 NPU 类别, 由测量判 → 报废), applied only to
+// parts the class vote would pick: it never upgrades an NPU NG.
+struct SizeRule : SizeSpec {
+    bool enabled = false;           // ⚠ turn on once the camera height and calibration are real
     int ng_outlet = 1;              // flap outlet for size / spec NG (index into outlets, 1 = scrap)
     bool defect_recheck = true;     // class says OK but the measurement found tooth defects -> recheck
     bool unjudged_recheck = true;   // class says OK but the teeth could not be judged (too far off the camera axis:
@@ -67,25 +71,17 @@ struct SizeRule {
 // Product recipe (配方): the part spec the size rule checks against; changeover = switch which spec is good, e.g.
 // recipe "28-tooth gears": 30-tooth parts then fail the tooth count (规格混料) and go to scrap. Loaded from
 // recipes.json; selected by the PLC (CAN RECIPE) or the operator (HMI), never while running.
-struct Recipe {
+struct Recipe : SizeSpec {
     int id = 1;                     // 1..255 (CAN RECIPE carries one byte)
     std::string name;
-    int gear_teeth = 30;
-    float gear_od = 32, gear_od_tol = 0.2f;
-    float gear_bore = 6, gear_bore_tol = 0.3f;
-    float gear_max_ecc = 0.3f;
-    float rack_len = 50, rack_len_tol = 1.0f;
     void apply(SizeRule &r) const   // spec fields only: enabled / outlet / recheck policy stay as configured
     {
-        r.gear_teeth = gear_teeth; r.gear_od = gear_od; r.gear_od_tol = gear_od_tol; r.gear_bore = gear_bore;
-        r.gear_bore_tol = gear_bore_tol; r.gear_max_ecc = gear_max_ecc; r.rack_len = rack_len; r.rack_len_tol = rack_len_tol;
+        static_cast<SizeSpec &>(r) = *this;
     }
     static Recipe from_rule(const SizeRule &r, int id, const std::string &name)
     {
         Recipe c;
-        c.id = id; c.name = name; c.gear_teeth = r.gear_teeth; c.gear_od = r.gear_od; c.gear_od_tol = r.gear_od_tol;
-        c.gear_bore = r.gear_bore; c.gear_bore_tol = r.gear_bore_tol; c.gear_max_ecc = r.gear_max_ecc;
-        c.rack_len = r.rack_len; c.rack_len_tol = r.rack_len_tol;
+        c.id = id; c.name = name; static_cast<SizeSpec &>(c) = r;
         return c;
     }
 };

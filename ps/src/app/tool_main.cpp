@@ -132,8 +132,7 @@ static int run_track(des_hw_t &hw, const AppConfig &cfg, const Args &a)
             pk.job_done(tr, out.job.track_id, true);
         }
         if (out.belt.kind != last_plan.kind || std::fabs(out.belt.stop_belt_mm - last_plan.stop_belt_mm) > 0.5) {
-            static const char *kinds[] = {"run", "stop-at", "hold"};
-            printf("[%u] belt plan: %s %.1f mm (track %d)\n", f.pl_frame, kinds[out.belt.kind], out.belt.stop_belt_mm, out.belt.track_id); last_plan = out.belt;
+            printf("[%u] belt plan: %s %.1f mm (track %d)\n", f.pl_frame, to_str(out.belt.kind), out.belt.stop_belt_mm, out.belt.track_id); last_plan = out.belt;
         }
         for (const Track &t : tr.tracks()) {
             auto cur = std::make_pair(t.state, t.disp); auto it = seen.find(t.id);

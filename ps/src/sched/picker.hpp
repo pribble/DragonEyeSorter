@@ -25,6 +25,15 @@
 #include "gate.hpp"
 #include "tracker.hpp"
 namespace des {
+// One side diverter gate: the single runtime gate table entry (PickerConfig::gates). The picker plans with the
+// geometry / outlet / hold, the flap sequencer (open_us / closed_us) ramps the same entry — one table, not two.
+struct Gate {
+    GateGeom geom;             // pivot_xy / len_mm / closed_deg / open_deg in des_app.json
+    int8_t outlet = 1;         // index into AppConfig::outlets (0 = recheck = the belt end, never a gate)
+    float hold_mm = 0;         // closed this much belt travel after the part meets it (0 = estimate, gate.hpp)
+    int open_us = 1000;        // paddle turned away
+    int closed_us = 1900;      // paddle across the lane
+};
 struct PickerConfig {
     float pick_x = 450;          // table x of the pick line (mm)
     float pick_tol = 3;          // accepted |x - pick_x| once stopped
@@ -40,12 +49,10 @@ struct PickerConfig {
     float neighbor_gap = 2;      // keep-out grown around other parts
     float tail_x = 600;          // belt end: parts no gate takes fall into the recheck box there
     int recheck_outlet = 0;      // outlet index for Disposition::Recheck
-    struct Gate {
-        GateGeom geom;
-        int outlet = 1;
-        float hold_mm = 0;       // belt travel the gate stays closed after the part meets it (0 = gate_slide_mm)
-    };
-    std::vector<Gate> gates;     // empty = no gates: every NG / recheck part rides to the belt end
+    bool gates_on = true;        // flaps.enabled (set by load_config): the gate table is loaded but only trusted once
+                                 // the gates are mounted — off = every NG / recheck part rides to the belt end
+    std::vector<Gate> gates;     // the gate table (shared with the flap sequencer); empty = no gates
+    bool gates_active() const { return gates_on && !gates.empty(); }
     float gate_move_s = 0.46f;   // command -> paddle fully closed / open (ramp + stagger + one cycle + PWM period)
     float gate_margin = 10;      // clearance (mm) in every gate timing / conflict check
     // Intercept ("flying") picks: a round OK part within the arm's vertical reach is met by a gripper already down on
@@ -74,7 +81,7 @@ struct FlapEvent {
     int track_id = 0;
     int outlet = 0;
     double belt_mm = 0;          // the part meets its gate's closed paddle (or reaches tail_x) at this belt travel
-    int gate = -1;               // index into PickerConfig::gates, -1 = belt end (recheck box)
+    int8_t gate = -1;            // index into PickerConfig::gates, -1 = belt end (recheck box)
     double close_b = 0;          // gate: start closing at this belt travel (closed before the part enters the sweep)
     double release_b = 0;        // gate: may start opening at this belt travel (part pushed off; or earlier when
                                  // another part would otherwise reach the closed paddle)
@@ -88,6 +95,11 @@ struct BeltPlan {
     double stop_belt_mm = 0;
     int track_id = 0;
 };
+inline const char *to_str(BeltPlan::Kind k)
+{
+    static const char *n[] = {"run", "stop-at", "hold"};
+    return n[size_t(k)];
+}
 class Picker {
 public:
     explicit Picker(PickerConfig cfg) : cfg_(std::move(cfg)) {}
@@ -147,18 +159,20 @@ private:
     mutable double grip_belt_ = 0;
     mutable const char *grip_why_ = nullptr;
     mutable float grip_axis_ = 0, grip_open_ = 0;
+    // Gate contact geometry (closed / sweep x-ranges, reach) is a pure function of (gate, y, r) and one search is
+    // 60 golden-section + 2 x 40 bisection steps; a tick asks for the same pairs repeatedly (the event pass, the
+    // conflict loop, every sweep_window) -> remember the last answer per gate (same key = same result, bit for bit).
+    struct GateAns {
+        int8_t gate = -1;
+        float y = 0, r = 0;
+        bool valid = false, reaches = false;
+        XRange closed, sweep;   // sweep is for r + gate_margin, the radius every caller here asks about
+    };
+    const GateAns &gate_geom_at(int gi, float y, float r) const;
+    mutable GateAns gans_[2] = {};
 };
 struct FlapConfig {
     bool enabled = false;          // ⚠ on once the gates are mounted and their pulse widths measured
-    struct Gate {
-        std::string outlet_name = "scrap";
-        int outlet = 1;            // index into AppConfig::outlets (resolved from outlet_name in load_config)
-        GateGeom geom;             // pivot_xy / len_mm / closed_deg / open_deg in des_app.json
-        float hold_mm = 0;         // closed this much belt travel after the part meets it (0 = estimate, gate.hpp)
-        int open_us = 1000;        // paddle turned away
-        int closed_us = 1900;      // paddle across the lane
-    };
-    std::vector<Gate> gates;       // des_pwm channel = index; at most 2
     float move_ms = 300;           // pulse ramp open <-> closed (smoothstep: soft start and stop, no bounce)
     float stagger_ms = 120;        // a gate does not start moving within this long after the other one started
     float margin_mm = 10;          // clearance in the timing / conflict checks (PickerConfig::gate_margin)
@@ -167,7 +181,8 @@ struct FlapConfig {
 };
 class FlapSequencer {
 public:
-    explicit FlapSequencer(FlapConfig cfg) : cfg_(std::move(cfg)) {}
+    // gates: PickerConfig::gates (the one table) — the sequencer gets its own copy, like the picker
+    FlapSequencer(FlapConfig cfg, std::vector<Gate> gates) : cfg_(std::move(cfg)), gates_(std::move(gates)) {}
     struct State {
         int us[2] = {0, 0};           // pulse width per gate now (0 = no such gate)
         int track_id[2] = {-1, -1};   // part a gate is closed for (-1 = open)
@@ -180,11 +195,11 @@ public:
     uint64_t served = 0;           // parts a gate was closed for
 private:
     FlapConfig cfg_;
+    std::vector<Gate> gates_;   // at most 2 (des_pwm channels)
     State st_;
     bool started_ = false;
     double release_[2] = {-1e18, -1e18};   // belt travel until which the gate stays closed
     struct Ramp { int from = 0, to = 0; double t0 = -1e18; } ramp_[2];
-    double last_start_ = -1e18;            // time the last ramp of either gate started
     int us_at(int g, double now) const;
 };
 struct SpeedAdaptConfig {
