@@ -143,7 +143,8 @@ uint8_t Runner::command(uint8_t cmd, const char *who)
         return CANP_ACK_OK;
     case CANP_CMD_RESET_ALARM:
         // v11: the PL keeps the e-stop latched (stepper held) until cleared; it refuses while the button is pressed
-        if (hw_->version >= DES_VERSION_IO && des_estop_clear(hw_) == 1) { return CANP_ACK_REJECTED; } alarm_ = 0;
+        // (older bitstreams: des_estop_clear answers DES_E_ARG, the alarm still clears)
+        if (des_estop_clear(hw_) == 1) { return CANP_ACK_REJECTED; } alarm_ = 0;
         if (st == CANP_ST_ESTOP || st == CANP_ST_FAULT) { set_state(CANP_ST_IDLE, "alarm reset"); } return CANP_ACK_OK;
     default: return CANP_ACK_UNKNOWN;
     }
@@ -160,7 +161,7 @@ uint8_t Runner::jog(int dir, const char *who)
 {
     if (dir == 0) { jog_dir_ = 0; return CANP_ACK_OK; }
     if (state_ != CANP_ST_IDLE) return CANP_ACK_REJECTED;   // running / paused / e-stop: no manual moves
-    if (hw_->version >= DES_VERSION_IO && des_estop_latched(hw_) == 1) return CANP_ACK_REJECTED;
+    if (des_estop_latched(hw_) == 1) return CANP_ACK_REJECTED;   // < DES_VERSION_IO: DES_E_ARG != 1, same verdict
     jog_dir_ = dir > 0 ? 1 : -1;
     last_event_ = std::string(who) + (jog_dir_ > 0 ? " belt jog forward" : " belt jog reverse");
     return CANP_ACK_OK;

@@ -137,7 +137,7 @@ void size_chart(Canvas &c, const cv::Rect &r, const char *title, const Trend *v,
 {
     cv::Mat &img = c.img();
     cv::rectangle(img, r, PANEL, cv::FILLED);
-    double m = 0, sd = 0;
+    double m = 0, sd = 0;   // Trend is {v, ng}: stats1d() would need a copy; two plain passes instead
     for (int i = 0; i < n; i++) m += v[i].v;
     if (n) m /= n;
     for (int i = 0; i < n; i++) sd += (v[i].v - m) * (v[i].v - m);

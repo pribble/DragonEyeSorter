@@ -7,7 +7,9 @@
 #include <stdio.h>
 #include <sys/stat.h>
 
+#include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstdarg>
 
 namespace des {
@@ -25,12 +27,6 @@ static int64_t realtime_ms()
 // The only definition of the wall clock (part_log.cpp's copy is gone); kept weak so a test can stub it.
 #define DES_UTIL_WEAK __attribute__((weak))
 
-DES_UTIL_WEAK void set_wall_offset_ms(int64_t offset_ms)
-{
-    g_wall_offset_ms = offset_ms;
-    g_wall_synced = true;
-}
-
 DES_UTIL_WEAK int64_t wall_now_ms() { return realtime_ms() + g_wall_offset_ms.load(); }
 
 DES_UTIL_WEAK bool wall_synced() { return g_wall_synced; }
@@ -40,6 +36,19 @@ void wall_apply_ms(int64_t plc_unix_ms, const char *src)
     (void)src;   // no stdout here: the runner keeps the HMI event text
     g_wall_offset_ms = plc_unix_ms - realtime_ms();
     g_wall_synced = true;
+}
+
+Stats1d stats1d(const double *v, size_t n)
+{
+    Stats1d s;
+    s.n = double(n);
+    if (!n) return s;
+    s.lo = s.hi = v[0];
+    for (size_t i = 0; i < n; i++) { s.mean += v[i]; s.lo = std::min(s.lo, v[i]); s.hi = std::max(s.hi, v[i]); }
+    s.mean /= double(n);
+    for (size_t i = 0; i < n; i++) s.sd += (v[i] - s.mean) * (v[i] - s.mean);
+    s.sd = n > 1 ? std::sqrt(s.sd / double(n - 1)) : 0;
+    return s;
 }
 
 std::string fmt(const char *format, ...)
@@ -67,21 +76,6 @@ DES_UTIL_WEAK bool make_dirs(const std::string &path)
             if (mkdir(p.c_str(), 0755) != 0 && errno != EEXIST) return false;
         }
     return true;
-}
-
-std::string slurp(const std::string &path, bool *ok)
-{
-    if (ok) *ok = false;
-    FILE *f = fopen(path.c_str(), "rb");
-    if (!f) return std::string();
-    std::string s;
-    char buf[4096];
-    size_t n;
-    while ((n = fread(buf, 1, sizeof buf, f)) > 0) s.append(buf, n);
-    const bool good = ferror(f) == 0;
-    fclose(f);
-    if (ok) *ok = good;
-    return good ? s : std::string();
 }
 
 std::string dir_of(const std::string &path)

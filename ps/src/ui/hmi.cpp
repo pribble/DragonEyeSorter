@@ -24,7 +24,6 @@ const char *kPages[] = {"总览", "曲线", "参数", "记录", "机械臂"};
 constexpr int kNPages = 5;
 const double kArmStepDeg[] = {1, 5, 15};
 const int kArmMs[] = {500, 1000, 2000};
-const char *kArmJoint[6] = {"#1 底座", "#2 肩", "#3 肘", "#4 腕俯仰", "#5 腕旋", "#6 夹爪"};
 const char *kImages[] = {"不存", "NG + 复检", "全部"};
 const char *kPlModes[] = {"原图", "PL 灰度", "PL 高斯滤波", "PL 二值", "PL Sobel", "PL 边缘"};
 struct ParamDef {
@@ -468,7 +467,7 @@ void Hmi::page_arm(Canvas &c)
         auto deg = [&](int n) { return n < 0 ? std::string("—") : fmt("%+.1f°", (n - jc.zero_count) / jc.counts_per_deg); };
         const std::string flags = !j.alive ? (j.pos < 0 && !a.shown ? "—" : "无应答")
                 : j.status & 0x20 ? "过载" : j.status & 0x04 ? "过热" : j.status & 0x01 ? "电压" : "正常";
-        c.text(kArmJoint[k], cx[0], y + 4, 19, WHITE);
+        c.text(kArmJointName[k], cx[0], y + 4, 19, WHITE);
         c.text(j.pos < 0 ? "—" : fmt("%.0f", double(j.pos)), cx[1], y + 4, 19, YELLOW);
         c.text(deg(j.pos), cx[2], y + 4, 19, YELLOW);
         c.text(deg(j.target), cx[3], y + 4, 19, CYAN);

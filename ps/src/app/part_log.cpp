@@ -1,9 +1,6 @@
 // part_log.cpp — see part_log.hpp
 #include "part_log.hpp"
-#include <arpa/inet.h>
 #include <errno.h>
-#include <fcntl.h>
-#include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <poll.h>
 #include <sys/socket.h>
@@ -14,6 +11,7 @@
 #include <utility>
 #include <vector>
 #include <opencv2/imgcodecs.hpp>
+#include "tcp_listen.hpp"
 #include "util.hpp"
 namespace des {
 namespace {
@@ -44,7 +42,7 @@ public:
     void stop();                                    // flushes queued frames (up to ~0.5 s), closes everything
     void record(const std::string &csv_line);
     void image(const std::string &name, const std::vector<uint8_t> &jpeg);
-    int port() const { return port_; }              // the bound port (start(0, ...) picks a free one)
+    int port() const { return ls_.port; }           // the bound port (start(0, ...) picks a free one)
     std::atomic<uint64_t> records{0}, images{0}, dropped{0};
     std::atomic<int> clients{0};
 private:
@@ -55,7 +53,7 @@ private:
     void loop();
     void push(char type, const std::string &name, const char *data, size_t n);
     static std::shared_ptr<const std::string> frame(char type, const std::string &name, const char *data, size_t n);
-    int lfd_ = -1, port_ = 0, wake_[2] = {-1, -1};
+    TcpListen ls_;                                  // listener + wake pipe (hw/tcp_listen.hpp)
     std::string session_, header_;
     size_t max_queue_ = 64;
     std::mutex m_;
@@ -82,22 +80,7 @@ std::string NetFeed::start(int port, const std::string &session, const std::stri
     session_ = session;
     header_ = csv_header;
     max_queue_ = max_queue;
-    lfd_ = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
-    if (lfd_ < 0) return std::string("socket: ") + strerror(errno);
-    int one = 1;
-    setsockopt(lfd_, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
-    sockaddr_in a{};
-    a.sin_family = AF_INET;
-    a.sin_port = htons(uint16_t(port));
-    a.sin_addr.s_addr = htonl(INADDR_ANY);
-    if (bind(lfd_, reinterpret_cast<sockaddr *>(&a), sizeof a) < 0 || listen(lfd_, 4) < 0) {
-        std::string e = std::string("port ") + std::to_string(port) + ": " + strerror(errno); close(lfd_);
-        lfd_ = -1; return e;
-    }
-    socklen_t al = sizeof a;
-    getsockname(lfd_, reinterpret_cast<sockaddr *>(&a), &al);
-    port_ = ntohs(a.sin_port);
-    if (pipe2(wake_, O_NONBLOCK | O_CLOEXEC) < 0) wake_[0] = wake_[1] = -1;
+    if (const std::string e = ls_.open(port, 4); !e.empty()) return e;
     quit_ = false;
     th_ = std::thread(&NetFeed::loop, this);
     return "";
@@ -108,17 +91,13 @@ void NetFeed::stop()
         {
             std::lock_guard<std::mutex> lk(m_); quit_ = true;
         }
-        if (wake_[1] >= 0) { (void)!write(wake_[1], "q", 1); } th_.join();
+        ls_.kick(); th_.join();
     }
     for (Client &c : cl_)
         if (c.fd >= 0) close(c.fd);
     cl_.clear();
     clients = 0;
-    if (lfd_ >= 0) close(lfd_);
-    lfd_ = -1;
-    for (int &w : wake_) {
-        if (w >= 0) { close(w); } w = -1;
-    }
+    ls_.close();
 }
 void NetFeed::push(char type, const std::string &name, const char *data, size_t n)
 {
@@ -133,7 +112,7 @@ void NetFeed::push(char type, const std::string &name, const char *data, size_t 
             c.q.push_back(f);
         }
     }
-    if (wake_[1] >= 0) (void)!write(wake_[1], "w", 1);
+    ls_.kick();
 }
 void NetFeed::record(const std::string &line)
 {
@@ -153,20 +132,20 @@ void NetFeed::loop()
         {
             std::lock_guard<std::mutex> lk(m_); quitting = quit_;
             if (quitting && flush_until == 0) { flush_until = mono_s() + 0.5; } bool pending = false;
-            pf.push_back({lfd_, short(quitting ? 0 : POLLIN), 0}); pf.push_back({wake_[0], POLLIN, 0});
+            pf.push_back({ls_.lfd, short(quitting ? 0 : POLLIN), 0}); pf.push_back({ls_.wake[0], POLLIN, 0});
             for (Client &c : cl_) {
                 pf.push_back({c.fd, short(c.q.empty() ? POLLIN : (POLLIN | POLLOUT)), 0}); pending |= !c.q.empty();
             }
             if (quitting && (!pending || mono_s() > flush_until)) return;
         }
         poll(pf.data(), pf.size(), 200); if (pf[1].revents & POLLIN) {
-            char b[64]; while (read(wake_[0], b, sizeof b) > 0) {}
+            char b[64]; while (read(ls_.wake[0], b, sizeof b) > 0) {}
         }
         std::lock_guard<std::mutex> lk(m_);
         // new clients: hello first
         if (pf[0].revents & POLLIN) {
             for (;;) {
-                int fd = accept4(lfd_, nullptr, nullptr, SOCK_NONBLOCK | SOCK_CLOEXEC); if (fd < 0) break;
+                int fd = accept4(ls_.lfd, nullptr, nullptr, SOCK_NONBLOCK | SOCK_CLOEXEC); if (fd < 0) break;
                 int one = 1; setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
                 Client c; c.fd = fd;
                 c.q.push_back(frame('H', session_, header_.data(), header_.size())); cl_.push_back(std::move(c));

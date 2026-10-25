@@ -3,8 +3,6 @@
 
 #include <arpa/inet.h>
 #include <errno.h>
-#include <fcntl.h>
-#include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <poll.h>
 #include <sys/socket.h>
@@ -17,24 +15,7 @@ namespace des {
 std::string ModbusTcp::start(int port)
 {
     stop();
-    lfd_ = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
-    if (lfd_ < 0) return std::string("socket: ") + strerror(errno);
-    int one = 1;
-    setsockopt(lfd_, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
-    sockaddr_in a{};
-    a.sin_family = AF_INET;
-    a.sin_port = htons(uint16_t(port));
-    a.sin_addr.s_addr = htonl(INADDR_ANY);
-    if (bind(lfd_, reinterpret_cast<sockaddr *>(&a), sizeof a) < 0 || listen(lfd_, 4) < 0) {
-        std::string e = "port " + std::to_string(port) + ": " + strerror(errno);
-        close(lfd_);
-        lfd_ = -1;
-        return e;
-    }
-    socklen_t al = sizeof a;
-    getsockname(lfd_, reinterpret_cast<sockaddr *>(&a), &al);
-    port_ = ntohs(a.sin_port);
-    if (pipe2(wake_, O_NONBLOCK | O_CLOEXEC) < 0) wake_[0] = wake_[1] = -1;
+    if (const std::string e = ls_.open(port, 4); !e.empty()) return e;
     quit_.store(false);
     th_ = std::thread(&ModbusTcp::loop, this);
     return "";
@@ -44,15 +25,10 @@ void ModbusTcp::stop()
 {
     if (th_.joinable()) {
         quit_.store(true);
-        if (wake_[1] >= 0) (void)!write(wake_[1], "q", 1);
+        ls_.kick();
         th_.join();
     }
-    if (lfd_ >= 0) close(lfd_);
-    lfd_ = -1;
-    for (int &w : wake_) {
-        if (w >= 0) close(w);
-        w = -1;
-    }
+    ls_.close();
 }
 
 void ModbusTcp::set_input(size_t addr, uint16_t v)
@@ -176,13 +152,13 @@ void ModbusTcp::loop()
     int n = 0;
     while (!quit_.load(std::memory_order_relaxed)) {
         pollfd pf[2 + kMaxClients];
-        pf[0] = {lfd_, POLLIN, 0};
-        pf[1] = {wake_[0], POLLIN, 0};
+        pf[0] = {ls_.lfd, POLLIN, 0};
+        pf[1] = {ls_.wake[0], POLLIN, 0};
         for (int i = 0; i < n; i++) pf[i + 2] = {conns[i].fd, POLLIN, 0};
         poll(pf, nfds_t(n + 2), 500);
         if (pf[1].revents & POLLIN) {
             char b[16];
-            while (read(wake_[0], b, sizeof b) > 0) {}
+            while (read(ls_.wake[0], b, sizeof b) > 0) {}
         }
         for (int i = 0; i < n; i++) {
             const short rev = pf[i + 2].revents;
@@ -204,7 +180,7 @@ void ModbusTcp::loop()
         }
         if (pf[0].revents & POLLIN)
             for (;;) {
-                const int fd = accept4(lfd_, nullptr, nullptr, SOCK_NONBLOCK | SOCK_CLOEXEC);
+                const int fd = accept4(ls_.lfd, nullptr, nullptr, SOCK_NONBLOCK | SOCK_CLOEXEC);
                 if (fd < 0) break;
                 if (n >= int(kMaxClients)) { close(fd); continue; }
                 int one = 1;

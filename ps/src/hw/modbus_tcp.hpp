@@ -16,6 +16,8 @@
 #include <thread>
 #include <vector>
 
+#include "tcp_listen.hpp"
+
 namespace des {
 
 // register map v1: the board is the slave; same codes / rules as can_proto.h (CMD / ACK / ST / FLAG / DISP_*);
@@ -73,7 +75,7 @@ public:
     ~ModbusTcp() { stop(); }
     std::string start(int port);                  // "" on success; port 0 = any free port (tests)
     void stop();
-    int port() const { return port_; }
+    int port() const { return ls_.port; }
     void set_input(size_t addr, uint16_t v);      // owner thread
     void set_inputs(size_t addr, const std::vector<uint16_t> &v);
     void set_holding(size_t addr, uint16_t v);    // read-back value (e.g. the result register)
@@ -91,7 +93,7 @@ private:
     std::vector<uint16_t> hr_, ir_;
     std::deque<Write> writes_;                           // queue depth unbounded (PLC writes are rare)
     std::mutex m_;
-    int lfd_ = -1, port_ = 0, wake_[2] = {-1, -1};
+    TcpListen ls_;                                       // listener + wake pipe (tcp_listen.hpp)
     std::atomic<bool> quit_{false};
     std::atomic<uint64_t> requests_{0};
     std::atomic<int> clients_{0};

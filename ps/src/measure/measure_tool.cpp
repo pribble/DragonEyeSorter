@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <opencv2/imgproc.hpp>
+#include "util.hpp"
 namespace des {
 namespace {
 const char *kGearQ[] = {"OD", "root", "bore", "ecc", "teeth"};
@@ -143,12 +144,9 @@ void RepeatStats::print() const
         for (size_t i = 0; i < a.v.size(); i++) {
             const auto &s = a.v[i];
             if (s.empty()) continue;
-            double m = 0, sq = 0, lo = s[0], hi = s[0];
-            for (double x : s) { m += x; lo = std::min(lo, x); hi = std::max(hi, x); }
-            m /= s.size();
-            for (double x : s) sq += (x - m) * (x - m);
-            const double sd = s.size() > 1 ? std::sqrt(sq / (s.size() - 1)) : 0;
-            printf("   %-7s mean %9.4f  sigma %.4f  range %.4f (%.4f .. %.4f)\n", kGearQ[i], m, sd, hi - lo, lo, hi);
+            const Stats1d t = stats1d(s.data(), s.size());
+            printf("   %-7s mean %9.4f  sigma %.4f  range %.4f (%.4f .. %.4f)\n", kGearQ[i], t.mean, t.sd,
+                   t.hi - t.lo, t.lo, t.hi);
         }
         for (const auto &e : a.verdicts) printf("   verdict %-28s %d frame(s)\n", e.first.c_str(), e.second);
     }

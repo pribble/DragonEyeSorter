@@ -475,11 +475,8 @@ static int run_calib_enc(des_hw_t &hw, const AppConfig &cfg, const Args &a)
     }
     if (mpc.empty()) return 2;
     des_io_read(&hw, &io1);
-    double mean = 0, sd = 0;
-    for (double v : mpc) mean += v;
-    mean /= mpc.size();
-    for (double v : mpc) sd += (v - mean) * (v - mean);
-    sd = mpc.size() > 1 ? std::sqrt(sd / (mpc.size() - 1)) : 0;
+    const Stats1d st = stats1d(mpc.data(), mpc.size());
+    const double mean = st.mean, sd = st.sd;
     last.mm_per_count = mean;
     last.wheel_circ_mm = mean * cfg.belt.enc_counts_per_rev;
     printf("== encoder: %.6f mm/count (sd %.6f over %zu rounds = %.3f %%), wheel %.2f mm (nominal %.0f, %+.2f %%), " "dir %+d\n", mean, sd, mpc.size(), mean > 0 ? 100 * sd / mean : 0, last.wheel_circ_mm, cfg.belt.enc_wheel_mm, (last.wheel_circ_mm / cfg.belt.enc_wheel_mm - 1) * 100, last.dir);
@@ -571,11 +568,8 @@ static int run_calib_beam(des_hw_t &hw, const AppConfig &cfg, const Args &a)
         xs.push_back(bx);
     }
     if (xs.empty()) return 2;
-    double mean = 0, sd = 0;
-    for (double v : xs) mean += v;
-    mean /= xs.size();
-    for (double v : xs) sd += (v - mean) * (v - mean);
-    sd = xs.size() > 1 ? std::sqrt(sd / (xs.size() - 1)) : 0;
+    const Stats1d st = stats1d(xs.data(), xs.size());
+    const double mean = st.mean, sd = st.sd;
     printf("== beam: x %.2f mm (sd %.2f over %zu rounds), part y %.1f\n", mean, sd, xs.size(), p0.y);
     if (sd > 0.5) printf("   sd > 0.5 mm: belt slipping, beam edge soft (laser spot half on the part?), or the part moved\n");
     if (mean > cfg.tracker.decide_x - 20)

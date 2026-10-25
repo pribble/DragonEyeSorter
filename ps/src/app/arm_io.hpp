@@ -21,6 +21,8 @@
 #include "bg_queue.hpp"
 #include "des_hw.h"
 namespace des {
+// joint names, one table for every arm page / print (the HMI page and des_tool used to keep a copy each)
+inline const char *const kArmJointName[6] = {"#1 底座", "#2 肩", "#3 肘", "#4 腕俯仰", "#5 腕旋", "#6 夹爪"};
 // One SYNC WRITE frame (0x83 -> 0x2A) to joints 0..n-1 (ids from cfg.joint[]), and the 0x38 read-back of all six.
 int sync_write(des_hw_t *hw, const ArmConfig &cfg, const uint16_t *pos, const uint16_t *ms, int n);
 int sync_write_all(des_hw_t *hw, const ArmConfig &cfg, const std::array<uint16_t, 6> &pos, uint16_t ms);

@@ -5,7 +5,8 @@
 namespace des {
 static constexpr int32_t kFar = 10000000;       // steps ahead for "run" (~207 m at 0.0207 mm/step)
 static constexpr int32_t kReextend = kFar / 2;  // re-extend the far target when this close
-BeltDriver::BeltDriver(des_hw_t *hw, const BeltConfig &cfg) : hw_(hw), cfg_(cfg)
+BeltDriver::BeltDriver(des_hw_t *hw, const BeltConfig &cfg)
+    : hw_(hw), cfg_(cfg), pos_(cfg.mm_per_step * (cfg.dir >= 0 ? 1 : -1))
 {
     sign_ = cfg.dir >= 0 ? 1 : -1;
     sps_ = cfg.run_speed / cfg.mm_per_step;
@@ -55,15 +56,7 @@ double BeltDriver::belt_mm() const
 {
     const int32_t pos = des_step_pos(hw_);
     std::lock_guard<std::mutex> lk(pos_m_);
-    if (!pos_init_) {   // first read adopts the raw PL position: the accumulator is anchored at the PL counter zero
-        pos_init_ = true;   // (a restart without an FPGA reconfiguration keeps the POS, so any other origin would
-        last_pos_ = pos;    // leave the picker and the camera side in frames that differ by a constant)
-        steps_ = pos;
-    } else {
-        steps_ += int32_t(uint32_t(pos) - uint32_t(last_pos_));   // unsigned difference of a monotonic counter: wrap-safe, no UB
-        last_pos_ = pos;
-    }
-    return double(steps_) * cfg_.mm_per_step * sign_;
+    return pos_.feed(pos);   // the accumulator is anchored at the PL counter zero (PosAccum)
 }
 double BeltDriver::speed_mm_s() const
 {

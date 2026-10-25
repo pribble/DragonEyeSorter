@@ -13,6 +13,27 @@
 #include "des_hw.h"
 #include "picker.hpp"
 namespace des {
+// 32-bit PL POS -> accumulated belt travel [mm]. Wrap-safe (the unsigned difference of a monotonic counter), mm_per_step
+// signed with the direction. Anchored at the PL counter zero: a restart without an FPGA reconfiguration keeps the raw
+// POS, so any other origin would leave the tracker and the picker in frames that differ by a constant — every chain in
+// one process (BeltDriver::belt_mm, live.cpp's frame-latch and display-side chains) shares this type for that reason.
+struct PosAccum {
+    explicit PosAccum(double mm_per_step_signed) : mmps_(mm_per_step_signed) {}
+    double feed(int32_t raw)   // advance the chain to a freshly latched / read position
+    {
+        if (!init_) { init_ = true; raw_ = raw; steps_ = raw; }   // anchored at the PL counter zero
+        else steps_ += int32_t(uint32_t(raw) - uint32_t(raw_));   // wrap-safe: no UB on the unsigned difference
+        raw_ = raw;
+        return double(steps_) * mmps_;
+    }
+    double peek(int32_t raw) const { return double(steps_ + int32_t(uint32_t(raw) - uint32_t(raw_))) * mmps_; }
+    double mm() const { return double(steps_) * mmps_; }
+private:
+    double mmps_;
+    int64_t steps_ = 0;
+    int32_t raw_ = 0;
+    bool init_ = false;
+};
 class BeltDriver {
 public:
     BeltDriver(des_hw_t *hw, const BeltConfig &cfg);
@@ -56,11 +77,9 @@ private:
     bool released_ = false;     // ENA off after standing still
     double enabled_at_ = 0;     // mono_s() of the last enable
     double still_since_ = -1;   // mono_s() since the belt stands still, -1 = moving / just enabled
-    // belt_mm accumulator: the cycle thread and the arm thread's intercept wait both read it
+    // belt_mm accumulator (PosAccum): the cycle thread and the arm thread's intercept wait both read it
     mutable std::mutex pos_m_;
-    mutable bool pos_init_ = false;
-    mutable int32_t last_pos_ = 0;
-    mutable int64_t steps_ = 0;
+    mutable PosAccum pos_;
 };
 // Picker::Input for one control cycle. belt != nullptr = production (run): brake distance from the PL's
 // des_step_brake_steps. belt == nullptr = dry mode (live without Runner, `live --belt`): brake distance from

@@ -11,7 +11,6 @@
 #include "util.hpp"
 namespace des {
 namespace {
-const char *kJointName[6] = {"#1 底座", "#2 肩", "#3 肘", "#4 腕俯仰", "#5 腕旋", "#6 夹爪"};
 // The HMI reads ArmManualView::msg as a UTF-8 C string: a message that does not fit in msg[] is cut at a character
 // boundary, never in the middle of a multi-byte sequence.
 void copy_utf8(const char *s, char *out, size_t cap)
@@ -265,7 +264,7 @@ void ArmManual::handle(const ArmRequest &r)
     if (r.kind == ArmRequest::SetHome) {
         std::array<int, 6> c; for (int k = 0; k < 6; k++) {
             if (!v.j[k].alive || v.j[k].pos < 0) {
-                say("%s 没有应答，不能设初始姿态", kJointName[k]); return;
+                say("%s 没有应答，不能设初始姿态", kArmJointName[k]); return;
             }
             c[k] = v.j[k].pos;
         }
@@ -330,7 +329,7 @@ void ArmManual::handle(const ArmRequest &r)
     const int tgt = v.j[k].target, rb = v.j[k].pos;
     const int base = tgt >= 0 && (rb < 0 || std::abs(tgt - rb) <= std::abs(int(3 * jc.counts_per_deg))) ? tgt : rb;
     if (base < 0) {
-        say("%s 还没读到位置，不能微调", kJointName[k]); return;
+        say("%s 还没读到位置，不能微调", kArmJointName[k]); return;
     }
     double deg = (base - jc.zero_count) / jc.counts_per_deg + r.dir * r.step_deg;
     deg = std::clamp(deg, double(jc.min_deg), double(jc.max_deg));
@@ -339,7 +338,7 @@ void ArmManual::handle(const ArmRequest &r)
     const int rc = sync_write_one(hw_, ac, k, uint16_t(target), ms);
     std::lock_guard<std::mutex> lk(m_);
     v_.j[k].target = target;
-    say_locked("%s → %d（%+.0f°，%.1f s）%s", kJointName[k], target, r.dir * r.step_deg, ms / 1000.0,
+    say_locked("%s → %d（%+.0f°，%.1f s）%s", kArmJointName[k], target, r.dir * r.step_deg, ms / 1000.0,
                rc == DES_OK ? "" : des_strerror(rc));
 }
 void ArmManual::loop()

@@ -16,7 +16,7 @@
 # 目录：src/ 我们自己的源码（产品运行时与运维工具共用，按角色分 app / hw / sched / measure / ui / vision）、
 #       tools/ 底层命令行（desreg / canplc）、tests/ 自动断言测试、kernel/ 驱动、vendor/ 非我们写的。
 #       两个入口：src/app/main.cpp -> des_app（产品运行时 run / live），
-#                 src/app/tool_main.cpp -> des_tool（人工运维 13 个模式）。
+#                 src/app/tool_main.cpp -> des_tool（人工运维 14 个模式）。
 #       上板脚本不在这里：唯一源是 ../scripts/deploy/out/（与部署清单同一份，见那里的 README）。
 #       **头文件平铺**（全仓库无跨目录 include），靠下面的 INC 解析 —— 各目录 basename 必须唯一。
 #
@@ -141,11 +141,12 @@ $(BUILD)/test_rs485: tests/test_rs485.cpp src/hw/modbus_rtu.cpp src/app/rs485_io
                      $(wildcard src/hw/modbus_rtu.hpp src/app/rs485_io.hpp) | $(OBJ) $(BUILD)
 	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_rs485.cpp src/hw/modbus_rtu.cpp src/app/rs485_io.cpp src/app/util.cpp $(OBJ)/des_hw.o -lpthread
 
-$(BUILD)/canplc: tools/canplc.c $(wildcard src/hw/can_link.c src/hw/can_link.h src/hw/can_proto.h) | $(BUILD)
-	$(CC) $(CFLAGS) $(INC) -o $@ tools/canplc.c $(wildcard src/hw/can_link.c)
+# can_link.h is header-only (static inline): no can_link.c exists
+$(BUILD)/canplc: tools/canplc.c src/hw/can_link.h src/hw/can_proto.h | $(BUILD)
+	$(CC) $(CFLAGS) $(INC) -o $@ tools/canplc.c
 
-$(BUILD)/test_can: tests/test_can.c $(wildcard src/hw/can_link.c src/hw/can_link.h src/hw/can_proto.h) | $(BUILD)
-	$(CC) $(CFLAGS) $(INC) -o $@ tests/test_can.c $(wildcard src/hw/can_link.c)
+$(BUILD)/test_can: tests/test_can.c src/hw/can_link.h src/hw/can_proto.h | $(BUILD)
+	$(CC) $(CFLAGS) $(INC) -o $@ tests/test_can.c
 
 # servo bus: idle time a servo needs after its reply before the next frame (board, servos wired; stop des_app)
 $(BUILD)/test_servo_gap: tests/test_servo_gap.c $(OBJ)/des_hw.o | $(OBJ) $(BUILD)
@@ -156,7 +157,7 @@ $(BUILD)/test_belt_hil: tests/test_belt_hil.cpp src/app/belt_ctl.cpp src/app/bel
 	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_belt_hil.cpp src/app/belt_ctl.cpp src/app/util.cpp $(SCHED_SRC) $(OBJ)/des_hw.o -lpthread
 
 # check-sdk / check-board are order-only (after |): they run first but, being phony, must not force a relink
-# 产品运行时（run / live）与运维工具（13 个模式）共用同一批对象，只有入口不同；des_tool 额外链标定 / 测量报告对象。
+# 产品运行时（run / live）与运维工具（14 个模式）共用同一批对象，只有入口不同；des_tool 额外链标定 / 测量报告对象。
 $(BUILD)/des_app: $(APP_MAIN_OBJ) $(APP_OBJ) | check-sdk check-board $(BUILD)
 	$(CXX) $(CXXFLAGS) $(INC) $(SDK_INC) \
 	    -o $@ $(APP_MAIN_OBJ) $(APP_OBJ) \

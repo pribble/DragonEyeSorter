@@ -233,22 +233,10 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
     cv::Mat panel;
     double last_panel = 0;
     // PL POS is a 32-bit step counter (wraps after ~10 days of belt motion): the PS keeps the accumulated travel.
-    // Frame latches chain wrap-safely here; "now" reads (beam / retire / dry-run picker input) are referred to the
-    // current frame's end latch. All chains (this one, the display-side one and BeltDriver::belt_mm) anchor at the
-    // PL counter zero: restarts without an FPGA reconfiguration keep the raw POS, so any other origin would leave
-    // the tracker and the picker in frames that differ by a constant.
-    int64_t acc_steps = 0;
-    int32_t acc_raw = 0;
-    bool acc_init = false;
-    auto feed_pos = [&](int32_t raw) {   // accumulated belt mm at a frame-latched position
-        if (!acc_init) { acc_init = true; acc_raw = raw; acc_steps = raw; }   // anchored at the PL counter zero
-        else acc_steps += int32_t(uint32_t(raw) - uint32_t(acc_raw));   // wrap-safe: unsigned difference of a monotonic counter
-        acc_raw = raw;
-        return double(acc_steps) * mmps;
-    };
-    auto now_mm = [&](int32_t raw) {     // accumulated belt mm at a register read after this frame's end latch
-        return (acc_steps + int32_t(uint32_t(raw) - uint32_t(acc_raw))) * mmps;
-    };
+    // Frame latches chain wrap-safely here (PosAccum, belt_ctl.hpp); "now" reads (beam / retire / dry-run picker
+    // input) are referred to the current frame's end latch via peek(). Same anchor as BeltDriver::belt_mm: the PL
+    // counter zero — restarts without an FPGA reconfiguration keep the raw POS.
+    PosAccum accum(mmps);
     for (;;) {
         CapturedFrame f;
         uint64_t seq;
@@ -266,7 +254,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
         auto s = acquire_snapshot();
         FrameObs obs;
         obs.frame = f.pl_frame;
-        const double b0 = feed_pos(f.step_pos), b1 = feed_pos(f.step_pos_end);
+        const double b0 = accum.feed(f.step_pos), b1 = accum.feed(f.step_pos_end);
         obs.belt_mm = 0.5 * (b0 + b1);
         LocateTiming tm;
         obs.dets = loc.run(f.bgra, f.width, f.height, f.stride, cfg.px_to_part, &tm);   // where parts stand
@@ -276,11 +264,11 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
         for (Detection &d : obs.dets) d.p.x -= float((b1 - b0) * (d.img_v - 0.5f));   // rolling-shutter row timing
         tr.update(obs);
         des_io_t io{};   // field inputs once per cycle: the beam here, the encoder speed for the HMI below
-        const bool io_ok = hw.version >= DES_VERSION_IO && des_io_read(&hw, &io) == DES_OK;
+        const bool io_ok = des_io_read(&hw, &io) == DES_OK;   // < DES_VERSION_IO bitstreams: DES_E_ARG -> io_ok false
         if (beam && io_ok) {   // before the records below: a part decided this cycle carries its beam result
             beam_out.clear();
-            beam->poll(io.ir1_cnt, now_mm(io.ir1_pos), int32_t(io.ir1_enc), beam_out);
-            beam->update(tr.tracks(), now_mm(des_step_pos(&hw)), beam_out);
+            beam->poll(io.ir1_cnt, accum.peek(io.ir1_pos), int32_t(io.ir1_enc), beam_out);
+            beam->update(tr.tracks(), accum.peek(des_step_pos(&hw)), beam_out);
             const double ts = plog.now_s();
             for (const BeamResult &r : beam_out) {
                 plog.add_beam(r, ts);
@@ -313,7 +301,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
             plan_on = runner->state() == CANP_ST_RUN; out.belt = runner->belt_plan();   // the plan Runner applied
         } else {
             Picker::Input in = picker_input(nullptr, &hw, cfg.belt);
-            in.belt_mm = now_mm(des_step_pos(&hw));   // the accumulated frame (same origin as obs.belt_mm)
+            in.belt_mm = accum.peek(des_step_pos(&hw));   // the accumulated frame (same origin as obs.belt_mm)
             const Picker::Output &po = pk.tick(tr, in);   // ref into the picker: no per-cycle flaps copy
             if (po.have_job) pk.job_done(tr, po.job.track_id, true);   // dry: pretend the pick succeeded
             out.belt = po.belt;
@@ -345,7 +333,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
                 if (t.disp == Disposition::Recheck) rec.dest = cfg.outlets.empty() ? "recheck" : cfg.outlets[0].c_str();
                 else if (t.dest >= 0 && size_t(t.dest) < names.size()) rec.dest = names[size_t(t.dest)].c_str();
                 else rec.dest = dest_fallback(t.dest);
-                csv_sanitize(t.why, rec.why, sizeof rec.why);
+                snprintf(rec.why, sizeof rec.why, "%s", t.why);   // display copy; the CSV writer sanitizes at its edge
                 rec.meas = t.meas;
                 rec.s = t.s; rec.y = t.y; rec.axis = t.axis; rec.len = t.len; rec.wid = t.wid;
                 auto it = crops.find(t.id);
@@ -486,7 +474,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
         s->logged = plog.written; s->log_images = plog.images; s->plan = out.belt; s->plan_on = plan_on; s->st = tr.stats;
         s->processed = processed; s->stale = stale;
         s->beam = !beam ? -1 : io_ok && (io.status & DES_IO_ST_IR1_BLOCKED) ? 1 : 0;
-        tr.retire(now_mm(des_step_pos(&hw)));
+        tr.retire(accum.peek(des_step_pos(&hw)));
         const double end = mono_s();
         s->work_ms = (end - t0) * 1e3;
         prev_work_ms = s->work_ms;
@@ -646,16 +634,8 @@ int run_live(des_hw_t &hw, const AppConfig &cfg, CameraRig &cam, const LiveOptio
     CapturedFrame f;
     std::shared_ptr<const Snapshot> snap;
     BufState bufs[2];   // per display buffer
-    // overlay belt position: the same wrap-safe chaining as the worker's tracker feed (anchored at the PL counter zero)
-    int64_t disp_steps = 0;
-    int32_t disp_raw = 0;
-    bool disp_init = false;
-    auto disp_feed = [&](int32_t raw) {
-        if (!disp_init) { disp_init = true; disp_raw = raw; disp_steps = raw; }
-        else disp_steps += int32_t(uint32_t(raw) - uint32_t(disp_raw));
-        disp_raw = raw;
-        return double(disp_steps) * mmps;
-    };
+    // overlay belt position: the same wrap-safe chaining as the worker's tracker feed (PosAccum, same PL-zero anchor)
+    PosAccum disp(mmps);
     while (!stop && (opt.seconds <= 0 || mono_s() - t_start < opt.seconds)) {
         err = cam.next(f, true);
         if (!err.empty()) {
@@ -674,7 +654,7 @@ int run_live(des_hw_t &hw, const AppConfig &cfg, CameraRig &cam, const LiveOptio
         }
         if (!no_worker) sh.cv.notify_one();
         const double t0 = mono_s();
-        const double belt_frame = 0.5 * (disp_feed(f.step_pos) + disp_feed(f.step_pos_end));
+        const double belt_frame = 0.5 * (disp.feed(f.step_pos) + disp.feed(f.step_pos_end));
         cv::Mat src(f.height, f.width, CV_8UC4, const_cast<uint8_t *>(f.bgra));
         cv::Mat dst = hdmi.back();
         // camera picture scaled to 3/4 into its rectangle (aspect kept, kCropY rows cut at top and bottom)
