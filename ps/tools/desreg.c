@@ -7,6 +7,8 @@
  *   ping <id> | sread <id> <addr> <n> | swrite <id> <addr> <b..> | sync <pos> <ms> <id...>   servo bus (READ 0x38 2 = pos)
  *   svsync [n]                   read-back checked SYNC WRITE of servos 1..6 to where they are (nothing moves), n times:
  *                                re-sends / unconfirmed / read retries (bus robustness under stepper noise)
+ *   sstress [n]                  n rounds of position reads of servos 1..6 through des_servo_read (with its retries):
+ *                                reads that still failed, retries used (sread above is one raw attempt, no retry)
  *   env DES_SB_RETRIES=<n>       read retries (default 2; 0 = raw single attempts, for error-rate measurements)
  *   step status | vel <steps/s> [acc] | move <target> [vmax] [acc] | stop | halt | off | zero
  *   vis [mode [thr] [edge_thr] [full|x0 y0 x1 y1]]   PL vision statistics / settings (v6; modes 0 camera .. 5 edges)
@@ -344,6 +346,19 @@ int main(int argc, char **argv)
         b[2] = 0x03;
         for (int i = 0; i < np; i++) b[3 + i] = (uint8_t)strtoul(argv[3 + i], NULL, 0);
         rc = sb_print(b, 3 + np, b[0] != DES_SERVO_BROADCAST, NULL);
+    } else if (!strcmp(cmd, "sstress")) {
+        const int rounds = argc > 2 ? atoi(argv[2]) : 50;
+        int ok = 0, bad = 0;
+        for (int k = 0; k < rounds; k++)
+            for (uint8_t id = 1; id <= 6; id++) {
+                uint16_t v;
+                if (des_servo_read_u16(&hw, id, 0x38, &v) == DES_OK) ok++;
+                else bad++;
+            }
+        des_sb_stats_t st;
+        des_sb_stats(&st);
+        printf("sstress: %d reads, ok %d, failed %d | retries used %u\n", ok + bad, ok, bad, st.retries);
+        rc = bad ? 1 : 0;
     } else if (!strcmp(cmd, "svsync")) {
         /* goal = the position each servo reports, read twice and only used when both agree: nothing moves */
         const int rounds = argc > 2 ? atoi(argv[2]) : 50;
