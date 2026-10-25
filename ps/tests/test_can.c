@@ -53,6 +53,26 @@ static void test_codec(void)
     CHECK(f.id == CANP_ID_SPEED && canp_get16(f.data) == 877 && f.data[2] == 9, "speed encoding (0.1 mm/s, LE)");
     f = canp_ack(CANP_ID_SPEED, 9, CANP_ACK_OK);
     CHECK(f.data[0] == 0x01 && f.data[1] == 9 && f.data[2] == 0, "ack carries the command id low byte and seq");
+    /* TIME frame: unix seconds u32 little-endian (two u16) + ms u16, decoded by the board (runner.cpp handle_can) */
+    canp_frame_t t = {6, {0}, CANP_ID_TIME};
+    canp_put16(t.data, 0xB540);        /* 1761326400 = 0x68FBB540 */
+    canp_put16(t.data + 2, 0x68FB);
+    canp_put16(t.data + 4, 123);
+    CHECK(canp_time_ms(&t) == 1761326400LL * 1000 + 123, "TIME decode %lld", (long long)canp_time_ms(&t));
+    /* ALARM frame: code, severity, detail u16 (little-endian) */
+    f = canp_alarm(1, 2, 0x1234);
+    CHECK(f.id == CANP_ID_ALARM && f.len == 4 && f.data[0] == 1 && f.data[1] == 2 && f.data[2] == 0x34 &&
+              f.data[3] == 0x12, "alarm frame layout");
+    /* LAMP frame: mode, lamps, seq */
+    f = canp_lamp(1, 0x0F, 6);
+    CHECK(f.id == CANP_ID_LAMP && f.len == 3 && f.data[0] == 1 && f.data[1] == 0x0F && f.data[2] == 6,
+          "lamp frame layout");
+    /* u16 wire helpers at the boundaries */
+    uint8_t b2[2];
+    canp_put16(b2, 0);
+    CHECK(canp_get16(b2) == 0, "u16 low boundary");
+    canp_put16(b2, 0xFFFF);
+    CHECK(canp_get16(b2) == 0xFFFF, "u16 high boundary");
 }
 int main(int argc, char **argv)
 {
@@ -145,11 +165,62 @@ int main(int argc, char **argv)
         }
     }
     CHECK(st_ok == 100, "status stream: %d / 100", st_ok);
+    /* 4) filtered frames: EFF / RTR frames on the wire are skipped by can_recv (the app only ever marshals plain
+     * 11-bit data frames); the first frame DELIVERED behind them must be the plain one. Sent with a raw socket
+     * (can_marshal only builds plain frames). */
+    int raw = socket(PF_CAN, SOCK_RAW, CAN_RAW);
+    if (raw >= 0) {
+        struct ifreq ifr;
+        memset(&ifr, 0, sizeof ifr);
+        strncpy(ifr.ifr_name, ifn, IFNAMSIZ - 1);
+        if (ioctl(raw, SIOCGIFINDEX, &ifr) == 0) {
+            struct sockaddr_can a;
+            memset(&a, 0, sizeof a);
+            a.can_family = AF_CAN;
+            a.can_ifindex = ifr.ifr_ifindex;
+            if (bind(raw, (struct sockaddr *)&a, sizeof a) == 0) {
+                struct can_frame noise;
+                memset(&noise, 0, sizeof noise);
+                noise.can_id = CANP_ID_CMD | CAN_EFF_FLAG;   /* 29-bit id: not our plain 11-bit traffic */
+                noise.can_dlc = 2;
+                if (write(raw, &noise, sizeof noise) >= 0) { }   /* noise: delivery not guaranteed */
+                noise.can_id = CANP_ID_CMD | CAN_RTR_FLAG;   /* remote request: no payload */
+                if (write(raw, &noise, sizeof noise) >= 0) { }   /* noise: delivery not guaranteed */
+                canp_frame_t hb = canp_plc_hb(7);
+                can_send(plc, &hb);
+                canp_frame_t got;
+                int delivered = 0;
+                double t_end = now_us() + 500 * 1000.0;
+                while (now_us() < t_end)
+                    if (can_recv(des, &got, 50) == 1) { delivered = 1; break; }
+                CHECK(delivered == 1 && got.id == CANP_ID_PLC_HB && got.len == 1 && got.data[0] == 7,
+                      "EFF / RTR skipped: first delivered is the plain HB (delivered %d id %03X len %d)",
+                      delivered, delivered ? got.id : 0, delivered ? got.len : -1);
+                /* over-long frame: can_marshal clamps the dlc to 8 (classic CAN), the payload head goes through */
+                canp_frame_t over = {10, {9}, CANP_ID_PLC_HB};
+                CHECK(can_send(plc, &over) == 0, "over-long frame is clamped and sent, not rejected");
+                int got_over = 0;
+                double t2 = now_us() + 300 * 1000.0;
+                canp_frame_t got2;
+                while (now_us() < t2)
+                    if (can_recv(des, &got2, 50) == 1 && got2.id == CANP_ID_PLC_HB) { got_over = 1; break; }
+                CHECK(got_over && got2.len == 8 && got2.data[0] == 9,
+                      "dlc clamp: receiver sees len 8 with the payload head (delivered %d len %d)",
+                      got_over, got_over ? got2.len : -1);
+            } else {
+                printf("filter test: bind failed, skipped");
+            }
+        }
+        close(raw);
+    }
     long tx_err = can_stat(ifn, "tx_errors") - tx_err0, rx_err = can_stat(ifn, "rx_errors") - rx_err0;
     printf("interface error counters during the test: tx %ld, rx %ld\n", tx_err, rx_err);
     CHECK(tx_err == 0 && rx_err == 0, "bus errors tx %ld rx %ld", tx_err, rx_err);
     can_close(plc);
     can_close(des);
+    /* 5) missing interface: can_open / can_stat fail cleanly (the app reports and carries on) */
+    CHECK(can_open("nosuchif") < 0, "can_open on a missing interface fails");
+    CHECK(can_stat("nosuchif", "tx_errors") == -1, "can_stat on a missing interface reads -1");
     printf("%d passed, %d failed\n", g_pass, g_fail);
     return g_fail;
 }

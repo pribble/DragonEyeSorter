@@ -130,6 +130,13 @@ void test_lamps()
     c.lamp_coil[0] = 3; c.lamp_coil[1] = 2; c.lamp_coil[2] = 1; c.lamp_coil[3] = -1;   // wired the other way round, no buzzer
     CHECK(lamp_to_coils(LAMP_GREEN | LAMP_RED | LAMP_BUZZER, c) == 0xA, "lamps -> relays by lamp_coil (%X)", lamp_to_coils(LAMP_GREEN | LAMP_RED | LAMP_BUZZER, c));
     CHECK(coils_to_lamps(0xA, c) == (LAMP_GREEN | LAMP_RED), "relays -> lamps");
+    Rs485Config bad = c;
+    bad.lamp_coil[0] = -1;          // unwired lamp: its bit is ignored, not shifted into oblivion
+    bad.lamp_coil[1] = c.coils;     // beyond the module's coils: ignored too
+    CHECK(lamp_to_coils(LAMP_GREEN | LAMP_YELLOW, bad) == 0, "unwired / out-of-range coils ignored (%X)",
+          lamp_to_coils(LAMP_GREEN | LAMP_YELLOW, bad));
+    CHECK(coils_to_lamps(0xFFFFFFFFu, bad) == LAMP_RED,
+          "read-back clamps to the wired lamps (%X)", coils_to_lamps(0xFFFFFFFFu, bad));
 }
 bool wait_for(const std::function<bool()> &f, double s)
 {

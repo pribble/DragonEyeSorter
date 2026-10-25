@@ -119,13 +119,24 @@ int main()
     CHECK(f.size() == 9 && uint8_t(f[7]) == 0x81 && uint8_t(f[8]) == 1, "exception 01 (FC 01 not supported)");
     send(fd, mbap(13, std::string("\x04", 1) + u16(MB_N_IR - 1) + u16(2)).data(), 12, 0);
     f = recv_frame(fd);
-    CHECK(f.size() == 9 && uint8_t(f[7]) == 0x84 && uint8_t(f[8]) == 2, "exception 02 (past the table)");
+    CHECK(f.size() == 9 && uint8_t(f[7]) == 0x84 && uint8_t(f[8]) == 2, "exception 02 (FC04 past the table)");
+    send(fd, mbap(19, std::string("\03", 1) + u16(MB_N_HR) + u16(1)).data(), 12, 0);
+    f = recv_frame(fd);
+    CHECK(f.size() == 9 && uint8_t(f[7]) == 0x83 && uint8_t(f[8]) == 2, "exception 02 (FC03 past the table)");
     send(fd, mbap(14, std::string("\x03", 1) + u16(0) + u16(0)).data(), 12, 0);
     f = recv_frame(fd);
     CHECK(f.size() == 9 && uint8_t(f[7]) == 0x83 && uint8_t(f[8]) == 3, "exception 03 (quantity 0)");
     send(fd, mbap(15, std::string("\x06", 1) + u16(MB_N_HR) + u16(1)).data(), 12, 0);
     f = recv_frame(fd);
     CHECK(f.size() == 9 && uint8_t(f[7]) == 0x86 && uint8_t(f[8]) == 2, "exception 02 (FC06 address)");
+    std::string w16x = std::string("\x10", 1) + u16(MB_N_HR) + u16(1) + std::string(1, '\x02') + u16(0);
+    send(fd, mbap(16, w16x).data(), 7 + w16x.size(), 0);
+    f = recv_frame(fd);
+    CHECK(f.size() == 9 && uint8_t(f[7]) == 0x90 && uint8_t(f[8]) == 2, "exception 02 (FC16 past the table)");
+    std::string w16q0 = std::string("\x10", 1) + u16(0) + u16(0);
+    send(fd, mbap(17, w16q0).data(), 7 + w16q0.size(), 0);
+    f = recv_frame(fd);
+    CHECK(f.size() == 9 && uint8_t(f[7]) == 0x90 && uint8_t(f[8]) == 3, "exception 03 (FC16 quantity 0)");
     CHECK(mb.take_writes().empty(), "rejected writes not queued");
     // a request split over two TCP segments, then two requests in one segment
     std::string r1 = mbap(20, std::string("\x04", 1) + u16(0) + u16(1));
@@ -145,9 +156,37 @@ int main()
     send(fd2, mbap(30, std::string("\x04", 1) + u16(0) + u16(2)).data(), 12, 0);
     f = recv_frame(fd2);
     CHECK(f.size() == 13 && reg(f, 0) == 1, "second client");
-    CHECK(mb.requests() == 13, "request count %llu", (unsigned long long)mb.requests());
+    CHECK(mb.requests() == 16, "request count %llu", (unsigned long long)mb.requests());
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
     CHECK(mb.clients() == 2, "clients %d", mb.clients());
+    /* client cap (kMaxClients = 4): three more connect, the 5th is accepted and immediately closed */
+    int more[3] = {-1, -1, -1};
+    for (int i = 0; i < 3; i++) more[i] = connect_to(port);
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    CHECK(mb.clients() == 4, "4 clients served (%d)", mb.clients());
+    int c5 = connect_to(port);   // the 5th: the server accepts and closes it at once
+    char drop;
+    pollfd p5{c5, POLLIN, 0};
+    const bool closed5 = poll(&p5, 1, 1000) == 1 && recv(c5, &drop, 1, MSG_DONTWAIT) == 0;
+    CHECK(closed5, "the 5th client is closed by the server (over the cap)");
+    for (int i = 0; i < 3; i++) close(more[i]);
+    close(c5);
+    // bounded take_writes: cap limits the batch, the rest stays queued in order; cap 0 takes nothing
+    for (uint16_t v : {1, 2, 3, 4}) {
+        std::string wb = std::string("\06", 1) + u16(MB_HR_CMD) + u16(v);
+        send(fd, mbap(50 + v, wb).data(), 12, 0);
+        recv_frame(fd);
+    }
+    ModbusTcp::Write bw[2];
+    CHECK(mb.take_writes(bw, 2) == 2 && bw[0].value == 1 && bw[1].value == 2, "bounded take: 2 of 4 in order");
+    CHECK(mb.take_writes(bw, 2) == 2 && bw[0].value == 3 && bw[1].value == 4, "bounded take: the rest in order");
+    CHECK(mb.take_writes(bw, 2) == 0, "bounded take: drained");
+    std::string wb5 = std::string("\06", 1) + u16(MB_HR_CMD) + u16(5);
+    send(fd, mbap(60, wb5).data(), 12, 0);
+    recv_frame(fd);
+    CHECK(mb.take_writes(bw, 0) == 0, "cap 0 takes nothing");
+    w = mb.take_writes();
+    CHECK(w.size() == 1 && w[0].value == 5, "cap 0 left the write queued");
     // not Modbus (protocol id != 0): connection closed
     std::string bad = mbap(40, std::string("\x04", 1) + u16(0) + u16(1));
     bad[3] = 1;

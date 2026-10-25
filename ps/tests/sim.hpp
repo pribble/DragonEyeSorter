@@ -24,8 +24,9 @@ struct SimPart {
     bool picked = false;
 };
 
-// TrackerConfig of the tests: the 4 classes of models/label_list.json (label_list is the single source of the class
-// table; load_config builds tracker.rules from it the same way).
+// TrackerConfig of the tests: the 4-class synthetic model of 2026-10-20 (frozen fixture — models/label_list.json has
+// since moved to 5 real classes; load_config builds tracker.rules from label_list the same way, the tests only need
+// a fixed small table).
 inline TrackerConfig tracker_cfg()
 {
     TrackerConfig c;

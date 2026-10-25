@@ -27,7 +27,7 @@ int main(int argc, char **argv)
     }
     setvbuf(stdout, nullptr, _IONBF, 0);   // a crash inside ArmNN must not swallow the log
     const std::string dir = argv[2];
-    const int repeats = argc > 3 ? atoi(argv[3]) : 100;
+    const int repeats = argc > 3 ? std::max(1, atoi(argv[3])) : 100;
     NpuClassifier npu;
     auto t0 = std::chrono::steady_clock::now();
     std::string err = npu.load(argv[1]);
@@ -44,9 +44,14 @@ int main(int argc, char **argv)
         if (!f) { fprintf(stderr, "no %s/refs.json\n", dir.c_str()); return 1; }
         f >> j;
     }
-    int n = 0, ok_label = 0, ok_fp32 = 0, ok_u8 = 0;
+    int n = 0, ok_label = 0, ok_fp32 = 0, ok_u8 = 0, pc_label = 0;
     double worst_u8 = 0;
     cv::Mat first;
+    auto argmax = [](const nlohmann::json &v) {
+        int b = 0;
+        for (size_t i = 1; i < v.size(); i++) if (v[i].get<float>() > v[b].get<float>()) b = int(i);
+        return b;
+    };
     for (auto it = j["refs"].begin(); it != j["refs"].end(); ++it) {
         cv::Mat img = cv::imread(dir + "/" + it.key(), cv::IMREAD_COLOR);
         if (img.empty()) { fprintf(stderr, "cannot read %s\n", it.key().c_str()); continue; }
@@ -54,11 +59,6 @@ int main(int argc, char **argv)
         std::vector<float> p = npu.classify(img);
         if (p.empty()) { fprintf(stderr, "inference failed on %s\n", it.key().c_str()); return 1; }
         const int top = int(std::max_element(p.begin(), p.end()) - p.begin());
-        auto argmax = [](const nlohmann::json &v) {
-            int b = 0;
-            for (size_t i = 1; i < v.size(); i++) if (v[i].get<float>() > v[b].get<float>()) b = int(i);
-            return b;
-        };
         const auto &r = it.value();
         double d = 0;
         for (size_t i = 0; i < npu.last_logits.size(); i++)
@@ -67,6 +67,7 @@ int main(int argc, char **argv)
         n++;
         ok_label += top == r["label"].get<int>();
         ok_fp32 += top == argmax(r["fp32"]);
+        pc_label += argmax(r["fp32"]) == r["label"].get<int>();   // the PC fp32 model's own accuracy on the refs
         nlohmann::json u8c = r["uint8"];   // raw PC uint8 logits + the model's logit_offset (what the board adds)
         for (size_t i = 0; i < u8c.size() && i < npu.logit_offset().size(); i++)
             u8c[i] = u8c[i].get<float>() + npu.logit_offset()[i];
@@ -142,6 +143,13 @@ int main(int argc, char **argv)
     int fail = 0;
     if (n == 0) fail++;
     if (ok_u8 < n * 0.95) { printf("FAIL: NPU disagrees with the PC uint8 model on %d of %d\n", n - ok_u8, n); fail++; }
+    // label gate: the numeric check moves with the model, so a model / label_list mismatch passes it silently —
+    // the NPU must stay within ~2% of what the PC fp32 model scores on the same reference crops
+    if (n > 0 && pc_label - ok_label > int(0.02 * n) + 1) {
+        printf("FAIL: NPU label accuracy %d/%d is > 2%% below the PC fp32 model on the same refs (%d/%d)\n",
+               ok_label, n, pc_label, n);
+        fail++;
+    }
     printf("%s\n", fail ? "FAILED" : "PASSED");
     return fail;
 }

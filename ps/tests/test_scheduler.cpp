@@ -134,6 +134,132 @@ static void check_size_cases(const TrackerConfig &cfg, const std::vector<SizeCas
     }
 }
 
+// association and lifecycle edges: the 2-D association gate (a second part beside an existing track), locator-reported
+// merged blobs, a tracked part lost out of view, retirement past the belt end
+static void test_tracker_edges()
+{
+    std::mt19937 rng(9);
+    // gate isolation test: two detections at the same s, 40 mm apart laterally (10 mm of real gap — the locator can
+    // tell them apart, unlike touching parts): gate_y = 12 keeps them as two tracks, each in its own lane
+    Tracker tr(tracker_cfg());
+    const std::vector<SimPart> twin = {{-40, -20, 30, 30, 0.f, 0}, {-40, 20, 30, 30, 0.f, 1}};
+    for (uint32_t f = 0; f < 400; f++) tr.update(observe(twin, f, f, rng));   // through decide_x, both decided
+    const Track *a = nullptr, *b = nullptr;
+    for (const Track &t : tr.tracks()) {
+        if (t.state == TrackState::Done) continue;
+        (t.y < 0 ? a : b) = &t;
+    }
+    CHECK(a && b, "two parts side by side: two tracks (a %d b %d)", a != nullptr, b != nullptr);
+    if (a && b) {
+        CHECK(std::fabs(a->y + 20) < 1.f && std::fabs(b->y - 20) < 1.f, "each track keeps its own lane (%.1f %.1f)",
+              a->y, b->y);
+        CHECK(a->disp == Disposition::Pick && b->disp == Disposition::Flap, "classes not swapped (%s %s)",
+              to_str(a->disp), to_str(b->disp));
+    }
+
+    // the lateral gate matters when the neighbour is alone: A is tracked, its detections stop (locator glitch), B
+    // takes over the same belt coordinate one lane over. B must get its OWN track, not fuse into A's.
+    Tracker th(tracker_cfg());
+    std::vector<SimPart> handoff = {{-40, -20, 30, 30, 0.f, 0}, {-40, 20, 30, 30, 0.f, 1}};
+    for (uint32_t f = 0; f < 400; f++) {
+        handoff[0].gone = f >= 100;   // A visible 0..99 (well past min_hits: Tracking), then gone -> max_miss branch
+        handoff[1].gone = f < 100;    // B appears at the same s, one lane over
+        th.update(observe(handoff, f, f, rng));
+    }
+    const Track *fh = nullptr, *fa = nullptr;
+    for (const Track &t : th.tracks()) {
+        if (t.y < 0) fa = &t;
+        else if (t.disp == Disposition::Flap) fh = &t;
+    }
+    CHECK(fa && fa->state == TrackState::Done && !strcmp(fa->why, "lost in view"),
+          "A's track was lost after its detections stopped (%s %s)", fa ? to_str(fa->state) : "gone",
+          fa ? fa->why : "");
+    CHECK(th.stats.lost == 1, "handoff lost tracks %llu", (unsigned long long)th.stats.lost);
+    CHECK(fh && fh->y > 0 && fh->disp == Disposition::Flap,
+          "B decided flap in its own lane (%.1f %s)", fh ? fh->y : -99.f, fh ? to_str(fh->disp) : "none");
+    CHECK(fh && fa && fh->id != fa->id, "B is not A's fused track (%d)", fh ? fh->id : -1);
+
+    // a blob the locator flags as several touching parts decides Recheck even for a pickable class
+    Tracker tm(tracker_cfg());
+    const std::vector<SimPart> one = {{-40, 0, 30, 30, 0.f, 0}};
+    for (uint32_t f = 0; f < 400; f++) {
+        FrameObs o = observe(one, f, f, rng);
+        if (const float x = float(one[0].s + f); x > 140 && x < 170)   // mid-view: the locator reports it merged
+            for (Detection &d : o.dets) d.merged = true;
+        tm.update(o);
+    }
+    const Track *mg = nullptr;
+    for (const Track &t : tm.tracks()) if (std::fabs(t.s - one[0].s) < 5) mg = &t;
+    CHECK(mg && mg->disp == Disposition::Recheck && !strcmp(mg->why, "merged blob"),
+          "merged blob -> %s (%s)", mg ? to_str(mg->disp) : "?", mg ? mg->why : "?");
+
+    // a tracked part the locator stops seeing while fully in view is lost after max_miss frames (recheck, dropped)
+    Tracker tl(tracker_cfg());
+    const std::vector<SimPart> dropout = {{-40, 0, 30, 30, 0.f, 0}};
+    for (uint32_t f = 0; f < 200; f++) tl.update(observe(dropout, f, f, rng));   // tracked up to x 160
+    const Track *lt = nullptr;
+    for (const Track &t : tl.tracks()) if (std::fabs(t.s - dropout[0].s) < 5) lt = &t;
+    CHECK(lt && lt->state == TrackState::Tracking, "tracked before the dropout (%s)", lt ? to_str(lt->state) : "gone");
+    for (uint32_t f = 200; f < 260; f++) tl.update(observe({}, f, f, rng));      // never seen again
+    lt = nullptr;
+    for (const Track &t : tl.tracks()) if (std::fabs(t.s - dropout[0].s) < 5) lt = &t;
+    CHECK(tl.stats.lost == 1, "lost tracks %llu", (unsigned long long)tl.stats.lost);
+    CHECK(lt && lt->state == TrackState::Done && !strcmp(lt->why, "lost in view"),
+          "the lost track is done (%s %s)", lt ? to_str(lt->state) : "gone", lt ? lt->why : "");
+    tl.retire(220.f);   // a Done track leaves the table on the next retire pass (a Done track is not x-addressed)
+    lt = nullptr;
+    for (const Track &t : tl.tracks()) if (std::fabs(t.s - dropout[0].s) < 5) lt = &t;
+    CHECK(lt == nullptr, "retire removes the done track");
+
+    // past the belt end (tail_x + 20) a decided track is retired even without a picker ever running
+    Tracker tr2(tracker_cfg());
+    const std::vector<SimPart> tail = {{-40, 0, 30, 30, 0.f, 0}};
+    for (uint32_t f = 0; f < 650; f++) {   // x = -40 + f: still before tail_x + 20 = 620 at f = 650
+        tr2.update(observe(tail, f, f, rng));
+        tr2.retire(f);
+    }
+    const Track *st = nullptr;
+    for (const Track &t : tr2.tracks()) if (std::fabs(t.s - tail[0].s) < 5) st = &t;
+    CHECK(st && st->state == TrackState::Decided, "still tracked just before the tail (%s)",
+          st ? to_str(st->state) : "gone");
+    for (uint32_t f = 650; f < 700; f++) {
+        tr2.update(observe(tail, f, f, rng));
+        tr2.retire(f);
+    }
+    int left = 0;
+    for (const Track &t : tr2.tracks()) if (std::fabs(t.s - tail[0].s) < 5) left++;
+    CHECK(left == 0, "decided track retired past the belt end (%d left)", left);
+
+    // a cut blob at the FOV entry edge is presence only: it never spawns a track, and it keeps an existing
+    // track alive (belt reversed back across the edge) without corrupting its geometry
+    Tracker tps(tracker_cfg());
+    const std::vector<SimPart> entering = {{4, 0, 30, 30, 0.f, 0}};   // half-cut through B = 10 (x - half < 0)
+    for (uint32_t f = 0; f <= 10; f++) tps.update(observe(entering, f, f, rng));
+    CHECK(tps.stats.created == 0, "a cut blob does not spawn a track (%llu created)",
+          (unsigned long long)tps.stats.created);
+    Tracker tkp(tracker_cfg());
+    std::vector<SimPart> swing = {{25, 0, 30, 30, 0.f, 0}};
+    double B = 0;
+    uint32_t f = 0;
+    for (; B < 40; f++, B += 2.0) tkp.update(observe(swing, B, f, rng));      // tracked, fully in view
+    for (; B > -15; f++, B -= 2.0) tkp.update(observe(swing, B, f, rng));     // belt reverses back across the edge
+    const Track *kt = nullptr;
+    for (const Track &t : tkp.tracks()) if (std::fabs(t.s - swing[0].s) < 5) kt = &t;
+    CHECK(kt && kt->state == TrackState::Tracking && tkp.stats.created == 1,
+          "the reversed part is still one live track (%llu created)", (unsigned long long)tkp.stats.created);
+    CHECK(kt && std::fabs(kt->s - swing[0].s) < 1.f, "cut blobs never corrupt the fused s (%.2f)",
+          kt ? kt->s : -99.f);
+
+    // set_why is a bounded copy into a 40-byte buffer: the tail is dropped, always NUL-terminated
+    Track tw;
+    const char *long_why =
+        "0123456789012345678901234567890123456789012345678901234567890123456789";   // 70 chars
+    tw.set_why(long_why);
+    CHECK(strlen(tw.why) == 39 && tw.why[39] == 0, "set_why truncates to 39 + NUL (got %zu)", strlen(tw.why));
+    tw.set_why("");
+    CHECK(tw.why[0] == 0, "set_why clears");
+}
+
 static void test_size_rule()
 {
     TrackerConfig cfg = tracker_cfg();
@@ -221,6 +347,9 @@ static void test_votes()
                   to_str(t.disp), t.why);
     }
     CHECK(!tr.vote(9999, flash, 4), "vote for a missing track is refused");
+    for (const Track &t : tr.tracks())   // both decided above: a late soft vote must not touch the vote pool
+        if (std::fabs(t.s - parts[0].s) < 5 || std::fabs(t.s - parts[1].s) < 5)
+            CHECK(!tr.vote(t.id, unsure, 4), "vote on a decided track is refused (track %d)", t.id);
     // the per-track score buffer is fixed (no heap): classes past Track::kMaxScore are dropped, the call says so
     Tracker t3(tracker_cfg());
     t3.update(observe({{-40, 0, 30, 30, 0.f, -1}}, 100, 0, rng));   // part at table x 60: inside the view
@@ -355,6 +484,21 @@ static void test_flaps()
     st = fs.update(ev, 500, 13.1);
     CHECK(st.track_id[1] == -1, "released at 500");
     CHECK(fs.served == 2, "served %llu", (unsigned long long)fs.served);
+
+    // move_ms = 0: no ramp at all, the pulse jumps straight to the target the moment the event is due
+    FlapConfig f0;
+    f0.move_ms = 0;
+    f0.stagger_ms = 0;
+    f0.gates.resize(1);
+    f0.gates[0].outlet = 1; f0.gates[0].open_us = 1000; f0.gates[0].closed_us = 1900;
+    FlapSequencer f0s(f0);
+    FlapEvent e0; e0.track_id = 7; e0.outlet = 1; e0.gate = 0; e0.belt_mm = 200; e0.close_b = 100; e0.release_b = 400;
+    std::vector<FlapEvent> ev0 = {e0};
+    FlapSequencer::State st0 = f0s.update(ev0, 0, 20.0);
+    CHECK(st0.us[0] == 1000 && !st0.moving[0], "move_ms 0: starts at open (%d)", st0.us[0]);
+    st0 = f0s.update(ev0, 100, 20.1);
+    CHECK(st0.us[0] == 1900 && !st0.moving[0], "move_ms 0: closed without any ramp (%d moving %d)",
+          st0.us[0], int(st0.moving[0]));
 }
 
 // intercept ("flying") picks: belt at 50 mm/s (1 mm per tick), arm base 150 mm beside the belt centre at the pick line
@@ -611,6 +755,161 @@ static void test_picker()
     CHECK(pk.stats.picked == 1, "picked %llu", (unsigned long long)pk.stats.picked);
     CHECK(pk.stats.flap_conflicts >= 1, "flap conflict not detected");
     CHECK(job.open_mm > 30 && job.open_mm < 45, "gear opening %.1f", job.open_mm);
+
+    // failed pick: the arm reports "not grasped" -> the part falls through to recheck, is never re-picked,
+    // and rides to the belt end (flap event with gate -1 when no gates are configured)
+    {
+        std::mt19937 rng(21);
+        TrackerConfig tf = tracker_cfg();
+        tf.tail_x = 800;   // 与 Picker 的带尾一致：这条测试不测退休（tracker_edges 已测），别让带尾先把轨收走
+        Tracker trf(tf);
+        PickerConfig pf; pf.pick_x = 400; pf.tail_x = 800; pf.reach_y0 = -80; pf.reach_y1 = 80;
+        Picker pkf(pf);
+        const std::vector<SimPart> one = {{-40, 0, 30, 30, 0.f, 0}};
+        int jobs = 0;
+        bool attempted = false;
+        double B = 0;
+        bool stopped = false;
+        for (uint32_t f = 0; f < 900 && B < 700; f++) {
+            trf.update(observe(one, B, f, rng));
+            Picker::Input in;
+            in.belt_mm = B; in.brake_mm = 2; in.belt_stopped = stopped; in.speed_mm_s = stopped ? 0 : 50;
+            in.arm_idle = !attempted; in.arm_clear = true;
+            const Picker::Output &out = pkf.tick(trf, in);
+            if (out.have_job) {
+                jobs++;
+                pkf.job_done(trf, out.job.track_id, jobs > 1);   // the (only) pick fails
+                attempted = true;
+            }
+            if (out.belt.kind == BeltPlan::StopAt && B + 1.0 >= out.belt.stop_belt_mm) {
+                B = out.belt.stop_belt_mm;
+                stopped = true;
+            } else if (out.belt.kind != BeltPlan::Hold) {
+                B += 1.0;
+                stopped = false;
+            }
+            trf.retire(B);
+        }
+        CHECK(jobs == 1, "failed pick: exactly one attempt (%d)", jobs);
+        CHECK(pkf.stats.failed == 1 && pkf.stats.picked == 0, "failed pick counted (%llu %llu)",
+              (unsigned long long)pkf.stats.failed, (unsigned long long)pkf.stats.picked);
+        const Track *ft = nullptr;
+        for (const Track &t : trf.tracks()) if (std::fabs(t.s - one[0].s) < 5) ft = &t;
+        CHECK(ft && ft->disp == Disposition::Recheck && !strcmp(ft->why, "pick failed"),
+              "failed pick -> %s (%s)", ft ? to_str(ft->disp) : "gone", ft ? ft->why : "?");
+    }
+
+    // decided too late for the belt to stop (huge brake distance, part just past decide_x): recheck, no StopAt,
+    // no pick — the safety verdict that keeps a doomed stop from ever reaching the stepper
+    {
+        std::mt19937 rng(41);
+        Tracker trl(tracker_cfg());
+        PickerConfig pl; pl.pick_x = 400; pl.tail_x = 800; pl.reach_y0 = -80; pl.reach_y1 = 80;
+        Picker pkl(pl);
+        const std::vector<SimPart> one = {{-40, 0, 30, 30, 0.f, 0}};
+        double B = 0;
+        bool stopped = false;
+        int missed_seen = 0, jobs = 0;
+        bool stop_planned = false;
+        std::string why;
+        for (uint32_t f = 0; f < 400 && B < 700; f++) {
+            trl.update(observe(one, B, f, rng));
+            Picker::Input in;
+            in.belt_mm = B; in.brake_mm = 500; in.belt_stopped = stopped; in.speed_mm_s = stopped ? 0 : 50;
+            in.cruise_mm_s = 50;   // brake_mm 500 >> the ~130 mm left when the part is decided: never stoppable
+            const Picker::Output &out = pkl.tick(trl, in);
+            jobs += out.have_job;
+            stop_planned = stop_planned || out.belt.kind == BeltPlan::StopAt;
+            if (int(pkl.stats.missed) > missed_seen) {
+                missed_seen = int(pkl.stats.missed);
+                for (const Track &t : trl.tracks())
+                    if (std::fabs(t.s - one[0].s) < 5) why = t.why;
+            }
+            if (out.belt.kind == BeltPlan::StopAt && B + 2.0 >= out.belt.stop_belt_mm) {
+                B = out.belt.stop_belt_mm; stopped = true;
+            } else if (out.belt.kind != BeltPlan::Hold) {
+                B += 2.0; stopped = false;
+            }
+            trl.retire(B);
+        }
+        CHECK(missed_seen == 1, "one cannot-stop verdict (%d)", missed_seen);
+        CHECK(why == "cannot stop in time", "decided too late -> %s", why.c_str());
+        CHECK(!stop_planned, "no StopAt for a part the belt cannot stop for");
+        CHECK(jobs == 0 && pkl.stats.jobs == 0, "no pick dispatched (%d %llu)", jobs,
+              (unsigned long long)pkl.stats.jobs);
+    }
+
+    // missed pick line: the picker first sees the part already past the pick line (x > pick_x + tol) -> recheck,
+    // no StopAt, no pick (the belt carried it through while the picker was not looking)
+    {
+        std::mt19937 rng(51);
+        Tracker trm(tracker_cfg());
+        PickerConfig pm; pm.pick_x = 400; pm.tail_x = 800; pm.reach_y0 = -80; pm.reach_y1 = 80;
+        Picker pkm(pm);
+        const std::vector<SimPart> one = {{-40, 0, 30, 30, 0.f, 0}};
+        double B = 0;
+        for (; B < 270; B += 2.0)   // tracked and decided on the way to the pick line
+            trm.update(observe(one, B, uint32_t(B), rng));
+        trm.update(observe(one, 270, 270, rng));
+        std::string why;
+        int missed_seen = 0, jobs = 0;
+        bool stop_planned = false;
+        for (uint32_t f = 271; f < 300; f++) {   // picker re-enters with the part already past the line
+            trm.update(observe(one, 460, f, rng));
+            Picker::Input in;
+            in.belt_mm = 460; in.brake_mm = 5; in.belt_stopped = false; in.speed_mm_s = 50; in.cruise_mm_s = 50;
+            const Picker::Output &out = pkm.tick(trm, in);
+            jobs += out.have_job;
+            stop_planned = stop_planned || out.belt.kind == BeltPlan::StopAt;
+            if (int(pkm.stats.missed) > missed_seen) {
+                missed_seen = int(pkm.stats.missed);
+                for (const Track &t : trm.tracks())
+                    if (std::fabs(t.s - one[0].s) < 5) why = t.why;
+            }
+        }
+        CHECK(missed_seen == 1, "one missed-pick-line verdict (%d)", missed_seen);
+        CHECK(why == "missed pick line", "past the pick line -> %s", why.c_str());
+        CHECK(!stop_planned && jobs == 0, "no StopAt / pick for a missed part (%d %d)", stop_planned, jobs);
+    }
+
+    // lateral reach band and gripper width: both recheck with their own verdict, no StopAt / pick
+    {
+        std::mt19937 rng(61);
+        Tracker trr(tracker_cfg());
+        PickerConfig pr; pr.pick_x = 400; pr.tail_x = 800; pr.reach_y0 = -80; pr.reach_y1 = 80;
+        Picker pkr(pr);
+        const std::vector<SimPart> two = {{-40, 100, 30, 30, 0.f, 0},    // y = 100: beyond reach_y1 = 80
+                                          {-160, 0, 56, 56, 0.f, 0}};    // round OD 56: open 64 > max_open 60
+        double B = 0;
+        int reached = 0, wide = 0, jobs = 0;
+        bool stop_planned = false;
+        std::string why_r, why_w;
+        for (uint32_t f = 0; f < 500 && B < 700; f++) {
+            trr.update(observe(two, B, f, rng));
+            Picker::Input in;
+            in.belt_mm = B; in.brake_mm = 3; in.belt_stopped = false; in.speed_mm_s = 50; in.cruise_mm_s = 50;
+            const Picker::Output &out = pkr.tick(trr, in);
+            jobs += out.have_job;
+            stop_planned = stop_planned || out.belt.kind == BeltPlan::StopAt;
+            if (int(pkr.stats.out_of_reach) > reached) {
+                reached = int(pkr.stats.out_of_reach);
+                for (const Track &t : trr.tracks())
+                    if (std::fabs(t.s - two[0].s) < 5) why_r = t.why;
+            }
+            if (int(pkr.stats.too_wide) > wide) {
+                wide = int(pkr.stats.too_wide);
+                for (const Track &t : trr.tracks())
+                    if (std::fabs(t.s - two[1].s) < 5) why_w = t.why;
+            }
+            if (out.belt.kind == BeltPlan::StopAt && B + 2.0 >= out.belt.stop_belt_mm) { B = out.belt.stop_belt_mm; }
+            else if (out.belt.kind != BeltPlan::Hold) { B += 2.0; }
+            trr.retire(B);
+        }
+        CHECK(reached == 1 && wide == 1, "out_of_reach %d too_wide %d", reached, wide);
+        CHECK(why_r == "out of reach", "y off-band -> %s", why_r.c_str());
+        CHECK(why_w == "too wide", "60 mm part -> %s", why_w.c_str());
+        CHECK(!stop_planned && jobs == 0, "no StopAt / pick (%d %d)", stop_planned, jobs);
+    }
 
     // crowded: an OK part lying 22 mm beside another part cannot be gripped across its width
     Tracker t2(tracker_cfg());
@@ -997,6 +1296,7 @@ int main()
 {
     test_geom();
     test_tracker();
+    test_tracker_edges();
     test_size_rule();
     test_recipes();
     test_votes();
