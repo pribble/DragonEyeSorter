@@ -6,9 +6,11 @@
 // that command arrives on one bus and is executed as a Modbus-RTU write on the other (CAN / Ethernet -> RS485).
 //
 // Own thread: a transaction blocks until the reply ends or times out (~100 ms) and must never hold up the 60 Hz
-// worker, which only stores the line state (set_line) in atomics. Every cycle (50 ms) the thread writes the coils when
-// the wanted pattern changed (FC 0F) and re-writes them every second anyway (module power-cycled), and every poll_ms
-// reads them back (FC 01; + FC 02 inputs when configured): read-back / errors / reply times = the report's bus numbers.
+// worker, which only stores the line state (set_line) in atomics. Every cycle (50 ms) the thread writes, one relay at a
+// time (FC 05), the lamp relays that differ from what the module holds; every poll_ms it reads them back (FC 01; + FC 02
+// inputs when configured), and a read-back that differs (module power-cycled, relay stuck) is written again: read-back /
+// errors / reply times = the report's bus numbers. (FC 0F is not used: the 10-26 bestep board ignores it unless all
+// bits are 0, and answers FC 01 only for 8 coils -> its config has coils = 8.)
 //
 // The bus is the PL rs485 module (des_485_xfer, bitstream v16): it adds / checks the CRC16, drives DE and frames the
 // reply by the 3.5-character silence. rs485_hw_xfer() binds it; tests pass a simulated slave instead.
@@ -27,7 +29,8 @@ struct Rs485Config {
     char parity = 'N';               // N / E / O (8 data bits, 1 stop bit)
     int timeout_ms = 100;            // reply timeout (end of request -> first reply byte)
     int addr = 1;                    // relay module address
-    int coils = 4;                   // relays on the module (coils 0 .. coils-1)
+    int coils = 4;                   // coils asked for in the FC 01 read-back (the bestep board answers only 8); only the
+                                     // lamp_coil relays are ever written
     int lamp_coil[4] = {0, 1, 2, 3}; // relay of green / yellow / red / buzzer (-1 = not wired)
     int poll_ms = 200;               // read-back period
     float buzzer_s = 2;              // buzzer this long when an alarm starts (0 = never, < 0 = as long as the alarm)

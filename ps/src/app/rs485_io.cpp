@@ -79,8 +79,12 @@ void Rs485Io::stop()
     run_ = false;
     if (th_.joinable()) th_.join();
     uint8_t req[16];   // leave the light dark: an app that is not running shows nothing
-    const size_t n = rtu_write_coils(req, uint8_t(cfg_.addr), 0, uint16_t(std::clamp(cfg_.coils, 1, 32)), 0);
-    if (n) xact(req, n, nullptr);
+    const uint32_t mask = lamp_to_coils(0x0F, cfg_);
+    for (int k = 0; k < 32; k++)
+        if (mask >> k & 1) {
+            const size_t n = rtu_write_coil(req, uint8_t(cfg_.addr), uint16_t(k), false);
+            if (n) xact(req, n, nullptr);
+        }
 }
 void Rs485Io::set_line(uint8_t state, bool alarm, bool warn)
 {
@@ -137,10 +141,11 @@ void Rs485Io::loop()
 {
     const uint8_t addr = uint8_t(cfg_.addr);
     const uint16_t ncoils = uint16_t(std::clamp(cfg_.coils, 1, 32));
+    const uint32_t lamp_mask = lamp_to_coils(0x0F, cfg_);   // the relays that carry a lamp: the only ones ever written
     const double t0 = mono_s();
-    double last_write = -1e9, last_read = -1e9, alarm_t = 0;
-    bool prev_alarm = false, written_once = false;
-    uint32_t written = 0;
+    double last_read = -1e9, alarm_t = 0, write_hold = -1e9;
+    bool prev_alarm = false, written_once = false, known = false;
+    uint32_t written = 0, cur = 0;   // cur = what the module holds (last read-back, or our last good write)
     uint8_t req[16];
     while (run_) {
         const double now = mono_s();
@@ -151,23 +156,37 @@ void Rs485Io::loop()
         const uint8_t lamps = ovr_on_ ? uint8_t(ovr_lamps_ & 0x0F)
                                       : lamp_pattern(state_, alarm, warn_, blink, now - alarm_t, cfg_.buzzer_s);
         const uint32_t coils = lamp_to_coils(lamps, cfg_);
-        if (!written_once || coils != written || now - last_write >= 1.0) {   // changed, or a periodic refresh
-            const size_t n = rtu_write_coils(req, addr, 0, ncoils, coils);
-            if (n && xact(req, n, nullptr)) {
-                written = coils; written_once = true;
+        // One relay at a time (FC 05): the 10-26 relay board (bestep 4-ch) ignores FC 0F unless every bit is 0, and
+        // FC 05 is what every Modbus relay board takes. Only relays that differ from what the module holds are
+        // written; the read-back below catches a module that was power-cycled or a relay that did not switch.
+        const uint32_t todo = (known ? coils ^ cur : 0xFFFFFFFFu) & lamp_mask;
+        if (todo && now >= write_hold) {
+            bool ok = true;
+            for (int k = 0; k < 32 && ok; k++)
+                if (todo >> k & 1) {
+                    const bool on = coils >> k & 1;
+                    const size_t n = rtu_write_coil(req, addr, uint16_t(k), on);
+                    ok = n && xact(req, n, nullptr);
+                    if (ok) cur = on ? cur | (1u << k) : cur & ~(1u << k);
+                }
+            if (ok) {
+                known = true; written = coils; written_once = true;
                 std::lock_guard<std::mutex> lk(m_);
                 stats_.writes++; stats_.lamps = lamps;
+            } else {
+                write_hold = now + 1.0;   // no hammering a module that does not answer: retry in 1 s
             }
-            last_write = now;   // a failed write is retried at the refresh, not every cycle
         }
         if (now - last_read >= cfg_.poll_ms / 1000.0) {
             last_read = now;
             uint32_t rb = 0;
+            // the 10-26 board answers FC 01 only for 8 coils: cfg.coils is the count asked for (8 there)
             size_t n = rtu_read_bits(req, addr, RTU_READ_COILS, 0, ncoils);
             if (n && xact(req, n, &rb)) {
+                cur = rb; known = true;
                 std::lock_guard<std::mutex> lk(m_);
                 stats_.coils_rb = rb;
-                if (written_once && rb != written) stats_.mismatches++;
+                if (written_once && ((rb ^ written) & lamp_mask)) stats_.mismatches++;
             }
             uint32_t in = 0;
             if (cfg_.inputs > 0 && (n = rtu_read_bits(req, addr, RTU_READ_INPUTS, 0, uint16_t(std::min(cfg_.inputs, 32)))) &&

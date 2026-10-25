@@ -25,12 +25,20 @@ struct SimRelay {
     std::atomic<bool> offline{false};
     std::atomic<uint32_t> stuck_low{0};   // relays that never close (read back 0)
     std::atomic<int> requests{0};
+    // the 10-26 bestep 4-channel board: FC 01 / 02 answered only for 8 coils, FC 0F ignored unless every bit is 0
+    bool bestep = false;
+    std::atomic<int> fc0f{0};             // FC 0F requests seen (the worker must not need them)
     void xfer(const uint8_t *q, int n, bool expect, RtuXferResult &r)
     {
         requests++;
         r = RtuXferResult();
         if (offline || q[0] != addr || n < 6) { r.rc = expect ? RTU_TIMEOUT : RTU_OK; return; }
         const uint16_t a = uint16_t(q[2] << 8 | q[3]), c = uint16_t(q[4] << 8 | q[5]);
+        if (q[1] == RTU_WRITE_COILS) fc0f++;
+        if (bestep && (q[1] == RTU_READ_COILS || q[1] == RTU_READ_INPUTS) && c != 8) { r.rc = RTU_TIMEOUT; return; }
+        if (bestep && q[1] == RTU_WRITE_COILS)
+            for (int i = 7; i < n; i++)
+                if (q[i]) { r.rc = RTU_TIMEOUT; return; }
         r.rc = RTU_OK; r.resp_ms = 3.5; r.wire_ms = 20;
         uint8_t *o = r.raw;
         o[0] = addr;
@@ -190,11 +198,50 @@ void test_worker()
     idle.start();
     CHECK(!idle.link_ok(), "no transport: never linked");
 }
+// the real 10-26 board (bestep 4-ch): with coils = 8 the worker lights the lamps by FC 05 and reads them back
+void test_bestep_board()
+{
+    SimRelay sim;
+    sim.bestep = true;
+    Rs485Config c;
+    c.enabled = true; c.poll_ms = 100; c.buzzer_s = 0; c.coils = 8;
+    Rs485Io io(c, [&sim](const uint8_t *q, int n, bool e, RtuXferResult &r) { sim.xfer(q, n, e, r); });
+    io.set_line(CANP_ST_RUN, false, false);
+    io.start();
+    CHECK(wait_for([&] { return sim.coils == 0x1 && io.stats().coils_rb == 0x1; }, 1.0), "bestep: green on, read back (%X)",
+          sim.coils.load());
+    io.set_override(true, LAMP_YELLOW | LAMP_RED);
+    CHECK(wait_for([&] { return sim.coils == 0x6 && io.stats().coils_rb == 0x6; }, 1.0), "bestep: yellow + red (%X)",
+          sim.coils.load());
+    io.set_override(false, 0);
+    io.set_line(CANP_ST_PAUSED, false, false);
+    CHECK(wait_for([&] { return sim.coils == 0x2; }, 1.0), "bestep: paused = yellow only (%X)", sim.coils.load());
+    usleep(300000);
+    Rs485Io::Stats s = io.stats();
+    CHECK(io.link_ok() && s.timeouts == 0 && s.mismatches == 0, "bestep: no timeouts / mismatches (%llu / %llu)",
+          (unsigned long long)s.timeouts, (unsigned long long)s.mismatches);
+    sim.coils = 0;   // module power-cycled: the read-back shows it and the lamp comes back
+    CHECK(wait_for([&] { return sim.coils == 0x2; }, 1.0), "bestep: relay state restored after a module reset");
+    io.stop();
+    CHECK(sim.coils == 0 && sim.fc0f == 0, "bestep: stop leaves it dark, FC 0F never used (%d)", sim.fc0f.load());
+    // the same board with coils = 4: every read times out (why the config says 8)
+    Rs485Config c4 = c;
+    c4.coils = 4;
+    SimRelay sim4;
+    sim4.bestep = true;
+    Rs485Io io4(c4, [&sim4](const uint8_t *q, int n, bool e, RtuXferResult &r) { sim4.xfer(q, n, e, r); });
+    io4.set_line(CANP_ST_RUN, false, false);
+    io4.start();
+    usleep(400000);
+    io4.stop();
+    CHECK(io4.stats().timeouts > 0 && io4.stats().coils_rb == 0, "bestep with coils = 4: read-backs time out");
+}
 }  // namespace
 int main()
 {
     test_pdu();
     test_lamps();
     test_worker();
+    test_bestep_board();
     return test_summary("test_rs485");
 }

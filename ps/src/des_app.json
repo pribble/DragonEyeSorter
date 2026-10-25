@@ -83,7 +83,8 @@
   "plc_comment": "Modbus-TCP 从站（产线 PLC / 组态软件经网口读状态、下命令；寄存器表 hw/modbus_tcp.hpp，规则同 CAN）。0 = 关",
   "plc": { "modbus_port": 502 },
   "beam": { "enabled": false, "match_mm": 12, "expire_mm": 120, "miss_mm": 25 },
-  "rs485": { "enabled": false, "baud": 9600, "parity": "N", "timeout_ms": 100, "addr": 1, "coils": 4,
+  "rs485_comment": "RS485 继电器模块 + 三色灯（Modbus-RTU，PL des_485，v16）：addr = 模块地址；coils = FC 01 读回的线圈数（10-26 的 bestep 4 路板只应答 8，填 4 会一直超时）；lamp_coils = 绿 / 黄 / 红 / 蜂鸣器接的继电器号（-1 = 没接），只逐路 FC 05 写这几路；buzzer_s = 报警开始后蜂鸣器响多久（0 = 不响）",
+  "rs485": { "enabled": false, "baud": 9600, "parity": "N", "timeout_ms": 100, "addr": 1, "coils": 8,
              "lamp_coils": [0, 1, 2, 3], "poll_ms": 200, "buzzer_s": 2, "inputs": 0 },
   "storage": { "enabled": true, "images": "ng", "jpeg_quality": 92, "max_queue": 256, "feed_port": 9500 },
 

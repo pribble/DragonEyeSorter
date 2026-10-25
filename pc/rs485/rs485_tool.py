@@ -3,16 +3,26 @@
 watch the board's RS485 traffic, or stand in for the relay module (docs/到货联调清单.md §7b).
 
   python rs485_tool.py ports                              list serial ports (the adapter: "USB-SERIAL CH340" / FTDI ...)
-  python rs485_tool.py scan  --port COM10                 find the module: addresses 1..16, 9600 / 19200 / 4800 / 38400 /
-                                                          115200 baud, parity N / E (reads coil 0..3 until one answers)
+  python rs485_tool.py scan  --port COM10                 find the module: per baud rate (9600 / 19200 / 4800 / 38400 /
+                                                          115200, parity N / E) the broadcast address query, then FC 01
+                                                          at addresses 1..16 and 255
+  python rs485_tool.py addr  --port COM10                 ask the (only) module on the bus for its address (broadcast)
+  python rs485_tool.py setaddr --port COM10 1             give the (only) module on the bus a new address (broadcast)
   python rs485_tool.py coils --port COM10 [--inputs 4]    read the relays (FC 01) (+ digital inputs, FC 02)
   python rs485_tool.py set   --port COM10 2 on            one relay (FC 05; relays count from 0)
-  python rs485_tool.py lamp  --port COM10 red buzzer      all relays at once (FC 0F): green / yellow / red / buzzer / off
-  python rs485_tool.py demo  --port COM10                 what des_app shows: idle (green blinks) / run / paused / e-stop
+  python rs485_tool.py lamp  --port COM10 red             lamp relays to exactly this: green / yellow / red / buzzer / off
+                                                          (one FC 05 per relay that changes, then read back)
+  python rs485_tool.py demo  --port COM10 [--buzzer]      what des_app shows: idle (green blinks) / run / paused / e-stop /
+                                                          fault; the buzzer only with --buzzer
   python rs485_tool.py sniff --port COM10                 listen only: every frame with time, gap, CRC (board <-> module)
-  python rs485_tool.py slave --port COM10                 be the 4-relay module (address --addr): the board talks to the PC
-Common: --addr 1  --baud 9600  --parity N  --lamp-coils 0,1,2,3 (relay of green, yellow, red, buzzer; same as
+  python rs485_tool.py slave --port COM10                 be the relay module (address --addr): the board talks to the PC
+Common: --addr 1  --baud 9600  --parity N  --coils 8  --lamp-coils 0,1,2,3 (relay of green, yellow, red, buzzer; same as
 des_app.json rs485.lamp_coils). Needs pyserial (pip install pyserial). A / B swapped = no reply: swap them (harmless).
+
+The 10-26 module (bestep 4-ch Modbus relay board) — found on the real board, see docs/到货联调清单.md §7b:
+  factory address 255; address query = broadcast FC 03 register 0 (reply 00 03 02 00 <addr>); the address is set only by
+  broadcast FC 10 register 0 (FC 06 ignored, no reply either way); FC 01 answered only for 8 coils (4 -> silence);
+  FC 0F ignored unless every bit is 0 -> lamps are written one relay at a time with FC 05 (reply = echo of the request).
 """
 import argparse
 import sys
@@ -94,7 +104,10 @@ class Bus:
         self.s.flush()
         rep = self.read_frame(timeout + len(req) * char_s(self.baud, self.parity))
         ms = (time.perf_counter() - t0) * 1000
-        if rep.startswith(req):          # adapters that hear themselves
+        # Adapters that hear themselves put the request in front of the reply. Only strip it when more follows: the
+        # FC 05 / 06 reply IS a copy of the request (lamp checks it by reading back, so an echo-only adapter with a
+        # silent module still shows up there).
+        if rep.startswith(req) and len(rep) > len(req):
             rep = rep[len(req):]
         if not rep:
             return None, "no reply", ms
@@ -118,11 +131,35 @@ def read_bits(bus, addr, fc, n):
     return v & ((1 << n) - 1), "", ms
 
 
-def write_coils(bus, addr, n, bits):
-    nb = (n + 7) // 8
-    pdu = bytes([addr, 0x0F, 0, 0, 0, n, nb]) + (bits & ((1 << n) - 1)).to_bytes(nb, "little")
-    rep, err, ms = bus.xact(pdu)
+def write_coil(bus, addr, k, on):
+    rep, err, ms = bus.xact(bytes([addr, 5, k >> 8, k & 0xFF, 0xFF if on else 0, 0]))
     return rep is not None, err, ms
+
+
+def lamp_mask(lc):
+    return sum(1 << k for k in lc if k >= 0)
+
+
+def set_lamp_relays(bus, a, lc, bits, cur=None):
+    """lamp relays to bits, one FC 05 per relay that differs from cur (None = write them all); returns (ok, err, ms)"""
+    ok, err, ms_all = True, "", 0.0
+    for k in sorted(k for k in lc if k >= 0):
+        on = bool(bits >> k & 1)
+        if cur is not None and bool(cur >> k & 1) == on:
+            continue
+        ok, err, ms = write_coil(bus, a.addr, k, on)
+        ms_all += ms
+        if not ok:
+            return False, "relay %d: %s" % (k, err), ms_all
+    return ok, err, ms_all
+
+
+def query_addr(bus):
+    """broadcast FC 03 register 0: the address of the only module on the bus, or None"""
+    rep, err, ms = bus.xact(bytes([0, 3, 0, 0, 0, 1]))
+    if rep is None or len(rep) < 5 or rep[1] != 3:
+        return None, err or "bad reply", ms
+    return rep[3] << 8 | rep[4], "", ms
 
 
 def lamps_to_bits(names, lc):
@@ -139,32 +176,77 @@ def cmd_scan(bus, a):
         for par in ("N", "E"):
             bus.open(baud, par)
             print("%6d 8%s1: " % (baud, par), end="", flush=True)
-            for addr in range(1, 17):
+            addr, err, ms = query_addr(bus)
+            if addr is not None:
+                print("address query: module at address %d (%.1f ms)" % (addr, ms))
+                return 0
+            for addr in list(range(1, 17)) + [255]:
                 v, err, ms = read_bits(bus, addr, 1, a.coils)
                 if v is not None or err.startswith("exception"):
                     print("address %d answers (%s, %.1f ms)" % (addr, "coils %s" % format(v, "0%db" % a.coils)
                                                                  if v is not None else err, ms))
                     return 0
             print("nothing")
-    print("no module found: power (24 V), A / B swapped, address outside 1..16, or another baud rate")
+    print("no module found: power (24 V), A / B swapped, another address / baud rate, or a module that answers FC 01 "
+          "only for another --coils count (the bestep board: 8)")
     return 1
 
 
 def cmd_demo(bus, a, lc):
+    red = ["red", "buzzer"] if a.buzzer else ["red"]
     steps = [("idle: green blinks", [["green"], []], 4), ("run: green", [["green"]], 3),
-             ("paused: yellow", [["yellow"]], 3), ("e-stop: red + buzzer 1 s", [["red", "buzzer"]], 1),
+             ("paused: yellow", [["yellow"]], 3),
+             ("e-stop: red + buzzer 1 s" if a.buzzer else "e-stop: red (buzzer skipped, --buzzer adds it)", [red], 1),
              ("e-stop: red", [["red"]], 2), ("fault: red blinks", [["red"], []], 4)]
+    cur = None
     for title, pats, secs in steps:
         print(title)
         end, i = time.time() + secs, 0
         while time.time() < end:
-            ok, err, ms = write_coils(bus, a.addr, a.coils, lamps_to_bits(pats[i % len(pats)], lc))
+            bits = lamps_to_bits(pats[i % len(pats)], lc)
+            ok, err, ms = set_lamp_relays(bus, a, lc, bits, cur)
+            cur = bits if ok else None
             if not ok:
                 print("  ", err)
             i += 1
             time.sleep(0.5)
-    write_coils(bus, a.addr, a.coils, 0)
+    set_lamp_relays(bus, a, lc, 0, None)
     return 0
+
+
+def cmd_lamp(bus, a, lc):
+    bad = [x for x in a.args if x not in LAMPS and x != "off"]
+    if bad or not a.args:
+        sys.exit("lamp <green|yellow|red|buzzer|off>...")
+    bits = lamps_to_bits(a.args, lc)
+    cur, err, ms = read_bits(bus, a.addr, 1, a.coils)
+    if cur is None:
+        print("read before writing: %s (--coils 8 for the bestep board); writing every lamp relay" % err)
+    ok, err, ms = set_lamp_relays(bus, a, lc, bits, cur)
+    if not ok:
+        print("lamps %s: %s" % (" ".join(a.args), err))
+        return 1
+    rb, err, ms2 = read_bits(bus, a.addr, 1, a.coils)
+    if rb is None:
+        print("lamps %s: written (%.1f ms), read-back failed: %s" % (" ".join(a.args), ms, err))
+        return 1
+    match = (rb ^ bits) & lamp_mask(lc) == 0
+    print("lamps %s: written (%.1f ms), read back %s = %s%s" % (" ".join(a.args), ms, format(rb, "0%db" % a.coils),
+                                                               bits_to_lamps(rb, lc), "" if match else "  MISMATCH"))
+    return 0 if match else 1
+
+
+def cmd_setaddr(bus, a):
+    if len(a.args) != 1 or not 1 <= int(a.args[0]) <= 247:
+        sys.exit("setaddr <1..247>   (only ONE module on the bus: the request is a broadcast)")
+    new = int(a.args[0])
+    old, err, _ = query_addr(bus)
+    print("before: %s" % ("address %d" % old if old is not None else err))
+    bus.xact(bytes([0, 0x10, 0, 0, 0, 1, 2, new >> 8, new & 0xFF]))   # broadcast: no reply expected
+    time.sleep(0.3)
+    now, err, _ = query_addr(bus)
+    print("after:  %s" % ("address %d" % now if now is not None else err))
+    return 0 if now == new else 1
 
 
 def cmd_sniff(bus, a):
@@ -220,13 +302,14 @@ def cmd_slave(bus, a, lc):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("op", choices=["ports", "scan", "coils", "set", "lamp", "demo", "sniff", "slave"])
+    ap.add_argument("op", choices=["ports", "scan", "addr", "setaddr", "coils", "set", "lamp", "demo", "sniff", "slave"])
     ap.add_argument("args", nargs="*")
     ap.add_argument("--port", default="")
     ap.add_argument("--addr", type=int, default=1)
     ap.add_argument("--baud", type=int, default=9600)
     ap.add_argument("--parity", default="N", choices=["N", "E", "O"])
-    ap.add_argument("--coils", type=int, default=4)
+    ap.add_argument("--coils", type=int, default=8)
+    ap.add_argument("--buzzer", action="store_true", help="demo: include the buzzer")
     ap.add_argument("--inputs", type=int, default=0)
     ap.add_argument("--lamp-coils", default="0,1,2,3")
     a = ap.parse_args()
@@ -249,6 +332,12 @@ def main():
     try:
         if a.op == "scan":
             return cmd_scan(bus, a)
+        if a.op == "addr":
+            v, err, ms = query_addr(bus)
+            print("module at address %d, %.1f ms" % (v, ms) if v is not None else err)
+            return 0 if v is not None else 1
+        if a.op == "setaddr":
+            return cmd_setaddr(bus, a)
         if a.op == "coils":
             v, err, ms = read_bits(bus, a.addr, 1, a.coils)
             print("coils %s (%s), %.1f ms" % (format(v, "0%db" % a.coils), bits_to_lamps(v, lc), ms) if v is not None else err)
@@ -262,16 +351,11 @@ def main():
             k = int(a.args[0])
             if not 0 <= k <= 255:
                 sys.exit("set <relay 0..255> on|off")
-            rep, err, ms = bus.xact(bytes([a.addr, 5, 0, k, 0xFF if a.args[1] == "on" else 0, 0]))
-            print("relay %d %s: %s, %.1f ms" % (k, a.args[1], "ok" if rep else err, ms))
-            return 0 if rep else 1
-        if a.op == "lamp":
-            bad = [x for x in a.args if x not in LAMPS and x != "off"]
-            if bad or not a.args:
-                sys.exit("lamp <green|yellow|red|buzzer|off>...")
-            ok, err, ms = write_coils(bus, a.addr, a.coils, lamps_to_bits(a.args, lc))
-            print("lamps %s: %s, %.1f ms" % (" ".join(a.args), "ok" if ok else err, ms))
+            ok, err, ms = write_coil(bus, a.addr, k, a.args[1] == "on")
+            print("relay %d %s: %s, %.1f ms" % (k, a.args[1], "ok" if ok else err, ms))
             return 0 if ok else 1
+        if a.op == "lamp":
+            return cmd_lamp(bus, a, lc)
         if a.op == "demo":
             return cmd_demo(bus, a, lc)
         if a.op == "sniff":
