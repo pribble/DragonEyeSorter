@@ -16,7 +16,7 @@ Usage
     python part_stats.py --plots figs ...                                    # + report charts (PNG, needs matplotlib)
 
 Tables: only the standard library; Python 3.8+. Charts (--plots): matplotlib. Labels / verdicts come from
-models/label_list.json (the single source).
+scripts/deploy/out/label_list.json (the single source).
 """
 import argparse
 import csv
@@ -28,7 +28,7 @@ import statistics
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-LABELS = os.path.join(HERE, '..', '..', 'models', 'label_list.json')
+LABELS = os.path.join(HERE, '..', '..', 'scripts', 'deploy', 'out', 'label_list.json')
 RECIPES = os.path.join(HERE, '..', '..', 'ps', 'src', 'recipes.json')
 DEFAULT_SPEC = {'g': (32.0, 0.15), 'r': (50.0, 0.5)}   # recipe 1, used when a record has no recipe column / id
 

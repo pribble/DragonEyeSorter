@@ -157,7 +157,7 @@ REMOTE
 # ---------- 攒"要上板的那一份"（out/，文件平铺；脚本与配置入库，编出来的二进制不入库） ----------
 # out/ **既是暂存也是源**：板端脚本与 des.env 就住在这里（改这里、提交这里，不另存副本）。所以这里**不再
 # rm -rf 重建**（那会把源删掉），改成"刷 + 清"：
-#   刷：清单里源在 out/ 之外的那些 —— ps/build/des_app、ps/src 与 models 的配置、导出的模型；
+#   刷：清单里源在 out/ 之外的那些 —— ps/build/des_app、ps/src 的配置、models/ 导出的模型；
 #   清：不属于清单、也不在手动清单里的文件（旧版本留下的垃圾），以及本地已缺的旧产物，
 #       免得 U 盘 / 打包里混进"上一次的那一份"。
 # 手动清单：住在 out/、但不进清单、部署器不传的板端测试脚本（要用时 scp，见 manifest.tsv 末尾）。
@@ -178,7 +178,7 @@ stage_payload() {
     {
         echo "# 要上板的那一份 = 板端产品运行时（scripts/deploy/out/，文件平铺；脚本与配置入库，只有编出来的二进制不入库）"
         echo "# 板端脚本与 des.env 的**唯一源就在这里**（直接改这一份并提交）；其余文件由 deploy.sh 从仓库别处刷进来："
-        echo "#   主程序 ps/build/des_app、配置 ps/src/*.json 与 models/label_list.json、模型 models/part_cls*"
+        echo "#   主程序 ps/build/des_app、配置 ps/src/*.json、模型 models/part_cls*（label_list.json 就住在本目录）"
         echo "# 左列 = 哈希（脚本/配置/数据类去掉 CR 后算），右列 = 这个文件该去的板端路径"
         echo "# 清单指纹：scripts/deploy/manifest.tsv 的 MD5 = $(hash_file "$manifest")"
     } > "$stage/MD5SUMS.txt"

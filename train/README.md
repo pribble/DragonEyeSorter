@@ -1,6 +1,6 @@
 # train/ — 零件分类模型（NPU，赛题硬性项④）
 
-**路线**：PS 用 OpenCV 定位（已在 60fps 主循环里）→ 每件按自身方向转正裁 **56×56mm → 224×224**（`ps/src/measure/roi_crop`，约 0.25mm/像素）→ NPU 跑 **YOLOv8n-cls@224（激活换成 ReLU）** 分 5 类（`models/label_list.json`：良品 / 缺料轻 / 缺料重 / 脏污轻 / 脏污重；飞边两级样品到位后扩 7 类）→ 过视野时分类 3~6 次、概率软投票（`Tracker::vote`）→ 去向。
+**路线**：PS 用 OpenCV 定位（已在 60fps 主循环里）→ 每件按自身方向转正裁 **56×56mm → 224×224**（`ps/src/measure/roi_crop`，约 0.25mm/像素）→ NPU 跑 **YOLOv8n-cls@224（激活换成 ReLU）** 分 5 类（`scripts/deploy/out/label_list.json`：良品 / 缺料轻 / 缺料重 / 脏污轻 / 脏污重；飞边两级样品到位后扩 7 类）→ 过视野时分类 3~6 次、概率软投票（`Tracker::vote`）→ 去向。
 
 不用整帧检测：整帧约 0.18mm/像素，缩到 416 后约 0.84mm/像素，1mm 的黑点 / 缺料只剩 1 个像素；裁切后同样的缺陷约 4 个像素，计算量约为整帧 YOLOv8n@416 的 1/7。**训练和推理用同一个裁切函数**（`roi_crop`），归一化一致（RGB、÷255、均值 0）。
 

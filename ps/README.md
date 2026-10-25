@@ -125,7 +125,7 @@ ps/
 - 定位：1/4 降采样灰度 + Otsu（下限钳位）+ 开运算 + 外轮廓 + minAreaRect；耗时见 [测试与验证](../docs/测试与验证.md)。
 - 几何测量：`src/measure/measure`（外径 / 根径 / 孔径 / 偏心 / 规格齿数 / 缺料·缺齿·飞边，含视差校正），已接入 live / run（`track_measure`：每件取离光轴最近那帧，结果进跟踪表与 CAN；`measure.rule` 尺寸 / 规格判定默认关）。方法见 [视觉与检测](../docs/视觉与检测.md)「几何测量」。
 - 网口：`des_app run` 起 Modbus-TCP 从站（`des_app.json` 的 `plc.modbus_port`，0 = 关；寄存器表 `ps/src/hw/modbus_tcp.hpp`，协议见 [软件与UI](../docs/软件与UI.md)「Modbus-TCP」）；网口实时上传（NetFeed）并入 `part_log`，供 PC 取记录（`pc/feed/des_feed.py`）。
-- 配置：`src/des_app.json`（标定值，标 TODO 的待实物标定）、`src/recipes.json`（产品配方，换型停机切换）、类别表 `models/label_list.json`（`config.cpp` 解析）；部署到 `/root/des/` 走 [scripts/deploy](../scripts/deploy/README.md) 的清单。
+- 配置：`src/des_app.json`（标定值，标 TODO 的待实物标定）、`src/recipes.json`（产品配方，换型停机切换）、类别表 `scripts/deploy/out/label_list.json`（`config.cpp` 解析）；部署到 `/root/des/` 走 [scripts/deploy](../scripts/deploy/README.md) 的清单。
 
 ## src/vision/ 的定位与改造边界
 
@@ -149,7 +149,7 @@ ps/
 ## 约定
 
 - `src/hw/des_regs.h` 与 [PL设计](../docs/PL设计.md)、PL 端 `pl/soc_base/src/des/` 的对应模块同一次提交更新；访问 PL 用 `src/hw/des_hw`（舵机事务、步进、帧计数都在里面）。
-- 类别表从 `models/label_list.json` 统一加载；时间戳、计数、统计接口随功能一起写。
+- 类别表从 `scripts/deploy/out/label_list.json` 统一加载；时间戳、计数、统计接口随功能一起写。
 - **头文件平铺**：全仓库没有跨目录 `#include`，靠 `ps/Makefile` 的 `INC` 解析 —— **各目录 basename 必须唯一**，重名会静默命中先搜到的那个（`build/obj/` 平铺 `.o` 也依赖这条）。
 - 移动文件时同步改：`ps/Makefile` 的 `INC` / `OPS_SRC`（源列表自动收集）、本文档，以及 `docs/` + `pc/` + `train/` 里按路径引用的契约（`des_regs.h`、`can_proto.h`、`part_log.cpp` 的 CSV 列、`roi_crop` 的裁切几何、`runner.cpp` 的状态机）。
 - 新增命令先问"它属于哪一层"：产品运行时加进 `main.cpp` 的 `run` / `live`，人工运维加进 `tool_main.cpp` 并更新本文档的两张表，自动断言加进 `tests/`（退出码 = 失败项数），底层调试加进 `tools/`。

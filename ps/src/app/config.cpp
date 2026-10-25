@@ -34,7 +34,7 @@ template <class S> void get_spec(const json &j, S &s)
     ji::gets(j, "gear_teeth", s.gear_teeth, "gear_od", s.gear_od, "gear_od_tol", s.gear_od_tol, "gear_bore", s.gear_bore,
              "gear_bore_tol", s.gear_bore_tol, "gear_max_ecc", s.gear_max_ecc, "rack_len", s.rack_len, "rack_len_tol", s.rack_len_tol);
 }
-// models/label_list.json: class id -> label + disposition; an unknown action / destination is never sorted blindly
+// label_list.json (single source: scripts/deploy/out/): class id -> label + disposition; an unknown action / destination is never sorted blindly
 std::string load_rules(const std::string &path, AppConfig &cfg)
 {
     std::ifstream f(path);

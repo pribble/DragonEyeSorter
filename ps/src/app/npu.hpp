@@ -48,7 +48,7 @@ private:
     size_t out_n_ = 0;
 };
 // One finished classification, copied to the worker with no heap traffic (8 slots = the class count of
-// models/label_list.json; a larger model is truncated).
+// label_list.json (scripts/deploy/out/); a larger model is truncated).
 struct NpuResult {
     int id = 0;
     float probs[8] = {0};        // softmax probabilities, n_probs valid

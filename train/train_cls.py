@@ -2,7 +2,7 @@
 """Train the part classifier: YOLOv8n-cls (ReLU) @ 224 on part crops (ps/src/measure/roi_crop: 56 mm -> 224 px).
 
 Dataset = ImageFolder: <data>/train/<id>_<label>/*.png|jpg and <data>/val/... (folder names sort in class-id order,
-so the model's output index = models/label_list.json id). Made by synth_crops.py (smoke test) or
+so the model's output index = scripts/deploy/out/label_list.json id). Made by synth_crops.py (smoke test) or
 prepare_dataset.py (real crops from `des_tool collect`).
 
 Augmentation is deliberately mild: the defects are small (1~2 mm = 4~8 px), so no random erasing and almost no

@@ -13,7 +13,7 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATS = os.path.join(HERE, 'part_stats.py')
-LABELS = os.path.join(HERE, '..', '..', 'models', 'label_list.json')
+LABELS = os.path.join(HERE, '..', '..', 'scripts', 'deploy', 'out', 'label_list.json')
 
 fail = 0
 

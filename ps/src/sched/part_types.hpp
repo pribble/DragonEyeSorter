@@ -23,7 +23,7 @@ struct FrameObs {
 
 enum class TrackState : uint8_t { New, Tracking, Decided, Picking, Done };
 enum class Disposition : uint8_t { None, Pick, Flap, Recheck };
-// What a class means for sorting; built by the app from models/label_list.json (single source of the class table).
+// What a class means for sorting; built by the app from label_list.json (scripts/deploy/out/, single source of the class table).
 struct ClassRule {
     std::string label;      // model label ("gear_ok"), the CSV `label` column
     std::string cn;         // Chinese name for the HMI ("齿轮-良品"), filled by load_config

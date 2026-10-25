@@ -68,7 +68,7 @@ Hmi::Hmi(const AppConfig &cfg, const std::string &params_path) : cfg_(cfg), para
     // increments it (out-of-bounds write otherwise) and before page_overview draws the bars.
     per_class_.assign(cfg.tracker.rules.size() + 1, 0);
 }
-// Class names come from ClassRule::cn (config.cpp fills it from models/label_list.json, the single source).
+// Class names come from ClassRule::cn (config.cpp fills it from label_list.json (scripts/deploy/out/), the single source).
 const std::string &Hmi::cn_of(int cls) const
 {
     static const std::string kUnknown = "未分类";

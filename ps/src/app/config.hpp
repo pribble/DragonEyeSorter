@@ -96,7 +96,7 @@ struct AppConfig {
     BeamConfig beam;             // through-beam on IR1 (sched/beam.hpp): des_app.json "beam" + calib.json "beam" (x_mm)
     Rs485Config rs485;           // RS485 relay module + tower light in `run` (app/rs485_io.hpp; PL v16)
     PlcConfig plc;
-    std::string label_list = "models/label_list.json";
+    std::string label_list = "label_list.json";  // 类别表唯一源 = scripts/deploy/out/，相对本配置目录解析
     std::string calib_file = "calib.json";     // written by des_tool calib-cam, merged over this file if present
     std::string calib_loaded;                  // path actually merged (empty = none)
     std::string flat_file = "flat.json";       // des_tool calib-flat: white level of the view for the crops ("" = off)

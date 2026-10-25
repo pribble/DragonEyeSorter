@@ -34,7 +34,7 @@
 
 ## 红线（细节都在 docs，这里只留必守项）
 
-1. **唯一源**：类别表 [label_list.json](models/label_list.json)；寄存器 = [PL设计](docs/PL设计.md) + `ps/src/hw/`；部署件 = `scripts/deploy/out/` + [manifest.tsv](scripts/deploy/manifest.tsv)；文档地图 = [文档索引](docs/README.md)。
+1. **唯一源**：类别表 [label_list.json](scripts/deploy/out/label_list.json)；寄存器 = [PL设计](docs/PL设计.md) + `ps/src/hw/`；部署件 = `scripts/deploy/out/` + [manifest.tsv](scripts/deploy/manifest.tsv)；文档地图 = [文档索引](docs/README.md)。
 2. **同一次提交**：改寄存器偏移 → RTL / 头文件 / PL 设计一起提交；新模块地址从 `0x6xx` 起先登记。
 3. **入库边界**：数据集、权重、压缩包、SD 镜像、内核 / rootfs / ArmNN 二进制、源码可编出的二进制不入库；`scripts/deploy/out/` 文本部署件**必须入库**（改一次提交一次）；条数以 [manifest.tsv](scripts/deploy/manifest.tsv) 为准，采购信息不进仓库。
 4. **不写主机路径 / IP / 私钥**：外部路径用 `.env` 变量（见 [.env.example](.env.example)），细则见 [文档索引](docs/README.md) §写作约定。

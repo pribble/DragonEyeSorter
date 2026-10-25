@@ -22,7 +22,7 @@ import can_proto as P
 class VirtualBoard:
     """Fake DES: answers like ps/src/app/runner.cpp (same accept / reject rules)."""
 
-    def __init__(self, n_classes=4):   # models/label_list.json: gear ok / short / flash / dirty
+    def __init__(self, n_classes=4):   # label_list.json (scripts/deploy/out/): gear ok / short / flash / dirty
         self.rx = queue.Queue()   # frames to the PLC
         self.state = 0
         self.speed = 50.0

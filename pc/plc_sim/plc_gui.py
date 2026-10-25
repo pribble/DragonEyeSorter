@@ -28,7 +28,7 @@ STATE_COLORS = {"IDLE": "#9e9e9e", "RUN": "#2e7d32", "PAUSED": "#f9a825", "ESTOP
 def load_names():
     labels, bins, outlets = [], ["gear_box", "rack_box"], ["recheck", "scrap", "rework"]
     try:
-        with open(os.path.join(HERE, "..", "..", "models", "label_list.json"), encoding="utf-8") as f:
+        with open(os.path.join(HERE, "..", "..", "scripts", "deploy", "out", "label_list.json"), encoding="utf-8") as f:
             labels = [l.get("cn", l["label"]) for l in sorted(json.load(f)["labels"], key=lambda l: l["id"])]
         with open(os.path.join(HERE, "..", "..", "ps", "src", "des_app.json"), encoding="utf-8") as f:
             cfg = json.load(f)

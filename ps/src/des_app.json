@@ -1,5 +1,5 @@
 {
-  "comment": "des_app 配置。所有带 TODO 的值必须在实物上标定（camera homography / belt mm_per_step / arm 几何与零位 / 料盒姿态）。label_list 相对本文件所在目录；部署时把 models/label_list.json 一起拷到 /root/des/。",
+  "comment": "des_app 配置。所有带 TODO 的值必须在实物上标定（camera homography / belt mm_per_step / arm 几何与零位 / 料盒姿态）。label_list 相对本文件所在目录；部署时随清单把 scripts/deploy/out/label_list.json 一起拷到 /root/des/。",
 
   "camera_comment": "exposure_us：驱动默认几乎整帧（约 16.6ms），50mm/s 时拖影约 0.8mm、白色零件过曝 → 10-18 定 3000；10-20 实测 3000 时白齿轮顶面 86% 像素饱和（255）、外径被光晕撑大 → 改 800（顶面约 190~200 不饱和、皮带约 30，50mm/s 拖影 0.04mm；同灯光档位下 700µs 无频闪横纹）。画面暗就把光源调亮，不加长曝光；灯若是 PWM 调光，调暗后短曝光会出横纹。gain_db10 单位 0.1dB，0 = 驱动默认。命令行 --exp / --gain 优先",
   "camera": { "vmax": 2276, "buffers": 4, "realtime": true, "exposure_us": 800, "gain_db10": 0 },

@@ -93,7 +93,7 @@ def main():
     ap.add_argument("--per-channel", action="store_true", help="per-channel weight scales: does NOT run on the board's NPU (aborts at inference, 2026-10-11)")
     ap.add_argument("--calib-method", default="MinMax", choices=["MinMax", "Entropy", "Percentile"],
                     help="activation range calibration (MinMax / Entropy / Percentile gave the same accuracy on the synthetic set)")
-    ap.add_argument("--labels", default=os.path.join(HERE, "..", "models", "label_list.json"))
+    ap.add_argument("--labels", default=os.path.join(HERE, "..", "scripts", "deploy", "out", "label_list.json"))
     # Logit bias correction: the per-tensor uint8 weights shift the logits by a roughly constant amount per class;
     # offset = mean(fp32 - uint8) over --nbias training crops, written to the model JSON as logit_offset and added by
     # des_app before the softmax (2026-10-24, real 5-class set: per-crop val 88.0 -> 95.1 %, per-part 41/44 -> 44/44).

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Synthetic part crops for the classes in models/label_list.json (5: ok / short_l / short_h / dirty_l / dirty_h),
+"""Synthetic part crops for the classes in scripts/deploy/out/label_list.json (5: ok / short_l / short_h / dirty_l / dirty_h),
 for the TOOLCHAIN SMOKE TEST only.
 
 Same geometry as ps/src/measure/roi_crop: 56 mm square -> 224 px (0.25 mm/px), part centered, long axis along x.
@@ -167,7 +167,7 @@ def render(rng, kind, defect):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--labels", default=os.path.join(os.path.dirname(__file__), "..", "models", "label_list.json"))
+    ap.add_argument("--labels", default=os.path.join(os.path.dirname(__file__), "..", "scripts", "deploy", "out", "label_list.json"))
     ap.add_argument("--out", default="data/synth")
     ap.add_argument("--train", type=int, default=300)
     ap.add_argument("--val", type=int, default=60)
