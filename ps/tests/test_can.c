@@ -165,6 +165,14 @@ int main(int argc, char **argv)
         }
     }
     CHECK(st_ok == 100, "status stream: %d / 100", st_ok);
+    /* drain first: on a real controller (board can0 loopback) the unthrottled burst above leaves frames queued in
+     * the driver that keep arriving for a while (vcan delivers at once). The ordering checks below need a quiet bus,
+     * else the first frame they see is a stale 0x181 (2026-10-25, v16 board: 19 / 21 before this drain). */
+    {
+        canp_frame_t junk;
+        double t_drain = now_us() + 3000 * 1000.0;
+        while (now_us() < t_drain && can_recv(des, &junk, 300) == 1) {}
+    }
     /* 4) filtered frames: EFF / RTR frames on the wire are skipped by can_recv (the app only ever marshals plain
      * 11-bit data frames); the first frame DELIVERED behind them must be the plain one. Sent with a raw socket
      * (can_marshal only builds plain frames). */
@@ -184,8 +192,10 @@ int main(int argc, char **argv)
                 noise.can_id = CANP_ID_CMD | CAN_EFF_FLAG;   /* 29-bit id: not our plain 11-bit traffic */
                 noise.can_dlc = 2;
                 if (write(raw, &noise, sizeof noise) >= 0) { }   /* noise: delivery not guaranteed */
+                { struct timespec gap = {0, 2000000}; nanosleep(&gap, NULL); }   /* board ipms_canfd drops frames written back to back */
                 noise.can_id = CANP_ID_CMD | CAN_RTR_FLAG;   /* remote request: no payload */
                 if (write(raw, &noise, sizeof noise) >= 0) { }   /* noise: delivery not guaranteed */
+                { struct timespec gap = {0, 2000000}; nanosleep(&gap, NULL); }   /* board ipms_canfd drops frames written back to back */
                 canp_frame_t hb = canp_plc_hb(7);
                 can_send(plc, &hb);
                 canp_frame_t got;
