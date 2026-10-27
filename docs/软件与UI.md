@@ -57,7 +57,7 @@ PS（双核 A35 + Linux）做：NPU 推理调度、视觉定位 (x, y, θ)、跟
   - **PL `des_485`（v16 已上板；寄存器与行为见 [PL设计](PL设计.md)）**：寄存器窗口 `0x6xx`，硬件 DE、CRC16 自动补 / 校验、3.5 字符判帧、应答超时；PS 接口 `des_485_config` / `des_485_xfer`（请求 = [地址, 功能码, 数据]，不含 CRC）/ `des_485_listen`，调试命令 `desreg 485`。
   - **PS（`src/hw/modbus_rtu` + `src/app/rs485_io`）**：Modbus 主站 PDU 编解码（01 / 02 / 03 / 04 / 05 / 06 / 0F，应答逐项核对、异常码）；独立线程每 50ms 按线体状态算灯，**逐路 FC 05** 只写跟模块现状不同的那几路灯继电器（10-26 实物 bestep 板不认 FC 0F 开灯、FC 01 只应答 8 路 → `rs485.coils` 8；怪癖与实测见[到货联调清单](到货联调清单.md) §7b），每 `poll_ms` 读回线圈（FC 01，可选读输入 FC 02），读回不符（模块断电重启 / 继电器没吸合）下一周期补写；统计成功 / 超时 / CRC 错 / 帧错 / 异常 / 读回不符 + 应答时间 → 报告「总线稳定性」。`des_app.json` 的 `rs485`（10-27 起打开；比特流 < v16 时打印原因、只少一个灯）。des_hw 没有 `DES_VERSION_485` 时 RS485 代码照常编译、运行时报「无驱动」。
   - **协议转换**：PLC 经 CAN `0x105 LAMP` 或 Modbus-TCP `HR7` 接管灯 → 板子在 RS485 上写继电器（CAN / 以太网 → RS485）；RS485 链路状态进 CAN STATUS 标志 b5 和 Modbus `IR24~29`。
-  - PC：`pc/rs485/rs485_tool.py`（USB-RS485：`ports` / `scan` / `coils` / `set` / `lamp` / `demo` / `sniff` / `slave`，见 `--help`）；`pc/modbus/mb_client.py lamp red buzzer`。测试：`ps/tests/test_rs485`（模拟继电器模块，44 项）。
+  - PC：`pc/rs485/rs485_tool.py`（USB-RS485：`ports` / `scan` / `coils` / `set` / `lamp` / `demo` / `sniff` / `slave`，见 `--help`）；`pc/modbus/mb_client.py lamp red buzzer`。测试：`ps/tests/test_rs485`（模拟继电器模块，68 项）。
 
 ### CAN 协议 v1.2（v1.1 板上自测通过，PC 端按此写）
 
