@@ -132,8 +132,15 @@ void test_lamps()
     CHECK(lamp_pattern(CANP_ST_ESTOP, true, false, true, 0, 0) == LAMP_RED, "buzzer_s 0: silent");
     CHECK(lamp_pattern(CANP_ST_FAULT, true, false, true, 9, 2) == LAMP_RED && lamp_pattern(CANP_ST_FAULT, true, false, false, 9, 2) == 0,
           "fault: red blinking");
-    CHECK(lamp_pattern(CANP_ST_IDLE, false, false, true, 0, 2) == LAMP_GREEN && lamp_pattern(CANP_ST_IDLE, false, false, false, 0, 2) == 0,
-          "idle: green blinking");
+    CHECK(lamp_pattern(CANP_ST_IDLE, false, false, true, 0, 2) == 0 && lamp_pattern(CANP_ST_IDLE, false, false, false, 0, 2) == 0,
+          "idle (default): dark");
+    CHECK(lamp_pattern(CANP_ST_IDLE, false, false, true, 0, 2, IDLE_GREEN) == LAMP_GREEN &&
+              lamp_pattern(CANP_ST_IDLE, false, false, false, 0, 2, IDLE_GREEN) == LAMP_GREEN,
+          "idle green: steady");
+    CHECK(lamp_pattern(CANP_ST_IDLE, false, false, true, 0, 2, IDLE_BLINK) == LAMP_GREEN &&
+              lamp_pattern(CANP_ST_IDLE, false, false, false, 0, 2, IDLE_BLINK) == 0,
+          "idle blink: green blinking");
+    CHECK(lamp_pattern(CANP_ST_RUN, false, false, false, 0, 2, IDLE_OFF) == LAMP_GREEN, "idle setting leaves run alone");
     Rs485Config c;
     c.lamp_coil[0] = 3; c.lamp_coil[1] = 2; c.lamp_coil[2] = 1; c.lamp_coil[3] = -1;   // wired the other way round, no buzzer
     CHECK(lamp_to_coils(LAMP_GREEN | LAMP_RED | LAMP_BUZZER, c) == 0xA, "lamps -> relays by lamp_coil (%X)", lamp_to_coils(LAMP_GREEN | LAMP_RED | LAMP_BUZZER, c));
@@ -205,8 +212,20 @@ void test_bestep_board()
     sim.bestep = true;
     Rs485Config c;
     c.enabled = true; c.poll_ms = 100; c.buzzer_s = 0; c.coils = 8;
+    {   // default idle (10-28): dark the whole time — no relay clicking while the line stands
+        SimRelay quiet;
+        quiet.bestep = true;
+        Rs485Io qio(c, [&quiet](const uint8_t *q, int n, bool e, RtuXferResult &r) { quiet.xfer(q, n, e, r); });
+        qio.set_line(CANP_ST_IDLE, false, false);
+        qio.start();
+        bool lit = false;
+        for (int i = 0; i < 75; i++) { lit |= quiet.coils != 0; usleep(20000); }
+        qio.stop();
+        CHECK(!lit && quiet.requests > 0, "bestep: idle (default off) stays dark over 1.5 s");
+    }
+    c.idle = IDLE_BLINK;   // the old idle pattern, still selectable (rs485.idle "blink")
     Rs485Io io(c, [&sim](const uint8_t *q, int n, bool e, RtuXferResult &r) { sim.xfer(q, n, e, r); });
-    io.set_line(CANP_ST_IDLE, false, false);   // idle: green blinks at 1 Hz
+    io.set_line(CANP_ST_IDLE, false, false);   // idle blink: green at 1 Hz
     io.start();
     CHECK(wait_for([&] { return sim.coils == 0x1; }, 1.5) && wait_for([&] { return sim.coils == 0x0; }, 1.5) &&
               wait_for([&] { return sim.coils == 0x1; }, 1.5),

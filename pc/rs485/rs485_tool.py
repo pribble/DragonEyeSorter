@@ -12,7 +12,7 @@ watch the board's RS485 traffic, or stand in for the relay module (docs/到货�
   python rs485_tool.py set   --port COM10 2 on            one relay (FC 05; relays count from 0)
   python rs485_tool.py lamp  --port COM10 red             lamp relays to exactly this: green / yellow / red / buzzer / off
                                                           (one FC 05 per relay that changes, then read back)
-  python rs485_tool.py demo  --port COM10 [--buzzer]      what des_app shows: idle (green blinks) / run / paused / e-stop /
+  python rs485_tool.py demo  --port COM10 [--buzzer]      what des_app shows: idle (dark; rs485.idle green / blink) / run / paused / e-stop /
                                                           fault; the buzzer only with --buzzer
   python rs485_tool.py sniff --port COM10                 listen only: every frame with time, gap, CRC (board <-> module)
   python rs485_tool.py slave --port COM10                 be the relay module (address --addr): the board talks to the PC
@@ -194,7 +194,7 @@ def cmd_scan(bus, a):
 
 def cmd_demo(bus, a, lc):
     red = ["red", "buzzer"] if a.buzzer else ["red"]
-    steps = [("idle: green blinks", [["green"], []], 4), ("run: green", [["green"]], 3),
+    steps = [("idle: dark (des_app.json rs485.idle off)", [[]], 2), ("run: green", [["green"]], 3),
              ("paused: yellow", [["yellow"]], 3),
              ("e-stop: red + buzzer 1 s" if a.buzzer else "e-stop: red (buzzer skipped, --buzzer adds it)", [red], 1),
              ("e-stop: red", [["red"]], 2), ("fault: red blinks", [["red"], []], 4)]

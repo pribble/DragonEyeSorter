@@ -2,7 +2,8 @@
 //
 // One Modbus-RTU slave on the bus today: a 4-relay module (address 1) switching a 24 V tower light — green = running,
 // yellow = paused (or running with the PLC link lost), red = e-stop (steady) / fault (blinking), buzzer for buzzer_s
-// when an alarm starts, green blinking = idle. The PLC can take the lamps over (CAN 0x105 LAMP or Modbus-TCP HR 7):
+// when an alarm starts; idle = `idle` (default off: a relay clicking every second is too loud, user 10-28; green
+// steady would look like running). The PLC can take the lamps over (CAN 0x105 LAMP or Modbus-TCP HR 7):
 // that command arrives on one bus and is executed as a Modbus-RTU write on the other (CAN / Ethernet -> RS485).
 //
 // Own thread: a transaction blocks until the reply ends or times out (~100 ms) and must never hold up the 60 Hz
@@ -34,11 +35,16 @@ struct Rs485Config {
     int lamp_coil[4] = {0, 1, 2, 3}; // relay of green / yellow / red / buzzer (-1 = not wired)
     int poll_ms = 200;               // read-back period
     float buzzer_s = 1;              // buzzer this long when an alarm starts (0 = never, < 0 = as long as the alarm)
+    uint8_t idle = 0;                // lamps while idle (waiting for START): IDLE_OFF / IDLE_GREEN / IDLE_BLINK
     int inputs = 0;                  // digital inputs to read (FC 02) on a "4 in 4 out" module, 0 = none
 };
 enum : uint8_t { LAMP_GREEN = 1, LAMP_YELLOW = 2, LAMP_RED = 4, LAMP_BUZZER = 8 };
-// Lamp pattern for a line state (CANP_ST_*): blink = the 1 Hz phase, alarm_age_s = time since the alarm started.
-uint8_t lamp_pattern(uint8_t state, bool alarm, bool warn, bool blink, double alarm_age_s, float buzzer_s);
+// Rs485Config::idle (des_app.json rs485.idle "off" / "green" / "blink")
+enum : uint8_t { IDLE_OFF = 0, IDLE_GREEN = 1, IDLE_BLINK = 2 };
+// Lamp pattern for a line state (CANP_ST_*): blink = the 1 Hz phase, alarm_age_s = time since the alarm started,
+// idle = what the idle state shows (IDLE_*).
+uint8_t lamp_pattern(uint8_t state, bool alarm, bool warn, bool blink, double alarm_age_s, float buzzer_s,
+                     uint8_t idle = IDLE_OFF);
 uint32_t lamp_to_coils(uint8_t lamps, const Rs485Config &c);
 uint8_t coils_to_lamps(uint32_t coils, const Rs485Config &c);
 

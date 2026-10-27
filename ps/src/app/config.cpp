@@ -169,6 +169,12 @@ std::string load_config(const std::string &path, AppConfig &cfg)
         if (const json *c = sec_gets(j, "rs485", "enabled", rs.enabled, "baud", rs.baud, "timeout_ms", rs.timeout_ms,
                                      "addr", rs.addr, "coils", rs.coils, "poll_ms", rs.poll_ms, "buzzer_s", rs.buzzer_s,
                                      "inputs", rs.inputs)) {
+            std::string idle = rs.idle == IDLE_GREEN ? "green" : rs.idle == IDLE_BLINK ? "blink" : "off";
+            ji::get(*c, "idle", idle);
+            if (idle == "off") rs.idle = IDLE_OFF;
+            else if (idle == "green") rs.idle = IDLE_GREEN;
+            else if (idle == "blink") rs.idle = IDLE_BLINK;
+            else return path + ": rs485.idle must be off / green / blink";
             std::string par(1, rs.parity); ji::get(*c, "parity", par);
             if (par != "N" && par != "E" && par != "O") return path + ": rs485.parity must be N / E / O";
             rs.parity = par[0];

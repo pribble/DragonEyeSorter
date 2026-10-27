@@ -7,7 +7,7 @@
 #include "modbus_rtu.hpp"
 #include "util.hpp"
 namespace des {
-uint8_t lamp_pattern(uint8_t state, bool alarm, bool warn, bool blink, double alarm_age_s, float buzzer_s)
+uint8_t lamp_pattern(uint8_t state, bool alarm, bool warn, bool blink, double alarm_age_s, float buzzer_s, uint8_t idle)
 {
     uint8_t l = 0;
     switch (state) {
@@ -15,7 +15,9 @@ uint8_t lamp_pattern(uint8_t state, bool alarm, bool warn, bool blink, double al
     case CANP_ST_PAUSED: l = LAMP_YELLOW; break;
     case CANP_ST_ESTOP: l = LAMP_RED; break;
     case CANP_ST_FAULT: l = blink ? LAMP_RED : 0; break;
-    default: l = blink ? LAMP_GREEN : 0; break;   // IDLE: ready, waiting for START
+    default:   // IDLE: ready, waiting for START (default dark: no relay clicking while the line stands)
+        l = idle == IDLE_GREEN || (idle == IDLE_BLINK && blink) ? LAMP_GREEN : 0;
+        break;
     }
     if (alarm && (buzzer_s < 0 || (buzzer_s > 0 && alarm_age_s < buzzer_s))) l |= LAMP_BUZZER;
     return l;
@@ -154,7 +156,7 @@ void Rs485Io::loop()
         prev_alarm = alarm;
         const bool blink = int((now - t0) * 2) % 2 == 0;   // 1 Hz
         const uint8_t lamps = ovr_on_ ? uint8_t(ovr_lamps_ & 0x0F)
-                                      : lamp_pattern(state_, alarm, warn_, blink, now - alarm_t, cfg_.buzzer_s);
+                                      : lamp_pattern(state_, alarm, warn_, blink, now - alarm_t, cfg_.buzzer_s, cfg_.idle);
         const uint32_t coils = lamp_to_coils(lamps, cfg_);
         // One relay at a time (FC 05): the 10-26 relay board (bestep 4-ch) ignores FC 0F unless every bit is 0, and
         // FC 05 is what every Modbus relay board takes. Only relays that differ from what the module holds are

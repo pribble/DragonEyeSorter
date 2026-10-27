@@ -2,14 +2,14 @@
 # 板端脚本与 des.env 的**唯一源就在这里**（直接改这一份并提交）；其余文件由 deploy.sh 从仓库别处刷进来：
 #   主程序 ps/build/des_app、配置 ps/src/*.json、模型 models/part_cls*（label_list.json 就住在本目录）
 # 左列 = 哈希（脚本/配置/数据类去掉 CR 后算），右列 = 这个文件该去的板端路径
-# 清单指纹：scripts/deploy/manifest.tsv 的 MD5 = c17967e5cc61ae31497ca79599487f1c
+# 清单指纹：scripts/deploy/manifest.tsv 的 MD5 = 620e0d34eb65954106d402ac6bb05fe2
 05d94e131f387b2a83cbfcfe002d1ef7  /root/des/des.env
 f1593de981563ab3d28a4c26213a08f4  /root/des/des_service.sh
 33dea57fd3f6aa6e1f936751ca37490e  /root/des/can_up.sh
 97b15a5f12a767a99a036912e03de753  /root/des/des_app.sh
 227b885f39f3cf2d4de80b92e14cbbf9  /root/des/shutdown.sh
-06dd87ac7bbbc85e460e371d175f6214  /root/des/des_app
-48da38c68e7b8db14c227ca9750a324d  /root/des/des_app.json
+f02e6fbf0d3f43a96419618e64c222f8  /root/des/des_app
+26c93fe6d483cb4c18487d8e90ad586f  /root/des/des_app.json
 b8c08ca34a61119e2b3a7836cae8b205  /root/des/recipes.json
 848989e05a61890b52d9efddf975ba1c  /root/des/label_list.json
 
