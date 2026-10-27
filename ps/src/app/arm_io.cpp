@@ -30,6 +30,11 @@ void sleep_ms(double ms)
     timespec ts{time_t(ms / 1000), long(std::fmod(ms, 1000.0) * 1e6)};
     nanosleep(&ts, nullptr);
 }
+// 2026-10-26: two real picks both reported "nothing picked" although the part was held. POM + the soft-tape
+// fingertips compress, so the gripper stops within ~1.5 mm of the close command; the old 1.5 mm window sat exactly
+// on that boundary. 0.8 mm still separates a real grasp from a fully closed, empty gripper (which stops about one
+// part width away). Re-check with a true pick after changing fingertips / part material.
+constexpr float kGraspCloseTolMm = 0.8f;
 }  // namespace
 // Every move goes out read-back checked: the belt's stepper driver corrupts a few % of the bus frames while it is
 // energised and a SYNC WRITE has no reply, so a lost one would otherwise go unnoticed (2026-10-26).
@@ -120,11 +125,18 @@ ArmExec::Result ArmExec::run(const std::vector<ServoFrame> &wp, bool dry, const 
                 return res;  }
             sleep_ms(f.ms + settle_ms); if (f.check_grasp) {
                 // gripper stopped on the part: position short of the closed command (these servos report no current).
-                // Fully closed (within ~1.5 mm of the command) = nothing in the fingers. ⚠ thresholds from the arm
+                // Fully closed (within kGraspCloseTolMm of the command) = nothing in the fingers. ⚠ thresholds from the arm
                 uint16_t p = 0; const bool rp = des_servo_read_u16(hw_, id(5), 0x38, &p) == DES_OK;
                 res.grip_pos = rp ? p : -1; const float per_mm = grip_counts_per_mm(cfg_, grip_mm(cfg_, f.pos[5]));
-                res.grasped = rp && std::fabs(float(p) - float(f.pos[5])) > 1.5f * per_mm; if (!rp) res.why = "gripper did not answer (grasp unknown)";
-                else if (!res.grasped) res.why = "gripper closed fully: nothing picked";  }
+                const float diff_mm = rp && per_mm > 0 ? std::fabs(float(p) - float(f.pos[5])) / per_mm : 0.f;
+                res.grasped = rp && diff_mm > kGraspCloseTolMm;
+                if (!rp) res.why = "gripper did not answer (grasp unknown)";
+                else if (!res.grasped) {
+                    char b[160];
+                    snprintf(b, sizeof b, "gripper closed fully: nothing picked (pos %u, cmd %u, %.2f mm < %.2f mm)",
+                             unsigned(p), unsigned(f.pos[5]), double(diff_mm), double(kGraspCloseTolMm));
+                    res.why = b;
+                }  }
         }
         if (f.belt_clear && on_belt_clear) on_belt_clear();
     }
