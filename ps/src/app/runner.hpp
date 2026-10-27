@@ -85,6 +85,7 @@ private:
     int pending_recipe_ = -1;    // accepted by select_recipe, not yet applied by the worker
     std::unique_ptr<ModbusTcp> mb_;  // Modbus-TCP slave (cfg.plc.modbus_port > 0)
     std::unique_ptr<Rs485Io> rs485_; // RS485 relay module / tower light (cfg.rs485.enabled and bitstream v16)
+    PlcWatch plc_watch_;             // yellow lamp "PLC link lost" (rs485_io.hpp)
     uint64_t mb_requests_ = 0;
     double last_mb_ = -1e9;          // last Modbus request seen (PLC_LINK)
     uint16_t mb_seq_ = 0, mb_time_hi_ = 0, mb_hb_ = 0, part_seq_ = 0;

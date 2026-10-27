@@ -121,6 +121,30 @@ void test_pdu()
     CHECK(!rtu_check_reply(rr, nrr, rep.data(), rep.size(), nullptr, regs, 2, &exc) && regs[0] == 0x1234 && regs[1] == 0xABCD,
           "read registers, big-endian");
 }
+void test_plc_watch()
+{
+    // 10-28: one Modbus read from a laptop (link for ~1 s) then nothing: never "lost"
+    PlcWatch w;
+    bool warn = false;
+    for (double t = 0; t < 10; t += 0.05) warn |= w.update(t, t >= 2 && t < 3, false);
+    CHECK(!warn && !w.seen, "one-off read: no PLC, no yellow");
+    // a polling PLC (link held) that goes quiet while running: yellow, back when it returns
+    PlcWatch p;
+    bool before = false;
+    for (double t = 0; t < 4; t += 0.05) before |= p.update(t, true, false);
+    CHECK(!before && p.seen, "PLC there after 3 s of traffic, no warning while it talks");
+    CHECK(p.update(4.1, false, false) && p.update(9, false, false), "PLC quiet while running: yellow");
+    CHECK(!p.update(9.1, true, false), "PLC back: yellow off");
+    // stop the line with the PLC gone, start again: no yellow (forgotten), until a PLC talks 3 s and drops again
+    p.update(9.2, false, false);
+    CHECK(!p.update(9.3, false, true) && !p.seen, "stopped: forgotten");
+    CHECK(!p.update(20, false, false), "next run without a PLC: no yellow");
+    // PLC talking through the stop: the next run knows it at once
+    PlcWatch q;
+    for (double t = 0; t < 5; t += 0.05) q.update(t, true, true);
+    CHECK(!q.update(5.05, true, false) && q.seen, "run start with a live PLC: seen right away");
+    CHECK(q.update(5.2, false, false), "and its loss warns");
+}
 void test_lamps()
 {
     CHECK(lamp_pattern(CANP_ST_RUN, false, false, true, 0, 2) == LAMP_GREEN, "run: green");
@@ -270,6 +294,7 @@ void test_bestep_board()
 int main()
 {
     test_pdu();
+    test_plc_watch();
     test_lamps();
     test_worker();
     test_bestep_board();

@@ -48,6 +48,22 @@ enum : uint8_t { IDLE_OFF = 0, IDLE_GREEN = 1, IDLE_BLINK = 2 };
 uint8_t lamp_pattern(uint8_t state, bool alarm, bool warn, bool blink, double alarm_age_s, float buzzer_s,
                      uint8_t idle = IDLE_OFF, double state_age_s = 0, float fault_s = -1);
 uint32_t lamp_to_coils(uint8_t lamps, const Rs485Config &c);
+// "PLC link lost" for the yellow lamp. A PLC counts as there only after its traffic (CAN heartbeat or Modbus
+// requests, each within the last second) held for hold_s without a gap: a PLC / SCADA polls all the time, a one-off
+// read (mb_client status from a laptop) does not — 10-28 one such read lit yellow for every later run until a restart.
+// Stopping the line (idle) forgets it, so a PLC simulator closed after a demo does not keep yellow on next time.
+struct PlcWatch {
+    double link_since = -1;   // start of the current unbroken link, -1 = no link
+    bool seen = false;        // a PLC was there during this run
+    bool update(double now, bool link, bool idle, double hold_s = 3)   // true = warn (it was there, now quiet)
+    {
+        if (!link) link_since = -1;
+        else if (link_since < 0) link_since = now;
+        if (link && now - link_since >= hold_s) seen = true;
+        if (idle) seen = false;
+        return seen && !link;
+    }
+};
 uint8_t coils_to_lamps(uint32_t coils, const Rs485Config &c);
 
 // One RS485 transaction: request [addr, fc, data...] without CRC; reply likewise. rc: RTU_* below.

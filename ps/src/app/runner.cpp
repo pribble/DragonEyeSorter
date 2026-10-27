@@ -399,8 +399,8 @@ void Runner::cycle(Tracker &tr, Picker &pk)
         send(canp_counts(&c)); last_counts_ = now;
     }
     if (rs485_) {   // the tower light follows the line; yellow joins green when a PLC that was there went quiet
-        const bool seen = last_plc_hb_ > -1e8 || last_mb_ > -1e8, link = now - last_plc_hb_ < 1.0 || now - last_mb_ < 1.0;
-        rs485_->set_line(state_, alarm_ != 0, seen && !link);
+        const bool link = now - last_plc_hb_ < 1.0 || now - last_mb_ < 1.0;   // (PlcWatch: >= 3 s of it = there)
+        rs485_->set_line(state_, alarm_ != 0, plc_watch_.update(now, link, state_ == CANP_ST_IDLE));
     }
     flush_tx();
     update_modbus(now);
