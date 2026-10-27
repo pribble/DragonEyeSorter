@@ -48,7 +48,7 @@
 - 分支 `pl/…`、`ps/…`、`models/…`、`docs/…`；提交信息 = 中文祈使句 + 范围前缀（`pl: 新增舵机总线 SYNC WRITE 发送`）；身份用 `.git/config` 预配的，推送前 `git pull --rebase`。
 - 可能有人并发改同一文件：长状态行整行重写、冲突逐处对齐，不整段覆盖。
 - 验证：改 PL 跑 `/root/des/pl_check.sh`；改 PS 跑 `make -C ps all`；改 RTL 先写能失败的测试（断言要具体，见 [测试与验证](docs/测试与验证.md)）。
-- 文档：改文档后、提交前跑 `pwsh -File scripts/check/check_docs.ps1`；改寄存器 / 类别表 / 部署件后跑 `pwsh -File scripts/check/check_sources.ps1`（规则与例外见 `scripts/check/doc_check.json` / `scripts/check/source_check.json`）。
+- 文档：改文档后、提交前跑 `pwsh -File scripts/check/check_docs.ps1`；改寄存器 / 类别表 / 部署件后跑 `pwsh -File scripts/check/check_sources.ps1`；改检查器规则后跑 `pwsh -File scripts/check/selftest.ps1`（规则与例外见 `scripts/check/doc_check.json` / `scripts/check/source_check.json`）。
 - 编码：`.ps1` UTF-8 BOM，`.sh` LF。
 
 ## 维护本文件

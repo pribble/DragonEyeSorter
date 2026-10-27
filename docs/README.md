@@ -55,9 +55,12 @@
 改文档后、提交前跑；退出码非 0 即不合规。规则与例外在 `scripts/check/doc_check.json` / `scripts/check/source_check.json`，例外必须写 reason：
 
 ```powershell
-pwsh -File scripts/check/check_docs.ps1       # 链接/锚点、索引完整性、路径卫生、行数预算、结构卫生、数字复述、版本口径
+pwsh -File scripts/check/check_docs.ps1       # 链接/锚点、行内代码/代码块路径存在性、索引完整性、路径卫生、行数预算、结构卫生、数字复述、版本口径
 pwsh -File scripts/check/check_sources.ps1    # 文档 ↔ 源码唯一源：寄存器表 ↔ des_regs.h、类别表 ↔ label_list.json、CSV 列数、部署清单 ↔ out/
+pwsh -File scripts/check/selftest.ps1         # 检查器自测（注入坏样例，改检查器后跑）
 ```
+
+只覆盖机械一致性（链接/锚点/行内路径/索引/数字口径/版本/寄存器/类别/CSV/清单），散文与状态类事实（分类数、进度状态等）不机械检查、靠评审与 log。
 
 ## 代码侧 README
 
@@ -68,7 +71,7 @@ pwsh -File scripts/check/check_sources.ps1    # 文档 ↔ 源码唯一源：寄
 | [log/README.md](log/README.md) | log 的格式、主题索引与沿革归属 |
 | [pl/README.md](../pl/README.md) | PL 目录布局、工程组织、资源预算；[soc_base](../pl/soc_base/README.md) 底板工程与对厂家的改动、[soc_prj_Runs](../pl/soc_base/soc_prj_Runs/README.md) TD 运行目录最小集合 |
 | [ps/README.md](../ps/README.md) | PS 代码地图、四层产物、构建与命令参考；[kernel](../ps/kernel/README.md) mipicam 内核模块；[vendor](../ps/vendor/README.md) 非自研代码边界（json.hpp） |
-| [scripts/README.md](../scripts/README.md) | 四个目录的分工：`env/` 环境准备、`check/` 文档与源码检查、`boot/` BOOT.bin 打包与烧卡、`sdk_fix_sonames.sh`；[deploy](../scripts/deploy/README.md) 板端部署清单与上板 |
+| [scripts/README.md](../scripts/README.md) | 四个目录的分工：`env/` 环境准备（含 `sdk_fix_sonames.sh`）、`check/` 文档与源码检查、`boot/` BOOT.bin 打包与烧卡、[deploy](../scripts/deploy/README.md) 板端部署与上板 |
 | [train/README.md](../train/README.md) | 合成数据、训练、导出 + UINT8 量化、评估与上板核对 |
 | [pc/README.md](../pc/README.md) | PC 侧工具索引：PLC 模拟器（CAN）、测试报告出数、Modbus-TCP / RS485 客户端、现场数据接收 |
 | [figures/README.md](figures/README.md) | 技术文档插图的生成脚本与用法 |

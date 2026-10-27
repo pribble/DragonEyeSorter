@@ -10,5 +10,3 @@
 *.adc  text
 *.sdc  text
 *.bif  text
-# 部署自测的假 ssh / scp 桩没有扩展名，单独钉 LF（CRLF 的 shebang 在 Git Bash 里直接跑不起来）
-scripts/deploy/selftest/fakebin/* text eol=lf
