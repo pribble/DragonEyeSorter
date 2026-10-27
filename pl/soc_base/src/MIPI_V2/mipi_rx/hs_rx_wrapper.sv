@@ -9,7 +9,6 @@ module hs_rx_wrapper #(
     input  wire                    I_lp_clk, I_rst,
     input  wire [LANE_NUM-1:0]     I_lane_hs_invert, I_lane_lp_invert,
     input  wire [LANE_NUM-1:0]     I_mipi_hs_p, I_mipi_lp_p, I_mipi_lp_n,
-
     output wire                    O_hs_valid,
     output wire [LANE_NUM*8-1:0]   O_hs_data,
     output wire [LANE_NUM-1:0]     O_lane_error

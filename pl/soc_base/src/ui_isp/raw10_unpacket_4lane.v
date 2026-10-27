@@ -14,8 +14,7 @@ module raw10_unpacket_4lane (
     reg        S_raw10_wr_en;
     reg [39:0] S_raw10_wr_data;
 
-    // 按 S_cnt 把 5 字节窗口 {上一拍 32bit, 当前拍 32bit} 拼成 {P0,P1,P2,P3}
-    // 低 2bit 来自当前拍数据，MSB8 来自滑动窗口；4 个分支与原版逐位一致
+    // 按 S_cnt 把 5 字节窗口 {上一拍 32bit, 当前拍 32bit} 拼成 {P0,P1,P2,P3}（4 分支与原版逐位一致）
     function [39:0] raw10_pack(input [2:0] c, input [31:0] prev, input [31:0] cur);
         case (c)
             3'd0: raw10_pack = {prev[31:24], cur[25:24], prev[23:16], cur[27:26],

@@ -22,47 +22,38 @@ module image_cut #(
     localparam IMG_WIDTH_4x = (IMG_WIDTH >> 2);
     reg [13:0]           h_cnt, v_cnt;              // 位宽/回绕同原版
     reg [DATA_WIDTH-1:0] I_tdata_r;
-    reg                  I_tlast_r0, I_tuser_r0, I_tvalid_r0;
-    reg                  I_tlast_r1, I_tuser_r1, I_tvalid_r1;
+    reg [1:0]            tl_r, tu_r, tv_r;          // tlast/tuser/tvalid 两拍流水（bit1 为输出）
 
     // 裁剪判定：用上一拍计数，与原版同一时钟沿组合判定一致
     wire w_skip = (v_cnt < SKIP_ROWS_top) || (h_cnt < SKIP_COLS_left) ||
                   (v_cnt >= IMG_HEIGHT - SKIP_ROWS_bottom) ||
                   (h_cnt >= IMG_WIDTH_4x - SKIP_COLS_right);
 
-    // 行列计数 + 裁剪输出：帧头清零，行尾回绕，其余按有效像素递增
+    // 行列计数 + 裁剪输出 + 两拍控制流水（原 2 个 always 同复位/同时钟/全非阻塞，合并后逐拍等价）
     always @(posedge I_clk or negedge I_rst_n) begin
         if (!I_rst_n) begin
             h_cnt <= 14'd0; v_cnt <= 14'd0; O_tdata <= {DATA_WIDTH{1'b0}};
+            {tl_r, tu_r, tv_r} <= 6'd0;
+            I_tdata_r <= {DATA_WIDTH{1'b0}};
         end else begin
             if (I_tuser) begin
                 h_cnt <= 14'd0; v_cnt <= 14'd0;
             end else begin
-                h_cnt <= I_tvalid_r0 ? ((h_cnt == IMG_WIDTH_4x - 1) ? 14'd0 : h_cnt + 14'd1) : h_cnt;
-                v_cnt <= I_tvalid_r0 && (h_cnt == IMG_WIDTH_4x - 1)
+                h_cnt <= tv_r[0] ? ((h_cnt == IMG_WIDTH_4x - 1) ? 14'd0 : h_cnt + 14'd1) : h_cnt;
+                v_cnt <= tv_r[0] && (h_cnt == IMG_WIDTH_4x - 1)
                          ? ((v_cnt == IMG_HEIGHT - 1) ? 14'd0 : v_cnt + 14'd1) : v_cnt;
             end
             O_tdata <= w_skip ? {DATA_WIDTH{1'b0}} : I_tdata_r;
+            // 两拍流水：行/帧标志 2 拍，数据 1 拍后进输出寄存器
+            tl_r <= {tl_r[0], I_tlast};
+            tu_r <= {tu_r[0], I_tuser};
+            tv_r <= {tv_r[0], I_tvalid};
+            I_tdata_r <= I_tdata;
         end
     end
 
-    // 两拍流水：行/帧标志 2 拍，数据 1 拍后进输出寄存器
-    always @(posedge I_clk or negedge I_rst_n) begin
-        if (!I_rst_n) begin
-            {I_tlast_r0,  I_tlast_r1}  <= 2'd0;
-            {I_tuser_r0,  I_tuser_r1}  <= 2'd0;
-            {I_tvalid_r0, I_tvalid_r1} <= 2'd0;
-            I_tdata_r <= {DATA_WIDTH{1'b0}};
-        end else begin
-            I_tlast_r0  <= I_tlast;   I_tlast_r1  <= I_tlast_r0;
-            I_tuser_r0  <= I_tuser;   I_tuser_r1  <= I_tuser_r0;
-            I_tvalid_r0 <= I_tvalid;  I_tvalid_r1 <= I_tvalid_r0;
-            I_tdata_r   <= I_tdata;
-        end
-    end
-
-    assign O_tlast  = I_tlast_r1;
-    assign O_tuser  = I_tuser_r1;
-    assign O_tvalid = I_tvalid_r1;
+    assign O_tlast  = tl_r[1];
+    assign O_tuser  = tu_r[1];
+    assign O_tvalid = tv_r[1];
     assign I_tready = O_tready;
 endmodule

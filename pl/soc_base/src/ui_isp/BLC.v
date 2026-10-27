@@ -36,14 +36,9 @@ module BLC #(
     end
 
     reg I_tlast_r, I_tuser_r, I_tvalid_r;
-    always @(posedge I_clk or negedge I_rst_n) begin
+    always @(posedge I_clk or negedge I_rst_n)
         if (!I_rst_n) {I_tlast_r, I_tuser_r, I_tvalid_r} <= 3'd0;
-        else begin
-            I_tlast_r  <= I_tlast;
-            I_tuser_r  <= I_tuser;
-            I_tvalid_r <= I_tvalid;
-        end
-    end
+        else {I_tlast_r, I_tuser_r, I_tvalid_r} <= {I_tlast, I_tuser, I_tvalid};
 
     assign O_tlast  = I_tlast_r;
     assign O_tuser  = I_tuser_r;

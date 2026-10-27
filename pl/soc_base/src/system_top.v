@@ -1,57 +1,26 @@
 // DragonEyeSorter 顶层：PS 块设计（design_0：MIPI RX / ISP / VDMA / HDMI / NPU）
 // + 厂家明文 ISP/帧写 RTL + 自研 des_* 寄存器总线与运动/IO 模块的集成。
-// 厂家底板来自米联客 NPU demo（uisrc soc_prj）；des_* 接线、CEP 管脚与 CAN0 引出为本项目改动。
 module system_top (
-    // HDMI TX（厂家 hdmi_tx 模块）
-    output [2:0] O_hdmi_tx_p,
-    output       O_hdmi_clk_p,
-
-    // PS I2C0 EMIO（相机配置）
-    inout        SCL0,
-    inout        SDA0,
-
-    // 板载 LED（led[0] 自研心跳，led[1]/led[2] 厂家 lock）
-    output [2:0] led,
-
-    // CEP J12（BANK11 3.3V）运动与现场 IO
-    output       STEP_PUL,      // PIN3  Y12：TB6600 PUL+（共阴，高有效）
-    output       STEP_DIR,      // PIN4  Y13
-    output       STEP_ENA,      // PIN5  T9：TB6600 ENA+（共阴，低 = 使能）
-    input        ESTOP_IN,      // PIN15 V11：急停，低有效（上拉）
-    input        ENC_A,         // PIN6  U10：皮带编码器（NPN 开路，上拉）
-    input        ENC_B,         // PIN7  T5
-    input        ENC_Z,         // PIN8  U5
-    input        IR1_IN,        // PIN9  V6：对射接收（NPN，上拉）
-    input        LIMIT1_IN,     // PIN12 V7：限位（上拉，低有效）
-    inout        SERVO_BUS,     // PIN19 Y9：舵机总线，经 BSS138 开漏
-    output       FLAP1_PWM,     // PIN18 Y6（#16）：导流挡板 1
-    output       FLAP2_PWM,     // PIN20 Y8（#18）：导流挡板 2
-
-    // 板载 CAN 收发器（BANK33，J11）：PS CAN0 经 PL 引出
-    output       CAN0_TXD,      // F20
-    input        CAN0_RXD,      // F19
-    // 板载 RS485 收发器 SP3485EN（BANK33，J11 第 5 / 6 位 485_A / 485_B）：自研 des_485（v16）
-    output       RS485_TXD,     // L17：DI
-    input        RS485_RXD,     // N16：RO（上拉；DE = 1 时悬空）
-    output       RS485_DE,      // N15：DE 与 /RE 并联，1 = 发送
-
-    // MIPI CSI-2 输入（LVDS IO 实现 D-PHY）
-    input  wire       I_clk_hs_p,
-    input  wire [3:0] I_data_hs_p,
-    input  wire [3:0] I_data_lp_p,
-    input  wire [3:0] I_data_lp_n,
-
-    // 相机时钟 / 复位
+    output [2:0] O_hdmi_tx_p, output       O_hdmi_clk_p,
+    inout        SCL0, inout        SDA0,
+    output [2:0] led, output       STEP_PUL,
+    output       STEP_DIR, output       STEP_ENA,
+    input        ESTOP_IN, input        ENC_A,
+    input        ENC_B, input        ENC_Z,
+    input        IR1_IN, input        LIMIT1_IN,
+    inout        SERVO_BUS, output       FLAP1_PWM,
+    output       FLAP2_PWM, output       CAN0_TXD,
+    input        CAN0_RXD, output       RS485_TXD,
+    input        RS485_RXD, output       RS485_DE,
+    input  wire       I_clk_hs_p, input  wire [3:0] I_data_hs_p,
+    input  wire [3:0] I_data_lp_p, input  wire [3:0] I_data_lp_n,
     output wire O_imx334_clk_24m,
     output      O_imax334_rst_n
 );
-
     parameter AXI_ADDR_WIDTH = 33;
     parameter AXI_DATA_WIDTH = 256;
     parameter X_SIZE = 1920;
     parameter Y_SIZE = 1080;
-
-    // ---------------- PS HP0 从口：帧写 AXI4 master 与 PLL 时钟 ----------------
     wire [32:0] slave_hp0_axi_awaddr;
     wire [63:0] slave_hp0_axi_wdata;
     wire  [7:0] slave_hp0_axi_wstrb;
@@ -62,38 +31,29 @@ module system_top (
     wire        slave_hp0_axi_awlock, slave_hp0_axi_awvalid, slave_hp0_axi_awready,
                 slave_hp0_axi_bready, slave_hp0_axi_bvalid, slave_hp0_axi_wlast,
                 slave_hp0_axi_wvalid, slave_hp0_axi_wready;
-
     wire        f2p_irq;
     wire        pll_clk_150;          //synthesis keep
     wire        pll_clk_150_aresetn;
     wire        p2f_clk0_50m;
-
     wire [31:0] camera_base_addr;
     wire        camera_start, camera_clear;
-
-    // ---------------- 自研心跳：PL 逻辑已加载的直接证据（约 2.7s 翻转） ----------------
     reg [27:0] des_hb_cnt = 28'd0;
     always @(posedge p2f_clk0_50m) des_hb_cnt <= des_hb_cnt + 1'b1;
-
     wire        des_clk, des_wr;
     wire [11:0] des_waddr, des_raddr;
     wire [31:0] des_wdata, des_rdata;
     wire        des_led_ovr, des_led_val;
     assign led[0] = des_led_ovr ? des_led_val : des_hb_cnt[27];
-
-    // ---------------- PS 块设计 ----------------
     design_0 design_0_inst (
         .hp1_w_us1_awaddr (slave_hp0_axi_awaddr),
-        .hp1_w_us1_awburst(slave_hp0_axi_awburst),
-        .hp1_w_us1_awcache(slave_hp0_axi_awcache),
+        .hp1_w_us1_awburst(slave_hp0_axi_awburst), .hp1_w_us1_awcache(slave_hp0_axi_awcache),
         .hp1_w_us1_awid   (slave_hp0_axi_awid),
         .hp1_w_us1_awlen  (slave_hp0_axi_awlen),
         .hp1_w_us1_awlock (slave_hp0_axi_awlock),
         .hp1_w_us1_awprot (slave_hp0_axi_awprot),
         .hp1_w_us1_awqos  (slave_hp0_axi_awqos),
         .hp1_w_us1_awsize (slave_hp0_axi_awsize),
-        .hp1_w_us1_awvalid(slave_hp0_axi_awvalid),
-        .hp1_w_us1_awready(slave_hp0_axi_awready),
+        .hp1_w_us1_awvalid(slave_hp0_axi_awvalid), .hp1_w_us1_awready(slave_hp0_axi_awready),
         .hp1_w_us1_wdata  (slave_hp0_axi_wdata),
         .hp1_w_us1_wlast  (slave_hp0_axi_wlast),
         .hp1_w_us1_wstrb  (slave_hp0_axi_wstrb),
@@ -104,8 +64,7 @@ module system_top (
         .hp1_w_us1_bvalid (slave_hp0_axi_bvalid),
         .hp1_w_us1_bready (slave_hp0_axi_bready),
         .f2p_irq          (f2p_irq),
-        .mipi_iic_i2c0_scl_io(SCL0),
-        .mipi_iic_i2c0_sda_io(SDA0),
+        .mipi_iic_i2c0_scl_io(SCL0), .mipi_iic_i2c0_sda_io(SDA0),
         .O_hdmi_tx_p      (O_hdmi_tx_p),
         .O_hdmi_clk_p     (O_hdmi_clk_p),
         .clk_150m         (pll_clk_150),
@@ -125,8 +84,6 @@ module system_top (
         .can0_tx          (CAN0_TXD),
         .can0_rx          (CAN0_RXD)
     );
-
-    // ---------------- 相机 → MIPI D-PHY → CSI 解包 → ISP（ui_isp 明文链路） ----------------
     wire        ud_wclk;              //synthesis keep
     wire        ud_wvs;               //synthesis keep
     wire        ud_wde;               //synthesis keep
@@ -136,9 +93,7 @@ module system_top (
     wire        S_ISP_O_tlast;
     wire        S_ISP_O_tuser;
     wire        S_ISP_O_tvalid;
-
     assign O_imax334_rst_n = 1'b1;
-
     design_top_wrapper design_top_wrapper_u (
         .I_sys_clk_156m   (p2f_clk0_50m),
         .O_imx334_clk_24m (O_imx334_clk_24m),
@@ -152,36 +107,27 @@ module system_top (
         .O_ISP_tuser      (S_ISP_O_tuser),
         .O_ISP_tvalid     (S_ISP_O_tvalid)
     );
-
-    // ---------------- 自研 des_vision（ISP 输出与帧写之间）+ 帧起始/写完成锁存 ----------------
     wire [127:0] vis_tdata;
-    wire         vis_tvalid, vis_tuser;    // m_tlast 未被帧写模块使用（uidbuf_write 无 tlast 口）
+    wire         vis_tvalid, vis_tuser;
     wire         cap_start_tgl;
     reg          cap_done_d = 1'b0, cap_done_tgl = 1'b0;
     reg          des_sof_d = 1'b0, des_sof_toggle = 1'b0;
-
     assign ud_wclk = S_hs_rx_clk;
     assign ud_wvs  = vis_tuser;
     assign ud_wde  = vis_tvalid;
     assign ud_wdata = vis_tdata;      //synthesis keep
-
-    // f2p_irq 是厂家帧写完成中断：上升沿翻转，进 des_regs 拍摄锁存
     always @(posedge pll_clk_150) begin
         cap_done_d <= f2p_irq;
         if (f2p_irq && !cap_done_d) cap_done_tgl <= ~cap_done_tgl;
     end
-    // isp_top 把输入 tuser 直通到 O_tuser（不与 O_tvalid 对齐），因此只取边沿当帧起始
     always @(posedge S_hs_rx_clk) begin
         des_sof_d <= S_ISP_O_tuser;
         if (S_ISP_O_tuser && !des_sof_d) des_sof_toggle <= ~des_sof_toggle;
     end
-
-    // ---------------- 帧写 DDR：uidbuf_write（厂家明文）+ uiFDMA（AXI4 master） ----------------
     wire [AXI_ADDR_WIDTH-1:0]   fdma_waddr;
     wire [15:0]                 fdma_wsize;
     wire [AXI_DATA_WIDTH/4-1:0] fdma_wdata;
     wire                        fdma_wareq, fdma_wbusy, fdma_wvalid, wbuf_sync;
-
     uidbuf_write #(
         .VIDEO_ENABLE    (1'b1),
         .ENABLE_WRITE    (1'b1),
@@ -218,7 +164,6 @@ module system_top (
         .camera_done     (f2p_irq),
         .camera_clear_intr(camera_clear)
     );
-
     uiFDMA #(
         .M_AXI_ID_WIDTH    (6),
         .M_AXI_ADDR_WIDTH  (AXI_ADDR_WIDTH),
@@ -261,67 +206,48 @@ module system_top (
         .M_AXI_BVALID      (slave_hp0_axi_bvalid),
         .M_AXI_BREADY      (slave_hp0_axi_bready)
     );
-
-    // ---------------- 自研模块：0x8030_1000 起的 AXI-Lite 寄存器总线 ----------------
     wire [31:0] regs_rdata, sb_rdata, st_rdata, vis_rdata, pwm_rdata, io_rdata, rs_rdata, des_ts, st_pos, io_enc;
     wire        sb_drive_low, st_pul_n, st_dir_n, st_ena, des_estop;
-
-    // 组合读多路：fvdma_ctrl 桥按 1 拍取数，不能打拍
     assign des_rdata = (des_raddr[11:8] == 4'h1) ? sb_rdata :
                        (des_raddr[11:8] == 4'h2) ? st_rdata :
                        (des_raddr[11:8] == 4'h3) ? vis_rdata :
                        (des_raddr[11:8] == 4'h4) ? pwm_rdata :
                        (des_raddr[11:8] == 4'h5) ? io_rdata :
                        (des_raddr[11:8] == 4'h6) ? rs_rdata : regs_rdata;
-
-    des_regs #(.VERSION(32'd16)) des_regs_inst (   // 16: CAP_ENC0/1 + des_485 (0x6xx)
-        .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h0), .waddr(des_waddr), .wdata(des_wdata),
-        .raddr(des_raddr), .rdata(regs_rdata), .sof_toggle(des_sof_toggle), .ts(des_ts),
+    des_regs #(.VERSION(32'd16)) des_regs_inst (
+        .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h0), .waddr(des_waddr), .wdata(des_wdata), .raddr(des_raddr), .rdata(regs_rdata), .sof_toggle(des_sof_toggle), .ts(des_ts),
         .cap_start_toggle(cap_start_tgl), .cap_done_toggle(cap_done_tgl), .pos(st_pos), .enc(io_enc),
         .led_ovr(des_led_ovr), .led_val(des_led_val)
     );
-
     servo_bus servo_bus_inst (
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h1), .waddr(des_waddr[7:0]), .wdata(des_wdata),
         .raddr(des_raddr[7:0]), .rdata(sb_rdata), .ts(des_ts), .bus_i(SERVO_BUS), .bus_drive_low(sb_drive_low)
     );
     assign SERVO_BUS = sb_drive_low ? 1'b0 : 1'bz;
-
     stepper_ctrl stepper_inst (
-        .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h2), .waddr(des_waddr[7:0]), .wdata(des_wdata),
-        .raddr(des_raddr[7:0]), .rdata(st_rdata), .estop(des_estop),
+        .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h2), .waddr(des_waddr[7:0]), .wdata(des_wdata), .raddr(des_raddr[7:0]), .rdata(st_rdata), .estop(des_estop),
         .pul_n(st_pul_n), .dir_n(st_dir_n), .ena_o(st_ena), .pos_o(st_pos)
     );
-
     des_vision vision_inst (
-        .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h3), .waddr(des_waddr[7:0]), .wdata(des_wdata),
-        .raddr(des_raddr[7:0]), .rdata(vis_rdata),
+        .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h3), .waddr(des_waddr[7:0]), .wdata(des_wdata), .raddr(des_raddr[7:0]), .rdata(vis_rdata),
         .pclk(S_hs_rx_clk), .s_tdata(S_ISP_O_tdata), .s_tvalid(S_ISP_O_tvalid), .s_tuser(S_ISP_O_tuser),
         .s_tlast(S_ISP_O_tlast), .m_tdata(vis_tdata), .m_tvalid(vis_tvalid), .m_tuser(vis_tuser)
     );
-
     des_io io_inst (
-        .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h5), .waddr(des_waddr[7:0]), .wdata(des_wdata),
-        .raddr(des_raddr[7:0]), .rdata(io_rdata), .ts(des_ts), .pos(st_pos),
+        .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h5), .waddr(des_waddr[7:0]), .wdata(des_wdata), .raddr(des_raddr[7:0]), .rdata(io_rdata), .ts(des_ts), .pos(st_pos),
         .estop_n(ESTOP_IN), .ir1_in(IR1_IN), .limit1_in(LIMIT1_IN), .enc_a(ENC_A), .enc_b(ENC_B), .enc_z(ENC_Z),
         .estop_out(des_estop), .enc_o(io_enc)
     );
-
     des_485 rs485_inst (
-        .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h6), .waddr(des_waddr[7:0]), .wdata(des_wdata),
-        .raddr(des_raddr[7:0]), .rdata(rs_rdata), .ts(des_ts),
+        .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h6), .waddr(des_waddr[7:0]), .wdata(des_wdata), .raddr(des_raddr[7:0]), .rdata(rs_rdata), .ts(des_ts),
         .rx_i(RS485_RXD), .tx_o(RS485_TXD), .de_o(RS485_DE)
     );
-
     des_pwm pwm_inst (
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h4), .waddr(des_waddr[7:0]), .wdata(des_wdata),
         .raddr(des_raddr[7:0]), .rdata(pwm_rdata), .pwm({FLAP2_PWM, FLAP1_PWM})
     );
-
-    // TB6600 共阴接法（PUL-/DIR-/ENA- 接 GND）：脉冲高有效、ENA 高 = 脱机；共阳 + 74HCT245 时置 0
     localparam STEP_COMMON_CATHODE = 1;
     assign STEP_PUL = STEP_COMMON_CATHODE ? ~st_pul_n : st_pul_n;
     assign STEP_DIR = st_dir_n;
     assign STEP_ENA = STEP_COMMON_CATHODE ? ~st_ena : st_ena;
-
 endmodule

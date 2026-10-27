@@ -1,6 +1,6 @@
 // MIPI D-PHY RX over LVDS wrapper: rx_clk_gen generates the HS clocks, hs_rx_wrapper
-// receives the 4 data lanes. This project only uses DEVICE="DR1" / LANE_NUM=4; the
-// parameters are kept for interface compatibility.
+// receives the 4 data lanes. Only DEVICE="DR1" / LANE_NUM=4 is used; parameters are kept
+// for interface compatibility.
 module mipi_dphy_rx_over_lvds_wrapper #(
     parameter DEVICE   = "EG",   // kept for interface compatibility; only DR1 supported
     parameter LANE_NUM = 4
@@ -8,7 +8,6 @@ module mipi_dphy_rx_over_lvds_wrapper #(
     input  wire                    I_lp_clk, I_rst, I_mipi_clk_p,
     input  wire [LANE_NUM-1:0]     I_mipi_data_hs_p, I_mipi_data_lp_p, I_mipi_data_lp_n,
                                    I_lane_hs_invert, I_lane_lp_invert,
-
     output wire                    O_hs_rx_clk, O_hs_rx_valid,
     output wire [LANE_NUM*8-1:0]   O_hs_rx_data,
     output wire                    O_lp_rx_lane0_p, O_lp_rx_lane0_n,
@@ -18,9 +17,7 @@ module mipi_dphy_rx_over_lvds_wrapper #(
 
     rx_clk_gen #(.DEVICE(DEVICE)) u_rx_clk_gen (
         .I_mipi_clk_p(I_mipi_clk_p), .I_rst(I_rst),
-        .O_clk(S_hs_clk), .O_clk_x2(S_hs_clk_x2), .O_clk_x4(S_hs_clk_x4)
-    );
-
+        .O_clk(S_hs_clk), .O_clk_x2(S_hs_clk_x2), .O_clk_x4(S_hs_clk_x4));
     assign O_hs_rx_clk = S_hs_clk;
 
     // LP lane0: swap P/N when the lane is inverted
@@ -33,6 +30,5 @@ module mipi_dphy_rx_over_lvds_wrapper #(
         .I_lane_hs_invert(I_lane_hs_invert), .I_lane_lp_invert(I_lane_lp_invert),
         .I_mipi_hs_p(I_mipi_data_hs_p), .I_mipi_lp_p(I_mipi_data_lp_p),
         .I_mipi_lp_n(I_mipi_data_lp_n),
-        .O_hs_valid(O_hs_rx_valid), .O_hs_data(O_hs_rx_data), .O_lane_error(O_lane_error)
-    );
+        .O_hs_valid(O_hs_rx_valid), .O_hs_data(O_hs_rx_data), .O_lane_error(O_lane_error));
 endmodule

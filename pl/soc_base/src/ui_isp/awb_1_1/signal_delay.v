@@ -1,7 +1,7 @@
 /*****************************************************************
  Company : MiLianKe Electronic Technology Co., Ltd. （ui_isp/awb_1_1/signal_delay.v）
  50 拍延迟线（BRAM）：把像素流对齐到 awb 逐位除法器的延迟；按 DELAY_CYCLE 参数在行内滞后启动读突发。
- 2026-10 重构：行/列计数位宽由参数推导；本轮合并同复位非阻塞 always、精简文件头，逐拍等价。
+ 2026-10 重构：行/列计数位宽由参数推导；合并同复位非阻塞 always、精简文件头，逐拍等价。
 *****************************************************************/
 module signal_delay #(
     parameter IMG_HEIGHT  = 1080,
@@ -26,14 +26,13 @@ module signal_delay #(
     reg  [HCNT_W-1:0]     h_cnt, rd_cnt;  // beat index in a line / in the read burst
     reg  [VCNT_W-1:0]     v_cnt;          // line index
     reg                   rd_valid;       // read burst active
-    reg  [10:0]           addra;  //synthesis keep
-    reg  [10:0]           addrb;  //synthesis keep
+    reg                   rd_valid_d;
+    reg  [10:0]           addra, addrb;   //synthesis keep
     reg  [DATA_WIDTH-1:0] I_data_r;
     reg                   I_valid_r;
-    reg                   rd_valid_d;
 
     // 原 3 个 always（输入打拍 / 行列计数 / 读突发与地址）同复位、同时钟、全非阻塞，合并后逐拍等价。
-    // beat/line counters advance on valid beats only, cleared at frame start
+    // beat/line counters advance on valid beats only, cleared at frame start；
     // read burst starts at h_cnt == DELAY_CYCLE-3 for IMG_WIDTH_4x beats
     always @(posedge I_clk or negedge I_rst_n) begin
         if (!I_rst_n) begin

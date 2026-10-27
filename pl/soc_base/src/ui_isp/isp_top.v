@@ -1,3 +1,5 @@
+// 出处：Milianke uisrc ISP demo；本文件只做 11 级 ISP 链的例化与连线（BLC → demosaic → data128_96
+// → awb → image_cut → gamma → Saturation → contrast → Brightness → data96_128），端口与原版一致。
 module isp_top (
     input  wire         axi4s_video_aclk,
     input  wire         I_rst_n,
@@ -14,48 +16,32 @@ module isp_top (
     output wire         I_tready
 );
 
-  wire         BLC_O_tlast;  //synthesis keep
-  wire         BLC_O_tuser;  //synthesis keep
+  wire         BLC_O_tlast, BLC_O_tuser, BLC_O_tvalid, BLC_O_tready;  //synthesis keep
   wire [ 39:0] BLC_O_tdata;  //synthesis keep
-  wire         BLC_O_tvalid;  //synthesis keep
   wire [  9:0] BLC_O_tdest;  //synthesis keep
-  wire         BLC_O_tready;  //synthesis keep
-
-  wire         m_aixs_tvalid;  //synthesis keep
+  wire         m_aixs_tvalid, m_aixs_tuser, m_aixs_tlast, m_aixs_tready;  //synthesis keep
   wire [127:0] m_aixs_tdata;  //synthesis keep
-  wire         m_aixs_tuser;  //synthesis keep
-  wire         m_aixs_tlast;  //synthesis keep
-  wire         m_aixs_tready;  //synthesis keep
   wire [ 95:0] m_aixs_tdata_96;
-
-  wire         awb_O_tlast;  //synthesis keep
-  wire         awb_O_tuser;  //synthesis keep
+  wire         awb_O_tlast, awb_O_tuser, awb_O_tvalid, awb_O_tready;  //synthesis keep
   wire [ 95:0] awb_O_tdata;  //synthesis keep
-  wire         awb_O_tvalid;  //synthesis keep
-  wire         awb_O_tready;  //synthesis keep
-
-  wire         gamma_O_tlast;  //synthesis keep
-  wire         gamma_O_tuser;  //synthesis keep
+  wire         gamma_O_tlast, gamma_O_tuser, gamma_O_tvalid, gamma_O_tready;  //synthesis keep
   wire [ 95:0] gamma_O_tdata;  //synthesis keep
-  wire         gamma_O_tvalid;  //synthesis keep
-  wire         gamma_O_tready;  //synthesis keep
-
   wire         cut_O_tlast, cut_O_tuser, cut_O_tvalid, cut_O_tready;
   wire [ 95:0] cut_O_tdata;
   wire         contrast_O_tlast, contrast_O_tuser, contrast_O_tvalid, contrast_O_tready;
   wire [ 95:0] contrast_O_tdata;
-  wire         Brightness_O_tlast, Brightness_O_tuser, Brightness_O_tvalid, Brightness_O_tready;
-  wire [ 95:0] Brightness_O_tdata;
   wire         Saturation_O_tlast, Saturation_O_tuser, Saturation_O_tvalid, Saturation_O_tready;
   wire [ 95:0] Saturation_O_tdata;
+  wire         Brightness_O_tlast, Brightness_O_tuser, Brightness_O_tvalid, Brightness_O_tready;
+  wire [ 95:0] Brightness_O_tdata;
   wire [127:0] Brightness_O_tdata_128;  //synthesis keep
 
   assign Brightness_O_tready = O_tready;
   assign O_tdata  = Brightness_O_tdata_128;
-  assign O_tlast  = Brightness_O_tlast    ;
+  assign O_tlast  = Brightness_O_tlast;
   // 安路行间距问题导致后续 tuser 不再同步，下游把它近似为帧同步 vs，直接用最初始的 I_tuser
-  assign O_tuser  = I_tuser    ;
-  assign O_tvalid = Brightness_O_tvalid   ;
+  assign O_tuser  = I_tuser;
+  assign O_tvalid = Brightness_O_tvalid;
 
   BLC #(
       .Black_level_offset_r0(50), .Black_level_offset_r1(50),

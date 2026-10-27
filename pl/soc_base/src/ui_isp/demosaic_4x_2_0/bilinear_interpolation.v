@@ -1,7 +1,9 @@
 // 出处：Milianke uisrc ISP demo（ui_isp/demosaic_4x_2_0/bilinear_interpolation.v,
 //       XiaoQingquan 2025/08, v2.0）。本版按统一双线性公式 + Bayer 模式色表折叠重写，逐拍行为等价：
-// 先用与模式无关的 3x3 窗口几何算 4 个「角色和」(中心/水平/垂直/对角)，再按 BAYER_MODE + bayer_ypos
-// 的色表映射到 R/G/B，替代原码 4 份重复通道逻辑。
+// 先用与模式无关的 3x3 窗口几何算 4 个「角色和」(中心 C / 水平 H / 垂直 V / 对角 D)，
+// 再按 BAYER_MODE + bayer_ypos 的色表映射到 R/G/B。四种 Bayer 模式只有两套色表
+// （RGGB ≡ GBRG、BGGR ≡ GRBG，行奇偶 bayer_ypos 在两者间互换），故折叠成 P/Q/R/S 四张
+// 常量拼接 + 一个受 BAYER_MODE 常量选择的通道；未列出的模式不生成逻辑（输出 x，同原版）。
 module bilinear_interpolation #(
     parameter BAYER_MODE = "BGGR"   // Bayer 排列：RGGB/BGGR/GBRG/GRBG
 ) (
@@ -44,22 +46,62 @@ module bilinear_interpolation #(
         end
     endgenerate
 
-    reg [119:0] mp;     // 每像素位 30bit = {B, G, R}，各 10bit
-    reg [119:0] mean;   // 每像素位 30bit = {B, G, R}，各 10bit（值域 <=255，与原码 9bit 均值等效）
-
-    // 第 1 级：角色和打拍（q 布局：每个像素位 40bit = {D, V, H, C}，各 10bit）；
-    // 同拍推进 bayer_ypos 与 tlast/tuser/tvalid 移位的 4 个原独立 always 合并（全非阻塞、同复位）。
-    reg [159:0] q;
+    reg [159:0] q;         // 第 1 级：每像素 40bit = {D, V, H, C}
+    reg [119:0] mp;        // 第 2 级：每像素 30bit = {B, G, R}，各 10bit
+    reg [119:0] mean;      // 第 3 级：同上（值域 <=255，与 9bit 均值等效）
     reg bayer_ypos_r0, bayer_ypos_r1;
     reg [4:0] I_tlast_r, I_tuser_r, I_tvalid_r;
+
+    // 第 2 级色表输入的「角色和」= 第 1 级寄存器 q 的 4 角色 × 4 像素（色表取的是打拍后的值）
+    wire [9:0] qr [0:3][0:3];      // [角色 C/H/V/D][像素位 0..3]
+    genvar gk;
+    generate for (gk = 0; gk < 4; gk = gk + 1) begin : g_qrole
+        assign qr[0][gk] = q[40*gk      +: 10];
+        assign qr[1][gk] = q[40*gk + 10 +: 10];
+        assign qr[2][gk] = q[40*gk + 20 +: 10];
+        assign qr[3][gk] = q[40*gk + 30 +: 10];
+    end endgenerate
+
+    // 第 2 级色表（未打拍）：每像素 30bit {B,G,R}、各取一个角色和或其两两和；
+    // P/Q 给 RGGB/GBRG，R/S 给 BGGR/GRBG（Q/S 是行奇偶 1 那张表）
+    wire [119:0] P = {qr[2][3], qr[0][3], qr[1][3], qr[3][2], qr[1][2]+qr[2][2], qr[0][2],
+                      qr[2][1], qr[0][1], qr[1][1], qr[3][0], qr[1][0]+qr[2][0], qr[0][0]};
+    wire [119:0] Q = {qr[0][3], qr[1][3]+qr[2][3], qr[3][3], qr[1][2], qr[0][2], qr[2][2],
+                      qr[0][1], qr[1][1]+qr[2][1], qr[3][1], qr[1][0], qr[0][0], qr[2][0]};
+    wire [119:0] R = {qr[1][3], qr[0][3], qr[2][3], qr[0][2], qr[1][2]+qr[2][2], qr[3][2],
+                      qr[1][1], qr[0][1], qr[2][1], qr[0][0], qr[1][0]+qr[2][0], qr[3][0]};
+    wire [119:0] S = {qr[3][3], qr[1][3]+qr[2][3], qr[0][3], qr[2][2], qr[0][2], qr[1][2],
+                      qr[3][1], qr[1][1]+qr[2][1], qr[0][1], qr[2][0], qr[0][0], qr[1][0]};
+
+    // 第 3 级均值：按抽头数右移（C 1 抽头 >>0、H/V 2 抽头 >>1、D 与 H+V 4 抽头 >>2）
+    wire [119:0] NP = {mp[110+:10]>>1, mp[100+:10],  mp[90+:10]>>1, mp[80+:10]>>2, mp[70+:10]>>2, mp[60+:10],
+                       mp[50+:10]>>1,  mp[40+:10],   mp[30+:10]>>1, mp[20+:10]>>2, mp[10+:10]>>2, mp[0+:10]};
+    wire [119:0] NQ = {mp[110+:10],  mp[100+:10]>>2, mp[90+:10]>>2, mp[80+:10]>>1, mp[70+:10],   mp[60+:10]>>1,
+                       mp[50+:10],   mp[40+:10]>>2,  mp[30+:10]>>2, mp[20+:10]>>1, mp[10+:10],   mp[0+:10]>>1};
+    wire [119:0] NR = {mp[110+:10]>>1, mp[100+:10],  mp[90+:10]>>1, mp[80+:10],   mp[70+:10]>>2, mp[60+:10]>>2,
+                       mp[50+:10]>>1,  mp[40+:10],   mp[30+:10]>>1, mp[20+:10],   mp[10+:10]>>2, mp[0+:10]>>2};
+    wire [119:0] NS = {mp[110+:10]>>2, mp[100+:10]>>2, mp[90+:10], mp[80+:10]>>1, mp[70+:10],   mp[60+:10]>>1,
+                       mp[50+:10]>>2,  mp[40+:10]>>2,  mp[30+:10], mp[20+:10]>>1, mp[10+:10],   mp[0+:10]>>1};
+
+    // BAYER_MODE 选表：RGGB/GBRG 用 P/Q，BGGR/GRBG 用 R/S；GBRG/GRBG 的 bayer_ypos 极性相反
+    // （0/1 表对调）。只用 generate-if 常量分支赋值（与厂家原版同一写法，TD 6.2.1 已验证可解析），
+    // 非法模式不驱动这些选择线（对应地第 2/3 级 always 也不生成，输出保持 x）。
+    wire [119:0] mp0_sel, mp1_sel, mn0_sel, mn1_sel;
+    generate
+        if (BAYER_MODE == "RGGB") begin : g_rggb
+            assign {mp0_sel, mp1_sel, mn0_sel, mn1_sel} = {P, Q, NP, NQ};
+        end else if (BAYER_MODE == "GBRG") begin : g_gbrg
+            assign {mp0_sel, mp1_sel, mn0_sel, mn1_sel} = {Q, P, NQ, NP};
+        end else if (BAYER_MODE == "BGGR") begin : g_bggr
+            assign {mp0_sel, mp1_sel, mn0_sel, mn1_sel} = {R, S, NR, NS};
+        end else if (BAYER_MODE == "GRBG") begin : g_grbg
+            assign {mp0_sel, mp1_sel, mn0_sel, mn1_sel} = {S, R, NS, NR};
+        end
+    endgenerate
+
     always @(posedge I_clk or negedge I_rst_n) begin
         if (!I_rst_n) begin
-            q <= 160'd0;
-            bayer_ypos_r0 <= 1'b0;
-            bayer_ypos_r1 <= 1'b0;
-            I_tlast_r  <= 5'd0;
-            I_tuser_r  <= 5'd0;
-            I_tvalid_r <= 5'd0;
+            {q, bayer_ypos_r0, bayer_ypos_r1, I_tlast_r, I_tuser_r, I_tvalid_r} <= 0;
         end else begin
             if (I_tvalid)
                 q <= {role[3][3], role[2][3], role[1][3], role[0][3],
@@ -76,134 +118,19 @@ module bilinear_interpolation #(
         end
     end
 
-    // 第 2/3 级：按 Bayer 模式取色表（角色和 -> R/G/B），再按抽头数移位求均值。
-    // 未列出的 BAYER_MODE（非法参数）不生成任何逻辑 -> 与厂家原码一致输出 x。
-    generate
-        if (BAYER_MODE == "RGGB") begin : g_rggb
-            wire [119:0] mp_p0 = {
-                q[140 +: 10], q[120 +: 10], q[130 +: 10], q[110 +: 10],
-                (q[90 +: 10] + q[100 +: 10]), q[80 +: 10], q[60 +: 10], q[40 +: 10],
-                q[50 +: 10], q[30 +: 10], (q[10 +: 10] + q[20 +: 10]), q[0 +: 10]
-            };
-            wire [119:0] mp_p1 = {
-                q[120 +: 10], (q[130 +: 10] + q[140 +: 10]), q[150 +: 10], q[90 +: 10],
-                q[80 +: 10], q[100 +: 10], q[40 +: 10], (q[50 +: 10] + q[60 +: 10]),
-                q[70 +: 10], q[10 +: 10], q[0 +: 10], q[20 +: 10]
-            };
-            always @(posedge I_clk or negedge I_rst_n) begin
-                if (!I_rst_n) begin
-                    mp <= 120'd0;
-                    mean <= 120'd0;
-                end else begin
-                    if (I_tvalid_r[0]) mp <= bayer_ypos_r0 ? mp_p1 : mp_p0;
-                    if (I_tvalid_r[1]) mean <= bayer_ypos_r1 ? {
-                        mp[110 +: 10] >> 0, mp[100 +: 10] >> 2, mp[90 +: 10] >> 2,
-                        mp[80 +: 10] >> 1, mp[70 +: 10] >> 0, mp[60 +: 10] >> 1,
-                        mp[50 +: 10] >> 0, mp[40 +: 10] >> 2, mp[30 +: 10] >> 2,
-                        mp[20 +: 10] >> 1, mp[10 +: 10] >> 0, mp[0 +: 10] >> 1
-                    } : {
-                        mp[110 +: 10] >> 1, mp[100 +: 10] >> 0, mp[90 +: 10] >> 1,
-                        mp[80 +: 10] >> 2, mp[70 +: 10] >> 2, mp[60 +: 10] >> 0,
-                        mp[50 +: 10] >> 1, mp[40 +: 10] >> 0, mp[30 +: 10] >> 1,
-                        mp[20 +: 10] >> 2, mp[10 +: 10] >> 2, mp[0 +: 10] >> 0
-                    };
-                end
+    // 第 2/3 级寄存器：非法 BAYER_MODE 不生成这段逻辑（mp/mean 保持 x，同原版）
+    generate if (BAYER_MODE == "RGGB" || BAYER_MODE == "BGGR" ||
+                 BAYER_MODE == "GBRG" || BAYER_MODE == "GRBG") begin : g_bayer
+        always @(posedge I_clk or negedge I_rst_n) begin
+            if (!I_rst_n) begin
+                mp <= 120'd0;
+                mean <= 120'd0;
+            end else begin
+                if (I_tvalid_r[0]) mp   <= bayer_ypos_r0 ? mp1_sel : mp0_sel;
+                if (I_tvalid_r[1]) mean <= bayer_ypos_r1 ? mn1_sel : mn0_sel;
             end
         end
-        else if (BAYER_MODE == "BGGR") begin : g_bggr
-            wire [119:0] mp_p0 = {
-                q[130 +: 10], q[120 +: 10], q[140 +: 10], q[80 +: 10],
-                (q[90 +: 10] + q[100 +: 10]), q[110 +: 10], q[50 +: 10], q[40 +: 10],
-                q[60 +: 10], q[0 +: 10], (q[10 +: 10] + q[20 +: 10]), q[30 +: 10]
-            };
-            wire [119:0] mp_p1 = {
-                q[150 +: 10], (q[130 +: 10] + q[140 +: 10]), q[120 +: 10], q[100 +: 10],
-                q[80 +: 10], q[90 +: 10], q[70 +: 10], (q[50 +: 10] + q[60 +: 10]),
-                q[40 +: 10], q[20 +: 10], q[0 +: 10], q[10 +: 10]
-            };
-            always @(posedge I_clk or negedge I_rst_n) begin
-                if (!I_rst_n) begin
-                    mp <= 120'd0;
-                    mean <= 120'd0;
-                end else begin
-                    if (I_tvalid_r[0]) mp <= bayer_ypos_r0 ? mp_p1 : mp_p0;
-                    if (I_tvalid_r[1]) mean <= bayer_ypos_r1 ? {
-                        mp[110 +: 10] >> 2, mp[100 +: 10] >> 2, mp[90 +: 10] >> 0,
-                        mp[80 +: 10] >> 1, mp[70 +: 10] >> 0, mp[60 +: 10] >> 1,
-                        mp[50 +: 10] >> 2, mp[40 +: 10] >> 2, mp[30 +: 10] >> 0,
-                        mp[20 +: 10] >> 1, mp[10 +: 10] >> 0, mp[0 +: 10] >> 1
-                    } : {
-                        mp[110 +: 10] >> 1, mp[100 +: 10] >> 0, mp[90 +: 10] >> 1,
-                        mp[80 +: 10] >> 0, mp[70 +: 10] >> 2, mp[60 +: 10] >> 2,
-                        mp[50 +: 10] >> 1, mp[40 +: 10] >> 0, mp[30 +: 10] >> 1,
-                        mp[20 +: 10] >> 0, mp[10 +: 10] >> 2, mp[0 +: 10] >> 2
-                    };
-                end
-            end
-        end
-        else if (BAYER_MODE == "GBRG") begin : g_gbrg
-            wire [119:0] mp_p0 = {
-                q[120 +: 10], (q[130 +: 10] + q[140 +: 10]), q[150 +: 10], q[90 +: 10],
-                q[80 +: 10], q[100 +: 10], q[40 +: 10], (q[50 +: 10] + q[60 +: 10]),
-                q[70 +: 10], q[10 +: 10], q[0 +: 10], q[20 +: 10]
-            };
-            wire [119:0] mp_p1 = {
-                q[140 +: 10], q[120 +: 10], q[130 +: 10], q[110 +: 10],
-                (q[90 +: 10] + q[100 +: 10]), q[80 +: 10], q[60 +: 10], q[40 +: 10],
-                q[50 +: 10], q[30 +: 10], (q[10 +: 10] + q[20 +: 10]), q[0 +: 10]
-            };
-            always @(posedge I_clk or negedge I_rst_n) begin
-                if (!I_rst_n) begin
-                    mp <= 120'd0;
-                    mean <= 120'd0;
-                end else begin
-                    if (I_tvalid_r[0]) mp <= bayer_ypos_r0 ? mp_p1 : mp_p0;
-                    if (I_tvalid_r[1]) mean <= bayer_ypos_r1 ? {
-                        mp[110 +: 10] >> 1, mp[100 +: 10] >> 0, mp[90 +: 10] >> 1,
-                        mp[80 +: 10] >> 2, mp[70 +: 10] >> 2, mp[60 +: 10] >> 0,
-                        mp[50 +: 10] >> 1, mp[40 +: 10] >> 0, mp[30 +: 10] >> 1,
-                        mp[20 +: 10] >> 2, mp[10 +: 10] >> 2, mp[0 +: 10] >> 0
-                    } : {
-                        mp[110 +: 10] >> 0, mp[100 +: 10] >> 2, mp[90 +: 10] >> 2,
-                        mp[80 +: 10] >> 1, mp[70 +: 10] >> 0, mp[60 +: 10] >> 1,
-                        mp[50 +: 10] >> 0, mp[40 +: 10] >> 2, mp[30 +: 10] >> 2,
-                        mp[20 +: 10] >> 1, mp[10 +: 10] >> 0, mp[0 +: 10] >> 1
-                    };
-                end
-            end
-        end
-        else if (BAYER_MODE == "GRBG") begin : g_grbg
-            wire [119:0] mp_p0 = {
-                q[150 +: 10], (q[130 +: 10] + q[140 +: 10]), q[120 +: 10], q[100 +: 10],
-                q[80 +: 10], q[90 +: 10], q[70 +: 10], (q[50 +: 10] + q[60 +: 10]),
-                q[40 +: 10], q[20 +: 10], q[0 +: 10], q[10 +: 10]
-            };
-            wire [119:0] mp_p1 = {
-                q[130 +: 10], q[120 +: 10], q[140 +: 10], q[80 +: 10],
-                (q[90 +: 10] + q[100 +: 10]), q[110 +: 10], q[50 +: 10], q[40 +: 10],
-                q[60 +: 10], q[0 +: 10], (q[10 +: 10] + q[20 +: 10]), q[30 +: 10]
-            };
-            always @(posedge I_clk or negedge I_rst_n) begin
-                if (!I_rst_n) begin
-                    mp <= 120'd0;
-                    mean <= 120'd0;
-                end else begin
-                    if (I_tvalid_r[0]) mp <= bayer_ypos_r0 ? mp_p1 : mp_p0;
-                    if (I_tvalid_r[1]) mean <= bayer_ypos_r1 ? {
-                        mp[110 +: 10] >> 1, mp[100 +: 10] >> 0, mp[90 +: 10] >> 1,
-                        mp[80 +: 10] >> 0, mp[70 +: 10] >> 2, mp[60 +: 10] >> 2,
-                        mp[50 +: 10] >> 1, mp[40 +: 10] >> 0, mp[30 +: 10] >> 1,
-                        mp[20 +: 10] >> 0, mp[10 +: 10] >> 2, mp[0 +: 10] >> 2
-                    } : {
-                        mp[110 +: 10] >> 2, mp[100 +: 10] >> 2, mp[90 +: 10] >> 0,
-                        mp[80 +: 10] >> 1, mp[70 +: 10] >> 0, mp[60 +: 10] >> 1,
-                        mp[50 +: 10] >> 2, mp[40 +: 10] >> 2, mp[30 +: 10] >> 0,
-                        mp[20 +: 10] >> 1, mp[10 +: 10] >> 0, mp[0 +: 10] >> 1
-                    };
-                end
-            end
-        end
-    endgenerate
+    end endgenerate
 
     // 第 4/5 级：饱和到 8bit 拼 128bit（每个 32bit 像素 = {8'b0, R, G, B}），再打一拍输出
     reg [127:0] rgb_d, rgb_q;

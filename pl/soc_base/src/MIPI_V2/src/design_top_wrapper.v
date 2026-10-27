@@ -2,12 +2,12 @@
 //   PLL -> 70MHz LP clock / 24MHz sensor clock / lock (async reset source)
 //   mipi_dphy_rx_over_lvds_wrapper -> csi_unpacket -> raw10_unpacket_4lane
 //   -> image_correction -> isp_top -> AXI4-Stream video output
+// 2026 两轮零行为重构：只收敛注释与排版，例化 / 连线 / 延迟原样（等价 TB 逐拍比对）。
 module design_top_wrapper (
     input  wire         I_sys_clk_156m,     // 156MHz PLL reference (50MHz in this design)
     output wire         O_imx334_clk_24m,   // camera 24MHz clock
     input  wire         I_clk_hs_p,         // MIPI HS clock
     input  wire [3:0]   I_data_hs_p, I_data_lp_p, I_data_lp_n,   // MIPI HS/LP data
-
     output wire         S_pll_lock,
     output wire [3:0]   S_lane_error,
     output wire         S_hs_rx_clk,
@@ -16,7 +16,6 @@ module design_top_wrapper (
 );
     wire        S_rst = ~S_pll_lock;   // 复位直连 PLL lock（原版为隐式线网）
     wire        S_clk_70m;
-
     wire        S_hs_rx_valid;
     wire [31:0] S_hs_rx_data;
     wire        S_csi_frame_start, S_csi_frame_end, S_csi_valid;

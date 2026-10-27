@@ -1,30 +1,16 @@
-// stepper_ctrl: step/dir generator with trapezoidal ramps for TB6600-class drivers.
-// FPGA 3.3V direct drive, common-cathode wiring (PUL high active: system_top inverts pul_n;
-// ENA high = energised, ENA- low releases). Keep v <= 50k steps/s (5us pulses need 10us period).
-// Speed = phase increment per clock, Q0.32 steps: v[steps/s] = inc * CLK_HZ / 2^32 (PS converts).
-// Ramp tick = ACC_DIV clocks (10kHz @75MHz): speed moves by ACC_INC toward target each tick
-// (add/sub only, no mult/div in synthesis). Position mode brakes when remaining <= accel_steps.
-// TARGET rewritable mid-move: == POS stops in place (AT_TARGET=1); behind travel ramps past it
-// (AT_TARGET=0, never freezes). estop/HALT stops pulses immediately, sets HALTED.
-// Regs (0x200 window): 0x00 CTRL b0 EN b1 START(p) b2 STOP(p) b3 HALT(p) b4 MODE b5 ZERO_POS(p) b6 VEL_DIR
-// (R: b0/b4/b6); 0x04 STATUS b0 MOVING b1 DIR b2 AT_TARGET b3 HALTED b4 ENABLED; 0x08 TARGET (signed);
-// 0x0C VMAX_INC; 0x10 ACC_INC; 0x14 VMIN_INC; 0x18 POS (signed); 0x1C CUR_INC; 0x20 STEPS; 0x24 BRAKE.
+// stepper_ctrl: step/dir generator with trapezoidal ramps for TB6600-class drivers; 寄存器 0x200 的偏移 / 位域 /
+// 复位值以 docs/PL设计.md 为准. Common-cathode wiring (system_top inverts pul_n; ENA high = energised); keep
 module stepper_ctrl #(
     parameter integer CLK_HZ   = 75_000_000,
     parameter integer ACC_DIV  = 7500,
     parameter integer PULSE_US = 5,
     parameter integer DIR_SETUP_US = 10
 ) (
-    input  wire        clk,
-    input  wire        wr,
-    input  wire [7:0]  waddr,
-    input  wire [31:0] wdata,
-    input  wire [7:0]  raddr,
-    output reg  [31:0] rdata,
-    input  wire        estop,
-    output wire        pul_n,
-    output wire        dir_n,
-    output wire        ena_o,
+    input  wire        clk, input  wire        wr,
+    input  wire [7:0]  waddr, input  wire [31:0] wdata,
+    input  wire [7:0]  raddr, output reg  [31:0] rdata,
+    input  wire        estop, output wire        pul_n,
+    output wire        dir_n, output wire        ena_o,
     output wire [31:0] pos_o
 );
     localparam integer PULSE_CLK = CLK_HZ / 1_000_000 * PULSE_US, SETUP_CLK = CLK_HZ / 1_000_000 * DIR_SETUP_US;
@@ -35,9 +21,9 @@ module stepper_ctrl #(
     reg [ACCW-1:0] acc_cnt = 0;
     reg [PULSEW-1:0] pulse_cnt = 0;
     reg [SETUPW-1:0] setup_cnt = 0;
-    reg [3:0] req = 0;                     // pulse requests, one per CTRL command bit
+    reg [3:0] req = 0;
     localparam [3:0] REQ_STOP = 0, REQ_HALT = 1, REQ_START = 2, REQ_ZERO = 3;
-    wire signed [31:0] dist = dir ? (pos - target) : (target - pos);   // travelled distance to target
+    wire signed [31:0] dist = dir ? (pos - target) : (target - pos);
     wire [31:0] remaining = dist[31] ? 0 : dist;
     wire overshoot = mode && dist[31];
     wire want_down = stopping || overshoot || (mode && remaining <= accel_steps);
@@ -69,7 +55,6 @@ module stepper_ctrl #(
             if (req[REQ_STOP]) stopping <= 1'b1;
             if (acc_cnt == ACC_DIV - 1) begin
                 acc_cnt <= 0;
-                // TARGET==POS mid-move emits no step, so stop here; a target BEHIND travel ramps past instead.
                 if (mode && pos == target) begin moving <= 0; cur_inc <= 0; end
                 else if (want_down) begin
                     if (cur_inc > vmin_inc + acc_inc) cur_inc <= cur_inc - acc_inc;
@@ -80,7 +65,6 @@ module stepper_ctrl #(
                 end else if (cur_inc != vmax_inc)
                     cur_inc <= ((vmax_inc > cur_inc ? vmax_inc - cur_inc : cur_inc - vmax_inc) > acc_inc) ? (vmax_inc > cur_inc ? cur_inc + acc_inc : cur_inc - acc_inc) : vmax_inc;
             end else acc_cnt <= acc_cnt + 1'b1;
-            // phase advance + step emission: accel_steps follows the ramp direction per step
             if (setup_cnt == 0) phase <= phase_next[31:0];
             if (step_now) begin
                 pulse_cnt <= PULSE_CLK;
@@ -92,12 +76,10 @@ module stepper_ctrl #(
             end
         end
     end
-
     assign pul_n = (pulse_cnt == 0);
     assign dir_n = ~dir;
     assign ena_o = enable;
     assign pos_o = pos;
-
     always @(*) begin
         case (raddr)
             8'h00: rdata = {25'd0, vel_dir, 1'b0, mode, 3'd0, enable};
@@ -110,7 +92,7 @@ module stepper_ctrl #(
             8'h1C: rdata = cur_inc;
             8'h20: rdata = steps_total;
             8'h24: rdata = accel_steps;
-            default: rdata = 32'hDEAD_BEEF;
+            default: rdata = 32'hDEADBEEF;
         endcase
     end
 endmodule

@@ -14,48 +14,32 @@ module Brightness_adjustment #(
     input  wire        O_tready
 );
 
+    // 12 个通道（4 像素 × RGB）流水完全同构，折成单一 generate 循环（位序：通道 k = 第 k 字节）
     reg       I_tlast_r, I_tuser_r, I_tvalid_r;
-    reg [9:0] R_d[3:0], G_d[3:0], B_d[3:0];
-    wire [7:0] R[3:0], G[3:0], B[3:0];
+    reg [9:0] v [0:11];        // 亮度偏移结果（10bit，位宽同原版）
 
-    // 4 像素通道折叠：每像素 RGB888 四路同构，仅数据切片不同
     genvar i;
-    generate for (i = 0; i < 4; i = i + 1) begin : g_pixel
-        wire [7:0] r = I_tdata[24*i + 16 +: 8];
-        wire [7:0] g = I_tdata[24*i +  8 +: 8];
-        wire [7:0] b = I_tdata[24*i      +: 8];
+    generate for (i = 0; i < 12; i = i + 1) begin : g_ch
+        wire [7:0] ch = I_tdata[8*i +: 8];
 
-        // 亮度偏移按原版 32bit 表达式计算后截 10bit（参数可为负/超范围，语义保持不变）
+        // 亮度偏移按原版 32bit 表达式计算后截 10bit（参数可为负/超范围，语义不变）
         always @(posedge I_clk or negedge I_rst_n) begin
-            if (!I_rst_n) {R_d[i], G_d[i], B_d[i]} <= 0;
-            else if (I_tvalid) begin
-                R_d[i] <= r + BRIGHTNESS_ADD - BRIGHTNESS_MINUS;
-                G_d[i] <= g + BRIGHTNESS_ADD - BRIGHTNESS_MINUS;
-                B_d[i] <= b + BRIGHTNESS_ADD - BRIGHTNESS_MINUS;
-            end
+            if (!I_rst_n)      v[i] <= 0;
+            else if (I_tvalid) v[i] <= ch + BRIGHTNESS_ADD - BRIGHTNESS_MINUS;
         end
 
         // 10bit 结果按原厂规则钳位：bit9 → 0，bit8 → 255，否则取低 8bit
-        assign R[i] = (R_d[i][9]) ? 8'd0 : (R_d[i][8]) ? 8'd255 : R_d[i][7:0];
-        assign G[i] = (G_d[i][9]) ? 8'd0 : (G_d[i][8]) ? 8'd255 : G_d[i][7:0];
-        assign B[i] = (B_d[i][9]) ? 8'd0 : (B_d[i][8]) ? 8'd255 : B_d[i][7:0];
+        assign O_tdata[8*i +: 8] = v[i][9] ? 8'd0 : v[i][8] ? 8'd255 : v[i][7:0];
     end endgenerate
 
-    // 控制信号同步 1 拍：原版 {I_tlast_r,I_tlast} 赋给 1bit 只取 LSB，等价于直接打一拍
-    always @(posedge I_clk or negedge I_rst_n) begin
+    // 控制信号同步 1 拍（原版 {I_tlast_r,I_tlast} 赋 1bit 只取 LSB，等价于直接打一拍）
+    always @(posedge I_clk or negedge I_rst_n)
         if (!I_rst_n) {I_tlast_r, I_tuser_r, I_tvalid_r} <= 3'd0;
-        else begin
-            I_tlast_r  <= I_tlast;
-            I_tuser_r  <= I_tuser;
-            I_tvalid_r <= I_tvalid;
-        end
-    end
+        else {I_tlast_r, I_tuser_r, I_tvalid_r} <= {I_tlast, I_tuser, I_tvalid};
 
     assign O_tlast  = I_tlast_r;
     assign O_tuser  = I_tuser_r;
     assign O_tvalid = I_tvalid_r;
-    assign O_tdata  = {R[3], G[3], B[3], R[2], G[2], B[2],
-                       R[1], G[1], B[1], R[0], G[0], B[0]};
-    assign I_tready = O_tready;
+    assign I_tready = O_tready;            // 直通，无背压
 
 endmodule

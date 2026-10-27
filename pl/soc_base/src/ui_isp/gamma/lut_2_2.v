@@ -1,5 +1,5 @@
 // 出处：南京维酷机器人科技（VLKUS）ISP 参考设计；GAMMA=2.2 查找表（8bit -> 12bit）。
-// 单配置特化后仅保留 2.2 曲线（isp_top 写死 GAMMA_10x=22）；本轮只做数据表紧凑排版，数值逐项不变。
+// 单配置特化后仅保留 2.2 曲线（isp_top 写死 GAMMA_10x=22）；数值逐项同原版，仅改为函数式紧凑排版。
 module lut_2_2 (
     input  wire        I_clk,
     input  wire        I_rst_n,
@@ -8,53 +8,44 @@ module lut_2_2 (
     output reg  [11:0] O_LUT_2_2_data
 );
 
-    always @(*) begin
-        case (I_LUT_2_2_data)
-            0: O_LUT_2_2_data = 240; 1: O_LUT_2_2_data = 396; 2: O_LUT_2_2_data = 499; 3: O_LUT_2_2_data = 582; 4: O_LUT_2_2_data = 652; 5: O_LUT_2_2_data = 715;
-            6: O_LUT_2_2_data = 771; 7: O_LUT_2_2_data = 823; 8: O_LUT_2_2_data = 871; 9: O_LUT_2_2_data = 916; 10: O_LUT_2_2_data = 959; 11: O_LUT_2_2_data = 999;
-            12: O_LUT_2_2_data = 1038; 13: O_LUT_2_2_data = 1075; 14: O_LUT_2_2_data = 1110; 15: O_LUT_2_2_data = 1145; 16: O_LUT_2_2_data = 1178; 17: O_LUT_2_2_data = 1209;
-            18: O_LUT_2_2_data = 1240; 19: O_LUT_2_2_data = 1270; 20: O_LUT_2_2_data = 1300; 21: O_LUT_2_2_data = 1328; 22: O_LUT_2_2_data = 1356; 23: O_LUT_2_2_data = 1383;
-            24: O_LUT_2_2_data = 1409; 25: O_LUT_2_2_data = 1435; 26: O_LUT_2_2_data = 1461; 27: O_LUT_2_2_data = 1485; 28: O_LUT_2_2_data = 1510; 29: O_LUT_2_2_data = 1534;
-            30: O_LUT_2_2_data = 1557; 31: O_LUT_2_2_data = 1580; 32: O_LUT_2_2_data = 1603; 33: O_LUT_2_2_data = 1625; 34: O_LUT_2_2_data = 1647; 35: O_LUT_2_2_data = 1668;
-            36: O_LUT_2_2_data = 1689; 37: O_LUT_2_2_data = 1710; 38: O_LUT_2_2_data = 1731; 39: O_LUT_2_2_data = 1751; 40: O_LUT_2_2_data = 1771; 41: O_LUT_2_2_data = 1791;
-            42: O_LUT_2_2_data = 1810; 43: O_LUT_2_2_data = 1830; 44: O_LUT_2_2_data = 1849; 45: O_LUT_2_2_data = 1868; 46: O_LUT_2_2_data = 1886; 47: O_LUT_2_2_data = 1904;
-            48: O_LUT_2_2_data = 1923; 49: O_LUT_2_2_data = 1940; 50: O_LUT_2_2_data = 1958; 51: O_LUT_2_2_data = 1976; 52: O_LUT_2_2_data = 1993; 53: O_LUT_2_2_data = 2010;
-            54: O_LUT_2_2_data = 2027; 55: O_LUT_2_2_data = 2044; 56: O_LUT_2_2_data = 2061; 57: O_LUT_2_2_data = 2077; 58: O_LUT_2_2_data = 2094; 59: O_LUT_2_2_data = 2110;
-            60: O_LUT_2_2_data = 2126; 61: O_LUT_2_2_data = 2142; 62: O_LUT_2_2_data = 2157; 63: O_LUT_2_2_data = 2173; 64: O_LUT_2_2_data = 2189; 65: O_LUT_2_2_data = 2204;
-            66: O_LUT_2_2_data = 2219; 67: O_LUT_2_2_data = 2234; 68: O_LUT_2_2_data = 2249; 69: O_LUT_2_2_data = 2264; 70: O_LUT_2_2_data = 2279; 71: O_LUT_2_2_data = 2294;
-            72: O_LUT_2_2_data = 2308; 73: O_LUT_2_2_data = 2322; 74: O_LUT_2_2_data = 2337; 75: O_LUT_2_2_data = 2351; 76: O_LUT_2_2_data = 2365; 77: O_LUT_2_2_data = 2379;
-            78: O_LUT_2_2_data = 2393; 79: O_LUT_2_2_data = 2407; 80: O_LUT_2_2_data = 2421; 81: O_LUT_2_2_data = 2434; 82: O_LUT_2_2_data = 2448; 83: O_LUT_2_2_data = 2461;
-            84: O_LUT_2_2_data = 2474; 85: O_LUT_2_2_data = 2488; 86: O_LUT_2_2_data = 2501; 87: O_LUT_2_2_data = 2514; 88: O_LUT_2_2_data = 2527; 89: O_LUT_2_2_data = 2540;
-            90: O_LUT_2_2_data = 2553; 91: O_LUT_2_2_data = 2566; 92: O_LUT_2_2_data = 2578; 93: O_LUT_2_2_data = 2591; 94: O_LUT_2_2_data = 2604; 95: O_LUT_2_2_data = 2616;
-            96: O_LUT_2_2_data = 2628; 97: O_LUT_2_2_data = 2641; 98: O_LUT_2_2_data = 2653; 99: O_LUT_2_2_data = 2665; 100: O_LUT_2_2_data = 2677; 101: O_LUT_2_2_data = 2690;
-            102: O_LUT_2_2_data = 2702; 103: O_LUT_2_2_data = 2713; 104: O_LUT_2_2_data = 2725; 105: O_LUT_2_2_data = 2737; 106: O_LUT_2_2_data = 2749; 107: O_LUT_2_2_data = 2761;
-            108: O_LUT_2_2_data = 2772; 109: O_LUT_2_2_data = 2784; 110: O_LUT_2_2_data = 2795; 111: O_LUT_2_2_data = 2807; 112: O_LUT_2_2_data = 2818; 113: O_LUT_2_2_data = 2830;
-            114: O_LUT_2_2_data = 2841; 115: O_LUT_2_2_data = 2852; 116: O_LUT_2_2_data = 2863; 117: O_LUT_2_2_data = 2875; 118: O_LUT_2_2_data = 2886; 119: O_LUT_2_2_data = 2897;
-            120: O_LUT_2_2_data = 2908; 121: O_LUT_2_2_data = 2919; 122: O_LUT_2_2_data = 2930; 123: O_LUT_2_2_data = 2940; 124: O_LUT_2_2_data = 2951; 125: O_LUT_2_2_data = 2962;
-            126: O_LUT_2_2_data = 2973; 127: O_LUT_2_2_data = 2983; 128: O_LUT_2_2_data = 2994; 129: O_LUT_2_2_data = 3004; 130: O_LUT_2_2_data = 3015; 131: O_LUT_2_2_data = 3025;
-            132: O_LUT_2_2_data = 3036; 133: O_LUT_2_2_data = 3046; 134: O_LUT_2_2_data = 3057; 135: O_LUT_2_2_data = 3067; 136: O_LUT_2_2_data = 3077; 137: O_LUT_2_2_data = 3087;
-            138: O_LUT_2_2_data = 3098; 139: O_LUT_2_2_data = 3108; 140: O_LUT_2_2_data = 3118; 141: O_LUT_2_2_data = 3128; 142: O_LUT_2_2_data = 3138; 143: O_LUT_2_2_data = 3148;
-            144: O_LUT_2_2_data = 3158; 145: O_LUT_2_2_data = 3168; 146: O_LUT_2_2_data = 3178; 147: O_LUT_2_2_data = 3188; 148: O_LUT_2_2_data = 3197; 149: O_LUT_2_2_data = 3207;
-            150: O_LUT_2_2_data = 3217; 151: O_LUT_2_2_data = 3227; 152: O_LUT_2_2_data = 3236; 153: O_LUT_2_2_data = 3246; 154: O_LUT_2_2_data = 3255; 155: O_LUT_2_2_data = 3265;
-            156: O_LUT_2_2_data = 3275; 157: O_LUT_2_2_data = 3284; 158: O_LUT_2_2_data = 3294; 159: O_LUT_2_2_data = 3303; 160: O_LUT_2_2_data = 3312; 161: O_LUT_2_2_data = 3322;
-            162: O_LUT_2_2_data = 3331; 163: O_LUT_2_2_data = 3340; 164: O_LUT_2_2_data = 3350; 165: O_LUT_2_2_data = 3359; 166: O_LUT_2_2_data = 3368; 167: O_LUT_2_2_data = 3377;
-            168: O_LUT_2_2_data = 3386; 169: O_LUT_2_2_data = 3396; 170: O_LUT_2_2_data = 3405; 171: O_LUT_2_2_data = 3414; 172: O_LUT_2_2_data = 3423; 173: O_LUT_2_2_data = 3432;
-            174: O_LUT_2_2_data = 3441; 175: O_LUT_2_2_data = 3450; 176: O_LUT_2_2_data = 3459; 177: O_LUT_2_2_data = 3467; 178: O_LUT_2_2_data = 3476; 179: O_LUT_2_2_data = 3485;
-            180: O_LUT_2_2_data = 3494; 181: O_LUT_2_2_data = 3503; 182: O_LUT_2_2_data = 3512; 183: O_LUT_2_2_data = 3520; 184: O_LUT_2_2_data = 3529; 185: O_LUT_2_2_data = 3538;
-            186: O_LUT_2_2_data = 3546; 187: O_LUT_2_2_data = 3555; 188: O_LUT_2_2_data = 3564; 189: O_LUT_2_2_data = 3572; 190: O_LUT_2_2_data = 3581; 191: O_LUT_2_2_data = 3589;
-            192: O_LUT_2_2_data = 3598; 193: O_LUT_2_2_data = 3606; 194: O_LUT_2_2_data = 3615; 195: O_LUT_2_2_data = 3623; 196: O_LUT_2_2_data = 3632; 197: O_LUT_2_2_data = 3640;
-            198: O_LUT_2_2_data = 3648; 199: O_LUT_2_2_data = 3657; 200: O_LUT_2_2_data = 3665; 201: O_LUT_2_2_data = 3673; 202: O_LUT_2_2_data = 3682; 203: O_LUT_2_2_data = 3690;
-            204: O_LUT_2_2_data = 3698; 205: O_LUT_2_2_data = 3706; 206: O_LUT_2_2_data = 3714; 207: O_LUT_2_2_data = 3723; 208: O_LUT_2_2_data = 3731; 209: O_LUT_2_2_data = 3739;
-            210: O_LUT_2_2_data = 3747; 211: O_LUT_2_2_data = 3755; 212: O_LUT_2_2_data = 3763; 213: O_LUT_2_2_data = 3771; 214: O_LUT_2_2_data = 3779; 215: O_LUT_2_2_data = 3787;
-            216: O_LUT_2_2_data = 3795; 217: O_LUT_2_2_data = 3803; 218: O_LUT_2_2_data = 3811; 219: O_LUT_2_2_data = 3819; 220: O_LUT_2_2_data = 3827; 221: O_LUT_2_2_data = 3835;
-            222: O_LUT_2_2_data = 3843; 223: O_LUT_2_2_data = 3850; 224: O_LUT_2_2_data = 3858; 225: O_LUT_2_2_data = 3866; 226: O_LUT_2_2_data = 3874; 227: O_LUT_2_2_data = 3882;
-            228: O_LUT_2_2_data = 3889; 229: O_LUT_2_2_data = 3897; 230: O_LUT_2_2_data = 3905; 231: O_LUT_2_2_data = 3912; 232: O_LUT_2_2_data = 3920; 233: O_LUT_2_2_data = 3928;
-            234: O_LUT_2_2_data = 3935; 235: O_LUT_2_2_data = 3943; 236: O_LUT_2_2_data = 3951; 237: O_LUT_2_2_data = 3958; 238: O_LUT_2_2_data = 3966; 239: O_LUT_2_2_data = 3973;
-            240: O_LUT_2_2_data = 3981; 241: O_LUT_2_2_data = 3988; 242: O_LUT_2_2_data = 3996; 243: O_LUT_2_2_data = 4003; 244: O_LUT_2_2_data = 4011; 245: O_LUT_2_2_data = 4018;
-            246: O_LUT_2_2_data = 4026; 247: O_LUT_2_2_data = 4033; 248: O_LUT_2_2_data = 4041; 249: O_LUT_2_2_data = 4048; 250: O_LUT_2_2_data = 4055; 251: O_LUT_2_2_data = 4063;
-            252: O_LUT_2_2_data = 4070; 253: O_LUT_2_2_data = 4077; 254: O_LUT_2_2_data = 4085; 255: O_LUT_2_2_data = 4092;
-            default: O_LUT_2_2_data = 4092;
+    function [11:0] lut(input [7:0] n);
+        case (n)
+            0: lut = 240; 1: lut = 396; 2: lut = 499; 3: lut = 582; 4: lut = 652; 5: lut = 715; 6: lut = 771; 7: lut = 823;
+            8: lut = 871; 9: lut = 916; 10: lut = 959; 11: lut = 999; 12: lut = 1038; 13: lut = 1075; 14: lut = 1110; 15: lut = 1145;
+            16: lut = 1178; 17: lut = 1209; 18: lut = 1240; 19: lut = 1270; 20: lut = 1300; 21: lut = 1328; 22: lut = 1356; 23: lut = 1383;
+            24: lut = 1409; 25: lut = 1435; 26: lut = 1461; 27: lut = 1485; 28: lut = 1510; 29: lut = 1534; 30: lut = 1557; 31: lut = 1580;
+            32: lut = 1603; 33: lut = 1625; 34: lut = 1647; 35: lut = 1668; 36: lut = 1689; 37: lut = 1710; 38: lut = 1731; 39: lut = 1751;
+            40: lut = 1771; 41: lut = 1791; 42: lut = 1810; 43: lut = 1830; 44: lut = 1849; 45: lut = 1868; 46: lut = 1886; 47: lut = 1904;
+            48: lut = 1923; 49: lut = 1940; 50: lut = 1958; 51: lut = 1976; 52: lut = 1993; 53: lut = 2010; 54: lut = 2027; 55: lut = 2044;
+            56: lut = 2061; 57: lut = 2077; 58: lut = 2094; 59: lut = 2110; 60: lut = 2126; 61: lut = 2142; 62: lut = 2157; 63: lut = 2173;
+            64: lut = 2189; 65: lut = 2204; 66: lut = 2219; 67: lut = 2234; 68: lut = 2249; 69: lut = 2264; 70: lut = 2279; 71: lut = 2294;
+            72: lut = 2308; 73: lut = 2322; 74: lut = 2337; 75: lut = 2351; 76: lut = 2365; 77: lut = 2379; 78: lut = 2393; 79: lut = 2407;
+            80: lut = 2421; 81: lut = 2434; 82: lut = 2448; 83: lut = 2461; 84: lut = 2474; 85: lut = 2488; 86: lut = 2501; 87: lut = 2514;
+            88: lut = 2527; 89: lut = 2540; 90: lut = 2553; 91: lut = 2566; 92: lut = 2578; 93: lut = 2591; 94: lut = 2604; 95: lut = 2616;
+            96: lut = 2628; 97: lut = 2641; 98: lut = 2653; 99: lut = 2665; 100: lut = 2677; 101: lut = 2690; 102: lut = 2702; 103: lut = 2713;
+            104: lut = 2725; 105: lut = 2737; 106: lut = 2749; 107: lut = 2761; 108: lut = 2772; 109: lut = 2784; 110: lut = 2795; 111: lut = 2807;
+            112: lut = 2818; 113: lut = 2830; 114: lut = 2841; 115: lut = 2852; 116: lut = 2863; 117: lut = 2875; 118: lut = 2886; 119: lut = 2897;
+            120: lut = 2908; 121: lut = 2919; 122: lut = 2930; 123: lut = 2940; 124: lut = 2951; 125: lut = 2962; 126: lut = 2973; 127: lut = 2983;
+            128: lut = 2994; 129: lut = 3004; 130: lut = 3015; 131: lut = 3025; 132: lut = 3036; 133: lut = 3046; 134: lut = 3057; 135: lut = 3067;
+            136: lut = 3077; 137: lut = 3087; 138: lut = 3098; 139: lut = 3108; 140: lut = 3118; 141: lut = 3128; 142: lut = 3138; 143: lut = 3148;
+            144: lut = 3158; 145: lut = 3168; 146: lut = 3178; 147: lut = 3188; 148: lut = 3197; 149: lut = 3207; 150: lut = 3217; 151: lut = 3227;
+            152: lut = 3236; 153: lut = 3246; 154: lut = 3255; 155: lut = 3265; 156: lut = 3275; 157: lut = 3284; 158: lut = 3294; 159: lut = 3303;
+            160: lut = 3312; 161: lut = 3322; 162: lut = 3331; 163: lut = 3340; 164: lut = 3350; 165: lut = 3359; 166: lut = 3368; 167: lut = 3377;
+            168: lut = 3386; 169: lut = 3396; 170: lut = 3405; 171: lut = 3414; 172: lut = 3423; 173: lut = 3432; 174: lut = 3441; 175: lut = 3450;
+            176: lut = 3459; 177: lut = 3467; 178: lut = 3476; 179: lut = 3485; 180: lut = 3494; 181: lut = 3503; 182: lut = 3512; 183: lut = 3520;
+            184: lut = 3529; 185: lut = 3538; 186: lut = 3546; 187: lut = 3555; 188: lut = 3564; 189: lut = 3572; 190: lut = 3581; 191: lut = 3589;
+            192: lut = 3598; 193: lut = 3606; 194: lut = 3615; 195: lut = 3623; 196: lut = 3632; 197: lut = 3640; 198: lut = 3648; 199: lut = 3657;
+            200: lut = 3665; 201: lut = 3673; 202: lut = 3682; 203: lut = 3690; 204: lut = 3698; 205: lut = 3706; 206: lut = 3714; 207: lut = 3723;
+            208: lut = 3731; 209: lut = 3739; 210: lut = 3747; 211: lut = 3755; 212: lut = 3763; 213: lut = 3771; 214: lut = 3779; 215: lut = 3787;
+            216: lut = 3795; 217: lut = 3803; 218: lut = 3811; 219: lut = 3819; 220: lut = 3827; 221: lut = 3835; 222: lut = 3843; 223: lut = 3850;
+            224: lut = 3858; 225: lut = 3866; 226: lut = 3874; 227: lut = 3882; 228: lut = 3889; 229: lut = 3897; 230: lut = 3905; 231: lut = 3912;
+            232: lut = 3920; 233: lut = 3928; 234: lut = 3935; 235: lut = 3943; 236: lut = 3951; 237: lut = 3958; 238: lut = 3966; 239: lut = 3973;
+            240: lut = 3981; 241: lut = 3988; 242: lut = 3996; 243: lut = 4003; 244: lut = 4011; 245: lut = 4018; 246: lut = 4026; 247: lut = 4033;
+            248: lut = 4041; 249: lut = 4048; 250: lut = 4055; 251: lut = 4063; 252: lut = 4070; 253: lut = 4077; 254: lut = 4085; 255: lut = 4092;
+            default: lut = 4092;
         endcase
-    end
+    endfunction
+
+    always @(*) O_LUT_2_2_data = lut(I_LUT_2_2_data);
 
 endmodule

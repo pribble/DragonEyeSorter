@@ -23,22 +23,22 @@ module raw_matrix_3x3_buffer #(
     localparam IMG_WIDTH_4x = (IMG_WIDTH >> 2);    // 每行的 4 像素组数
 
     wire        zhenghe_tlast, zhenghe_tuser, zhenghe_tvalid;
-    wire [31:0] zhenghe_tdata;
+    wire [31:0] zhenghe_tdata, raw_data;
     wire        raw_tlast, raw_tuser, raw_tvalid;
-    wire [31:0] raw_data;
 
     // 3 行数据（每行 32bit 数据 + tuser 位）
-    wire                  valid [0:N-1];
-    wire [DATA_WIDTH:0]   data  [0:N-1];
-    wire [32:0]           data_d2 = data[2];
-    reg  [32:0]           data_d0_d, data_d0, data_d1;
-    reg                   valid_d0, valid_d1;
+    wire                valid [0:N-1];
+    wire [DATA_WIDTH:0] data  [0:N-1];
+    wire [DATA_WIDTH:0] src   [0:N-1];
+    wire [32:0]         data_d2 = data[2];
+    reg  [32:0]         data_d0_d, data_d0, data_d1;
+    reg                 valid_d0, valid_d1;
 
     reg  [95:0] matrix [0:N-1];          // 0=上一行, 1=当前行, 2=下一行
     reg  [13:0] h_cnt;                   // 行内像素组计数
     reg  [13:0] v_cnt, v_cnt_d;          // 行计数（v_cnt_d 打一拍）
     reg         ch_valid;                // 窗口数据有效
-    reg  [2:0]  tlast_pipe, tuser_pipe;  // tlast/tuser 三级对齐
+    reg  [5:0]  ctl_pipe;                // {tlast, tuser} 三级对齐（每级 2bit，bit5/4 为输出）
 
     assign data[0]  = {zhenghe_tuser, zhenghe_tdata};
     assign valid[0] = zhenghe_tvalid;
@@ -83,74 +83,48 @@ module raw_matrix_3x3_buffer #(
         end
     endgenerate
 
+    // 3x3 窗口：每行 6 个像素（窗口列 -1..+4），行/列边界按复制处理。
+    // 三行各自左移 96bit 窗口：h_cnt==0 复制中心像素；h_cnt==末列 复制末像素；否则左移进新像素。
+    // 各行的源数据：下一行=当前拍 data_d0（v_cnt>=1 时），当前行=data_d1（v_cnt>=1），上一行=data_d2（v_cnt>=2）；
+    // v_cnt==0/1 时按图像上边界复制（见 src 选择）。
+    assign src[0] = (v_cnt == 0) ? data_d0 : (v_cnt == 1) ? data_d1 : data_d2;   // 上一行
+    assign src[1] = (v_cnt == 0) ? data_d0 : data_d1;                            // 当前行
+    assign src[2] = data_d0;                                                     // 下一行
+
+    // 数据打拍 / 窗口移位 / 行列计数 / 行号与窗口有效打拍：原 3 个 always 同复位、同时钟、全非阻塞，合并后逐拍等价
+    integer k;
     always @(posedge I_clk or negedge I_rst_n) begin
         if (!I_rst_n) begin
-            data_d0_d <= 33'd0; data_d0 <= 33'd0; data_d1 <= 33'd0;
-            valid_d0  <= 1'b0;  valid_d1 <= 1'b0;
+            {data_d0_d, data_d0, data_d1} <= 0;
+            {valid_d0, valid_d1} <= 0;
+            {h_cnt, v_cnt, v_cnt_d} <= 0;
+            ch_valid <= 1'b0;  ctl_pipe <= 6'd0;
+            for (k = 0; k < N; k = k + 1) matrix[k] <= 96'd0;
         end else begin
             valid_d0  <= valid[0];
             valid_d1  <= valid_d0;
             data_d0_d <= data[0];
             data_d0   <= data_d0_d;
             data_d1   <= data[1];
-        end
-    end
-
-    // 3x3 窗口：每行 6 个像素（窗口列 -1..+4），行/列边界按复制处理。
-    // 三行各自左移 96bit 窗口：h_cnt==0 复制中心像素；h_cnt==末列 复制末像素；否则左移进新像素。
-    // 各行的源数据：下一行=当前拍 data_d0（v_cnt>=1 时），当前行=data_d1（v_cnt>=1），上一行=data_d2（v_cnt>=2）；
-    // v_cnt==0/1 时按图像上边界复制（见 src 选择）。
-    wire [32:0] src_last = (v_cnt == 0) ? data_d0 : (v_cnt == 1) ? data_d1 : data_d2;
-    wire [32:0] src_cur  = (v_cnt == 0) ? data_d0 : data_d1;
-    wire [32:0] src_next = data_d0;
-
-    generate
-        for (i = 0; i < N; i = i + 1) begin : g_matrix
-            wire [32:0] src = (i == 0) ? src_last : (i == 1) ? src_cur : src_next;
-            always @(posedge I_clk or negedge I_rst_n) begin
-                if (!I_rst_n)              matrix[i] <= 96'd0;
-                else if (valid_d1) begin
-                    if (h_cnt == 0)        matrix[i] <= {24'd0, src[31:24], src[31:0], src[31:0]};
-                    else if (h_cnt == IMG_WIDTH_4x - 1)
-                                           matrix[i] <= {matrix[i][63:0], matrix[i][7:0], 24'd0};
-                    else                   matrix[i] <= {matrix[i][63:0], src[31:0]};
-                end
-                else                       matrix[i] <= 96'd0;
+            for (k = 0; k < N; k = k + 1) begin
+                if (valid_d1) begin
+                    if (h_cnt == 0)                        matrix[k] <= {24'd0, src[k][31:24], src[k][31:0], src[k][31:0]};
+                    else if (h_cnt == IMG_WIDTH_4x - 1)    matrix[k] <= {matrix[k][63:0], matrix[k][7:0], 24'd0};
+                    else                                   matrix[k] <= {matrix[k][63:0], src[k][31:0]};
+                end else                                   matrix[k] <= 96'd0;
             end
-        end
-    endgenerate
-
-    // 行/列计数器（窗口数据有效时推进）与行号/窗口有效打拍（合并为同一 always，全非阻塞）
-    always @(posedge I_clk or negedge I_rst_n) begin
-        if (!I_rst_n) begin
-            h_cnt <= 14'd0; v_cnt <= 14'd0; ch_valid <= 1'b0; v_cnt_d <= 14'd0;
-        end else begin
-            if (zhenghe_tuser) begin
-                h_cnt <= 14'd0;
-                v_cnt <= 14'd0;
-            end else begin
-                h_cnt <= valid_d1 ? ((h_cnt == IMG_WIDTH_4x - 1) ? 14'd0 : h_cnt + 1'b1) : h_cnt;
-                v_cnt <= (valid_d1 && (h_cnt == IMG_WIDTH_4x - 1))
-                         ? ((v_cnt == IMG_HEIGHT - 1) ? 14'd0 : v_cnt + 1'b1) : v_cnt;
-            end
+            // 行/列计数器（窗口数据有效时推进）
+            {h_cnt, v_cnt} <= zhenghe_tuser ? 28'd0 :
+                { valid_d1 ? ((h_cnt == IMG_WIDTH_4x - 1) ? 14'd0 : h_cnt + 1'b1) : h_cnt,
+                  (valid_d1 && (h_cnt == IMG_WIDTH_4x - 1)) ? ((v_cnt == IMG_HEIGHT - 1) ? 14'd0 : v_cnt + 1'b1) : v_cnt };
             ch_valid <= valid_d1;
             v_cnt_d  <= v_cnt;
+            ctl_pipe <= {ctl_pipe[3:0], zhenghe_tlast, zhenghe_tuser};
         end
     end
 
-    // tlast/tuser 三级对齐后输出
-    always @(posedge I_clk or negedge I_rst_n) begin
-        if (!I_rst_n) begin
-            tlast_pipe <= 3'd0;
-            tuser_pipe <= 3'd0;
-        end else begin
-            tlast_pipe <= {tlast_pipe[1:0], zhenghe_tlast};
-            tuser_pipe <= {tuser_pipe[1:0], zhenghe_tuser};
-        end
-    end
-
-    assign O_tuser  = tuser_pipe[2];
-    assign O_tlast  = tlast_pipe[2];
+    assign O_tuser  = ctl_pipe[4];
+    assign O_tlast  = ctl_pipe[5];
     assign O_tvalid = ch_valid;
 
 endmodule

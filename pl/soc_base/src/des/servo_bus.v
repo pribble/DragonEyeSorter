@@ -1,20 +1,13 @@
-// servo_bus: Desheng v4.01 master, 115200 8N1 single-wire half duplex, open-drain TX (BSS138 pull-up); 寄存器 0x100
-// 的偏移 / 位域以 docs/PL设计.md 为准。PS fills TX buf with [ID,LEN,INSTR,params...]; HW prepends FF FF and appends
-// checksum ~sum(ID,LEN,STATUS,params...). 1-byte (~87us) turnaround guard after each transfer; RX timeout from TX end,
-// default 3000us. NOTE PDF 2.3.6 SYNC WRITE prints 0x8B but formula gives ~(0x545)&0xFF = 0xBA (5 other examples
-// match); HW uses 0xBA.
+// servo_bus: Desheng v4.01 master, 115200 8N1 single-wire half duplex, open-drain TX (BSS138 pull-up); 寄存器
+// 0x100 的偏移 / 位域 / 复位值以 docs/PL设计.md 为准. PS fills TX buf with [ID,LEN,INSTR,params...]; HW prepends
 module servo_bus #(
     parameter integer CLK_HZ = 75_000_000,
     parameter integer BAUD   = 115_200
 ) (
-    input  wire        clk,
-    input  wire        wr,
-    input  wire [7:0]  waddr,
-    input  wire [31:0] wdata,
-    input  wire [7:0]  raddr,
-    output reg  [31:0] rdata,
-    input  wire [31:0] ts,
-    input  wire        bus_i,
+    input  wire        clk, input  wire        wr,
+    input  wire [7:0]  waddr, input  wire [31:0] wdata,
+    input  wire [7:0]  raddr, output reg  [31:0] rdata,
+    input  wire [31:0] ts, input  wire        bus_i,
     output wire        bus_drive_low
 );
     localparam integer DIV = (CLK_HZ + BAUD / 2) / BAUD, CLK_PER_US = CLK_HZ / 1_000_000, GUARD = DIV * 10;
@@ -22,13 +15,12 @@ module servo_bus #(
     localparam [DIVW-1:0] BAUD_FULL = DIV - 1, BAUD_HALF = DIV / 2;
     localparam [1:0] S_IDLE = 2'd0, S_TX = 2'd1, S_RX = 2'd2;
     localparam [2:0] R_NONE = 3'd0, R_DONE = 3'd1, R_TIMEOUT = 3'd2, R_ERR = 3'd3, R_OK = 3'd4;
-
-    reg  [7:0] tx_buf [0:63];             // 64-byte TX buffer, byte i = tx_buf[i]
-    reg  [7:0] rx_buf [0:31];             // 32-byte RX buffer, byte i = rx_buf[i]
-    reg  [6:0] tx_count = 0, idx = 0;     // idx = TX byte index / RX byte count (half duplex, never both)
+    reg  [7:0] tx_buf [0:63];
+    reg  [7:0] rx_buf [0:31];
+    reg  [6:0] tx_count = 0, idx = 0;
     reg        expect_reply = 0, go = 0;
-    reg  [2:0] res = R_NONE;              // last transfer result, decoded into the STATUS flag bits
-    reg  [7:0] rx_status = 0; reg [5:0] rx_len = 0;   // last reply STATUS byte / LEN (CHK position)
+    reg  [2:0] res = R_NONE;
+    reg  [7:0] rx_status = 0; reg [5:0] rx_len = 0;
     reg  [31:0] timeout_us = 3000, tx_t0 = 0, tx_t1 = 0, rx_t = 0;
     reg  [31:0] cnt_timeout = 0, cnt_rx_err = 0, cnt_frames = 0;
     reg  [2:0] rx_sync = 3'b111;
@@ -37,8 +29,6 @@ module servo_bus #(
     reg tx_line = 1'b1;
     assign bus_drive_low = ~tx_line;
     reg  [1:0] state = S_IDLE; reg [GUARDW-1:0] guard = 0;
-    // Shared serial engine: TX and RX never run at the same time, so one baud counter, bit counter,
-    // shift register and checksum accumulator serve both directions.
     reg  [7:0] sum = 0;
     reg  [9:0] sr = 10'h3FF;
     reg  [3:0] bits = 0;
@@ -47,7 +37,6 @@ module servo_bus #(
     reg  [1:0] rx_hdr = 0;
     reg  [31:0] rx_timer = 0;
     reg  [USW-1:0] us_div = 0;
-    // TX bytes: 0,1 = FF FF; 2..tx_count+1 = body; tx_count+2 = checksum; one source for load + accumulate.
     wire [7:0] tx_byte = (idx < 2) ? 8'hFF : (idx < tx_count + 2) ? tx_buf[idx - 2] : ~sum;
     always @(posedge clk) begin
         if (wr) case (waddr)
@@ -114,16 +103,16 @@ module servo_bus #(
                             if (sr[7:0] == 8'hF5 && rx_hdr == 1) begin rx_hdr <= 2; idx <= 0; sum <= 0; end
                             else rx_hdr <= (sr[7:0] == 8'hFF) ? 1 : 0;
                         end else begin
-                            rx_buf[idx[4:0]] <= sr[7:0];   // idx <= rx_len+1 <= 31: LEN is range-checked at idx==1
+                            rx_buf[idx[4:0]] <= sr[7:0];
                             idx <= idx + 1'b1;
                             if (idx == 2) rx_status <= sr[7:0];
-                            if (idx == 1) begin                      // LEN: sum it, validate, remember LEN
+                            if (idx == 1) begin
                                 sum <= sum + sr[7:0]; rx_len <= sr[5:0];
                                 if (sr[7:0] < 2 || sr[7:0] > 30) begin
                                     res <= R_ERR; cnt_rx_err <= cnt_rx_err + 1'b1;
                                     state <= S_IDLE; guard <= GUARD;
                                 end
-                            end else if (idx >= 2 && idx == rx_len + 1'b1) begin   // CHK: compare ~sum
+                            end else if (idx >= 2 && idx == rx_len + 1'b1) begin
                                 rx_t <= ts; state <= S_IDLE; guard <= GUARD;
                                 if (sr[7:0] == ~sum) res <= R_OK;
                                 else begin res <= R_ERR; cnt_rx_err <= cnt_rx_err + 1'b1; end

@@ -26,33 +26,22 @@ module image_correction #(
     assign tuser   = (h_cnt == 1) && (v_cnt == 1) && I_raw_tvalid_d;
     assign last    = (cnt == 10);
 
+    // 原 3 个 always（输入打拍 / 行间空闲计数 / 行列计数）同复位、同时钟、全非阻塞，合并后逐拍等价
     always @(posedge I_clk or negedge I_rst_n) begin
         if (!I_rst_n) begin
             I_raw_tvalid_d <= 1'b0;
             I_raw_tdata_r  <= {DATA_WIDTH{1'b0}};
+            {cnt, h_cnt, v_cnt} <= 47'd0;
         end else begin
             I_raw_tvalid_d <= I_raw_valid;
             I_raw_tdata_r  <= I_raw_data;
-        end
-    end
-
-    // 行间空闲计数：valid 清 0，否则加 1；保留 else if(!x) 写法以维持 x 语义
-    always @(posedge I_clk or negedge I_rst_n) begin
-        if (!I_rst_n) cnt <= 17'd0;
-        else if (I_raw_valid) cnt <= 17'd0;
-        else if (!I_raw_valid) cnt <= cnt + 17'd1;
-    end
-
-    // 列/行计数：帧头与行尾清零，行尾使 v_cnt 加 1
-    always @(posedge I_clk or negedge I_rst_n) begin
-        if (!I_rst_n || I_raw_frame_start) begin
-            h_cnt <= 15'd0;
-            v_cnt <= 15'd0;
-        end else if (last) begin
-            h_cnt <= 15'd0;
-            v_cnt <= v_cnt + 15'd1;
-        end else if (I_raw_tvalid_d) begin
-            h_cnt <= h_cnt + 15'd1;
+            // 行间空闲计数：valid 清 0，否则加 1；保留 else if(!x) 写法以维持 x 输入时保持的语义
+            if (I_raw_valid)        cnt <= 17'd0;
+            else if (!I_raw_valid)  cnt <= cnt + 17'd1;
+            // 列/行计数：帧头与行尾清零，行尾使 v_cnt 加 1
+            if (I_raw_frame_start)     {h_cnt, v_cnt} <= 30'd0;
+            else if (last)             {h_cnt, v_cnt} <= {15'd0, v_cnt + 15'd1};
+            else if (I_raw_tvalid_d)   h_cnt <= h_cnt + 15'd1;
         end
     end
 

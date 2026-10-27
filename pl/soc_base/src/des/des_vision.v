@@ -1,37 +1,21 @@
-// des_vision.v — PL image path between ISP output and the frame writer (赛题领域3: 灰度滤波/边缘检测/尺寸粗测);
-// 寄存器 0x300 的偏移 / 位域 / 复位值以 docs/PL设计.md 为准。
-// 128-bit beats of 4 BGRA pixels, WIDTH/4 beats/row, rows counted from tuser like the frame writer; no back-pressure.
-// MODE0 1-clock bypass, filters 6 clocks, alpha=0; 3x3 results one pixel left / one row up of the centre (left edge
-// reuses itself, row above 0 = previous frame's last row). gray Y=(77R+150G+29B)>>8; window from two row buffers
-// (ERAM WIDTH/4x64b); Gaussian [1 2 1;2 4 2;1 2 1]/16, Sobel |Gx|+|Gy| over 3 pipeline stages; statistics on the
-// binary image in ROI/FULL published each SOF. LANES=4 every pixel; LANES=2 pixels 0,2 only (half logic, result on
-// 2px, window steps 2px, PS scales by 4/LANES.
+// des_vision.v — PL image path between ISP output and the frame writer: gray / Gaussian / Sobel / binary + ROI
+// statistics (published each SOF). 寄存器 0x300 的偏移 / 位域 / 复位值以 docs/PL设计.md 为准. 128-bit beats of
 `include "des_common.vh"
 module des_vision #(
     parameter integer WIDTH = 1920, HEIGHT = 1080, LANES = 4
 ) (
-    input  wire         clk,
-    input  wire         wr,
-    input  wire [7:0]   waddr,
-    input  wire [31:0]  wdata,
-    input  wire [7:0]   raddr,
-    output reg  [31:0]  rdata,
-    input  wire         pclk,
-    input  wire [127:0] s_tdata,
-    input  wire         s_tvalid,
-    input  wire         s_tuser,
-    input  wire         s_tlast,
-    output reg  [127:0] m_tdata,
-    output reg          m_tvalid,
-    output reg          m_tuser,
+    input  wire         clk, input  wire         wr,
+    input  wire [7:0]   waddr, input  wire [31:0]  wdata,
+    input  wire [7:0]   raddr, output reg  [31:0]  rdata,
+    input  wire         pclk, input  wire [127:0] s_tdata,
+    input  wire         s_tvalid, input  wire         s_tuser,
+    input  wire         s_tlast, output reg  [127:0] m_tdata,
+    output reg          m_tvalid, output reg          m_tuser,
     output reg          m_tlast
 );
     localparam BEATS = WIDTH / 4, L = LANES, STEP = 4 / LANES;
     localparam XW = $clog2(WIDTH), YW = $clog2(HEIGHT), BTW = $clog2(BEATS), NW = $clog2(L + 1), SXW = XW + $clog2(L);
     localparam [3:0] L4 = LANES;
-
-    // Configuration banks: r = as written, p = pending (latched by an APPLY toggle), a = active (latched at SOF).
-    // All eight settings are one packed word per bank, so both shadow latches are a single assignment each.
     localparam F_MODE = 0, F_FULL = 3, F_THR = 4, F_ETHR = 12, F_X0 = F_ETHR + 11, F_X1 = F_X0 + XW,
                F_Y0 = F_X1 + XW, F_Y1 = F_Y0 + YW, CFG_W = F_Y1 + YW;
     localparam [YW-1:0] Y1D = HEIGHT - 1; localparam [XW-1:0] X1D = WIDTH - 1;
@@ -46,24 +30,19 @@ module des_vision #(
             6'h04: r_apply <= ~r_apply;
         endcase
     end
-    // APPLY toggle into the pixel domain: common 3-FF chain, payload latched on the edge (seen-compare).
     wire ap_s1, ap_s2; reg ap_seen = 1'b0;
     des_togsync u_ap (.clk(pclk), .tin(r_apply), .s1(ap_s1), .s2(ap_s2));
     always @(posedge pclk) if (ap_s2 != ap_seen) begin ap_seen <= ap_s2; p_cfg <= r_cfg; end
     wire [2:0] a_mode = a_cfg[F_MODE +: 3]; wire a_full = a_cfg[F_FULL];
     wire [7:0] a_thr = a_cfg[F_THR +: 8]; wire [10:0] a_ethr = a_cfg[F_ETHR +: 11];
-
-    // Stream position (beat in row, row in frame) and the delay chains: beat / row of stages 1..5 (rows have a 6th
-    // stage for the statistics) and v/u/l of stages 1..5.
     reg tuser_d = 1'b0; wire sof = s_tuser & ~tuser_d; reg [BTW-1:0] bx = 0; reg [YW-1:0] row = 0;
     wire [BTW-1:0] cur_bx = sof ? 0 : bx; wire [YW-1:0] cur_row = sof ? 0 : row;
-    wire [2:0] mode_now = sof ? p_cfg[F_MODE +: 3] : a_mode;   // pending mode on the SOF beat
+    wire [2:0] mode_now = sof ? p_cfg[F_MODE +: 3] : a_mode;
     wire bypass = mode_now == 3'd0 || mode_now > 3'd5;
     reg [5*BTW-1:0] bxq = 0; reg [6*YW-1:0] rowq = 0; reg [4:0] vsr = 0, usr = 0, lsr = 0;
     wire [BTW-1:0] bx1 = bxq[0 +: BTW], bx3 = bxq[4*BTW +: BTW];
     wire [YW-1:0] row3 = rowq[4*YW +: YW], row6 = rowq[5*YW +: YW];
     wire v1 = vsr[0], v3 = vsr[4], u3 = usr[4], l3 = lsr[4];
-
     function [7:0] gray_of(input [23:0] p);
         reg [15:0] s;
         begin s = 77 * p[23:16] + 150 * p[15:8] + 29 * p[7:0]; gray_of = s[15:8]; end
@@ -78,13 +57,9 @@ module des_vision #(
             default: out_pixel = 8'd0;
         endcase
     endfunction
-
-    // Stage 1: gray, row-buffer read (ERAM WIDTH/4 x 64b). Stage 2: L+2-pixel window rows (two extra columns: the
-    // previous beat's last two pixels, or the first pixel twice at the left edge). Stage 3: vertical / horizontal
-    // 1-2-1 sums, centre pixels. Stage 4: Gaussian >> 4, Gx, Gy, |Gx|, |Gy|. Stage 5: |Gx|+|Gy|, pixel select.
     reg [16*L-1:0] lb [0:BEATS-1];
     reg [16*L-1:0] lb_rd = 0; reg [8*L-1:0] g1 = 0;
-    wire [24*L-1:0] rd = {lb_rd[16*L-1:8*L], lb_rd[8*L-1:0], g1};   // bottom / middle / top rows
+    wire [24*L-1:0] rd = {lb_rd[16*L-1:8*L], lb_rd[8*L-1:0], g1};
     localparam ROWW = 8 * (L + 2); reg [3*ROWW-1:0] win = 0; reg [47:0] pv = 0; reg [10*(L+2)-1:0] vs = 0;
     reg [20*L-1:0] hs = 0; reg [8*L-1:0] gm = 0, ga4 = 0, gm4 = 0;
     reg [10*L-1:0] ax4 = 0, ay4 = 0; reg [8*L-1:0] gc3 = 0, ga3 = 0; reg [11*L-1:0] mg3 = 0;
@@ -96,7 +71,6 @@ module des_vision #(
     reg [31:0] acc_sx = 0, acc_sy = 0, cyc = 0, res_sx = 0, res_sy = 0, res_cyc = 0;
     reg [XW-1:0] acc_x0 = {XW{1'b1}}, acc_x1 = 0, res_x0 = {XW{1'b1}}, res_x1 = 0;
     reg [YW-1:0] acc_y0 = {YW{1'b1}}, acc_y1 = 0, res_y0 = {YW{1'b1}}, res_y1 = 0;
-
     always @(posedge pclk) begin
         tuser_d <= s_tuser; cyc <= cyc + 1'b1;
         if (s_tvalid) begin
@@ -146,7 +120,6 @@ module des_vision #(
             m_tdata[32*k +: 32] <= bypass ? s_tdata[32*k +: 32]
                 : {8'd0, ovl[8*(k/STEP) +: 8], ovl[8*(k/STEP) +: 8], ovl[8*(k/STEP) +: 8]};
         xb <= {bx3, 2'b00};
-
         n_sel = 0; n_edge = 0; sx_beat = 0; bmin = {XW{1'b1}}; bmax = 0; r = row6 - 1'b1;
         for (j = 0; j < L; j = j + 1) if (sel4[j]) begin
             cx = xb + STEP * j - STEP; n_sel = n_sel + 1'b1; sx_beat = sx_beat + cx;
@@ -167,8 +140,6 @@ module des_vision #(
             end
         end
     end
-
-    // Published results cross into the register clock on the res_tgl toggle (common 3-FF chain, s2 != s1 edge).
     wire rs_s1, rs_s2;
     des_togsync u_rs (.clk(clk), .tin(res_tgl), .s1(rs_s1), .s2(rs_s2));
     reg [31:0] o_seq = 0, o_area = 0, o_bx = 0, o_by = 0, o_sx = 0, o_sy = 0, o_edges = 0, o_cyc = 0, o_active = 0;
@@ -181,7 +152,6 @@ module des_vision #(
             o_active <= {4'd0, L4, a_thr, 7'd0, a_full, 5'd0, a_mode};
         end
     end
-
     always @* begin
         case (raddr[7:2])
             6'h00: rdata = {23'd0, r_cfg[F_FULL], 5'd0, r_cfg[F_MODE +: 3]};
