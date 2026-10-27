@@ -1,10 +1,10 @@
 #!/bin/bash
 # 环境变量加载器 - 从项目根目录的 .env 文件加载配置
-# 用法: source scripts/env_loader.sh
+# 用法: source scripts/env/env_loader.sh
 
 # 找到项目根目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ENV_FILE="$PROJECT_ROOT/.env"
 
 if [ ! -f "$ENV_FILE" ]; then

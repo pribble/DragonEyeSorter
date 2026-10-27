@@ -1,7 +1,7 @@
 ﻿# 环境变量加载器 (PowerShell 版本) - 从项目根目录的 .env 文件加载配置
-# 用法: . .\scripts\env_loader.ps1
+# 用法: . .\scripts\env\env_loader.ps1
 
-$ProjectRoot = Split-Path -Parent $PSScriptRoot
+$ProjectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $EnvFile = Join-Path $ProjectRoot ".env"
 
 if (-not (Test-Path $EnvFile)) {
@@ -44,7 +44,7 @@ Get-Content $EnvFile -Encoding UTF8 | ForEach-Object {
 
 Write-Host "`n📌 关键路径:" -ForegroundColor Cyan
 
-# 验证并显示关键路径（NPU_DEMO 已不再是必需项：BOOT.bin 零件在仓库内 scripts/bootbin/parts/）
+# 验证并显示关键路径（NPU_DEMO 已不再是必需项：BOOT.bin 零件在仓库内 scripts/boot/parts/）
 $criticalPaths = @(
     @{Name="FD_ROOT";    Path=$env:FD_ROOT},
     @{Name="TD_ROOT";    Path=$env:TD_ROOT},

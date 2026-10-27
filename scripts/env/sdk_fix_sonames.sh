@@ -7,12 +7,12 @@
 #   plain name  (libX.so)   : what -lX looks for
 # For every lib file it creates copies named by its SONAME and by the plain name, if missing.
 #
-# usage: sh scripts/sdk_fix_sonames.sh <lib dir> [readelf]
+# usage: sh scripts/env/sdk_fix_sonames.sh <lib dir> [readelf]
 #   一个库一个目录（.env 的 ARMNN_LIB / OPENCV_LIB 就各是一个这样的根）：
-#     sh scripts/sdk_fix_sonames.sh "$ARMNN_LIB"  "$FD_ROOT/toolchain/gcc/aarch64_linux/bin/aarch64-linux-gnu-readelf.exe"
-#     sh scripts/sdk_fix_sonames.sh "$OPENCV_LIB" "$FD_ROOT/toolchain/gcc/aarch64_linux/bin/aarch64-linux-gnu-readelf.exe"
+#     sh scripts/env/sdk_fix_sonames.sh "$ARMNN_LIB"  "$FD_ROOT/toolchain/gcc/aarch64_linux/bin/aarch64-linux-gnu-readelf.exe"
+#     sh scripts/env/sdk_fix_sonames.sh "$OPENCV_LIB" "$FD_ROOT/toolchain/gcc/aarch64_linux/bin/aarch64-linux-gnu-readelf.exe"
 #   板上库的本地拷贝（$BOARD_LIBS）：同样直接给目录
-#     sh scripts/sdk_fix_sonames.sh "$BOARD_LIBS" \
+#     sh scripts/env/sdk_fix_sonames.sh "$BOARD_LIBS" \
 #              "$FD_ROOT/toolchain/gcc/aarch64_linux/bin/aarch64-linux-gnu-readelf.exe"
 #   兼容旧写法：给一个同时含 armnn_lib/ 与 ffmpeg_opencv4.7.0_aarch64/ 的父目录时，两个子目录都扫
 set -e

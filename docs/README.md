@@ -52,11 +52,11 @@
 
 ## 文档检查
 
-改文档后、提交前跑；退出码非 0 即不合规。规则与例外在 `scripts/doc_check.json` / `scripts/source_check.json`，例外必须写 reason：
+改文档后、提交前跑；退出码非 0 即不合规。规则与例外在 `scripts/check/doc_check.json` / `scripts/check/source_check.json`，例外必须写 reason：
 
 ```powershell
-pwsh -File scripts/check_docs.ps1       # 链接/锚点、索引完整性、路径卫生、行数预算、结构卫生、数字复述、版本口径
-pwsh -File scripts/check_sources.ps1    # 文档 ↔ 源码唯一源：寄存器表 ↔ des_regs.h、类别表 ↔ label_list.json、CSV 列数、部署清单 ↔ out/
+pwsh -File scripts/check/check_docs.ps1       # 链接/锚点、索引完整性、路径卫生、行数预算、结构卫生、数字复述、版本口径
+pwsh -File scripts/check/check_sources.ps1    # 文档 ↔ 源码唯一源：寄存器表 ↔ des_regs.h、类别表 ↔ label_list.json、CSV 列数、部署清单 ↔ out/
 ```
 
 ## 代码侧 README
@@ -68,7 +68,7 @@ pwsh -File scripts/check_sources.ps1    # 文档 ↔ 源码唯一源：寄存器
 | [log/README.md](log/README.md) | log 的格式、主题索引与沿革归属 |
 | [pl/README.md](../pl/README.md) | PL 目录布局、工程组织、资源预算；[soc_base](../pl/soc_base/README.md) 底板工程与对厂家的改动、[soc_prj_Runs](../pl/soc_base/soc_prj_Runs/README.md) TD 运行目录最小集合 |
 | [ps/README.md](../ps/README.md) | PS 代码地图、四层产物、构建与命令参考；[kernel](../ps/kernel/README.md) mipicam 内核模块；[vendor](../ps/vendor/README.md) 非自研代码边界（json.hpp） |
-| [scripts/README.md](../scripts/README.md) | `bootbin/` 打包、`sd_image/` 烧卡、`sdk_fix_sonames.sh`、文档检查脚本；[deploy](../scripts/deploy/README.md) 板端部署清单与上板 |
+| [scripts/README.md](../scripts/README.md) | 四个目录的分工：`env/` 环境准备、`check/` 文档与源码检查、`boot/` BOOT.bin 打包与烧卡、`sdk_fix_sonames.sh`；[deploy](../scripts/deploy/README.md) 板端部署清单与上板 |
 | [train/README.md](../train/README.md) | 合成数据、训练、导出 + UINT8 量化、评估与上板核对 |
 | [pc/README.md](../pc/README.md) | PC 侧工具索引：PLC 模拟器（CAN）、测试报告出数、Modbus-TCP / RS485 客户端、现场数据接收 |
 | [figures/README.md](figures/README.md) | 技术文档插图的生成脚本与用法 |
@@ -78,7 +78,7 @@ pwsh -File scripts/check_sources.ps1    # 文档 ↔ 源码唯一源：寄存器
 1. **只写当前结论**：日期、决策沿革（「原来 X，后改为 Y」）、版本修正故事、复述踩坑经过一律写在 [log/](log/)；正文需要出处时给 log 链接。数字只写最新实测值 + 来源，不写日期。
 2. **数字唯一源**：实测数字只维护在 [测试与验证](测试与验证.md)，明细给 log 链接；未实测的标 ⚠。README / 提交件允许一句话摘要引用，但必须带链接到本文件或 log，其余正文只链接、不复述。
 3. **语言**：陈述句、列表、表格；不用口语、情绪、感叹与拟人表达；一段只讲一件事，长句拆开。
-4. **不写主机路径 / IP / 私钥**：只允许 ① 仓库内相对路径 ② 板端路径（`/root/des`、`/mnt/mmcblk0p1`、`/opt/armnn_lib`） ③ 环境变量名与 `<占位符>`。外部路径写 `.env` 变量（清单见 [.env.example](../.env.example)）；板端命令写 `ssh $BOARD_HOST` / `scp <本地文件> $BOARD_HOST:<板端路径>`，不写 IP 与 `-i <私钥>`。带盘符主机路径只允许在 [log/](log/) 历史与本机 `.env`。**例外**：板端一次性固定 IP / 网段与 USB 共享网卡默认掩码（[环境与上手](环境与上手.md) §4），已在 `scripts/doc_check.json` 登记理由。
+4. **不写主机路径 / IP / 私钥**：只允许 ① 仓库内相对路径 ② 板端路径（`/root/des`、`/mnt/mmcblk0p1`、`/opt/armnn_lib`） ③ 环境变量名与 `<占位符>`。外部路径写 `.env` 变量（清单见 [.env.example](../.env.example)）；板端命令写 `ssh $BOARD_HOST` / `scp <本地文件> $BOARD_HOST:<板端路径>`，不写 IP 与 `-i <私钥>`。带盘符主机路径只允许在 [log/](log/) 历史与本机 `.env`。**例外**：板端一次性固定 IP / 网段与 USB 共享网卡默认掩码（[环境与上手](环境与上手.md) §4），已在 `scripts/check/doc_check.json` 登记理由。
 5. **一处维护**：同一事实只写一遍，其余改为链接；正文与本文地图的分工不一致时，先改本文声明，再改正文。
 6. **环境前提不算既有事实**：机器相关依赖（工具链、SSH 密钥、别名、库目录）只在 [环境与上手](环境与上手.md) §1「需要哪些环境」表维护（要什么 / 从哪拿 / 怎么验证），正文只引用；预期输出与数字必须来自实测，不按命名习惯猜。
 7. **AGENTS.md 准入**：只放 AI 每轮都会用、不写就会主动做错、做错代价高的规则；其余写进对应文档，AGENTS.md 只留指针。上限：红线 10 条、全文 60 行，超了先删一条。

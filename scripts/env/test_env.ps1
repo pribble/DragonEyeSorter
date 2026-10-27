@@ -78,8 +78,8 @@ if ($env:TD_ROOT -match '6\.2\.1') {
 # ===== 厂家资源测试 =====
 Write-Host "`n📚 厂家资源" -ForegroundColor Yellow
 
-# 打包 BOOT.bin 的零件：都在仓库内（scripts/bootbin/parts/），不依赖仓库外的厂家 demo 目录
-$parts = "$PSScriptRoot\bootbin\parts"
+# 打包 BOOT.bin 的零件：都在仓库内（scripts/boot/parts/），不依赖仓库外的厂家 demo 目录
+$parts = "$PSScriptRoot\..\boot\parts"
 $tests += Test-Item "BOOT.bin 零件目录" $parts "Directory" "Critical"
 $tests += Test-Item "FSBL 零件" "$parts\fsbl.elf" "File" "Critical"
 $tests += Test-Item "U-Boot 零件" "$parts\u-boot.elf" "File" "Critical"

@@ -56,4 +56,4 @@ models/part_cls_uint8.onnx	/root/des/part_cls_uint8.onnx	model	yes	上面 json �
 
 # ---------- 系统与厂家件（我们不传，也不动） ----------
 # /opt（armnn_lib、ffmpeg_opencv4.7.0_aarch64、厂家 .ko 与 demo）、/usr/share/fonts/wqy-zenhei（UI 中文）、
-# /etc/init.d/S90des（软链接，装机步骤见 docs/环境与上手.md §4）、/mnt/mmcblk0p1/BOOT.bin（换比特流走 scripts/bootbin/）
+# /etc/init.d/S90des（软链接，装机步骤见 docs/环境与上手.md §4）、/mnt/mmcblk0p1/BOOT.bin（换比特流走 scripts/boot/）

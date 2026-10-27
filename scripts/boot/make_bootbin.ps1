@@ -6,7 +6,7 @@
 # 比特流必须显式给：接的是我们自己的 PL 逻辑，脚本不再有"原样重打包"的默认值
 # （厂家基线比特流与那条回归路径已于 2026-10-15 随 make_sd_image.sh 一并下线）。
 #
-# 零件来源（都在 scripts\bootbin\parts\，台账见 parts\MD5SUMS.txt）：
+# 零件来源（都在 scripts\boot\parts\，台账见 parts\MD5SUMS.txt）：
 #   fsbl.elf    已入库，与厂家原件逐字节相同
 #   u-boot.elf  已入库，由厂家 BOOT.bin 第 2 分区解出；脚本每次打包都校验它的 MD5
 #
@@ -23,7 +23,7 @@ param(
 $ErrorActionPreference = 'Stop'
 # 只取 FD_ROOT（BootGen 与交叉工具链）；零件走仓库内的 parts\，不再读 .env 的 NPU_DEMO
 if (-not $DES_ENV_LOADED -and (Test-Path "$PSScriptRoot\..\..\.env")) {
-    . "$PSScriptRoot\..\env_loader.ps1"
+    . "$PSScriptRoot\..\env\env_loader.ps1"
 }
 if (-not $FdRoot) {
     if (-not $env:FD_ROOT) { throw "FD_ROOT 未设置：用 -FdRoot <FD 安装目录>，或在仓库根 .env 里配好（本脚本会经 env_loader.ps1 读它）" }
@@ -46,7 +46,7 @@ function Get-VendorDir {
     throw @"
 需要仓库外的厂家 NPU demo 目录，但没有指定。
   用 -VendorDemo <dir> 显式指定，或在 .env 里设 NPU_DEMO=<dir>
-  （常规打包不需要它：零件都在 scripts\bootbin\parts\；
+  （常规打包不需要它：零件都在 scripts\boot\parts\；
     只有重建 u-boot.elf、或改 PS 配置后取原始 FSBL 时才要）
 "@
 }

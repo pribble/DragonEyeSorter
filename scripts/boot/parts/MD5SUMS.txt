@@ -4,7 +4,7 @@
 # 只有改了 PS 配置（FSBL）或 U-Boot 零件损坏时才需要重取。
 #
 # 核验命令（Windows PowerShell，逐行对比）：
-#   Get-ChildItem scripts/bootbin/parts/* | Get-FileHash -Algorithm MD5 |
+#   Get-ChildItem scripts/boot/parts/* | Get-FileHash -Algorithm MD5 |
 #       Format-Table Hash,Path -AutoSize
 #
 # MD5                              字节数      文件           来源
@@ -34,6 +34,6 @@ E844648EC910C87EA8A036AD4D3D3E45   992360  u-boot.elf     由厂家 BOOT.bin 偏
 #   ② 厂家完整镜像 vendor-BOOT.bin（5,179,264 B，MD5 D6B2D387…）：它只是 u-boot.elf 的
 #      提取来源，而 u-boot.elf 本身已入库，故不再重复保存这 4.94 MB；改为用 MD5 校验
 #      u-boot.elf 自身来防损坏。
-#   ③ 一次性的 scripts/sd_image/make_sd_image.sh（持久化卡早已做好并上板通过）。
+#   ③ 一次性的 make_sd_image.sh（持久化卡早已做好并上板通过；2026-10-27 目录重组前在 scripts/sd_image/，脚本已删）。
 #   厂家 demo 里那份干净比特流原件在 soc_prj/soc_prj_Runs/best_result/soc_prj.bit
 #   （⚠ 不是 phy_1/soc_prj.bit，那一路会被本地重编覆盖）。

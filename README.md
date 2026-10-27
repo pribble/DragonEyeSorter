@@ -12,10 +12,10 @@
 
 | 步骤 | 做什么 |
 |---|---|
-| 0. 环境配置（首次必做） | 复制 `.env.example` 为 `.env` 并填本机工具路径 → 跑 `scripts/test_env.ps1` 自检；需要哪些环境、板子一次性配置见 [环境与上手](docs/环境与上手.md) |
+| 0. 环境配置（首次必做） | 复制 `.env.example` 为 `.env` 并填本机工具路径 → 跑 `scripts/env/test_env.ps1` 自检；需要哪些环境、板子一次性配置见 [环境与上手](docs/环境与上手.md) |
 | 1. 开发环境 | 工具版本（TD 6.2.1 / FD 2026.1 / FD 自带交叉编译器）、启动链、SD 卡布局见 [开发环境与构建](docs/开发环境与构建.md) |
-| 2. 启动板子 | 持久化 SD 卡启动（[sd_image](scripts/sd_image/)），根文件系统改动会保留 |
-| 3. 改 PL | TD 编比特流 → [bootbin](scripts/bootbin/) 打包 `BOOT.bin` → 替换 `/mnt/mmcblk0p1/BOOT.bin` → 重启 → 跑 `pl_check.sh` 回归 |
+| 2. 启动板子 | 持久化 SD 卡启动（[boot](scripts/boot/)），根文件系统改动会保留 |
+| 3. 改 PL | TD 编比特流 → [boot](scripts/boot/) 打包 `BOOT.bin` → 替换 `/mnt/mmcblk0p1/BOOT.bin` → 重启 → 跑 `pl_check.sh` 回归 |
 | 4. 改 PS 应用 | `make -C ps all` 交叉编译 → [scripts/deploy](scripts/deploy/) 部署（`-DryRun` 先对比、`-Dest` 先在板上试新版） |
 
 ## 当前进度
@@ -39,6 +39,6 @@
 | [docs/系统概述.md](docs/系统概述.md) | 定位、总体架构、已锁定决策、优先级分级 |
 | [docs/测试与验证.md](docs/测试与验证.md) | 全部实测数字的唯一汇总与测试报告框架 |
 | [docs/log/](docs/log/) | 按日期的实测记录与决策沿革 |
-| [scripts/check_docs.ps1](scripts/check_docs.ps1) · [check_sources.ps1](scripts/check_sources.ps1) | 文档机械检查与文档↔源码一致性校验；改文档 / 改寄存器、类别表、部署件后跑 |
+| [scripts/check/check_docs.ps1](scripts/check/check_docs.ps1) · [check_sources.ps1](scripts/check/check_sources.ps1) | 文档机械检查与文档↔源码一致性校验；改文档 / 改寄存器、类别表、部署件后跑 |
 
 仓库目录与各目录职责见 [docs/README.md](docs/README.md) 文档地图。

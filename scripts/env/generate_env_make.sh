@@ -2,7 +2,7 @@
 # 从 .env 生成 .env.make 供 Makefile include 使用
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ENV_FILE="$PROJECT_ROOT/.env"
 OUTPUT_FILE="$PROJECT_ROOT/.env.make"
 
@@ -12,7 +12,7 @@ if [ ! -f "$ENV_FILE" ]; then
 fi
 
 echo "# 自动生成的 Makefile 配置 - 不要手动编辑" > "$OUTPUT_FILE"
-echo "# 由 scripts/generate_env_make.sh 从 .env 生成" >> "$OUTPUT_FILE"
+echo "# 由 scripts/env/generate_env_make.sh 从 .env 生成" >> "$OUTPUT_FILE"
 echo "" >> "$OUTPUT_FILE"
 
 # 转换 .env 为 Makefile 格式

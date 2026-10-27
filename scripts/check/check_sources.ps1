@@ -7,11 +7,11 @@
 #   4) 部署清单：scripts/deploy/manifest.tsv ↔ scripts/deploy/out/ 实存文件
 #
 # 用法：
-#   pwsh -File scripts/check_sources.ps1              # 有 error 时退出 1
-#   pwsh -File scripts/check_sources.ps1 -WarnOnly    # 只报告、总是退出 0
-#   pwsh -File scripts/check_sources.ps1 -Verbose     # 打印通过项统计
+#   pwsh -File scripts/check/check_sources.ps1              # 有 error 时退出 1
+#   pwsh -File scripts/check/check_sources.ps1 -WarnOnly    # 只报告、总是退出 0
+#   pwsh -File scripts/check/check_sources.ps1 -Verbose     # 打印通过项统计
 #
-# 路径与例外在 scripts/source_check.json（例外必须写 reason）。只读：不会修改任何文件。
+# 路径与例外在同目录 source_check.json（例外必须写 reason）。只读：不会修改任何文件。
 
 param(
     [switch]$WarnOnly,
@@ -19,7 +19,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $configPath = Join-Path $PSScriptRoot 'source_check.json'
 if (-not (Test-Path -LiteralPath $configPath)) {
     Write-Host "缺少配置: $configPath" -ForegroundColor Red
@@ -333,7 +333,7 @@ if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
         } elseif (Test-AnyGlob $src $dep.missingAllowedGlobs) {
             # 编译产物 / 模型，不入库，仓库里没有是正常的
         } else {
-            Add-Finding 'error' $manifestRel ($i + 1) "manifest 源路径未登记规则：$src（更新 scripts/source_check.json）"
+            Add-Finding 'error' $manifestRel ($i + 1) "manifest 源路径未登记规则：$src（更新 scripts/check/source_check.json）"
         }
     }
 

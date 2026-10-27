@@ -4,11 +4,11 @@
 # 等价于 DSH 仓库的 `pnpm run doc-sync`（只保留本项目用得上的检查）。
 #
 # 用法：
-#   pwsh -File scripts/check_docs.ps1              # 有 error 时退出 1
-#   pwsh -File scripts/check_docs.ps1 -WarnOnly    # 只报告、总是退出 0（排查用）
-#   pwsh -File scripts/check_docs.ps1 -Verbose     # 额外打印通过项统计
+#   pwsh -File scripts/check/check_docs.ps1              # 有 error 时退出 1
+#   pwsh -File scripts/check/check_docs.ps1 -WarnOnly    # 只报告、总是退出 0（排查用）
+#   pwsh -File scripts/check/check_docs.ps1 -Verbose     # 额外打印通过项统计
 #
-# 规则与例外全部在 scripts/doc_check.json：改规则先改配置，例外必须写 reason。
+# 规则与例外全部在同目录 doc_check.json：改规则先改配置，例外必须写 reason。
 # 只读：不会修改任何文件。
 
 param(
@@ -17,7 +17,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $configPath = Join-Path $PSScriptRoot 'doc_check.json'
 if (-not (Test-Path -LiteralPath $configPath)) {
     Write-Host "缺少配置: $configPath" -ForegroundColor Red

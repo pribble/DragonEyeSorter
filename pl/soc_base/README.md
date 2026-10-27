@@ -99,4 +99,4 @@ v12 上板记录原在 PL设计「基线」段，10-20 文档收敛移入本表�
 
 ## 与 boot 打包的关系
 
-本工程编译产物 `soc_prj.bit` 喂给 `scripts/bootbin/make_bootbin.ps1`；FSBL / U-Boot 用仓库内零件（`scripts/bootbin/parts/`），除非改了 PS 配置才需重编 FSBL。完整上板步骤见 [开发环境与构建](../../docs/开发环境与构建.md)「启动链与 BOOT.bin」。
+本工程编译产物 `soc_prj.bit` 喂给 `scripts/boot/make_bootbin.ps1`；FSBL / U-Boot 用仓库内零件（`scripts/boot/parts/`），除非改了 PS 配置才需重编 FSBL。完整上板步骤见 [开发环境与构建](../../docs/开发环境与构建.md)「启动链与 BOOT.bin」。

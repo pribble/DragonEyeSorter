@@ -140,7 +140,7 @@ ps/
 
 - **`make -C ps all` 出 11 个产物**：`des_app`、`des_tool`、`desreg`、`canplc` + 7 个 `test_*`（scheduler / modbus / rs485 / calib / measure / belt_hil / can）。只有 `des_app` 属于板端产品运行时（进部署清单）；其余要用时手动 `scp`。`test_npu` 与 `test_servo_gap` 不在 `all` 里，要显式点名。
 - 两个入口共享的源码各编一次成 `build/obj/*.o`（`-MMD -MP` 自动头文件依赖）；源文件由 Makefile 的 `wildcard` 自动收集（新增 / 删除 `.cpp` 不用改 Makefile，**唯一约束仍是 basename 唯一**），只有 `OPS_SRC`（`calib.cpp` / `measure_tool.cpp` / `tool_util.cpp`）显式列给 `des_tool`，**不链进产品**。第二遍 `make` 应是 no-op。
-- `des_app` / `des_tool` 需要厂家 NPU demo 的 `libs/`（OpenCV 4.7 + ArmNN），Makefile 变量 `SDK` 指向它；不入库。Windows 解压丢 `.so` 软链接时先跑 `sh scripts/sdk_fix_sonames.sh <SDK> <readelf>`。
+- `des_app` / `des_tool` 需要厂家 NPU demo 的 `libs/`（OpenCV 4.7 + ArmNN），Makefile 变量 `SDK` 指向它；不入库。Windows 解压丢 `.so` 软链接时先跑 `sh scripts/env/sdk_fix_sonames.sh <SDK> <readelf>`。
 - 运行时库路径已写进 rpath（`/opt/armnn_lib/lib`、`/opt/ffmpeg_opencv4.7.0_aarch64/lib`），板上不用设 `LD_LIBRARY_PATH`；`/dev/mipicam` 独占打开，`des_app` / `des_tool` / 厂家 demo 同一时刻只能跑一个。
 
 ## 工具（第④层）
