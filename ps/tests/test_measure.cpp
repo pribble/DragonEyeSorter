@@ -180,6 +180,12 @@ int main()
         oc.bore_offset_mm = -0.07f;
         GearMeasure go = measure_gear(s.img, s.roi, h, oc);
         CHECK(std::fabs(go.od - g.od - 0.41f) < 1e-4f && std::fabs(go.bore_d - g.bore_d + 0.07f) < 1e-4f && go.teeth == g.teeth && std::fabs(go.root_d - g.root_d) < 1e-4f, "offsets: OD %+.4f bore %+.4f", go.od - g.od, go.bore_d - g.bore_d);
+        oc.size_gain = 1.03f;   // gain scales every reported top-face size, then the offsets add; the count stays
+        GearMeasure gg = measure_gear(s.img, s.roi, h, oc);
+        CHECK(std::fabs(gg.od - (g.od * 1.03f + 0.41f)) < 1e-3f && std::fabs(gg.bore_d - (g.bore_d * 1.03f - 0.07f)) < 1e-3f &&
+              std::fabs(gg.root_d - g.root_d * 1.03f) < 1e-3f && std::fabs(gg.ecc - g.ecc * 1.03f) < 1e-4f && gg.teeth == g.teeth &&
+              std::fabs(gg.center.x - g.center.x) < 1e-4f && std::fabs(gg.center.y - g.center.y) < 1e-4f,
+              "size_gain: OD %.4f bore %.4f root %.4f ecc %.4f", gg.od, gg.bore_d, gg.root_d, gg.ecc);
         CHECK(std::fabs(g.od - 32 - GROW) < TOL, "OD %.3f", g.od);
         CHECK(std::fabs(g.root_d - 27.5f - GROW) < TOL, "root %.3f", g.root_d);
         CHECK(std::fabs(g.bore_d - 6 - GROW) < TOL, "bore %.3f", g.bore_d);
@@ -204,6 +210,21 @@ int main()
         CHECK(g.missing_teeth == 1, "missing %d", g.missing_teeth);
         CHECK(g.flash_gaps == 3, "flash %d", g.flash_gaps);
         CHECK(std::fabs(g.od - 32 - GROW) < TOL, "OD with defects %.3f", g.od);
+    }
+    {   // B1: off-grid structure in a gap: a low lump (just over the mid level) is noise, a tall fin is flash
+        Vec2 c{180, 90};
+        std::vector<float> fill(30, 0.f);
+        fill[7] = -15.0f;    // ~0.1 mm over mid (16 / 13.75 -> 14.9): burr-like, not flash
+        Scene s = render(gear(c, 30, 16, 13.75f, 0.3f, {}, fill), circle(c, 3), 1.f);
+        GearMeasure g = measure_gear(s.img, s.roi, h, cfg);
+        printf("[gear30 low lump] teeth %d short %d missing %d flash %d\n", g.teeth, g.short_teeth, g.missing_teeth, g.flash_gaps);
+        CHECK(g.ok && g.teeth == 30 && g.short_teeth == 0 && g.missing_teeth == 0 && g.flash_gaps == 0,
+              "low lump: teeth %d short %d missing %d flash %d", g.teeth, g.short_teeth, g.missing_teeth, g.flash_gaps);
+        fill[7] = -16.2f;    // a fin out to past the tips: flash
+        Scene s2 = render(gear(c, 30, 16, 13.75f, 0.3f, {}, fill), circle(c, 3), 1.f);
+        GearMeasure g2 = measure_gear(s2.img, s2.roi, h, cfg);
+        CHECK(g2.ok && g2.teeth == 30 && g2.flash_gaps == 1 && g2.missing_teeth == 0, "tall fin: teeth %d missing %d flash %d",
+              g2.teeth, g2.missing_teeth, g2.flash_gaps);
     }
     {   // B2: two (and three) teeth missing, every rotation in half-bin steps: the pitch must not be read off the
         //     spacing median (0.5-degree bins; the double spacings over the gaps push it up half a bin -> 720 / 24.5

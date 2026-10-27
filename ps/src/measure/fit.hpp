@@ -29,7 +29,11 @@ bool fit_circle(const std::vector<Vec2> &pts, Vec2 &c, float &r, float *rms = nu
 float median(const std::vector<float> &v);             // pure: `v` is not reordered (scratch copy inside)
 float percentile(const std::vector<float> &v, float q);
 void runs_above(const std::vector<float> &prof, float mid, bool circular, std::vector<Run> &out);
-void filter_phase(const std::vector<float> &ph, const std::vector<Run> &runs, std::vector<Run> &kept, int &flash);
+// runs off the pitch grid are dropped; those reaching min_peak count as flash (a fin / blob standing in a gap), lower
+// ones are noise (2026-10-28: a burr / speck on a 20-tooth flank crossed the mid level by 0.07 mm in one 0.5-degree
+// bin -> "flash 1" on a good gear in 19 of 20 frames)
+void filter_phase(const std::vector<float> &ph, const std::vector<Run> &runs, std::vector<Run> &kept, int &flash,
+                  float min_peak = -1e9f);
 float filled_valleys(const std::vector<float> &prof, const std::vector<Run> &runs, bool circular, int n_bins,
                      float flash_mm, std::vector<float> &vmins, std::vector<std::pair<int, int>> &gaps, int &flash);
 bool find_part(const cv::Mat &gray, cv::Rect roi, std::vector<cv::Point> &outer, std::vector<cv::Point> &hole,

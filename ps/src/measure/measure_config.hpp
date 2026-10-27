@@ -18,6 +18,10 @@ struct MeasureConfig {
                                  // right up to ~60 mm off, wrong beyond ~90)
     float short_tooth_mm = 0.4;  // tooth tip this far below the tip circle = short (缺料)
     float flash_mm = 0.5;        // valley floor this far above the root circle = filled (飞边)
+    // reported top-face sizes (OD / root / bore / eccentricity) = size_gain * fitted size (+ od / bore offset).
+    // 2026-10-28: four parts of three sizes (20 / 28 / 30 teeth) at the view centre lie on one gain + offset
+    // line within 0.05 mm; an offset alone fits only the size it was set on (20 teeth read 0.33 mm large)
+    float size_gain = 1;
     float od_offset_mm = 0, bore_offset_mm = 0;
     bool bore_near_arc = false;
     float belt_mm_per_row = 0;

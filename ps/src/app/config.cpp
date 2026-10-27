@@ -203,8 +203,8 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             ji::gets(*c, "camera_h_mm", m.camera_h_mm, "gear_h_mm", m.gear_h_mm,
                      "walls_visible", m.walls_visible, "max_smear_mm", m.max_smear_mm, "judge_max_dist_mm", m.judge_max_dist_mm,
                      "short_tooth_mm",
-                     m.short_tooth_mm, "flash_mm", m.flash_mm, "od_offset_mm", m.od_offset_mm, "bore_offset_mm",
-                     m.bore_offset_mm, "bore_near_arc", m.bore_near_arc);
+                     m.short_tooth_mm, "flash_mm", m.flash_mm, "size_gain", m.size_gain, "od_offset_mm",
+                     m.od_offset_mm, "bore_offset_mm", m.bore_offset_mm, "bore_near_arc", m.bore_near_arc);
             if (c->contains("colors"))
                 for (const json &cj : (*c)["colors"]) {
                     ColorClass k; ji::gets(cj, "name", k.name, "hue_lo", k.hue_lo, "hue_hi", k.hue_hi, "sat_lo", k.sat_lo, "sat_hi", k.sat_hi);

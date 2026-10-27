@@ -139,15 +139,16 @@ void runs_above(const std::vector<float> &prof, float mid, bool circular, std::v
     if (in) out.push_back(cur);   // indices are start-relative (may exceed n for circular): use % n
 }
 
-void filter_phase(const std::vector<float> &ph, const std::vector<Run> &runs, std::vector<Run> &kept, int &flash)
+void filter_phase(const std::vector<float> &ph, const std::vector<Run> &runs, std::vector<Run> &kept, int &flash,
+                  float min_peak)
 {
     double sc = 0, ss = 0;
     for (float p : ph) { sc += std::cos(p); ss += std::sin(p); }
     const float ph0 = float(std::atan2(ss, sc));
     kept.clear();
     for (size_t i = 0; i < runs.size(); i++) {
-        if (std::fabs(wrap_pi(ph[i] - ph0)) > kPi / 2) flash++;
-        else kept.push_back(runs[i]);
+        if (std::fabs(wrap_pi(ph[i] - ph0)) <= kPi / 2) kept.push_back(runs[i]);
+        else if (runs[i].peak >= min_peak) flash++;
     }
 }
 

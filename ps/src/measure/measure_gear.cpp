@@ -84,7 +84,8 @@ GearMeasure measure_gear(const cv::Mat &gray, cv::Rect roi, const Homography &h,
         const float P = float(NB) / std::max(1L, std::lround(NB / refine_pitch(s.spacing, pitch0)));
         s.ph.resize(s.runs.size());
         for (size_t i = 0; i < s.runs.size(); i++) s.ph[i] = 2 * kPi * (s.runs[i].a + 0.5f * (w_med - 1)) / P;
-        meas::filter_phase(s.ph, s.runs, s.kept, g.flash_gaps);
+        // a flash fin sticks out of the gap (samples: putty sheet past the tips); a blip just over mid is noise
+        meas::filter_phase(s.ph, s.runs, s.kept, g.flash_gaps, mid + 0.25f * (tip_est - mid));
         if (s.kept.size() != s.runs.size() && s.kept.size() >= 6) {
             s.runs = s.kept;
             stats();
@@ -124,8 +125,8 @@ GearMeasure measure_gear(const cv::Mat &gray, cv::Rect roi, const Homography &h,
     Vec2 ct, cr; float rt, rr;
     if (!meas::fit_circle(s.tip_pts, ct, rt, &g.fit_rms)) { g.err = "tip circle fit failed"; return g; }
     g.center = ct;
-    g.od = 2 * rt + cfg.od_offset_mm;
-    if (meas::fit_circle(s.root_pts, cr, rr)) g.root_d = 2 * rr;
+    g.od = 2 * rt * cfg.size_gain + cfg.od_offset_mm;
+    if (meas::fit_circle(s.root_pts, cr, rr)) g.root_d = 2 * rr * cfg.size_gain;
     if (!s.hole.empty()) {
         meas::edges(gray, s.hole, roi.tl(), thr, h, cfg, cfg.gear_h_mm, true, s.he);
         s.hp.clear(); s.near.clear();
@@ -141,8 +142,8 @@ GearMeasure measure_gear(const cv::Mat &gray, cv::Rect roi, const Homography &h,
             if (meas::fit_circle(s.near, cn, rn) && std::fabs(rn - rb) < 0.25f * rb) { cb = cn; rb = rn; }
         }
         if (fit) {
-            g.bore_d = 2 * rb + cfg.bore_offset_mm;
-            g.ecc = norm(cb - ct);
+            g.bore_d = 2 * rb * cfg.size_gain + cfg.bore_offset_mm;
+            g.ecc = norm(cb - ct) * cfg.size_gain;
             g.bore_center = cb;
         }
     }
