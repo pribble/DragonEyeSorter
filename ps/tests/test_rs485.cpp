@@ -206,8 +206,12 @@ void test_bestep_board()
     Rs485Config c;
     c.enabled = true; c.poll_ms = 100; c.buzzer_s = 0; c.coils = 8;
     Rs485Io io(c, [&sim](const uint8_t *q, int n, bool e, RtuXferResult &r) { sim.xfer(q, n, e, r); });
-    io.set_line(CANP_ST_RUN, false, false);
+    io.set_line(CANP_ST_IDLE, false, false);   // idle: green blinks at 1 Hz
     io.start();
+    CHECK(wait_for([&] { return sim.coils == 0x1; }, 1.5) && wait_for([&] { return sim.coils == 0x0; }, 1.5) &&
+              wait_for([&] { return sim.coils == 0x1; }, 1.5),
+          "bestep: idle green blinks (%X)", sim.coils.load());
+    io.set_line(CANP_ST_RUN, false, false);
     CHECK(wait_for([&] { return sim.coils == 0x1 && io.stats().coils_rb == 0x1; }, 1.0), "bestep: green on, read back (%X)",
           sim.coils.load());
     io.set_override(true, LAMP_YELLOW | LAMP_RED);

@@ -137,6 +137,13 @@ def decode(ir, hr):
             ir[IR_PART_SIZE] / 100, ir[IR_PART_CONF]),
         "上次写入结果 %s（写入序号 %d）" % (ACK.get(hr[HR_RESULT], hr[HR_RESULT]), hr[HR_SEQ]),
     ]
+    f485 = ir[IR_485_FLAGS]
+    if f485 & 1:   # RS485 worker running (des_app.json rs485.enabled, bitstream >= v16)
+        lines.append("RS485 %s%s  灯（读回）%s  成功 %d  失败 %d  应答 %.2f ms" % (
+            "在线" if f485 & 2 else "无应答", "  PLC 接管灯" if f485 & 4 else "",
+            lamp_text(ir[IR_485_LAMPS]), ir[IR_485_OK], ir[IR_485_ERR], ir[IR_485_RESP] / 100))
+    else:
+        lines.append("RS485 没在跑（des_app.json rs485.enabled 关着，或比特流 < v16）")
     return "\n".join(lines)
 
 
