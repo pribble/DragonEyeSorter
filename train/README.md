@@ -22,6 +22,8 @@
 ```
 采集（板上）  des_tool.sh collect --cls gear_ok     一次只放一类零件，每件自动存 ≤10 张裁切图
      ↓        /root/des/data/collect/<会话>_<类别>/<id>_<类别>/*.jpg
+剔激光（PC）  drop_laser.py                           每个会话拷进 collect7/<会话名>/<编号>_<类别>/，带对射激光红点的图不收（清单留着）
+     ↓
 整理（PC）    prepare_dataset.py                      合并会话，按「零件」分 train / val（不按图片，防同件两边都有）
      ↓
 训练（PC）    train_cls.py                            YOLOv8n-cls，ImageNet 预训练，温和增强（翻转、亮度；不随机擦除、几乎不随机裁剪）
@@ -63,6 +65,8 @@ source ~/des-train/bin/activate
 export YOLO_CONFIG_DIR=$HOME/.ultralytics-cfg
 cd <仓库根>/train
 # 真实数据（采集会话拷到 WSL 本地盘再训，/mnt/d 很慢）
+# 每个采集会话：带激光红点的图不收，其余拷进 collect7/<会话名>/<编号>_<类别>（测试组会话名带 val_）
+~/des-train/bin/python drop_laser.py --src <会话目录> --dst ~/des-work/collect7/<会话名>/<编号>_<类别>
 ~/des-train/bin/python prepare_dataset.py --src ~/des-work/collect7 --out ~/des-work/real --val-sessions val_ --max-train 450
 ~/des-train/bin/python train_cls.py --data ~/des-work/real --epochs 40 --name real --project ~/des-work/runs
 ~/des-train/bin/python export_npu.py --weights ~/des-work/runs/real/weights/best.pt --calib ~/des-work/real/train --out ../models/part_cls
@@ -79,4 +83,5 @@ ssh $BOARD_HOST /root/bin/test_npu /root/des/part_cls.json /root/des/part_cls_re
 
 - 一个会话只放**一类**；验证集用**另外的零件编号**单独采（会话名带 `val_`），整理时 `--val-sessions val_`。
 - 皮带低速（`--belt 30`），零件随机方向、靠中线；每件存 ≤10 张（`--max`）、间隔 6 帧（`--every`）。光照、相机高度定了再采正式数据；改了光照要补采。
+- **对射激光红点**：零件经过对射光束时，侧面（齿尖边缘）会被照出约 9×7 像素的小红点，只出现在光束位置的 1~3 张里。10-27 以前采的组（良品 / 缺料 / 脏污）没有激光，红点只会出现在之后采的类别里，模型可能把它当成判断依据 → 训练集、测试集都不收带红点的图（用户 10-28 定）：`drop_laser.py` 按「R − max(G, B) > 30 的像素 ≥5 个，或任一像素 > 60」剔除（没被照到的图都 ≤30），清单写在 `<会话名>.dropped_laser.txt`，板上原图不删。最后开着激光实测：不影响就保持；有影响先试投票时跳过带红点的帧，要把红点图加回训练集，得每一类都有带激光的图。
 - 要检测模型备选时加 `--full 30`：每 30 帧存整帧 + 定位器自动生成的 YOLO 框。
