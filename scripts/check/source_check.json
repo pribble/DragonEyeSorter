@@ -1,25 +1,37 @@
 {
-  "_说明": "check_sources.ps1 的配置：文档 ↔ 源码唯一源检查的路径与例外。例外必须写 reason；改源路径时同步改这里。",
+  "_说明": "check_sources.ps1 的配置：文档 ↔ 源码唯一源检查的路径与例外。检查规则：寄存器双向核对（头文件 ↔ docs/PL设计.md）+ RTL core 读地址表；CSV 列数只取 csv_header() 的 return 表达式里的字符串字面量；类别表只解析「表头含 label / 类别」的表格块；out/ 同时检查已入库与未跟踪未忽略的文件；>0xFFF 的 #define 先匹配 register.headerNonRegister（基址 / ID 常量）静默跳过，未匹配的才告警并列出名字。例外一律写成带 reason 的对象，例如 { \"id\": 5, \"reason\": \"...\" }（类别表待加 id）/ { \"glob\": \"ps/build/**\", \"reason\": \"...\" }（允许缺失的 manifest 源或排除的文档）/ { \"token\": \"0xABC\", \"reason\": \"...\" } 或 { \"name\": \"DES_XXX\", \"reason\": \"...\" }（寄存器单侧例外）/ { \"pattern\": \"^DES_...$\", \"reason\": \"...\" }（>0xFFF 的非寄存器常量正则）/ { \"file\": \"x.json\", \"reason\": \"...\" }（out/ 白名单）。旧的纯字符串写法仍兼容，但会告警。改源路径时同步改这里。",
   "register": {
     "header": "ps/src/hw/des_regs.h",
     "doc": "docs/PL设计.md",
     "rtlCore": "pl/soc_base/src/des/des_regs.v",
     "docOnlyAllowed": [],
-    "headerOnlyAllowed": []
+    "headerOnlyAllowed": [],
+    "headerNonRegister": [
+      { "pattern": "^DES_(PL_BASE|PL_SPAN|([A-Z0-9_]+_)?ID_VALUE)$", "reason": "基址 / ID 常量，不是寄存器偏移（值 >0xFFF），不参与寄存器映射检查" }
+    ]
   },
   "csv": {
     "source": "ps/src/app/part_log.cpp",
-    "excludeGlobs": [ "docs/log/**", "README.md" ]
+    "excludeGlobs": [
+      { "glob": "docs/log/**", "reason": "历史日志只记当时结论、不回改；里面的列数等是沿革记录，不参与唯一源一致性检查" },
+      { "glob": "README.md", "reason": "根 README 只做项目导读，不承载列数口径（细节以 docs/ 与源码为准）" }
+    ]
   },
   "labels": {
     "json": "scripts/deploy/out/label_list.json",
     "doc": "docs/视觉与检测.md",
-    "allowedExtraDocIds": [ 5, 6 ]
+    "allowedExtraDocIds": [
+      { "id": 5, "reason": "飞边·轻（gear_flash_l）：类别表已登记为待定类，label_list.json 待样品到位后再并入" },
+      { "id": 6, "reason": "飞边·重（gear_flash_h）：同上，待样品到位后再并入 label_list.json" }
+    ]
   },
   "deploy": {
     "manifest": "scripts/deploy/manifest.tsv",
     "outDir": "scripts/deploy/out",
-    "missingAllowedGlobs": [ "ps/build/**", "models/**" ],
+    "missingAllowedGlobs": [
+      { "glob": "ps/build/**", "reason": "交叉编译产物不入库；manifest 只登记产物在板上的路径，仓库里可能没有" },
+      { "glob": "models/**", "reason": "训练权重 / NPU 模型产物按入库边界不入库，manifest 登记板上路径即可" }
+    ],
     "outAllowlist": [
       { "file": "des_app.json", "reason": "部署暂存副本；唯一源 ps/src/des_app.json" },
       { "file": "recipes.json", "reason": "部署暂存副本；唯一源 ps/src/recipes.json" },

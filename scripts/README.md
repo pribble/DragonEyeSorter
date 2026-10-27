@@ -7,7 +7,7 @@
 | 目录 | 用途 | 运行环境 |
 |---|---|---|
 | [env/](env/) | 环境准备：`.env` 加载 / `.env.make` 生成 / 环境自检 / SDK 库软链接修复 | PowerShell / Bash / WSL |
-| [check/](check/) | 文档机械检查与「文档 ↔ 源码唯一源」检查 | PowerShell 7 |
+| [check/](check/) | 文档机械检查与「文档 ↔ 源码唯一源」检查 | PowerShell（7 推荐；5.1 实测可跑） |
 | [boot/](boot/) | 启动介质：打包 `BOOT.bin`（原 bootbin）+ 写 SD 卡（原 sd_image） | Windows PowerShell（烧卡需管理员） |
 | [deploy/](deploy/) | 板端部署：`manifest.tsv` 登记「产品运行时上到板子哪里」，部署器做对比 / 部署 / 暂存 | Windows PowerShell / Git Bash |
 
@@ -17,7 +17,7 @@
 |---|---|
 | `env_loader.ps1` / `env_loader.sh` | 把 `.env` 加载进当前会话并报告关键路径是否存在（PowerShell / Bash·WSL） |
 | `generate_env_make.sh` | 从 `.env` 生成 `ps/Makefile` 用的 `.env.make`；换机 / 改 `.env` 后必须重生 |
-| `test_env.ps1` | 逐项自检关键路径（工具链、BOOT 零件、库、板端连接；编 `des_app` 前跑一次） |
+| `test_env.ps1` | 逐项自检关键路径（工具链、BOOT 零件、库目录；编 `des_app` 前跑一次） |
 | `sdk_fix_sonames.sh` | 修复 Windows 解压丢掉的 `.so` 软链接：按 `readelf -d` 的 SONAME 建两级链接名 |
 
 初次配置 `.env`、依赖从哪拿、每种报错怎么修见 [环境与上手](../docs/环境与上手.md) §2 / §3 / §6；[boot/make_bootbin.ps1](boot/make_bootbin.ps1) 与 `ps/Makefile` 会自动加载 `.env`。
@@ -25,8 +25,9 @@
 ## check — 文档与源码一致性
 
 ```powershell
-pwsh -File scripts/check/check_docs.ps1        # 链接/锚点、索引完整性、路径卫生、行数预算、结构卫生、数字复述、版本口径
+pwsh -File scripts/check/check_docs.ps1        # 链接/锚点、行内代码/代码块路径存在性、索引完整性、路径卫生、行数预算、结构卫生、数字复述、版本口径
 pwsh -File scripts/check/check_sources.ps1     # 文档 ↔ 源码：寄存器表 ↔ ps/src/hw/des_regs.h、类别表 ↔ label_list.json、CSV 列数、部署清单 ↔ deploy/out/
+pwsh -File scripts/check/selftest.ps1          # 检查器自测（注入坏样例，改检查器后跑）
 ```
 
 规则与例外在同目录 [doc_check.json](check/doc_check.json) / [source_check.json](check/source_check.json)，例外必须写 reason；`-WarnOnly` 只报告不失败，`-Verbose` 打印通过项。只查机械一致性，不替代「数字只来自实测」的事实纪律。
@@ -56,7 +57,7 @@ Get-Disk                                              # 先认准读卡器的磁
 
 ## deploy — 板端部署
 
-[deploy/](deploy/) 的清单与部署器：哪些文件属于板端产品运行时（`des_app` / 配置 / 自启链脚本）、分别上到哪，用法与 `-Stage` / `-Dest` 见 [deploy/README](deploy/README.md)。测试与调试件（`des_tool`、`desreg`、`canplc`、`test_*`、`pl_check.sh` / `soak.sh` / `display_check.sh`）不进清单，手动 `scp`。
+[deploy/](deploy/) 的清单与部署器：哪些文件属于板端产品运行时（`des_app` / 配置 / 自启链脚本）、分别上到哪，用法与 `-Stage` / `-Dest` 见 [deploy/README](deploy/README.md)。测试与调试件（`des_tool` / `des_tool.sh`、`desreg`、`canplc`、`test_*`、`pl_check.sh` / `soak.sh` / `display_check.sh`）不进清单，手动 `scp`。
 
 ## 编码
 
