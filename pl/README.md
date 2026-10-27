@@ -14,7 +14,7 @@ pl/
 │   │   ├── des_vision.v         # ISP 后图像路径（灰度 / 高斯 / Sobel / 二值 + ROI）@+0x300（已上板）
 │   │   ├── des_pwm.v            # 导流挡板 PWM @+0x400（已上板；光源改手动后去掉输出）
 │   │   ├── des_io.v             # 急停 / 对射 / 限位 / 编码器 @+0x500（已上板）
-│   │   ├── des_485.v            # RS485 Modbus-RTU 主机 @+0x600（v16，比特流已编未上板）
+│   │   ├── des_485.v            # RS485 Modbus-RTU 主机 @+0x600（v16，10-25 已上板）
 │   │   ├── awb_seq_div.v        # ISP 白平衡逐位除法器（替代厂家除法器 IP，省约 4k LUT）
 │   │   └── des_common.vh        # 同步 / 去抖公共模块（被 des_regs / des_io 纯 include 引用，不占寄存器地址）
 │   ├── src/{ui_isp,MIPI_V2,hdmi_tx,write_fdma}/  # 厂家明文 RTL（2026-10 已零行为重构；gamma 只留 2.2 一张表）

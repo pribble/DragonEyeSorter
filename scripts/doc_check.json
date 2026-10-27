@@ -1,0 +1,45 @@
+{
+  "_说明": "check_docs.ps1 的规则与例外。改规则先改这里；例外必须写 reason。路径均为仓库内相对路径，glob 按 / 分段匹配，** 结尾表示整个目录。",
+  "lineLimits": [
+    { "pattern": "AGENTS.md", "limit": 60 },
+    { "pattern": "README.md", "limit": 80 },
+    { "pattern": "docs/README.md", "limit": 160 },
+    { "pattern": "scripts/README.md", "limit": 90 },
+    { "pattern": "docs/*.md", "limit": 320 },
+    { "pattern": "submission/*.md", "limit": 500 }
+  ],
+  "redLineMax": 10,
+  "index": {
+    "docsRoot": { "index": "docs/README.md", "dir": "docs" },
+    "log": { "index": "docs/log/README.md", "dir": "docs/log" },
+    "requiredTopDirs": [ "docs", "pl", "ps", "scripts", "train", "pc", "submission" ]
+  },
+  "linkExceptions": [],
+  "pathHygiene": {
+    "excludeGlobs": [ "docs/log/**" ],
+    "exceptions": [
+      {
+        "file": "docs/环境与上手.md",
+        "regex": "192\\.168\\.137\\.",
+        "reason": "板端一次性固定 IP/网段（USB 网卡共享的默认配置），属环境前提；见 docs/README.md §写作约定「不写主机路径」第 4 条例外"
+      },
+      {
+        "file": "docs/环境与上手.md",
+        "regex": "255\\.255\\.255\\.0",
+        "reason": "同上：USB 共享网卡的默认掩码"
+      }
+    ]
+  },
+  "keyNumbers": {
+    "patterns": [ "99\\.31", "60\\.02fps", "3298\\.9", "7\\.85ms", "0\\.049227", "432122" ],
+    "exemptGlobs": [ "docs/log/**", "submission/**", "README.md", "docs/测试与验证.md" ]
+  },
+  "claims": [
+    {
+      "name": "板端当前版本",
+      "regex": "板端当前\\s*v(\\d+)",
+      "expect": "16",
+      "excludeGlobs": [ "docs/log/**" ]
+    }
+  ]
+}

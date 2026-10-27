@@ -6,9 +6,9 @@
 
 ## 项目
 
-安路飞龙 F3P SoC 上的塑胶齿轮在线质检分拣：NPU 四分类（良品 / 缺料 / 飞边 / 黑点）+ 传送带跟踪抓取（6 轴总线舵机机械臂）+ 侧边挡板分流 NG + PL 硬实时控制与总线 + CAN / Modbus-TCP。赛事：2026 全国大学生嵌入式芯片与系统设计竞赛 · FPGA 创新设计赛道 · 安路选题四，**作品提交 2026-11-04 18:00**（报告 + 演示视频，决赛答辩），要求见 [材料清单](submission/提交材料清单.md)。
+安路飞龙 F3P SoC 上的塑胶齿轮在线质检分拣：NPU 五分类（良品 / 缺料轻重 / 脏污轻重，飞边两级待样品）+ 传送带跟踪抓取（6 轴总线舵机机械臂）+ 侧边挡板分流 NG + PL 硬实时控制与总线 + CAN / Modbus-TCP。赛事：2026 全国大学生嵌入式芯片与系统设计竞赛 · FPGA 创新设计赛道 · 安路选题四，**作品提交 2026-11-04 18:00**（报告 + 演示视频，决赛答辩），要求见 [材料清单](submission/提交材料清单.md)。
 
-现状：软件闭环与板端 PL 已实测；实物联调 / 标定 / 训练 / 报告未完成，实测数字先查 [测试与验证](docs/测试与验证.md)。
+现状：软件闭环与板端 PL 已实测；单机联调（10-16~26）、相机 / 传送带 / 机械臂标定、5 类实物训练上板已完成；整线联调、完整测试报告、演示视频、答辩未完成。实测数字先查 [测试与验证](docs/测试与验证.md)。
 
 ## 事实纪律
 
@@ -28,8 +28,8 @@
 | 改机械臂 / 跟踪 / 分拣 | [运动控制与分拣](docs/运动控制与分拣.md) |
 | 硬件、接线、电平 | [硬件与接线](docs/硬件与接线.md) |
 | 编译 / 部署 / 上板 / 换 BOOT.bin / 环境 | [开发环境与构建](docs/开发环境与构建.md) · [scripts/README](scripts/README.md) · [环境与上手](docs/环境与上手.md) |
-| 写文档、出报告、搬数字 | [文档索引](docs/README.md) §写作约定 |
-| PC 侧（PLC 模拟器 / 出数） | [plc_sim](pc/plc_sim/README.md) · [report](pc/report/README.md) |
+| 写文档、出报告、搬数字 | [文档索引](docs/README.md) §写作约定与「文档类型与放置」 |
+| PC 侧（PLC 模拟器 / 出数） | [pc/README](pc/README.md) · [plc_sim](pc/plc_sim/README.md) · [report](pc/report/README.md) |
 | 提交材料、答辩 | [材料清单](submission/提交材料清单.md) |
 
 ## 红线（细节都在 docs，这里只留必守项）
@@ -37,7 +37,7 @@
 1. **唯一源**：类别表 [label_list.json](scripts/deploy/out/label_list.json)；寄存器 = [PL设计](docs/PL设计.md) + `ps/src/hw/`；部署件 = `scripts/deploy/out/` + [manifest.tsv](scripts/deploy/manifest.tsv)；文档地图 = [文档索引](docs/README.md)。
 2. **同一次提交**：改寄存器偏移 → RTL / 头文件 / PL 设计一起提交；新模块地址从 `0x6xx` 起先登记。
 3. **入库边界**：数据集、权重、压缩包、SD 镜像、内核 / rootfs / ArmNN 二进制、源码可编出的二进制不入库；`scripts/deploy/out/` 文本部署件**必须入库**（改一次提交一次）；条数以 [manifest.tsv](scripts/deploy/manifest.tsv) 为准，采购信息不进仓库。
-4. **不写主机路径 / IP / 私钥**：外部路径用 `.env` 变量（见 [.env.example](.env.example)），细则见 [文档索引](docs/README.md) §写作约定。
+4. **不写主机路径 / IP / 私钥**：外部路径用 `.env` 变量（见 [.env.example](.env.example)），细则与例外见 [文档索引](docs/README.md) §写作约定。
 5. **PL 贡献要真实**：评分规则「仅 PS 实现扣分」——时序关键的脉冲、总线帧、IO 采样放 PL，大块图像算法放 PS。
 6. **上板安全**：人工跑 `des_app` / `des_tool` 或 `desreg` 写操作前先 `des_service.sh stop`，用完 `start`；`des_app` / `des_tool` 运行期间 `desreg` 只读 `r`。长测试 / 换 `BOOT.bin` 前先问人；`BOOT.bin` 必接我们自己的比特流（`-Bit` 必填）。
 7. **关机与系统**：不 `halt` / `poweroff`（看门狗约 32s 自行复位）；关机走 `/root/des/shutdown.sh` 并提醒人 2 分钟内断电；不动 eMMC 出厂系统与系统文件。
@@ -48,6 +48,7 @@
 - 分支 `pl/…`、`ps/…`、`models/…`、`docs/…`；提交信息 = 中文祈使句 + 范围前缀（`pl: 新增舵机总线 SYNC WRITE 发送`）；身份用 `.git/config` 预配的，推送前 `git pull --rebase`。
 - 可能有人并发改同一文件：长状态行整行重写、冲突逐处对齐，不整段覆盖。
 - 验证：改 PL 跑 `/root/des/pl_check.sh`；改 PS 跑 `make -C ps all`；改 RTL 先写能失败的测试（断言要具体，见 [测试与验证](docs/测试与验证.md)）。
+- 文档：改文档后、提交前跑 `pwsh -File scripts/check_docs.ps1`；改寄存器 / 类别表 / 部署件后跑 `pwsh -File scripts/check_sources.ps1`（规则与例外见 `scripts/doc_check.json` / `scripts/source_check.json`）。
 - 编码：`.ps1` UTF-8 BOM，`.sh` LF。
 
 ## 维护本文件

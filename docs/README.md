@@ -1,12 +1,12 @@
 # 文档索引
 
-全仓文档的**唯一导航源**：设计文档与提交件正文在 `docs/`，提交材料工作区在 [submission/](../submission/README.md)，代码侧说明在各目录 README，实测数据与决策沿革在 [log/](log/)。
+全仓文档的**唯一导航源**：设计文档在 `docs/`，提交件正文与生成链在 [submission/](../submission/README.md)，代码侧说明在各目录 README，实测数据与决策沿革在 [log/](log/)。
 
 ## 怎么用这张表
 
 - **事实裁决顺序**：板卡手册 / 原理图 / 实测数据 > [log/](log/) > 设计文档 > README。
 - **唯一源**：同一事实只在该文档维护，其余文档引用它，不复制内容。
-- **状态**：✅ 已实测可用 · 🟡 设计已定、待实物 · ⬜ 未做 / 待拍摄 · 草案 = 未拍板。
+- **状态**：✅ 已实测可用 · 🟡 设计已定 / 部分待实物 · ⬜ 未做 / 待拍摄 · 草案 = 未拍板。
 - 参数（型号、电压、bank、寄存器偏移、实测数字）一律查文档，不凭记忆复述；提方案时「待确认」要写明。
 
 ## 设计文档
@@ -23,7 +23,7 @@
 | 8 | [运动控制与分拣](运动控制与分拣.md) | 改机械臂、跟踪抓取、NG 分流 | 轴定义、工位布局、停带规则、导流挡板与背面检测 | 🟡 |
 | 9 | [软件与UI](软件与UI.md) | 改 PS 应用与界面 | 界面五页、CAN / Modbus 协议、存储格式、测试埋点 | 🟡 |
 | 10 | [测试与验证](测试与验证.md) | 出测试报告、找一个实测数字 | **全部实测数字的唯一汇总**、量化报告框架、验证清单 | 🟡 |
-| 11 | [到货联调清单](到货联调清单.md) | 到货当天照着做 | 逐步操作与判定标准（数字引用 [测试与验证](测试与验证.md)） | ⬜ |
+| 11 | [到货联调清单](到货联调清单.md) | 到货后逐项联调 | 逐步操作与判定标准（数字引用 [测试与验证](测试与验证.md)） | 🟡 |
 
 ## 提交件（官方 2026 初赛：作品报告 + 演示视频；决赛：答辩 PPT）
 
@@ -35,6 +35,30 @@
 | [submission/](../submission/README.md) | 提交材料工作区：报告 / PPT 生成链、代码打包 | [提交材料清单](../submission/提交材料清单.md) 是官方要求与倒排的唯一核对入口 | 🟡 |
 | [ref/](ref/) | 外部参考资料 PDF（赛题指南、舵机协议、规格书） | 各自原件；来源登记见 [ref/README.md](ref/README.md) | ✅ |
 
+## 文档类型与放置
+
+同一事实只放一处；新增内容先按类型找位置，不按顺手写进 README。
+
+| 类型 | 放哪（唯一源） | 不写什么 |
+|---|---|---|
+| 设计结论 / 参数 / 寄存器 / 接口 | `docs/` 对应设计文档（寄存器 = [PL设计](PL设计.md) + `ps/src/hw/`） | 日期、决策过程、踩坑经过、实测数字（链接 [测试与验证](测试与验证.md)） |
+| 操作步骤（编译 / 上板 / 联调 / 标定） | [开发环境与构建](开发环境与构建.md)、[环境与上手](环境与上手.md)、[到货联调清单](到货联调清单.md) | 设计理由、历史版本、未实测数字 |
+| 一次实测 / 验证记录 | `docs/log/YYYY-MM-DD-主题.md`（索引 [log/README](log/README.md)） | 长期结论（应吸收进设计文档）；log 允许历史主机路径与 IP |
+| 实测数字 | [测试与验证](测试与验证.md)（唯一汇总） | 同一数字在正文复述（摘要引用必须带链接） |
+| 决策沿革 / 被推翻方案 | `docs/log/` | 写进设计文档正文 |
+| 提交件（报告 / 视频 / PPT / 清单） | `submission/`（核对入口 = [材料清单](../submission/提交材料清单.md)） | 工程细节（链接 docs） |
+| 代码说明 | 各目录 README（索引见下「代码侧 README」） | 重复 docs 的设计内容 |
+| 术语 / 排错 / 复盘 / 变更 | P1 待建：`docs/术语表.md`、`docs/FAQ.md`、`docs/复盘/`、`docs/变更记录.md` | 设计正文（链接过去） |
+
+## 文档检查
+
+改文档后、提交前跑；退出码非 0 即不合规。规则与例外在 `scripts/doc_check.json` / `scripts/source_check.json`，例外必须写 reason：
+
+```powershell
+pwsh -File scripts/check_docs.ps1       # 链接/锚点、索引完整性、路径卫生、行数预算、结构卫生、数字复述、版本口径
+pwsh -File scripts/check_sources.ps1    # 文档 ↔ 源码唯一源：寄存器表 ↔ des_regs.h、类别表 ↔ label_list.json、CSV 列数、部署清单 ↔ out/
+```
+
 ## 代码侧 README
 
 | 位置 | 内容 |
@@ -44,20 +68,21 @@
 | [log/README.md](log/README.md) | log 的格式、主题索引与沿革归属 |
 | [pl/README.md](../pl/README.md) | PL 目录布局、工程组织、资源预算；[soc_base](../pl/soc_base/README.md) 底板工程与对厂家的改动、[soc_prj_Runs](../pl/soc_base/soc_prj_Runs/README.md) TD 运行目录最小集合 |
 | [ps/README.md](../ps/README.md) | PS 代码地图、四层产物、构建与命令参考；[kernel](../ps/kernel/README.md) mipicam 内核模块；[vendor](../ps/vendor/README.md) 非自研代码边界（json.hpp） |
-| [scripts/README.md](../scripts/README.md) | `bootbin/` 打包、`sd_image/` 烧卡、`sdk_fix_sonames.sh`；[deploy](../scripts/deploy/README.md) 板端部署清单与上板 |
+| [scripts/README.md](../scripts/README.md) | `bootbin/` 打包、`sd_image/` 烧卡、`sdk_fix_sonames.sh`、文档检查脚本；[deploy](../scripts/deploy/README.md) 板端部署清单与上板 |
 | [train/README.md](../train/README.md) | 合成数据、训练、导出 + UINT8 量化、评估与上板核对 |
-| [pc/plc_sim/README.md](../pc/plc_sim/README.md) · [pc/report/README.md](../pc/report/README.md) | PC 端「产线 PLC」模拟器（CAN）；测试报告出数与长时间运行统计 |
+| [pc/README.md](../pc/README.md) | PC 侧工具索引：PLC 模拟器（CAN）、测试报告出数、Modbus-TCP / RS485 客户端、现场数据接收 |
 | [figures/README.md](figures/README.md) | 技术文档插图的生成脚本与用法 |
 
 ## 写作约定
 
 1. **只写当前结论**：日期、决策沿革（「原来 X，后改为 Y」）、版本修正故事、复述踩坑经过一律写在 [log/](log/)；正文需要出处时给 log 链接。数字只写最新实测值 + 来源，不写日期。
-2. **数字唯一源**：实测数字只维护在 [测试与验证](测试与验证.md)，明细给 log 链接；未实测的标 ⚠。
+2. **数字唯一源**：实测数字只维护在 [测试与验证](测试与验证.md)，明细给 log 链接；未实测的标 ⚠。README / 提交件允许一句话摘要引用，但必须带链接到本文件或 log，其余正文只链接、不复述。
 3. **语言**：陈述句、列表、表格；不用口语、情绪、感叹与拟人表达；一段只讲一件事，长句拆开。
-4. **不写主机路径**：只允许 ① 仓库内相对路径 ② 板端路径（`/root/des`、`/mnt/mmcblk0p1`、`/opt/armnn_lib`） ③ 环境变量名与 `<占位符>`。外部路径写 `.env` 变量（清单见 [.env.example](../.env.example)）；板端命令写 `ssh $BOARD_HOST` / `scp <本地文件> $BOARD_HOST:<板端路径>`，不写 IP 与 `-i <私钥>`。带盘符主机路径只允许在 [log/](log/) 历史与本机 `.env`。
+4. **不写主机路径 / IP / 私钥**：只允许 ① 仓库内相对路径 ② 板端路径（`/root/des`、`/mnt/mmcblk0p1`、`/opt/armnn_lib`） ③ 环境变量名与 `<占位符>`。外部路径写 `.env` 变量（清单见 [.env.example](../.env.example)）；板端命令写 `ssh $BOARD_HOST` / `scp <本地文件> $BOARD_HOST:<板端路径>`，不写 IP 与 `-i <私钥>`。带盘符主机路径只允许在 [log/](log/) 历史与本机 `.env`。**例外**：板端一次性固定 IP / 网段与 USB 共享网卡默认掩码（[环境与上手](环境与上手.md) §4），已在 `scripts/doc_check.json` 登记理由。
 5. **一处维护**：同一事实只写一遍，其余改为链接；正文与本文地图的分工不一致时，先改本文声明，再改正文。
 6. **环境前提不算既有事实**：机器相关依赖（工具链、SSH 密钥、别名、库目录）只在 [环境与上手](环境与上手.md) §1「需要哪些环境」表维护（要什么 / 从哪拿 / 怎么验证），正文只引用；预期输出与数字必须来自实测，不按命名习惯猜。
 7. **AGENTS.md 准入**：只放 AI 每轮都会用、不写就会主动做错、做错代价高的规则；其余写进对应文档，AGENTS.md 只留指针。上限：红线 10 条、全文 60 行，超了先删一条。
+8. **slop 清单**：写 / 审时扫这 5 条——① 同一事实两处维护；② 正文写实现状态标注（「已实现」「将来会」）；③ 手抄清单 / 表格 / 数字而不给唯一源链接；④ 推理过程 / 踩坑经过（应进 log）；⑤ 一段多事、口语情绪化。
 
 ## 修订规则
 

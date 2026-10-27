@@ -1,0 +1,33 @@
+{
+  "_说明": "check_sources.ps1 的配置：文档 ↔ 源码唯一源检查的路径与例外。例外必须写 reason；改源路径时同步改这里。",
+  "register": {
+    "header": "ps/src/hw/des_regs.h",
+    "doc": "docs/PL设计.md",
+    "rtlCore": "pl/soc_base/src/des/des_regs.v",
+    "docOnlyAllowed": [],
+    "headerOnlyAllowed": []
+  },
+  "csv": {
+    "source": "ps/src/app/part_log.cpp",
+    "excludeGlobs": [ "docs/log/**", "README.md" ]
+  },
+  "labels": {
+    "json": "scripts/deploy/out/label_list.json",
+    "doc": "docs/视觉与检测.md",
+    "allowedExtraDocIds": [ 5, 6 ]
+  },
+  "deploy": {
+    "manifest": "scripts/deploy/manifest.tsv",
+    "outDir": "scripts/deploy/out",
+    "missingAllowedGlobs": [ "ps/build/**", "models/**" ],
+    "outAllowlist": [
+      { "file": "des_app.json", "reason": "部署暂存副本；唯一源 ps/src/des_app.json" },
+      { "file": "recipes.json", "reason": "部署暂存副本；唯一源 ps/src/recipes.json" },
+      { "file": "des_tool.sh", "reason": "运维工具，手动上板，不登记进产品运行时清单" },
+      { "file": "pl_check.sh", "reason": "换比特流回归脚本，手动上板" },
+      { "file": "soak.sh", "reason": "长跑测试脚本，手动上板" },
+      { "file": "display_check.sh", "reason": "显示对照实验脚本，手动上板" },
+      { "file": "MD5SUMS.txt", "reason": "部署件校验台账，随 out/ 一起维护" }
+    ]
+  }
+}

@@ -56,6 +56,18 @@ make -C ps build/des_app                   # 应无 "cannot find -l..." 错误
 
 **板上库（`$BOARD_LIBS`）也要两套名字**：从板上 `scp` 下来的 `libfreetype` / `libpng16` / `libz` 同样两套名字都要有 —— 缺链接名报 `cannot find -lfreetype`，缺 SONAME 名报 `undefined reference to png_*@PNG16_0` / `inflate*` 或 warning `libpng16.so.16 ... not found`。同一个脚本，直接给平铺的 `$BOARD_LIBS` 目录。已存在的名字不覆盖，可反复跑。
 
+## 文档校验
+
+改文档后、提交前跑；退出码非 0 即不合规（规则与例外在 [doc_check.json](doc_check.json) / [source_check.json](source_check.json)，例外必须写 reason）：
+
+```powershell
+pwsh -File scripts/check_docs.ps1        # 链接/锚点、索引完整性、路径卫生、行数预算、结构卫生、数字复述、版本口径
+pwsh -File scripts/check_sources.ps1     # 文档 ↔ 源码：寄存器表 ↔ ps/src/hw/des_regs.h、类别表 ↔ label_list.json、CSV 列数、部署清单 ↔ deploy/out/
+```
+
+- `check_docs.ps1 -WarnOnly` 只报告不失败（排查用）；`-Verbose` 打印通过项。
+- 只查机械一致性，不替代「数字只来自实测 + log」的事实纪律；内容真假仍由 log / 实测 / 评审保证。
+
 ## 编码
 
 `.ps1` 必须存为 **UTF-8 带 BOM**（Windows PowerShell 5.1 不带 BOM 时按本地代码页读，中文注释会让语法解析出错）。`.sh` 用 LF 换行。
