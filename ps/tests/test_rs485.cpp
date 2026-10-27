@@ -130,8 +130,15 @@ void test_lamps()
     CHECK(lamp_pattern(CANP_ST_ESTOP, true, false, true, 3, 2) == LAMP_RED, "buzzer stops after buzzer_s");
     CHECK(lamp_pattern(CANP_ST_ESTOP, true, false, true, 30, -1) == (LAMP_RED | LAMP_BUZZER), "buzzer_s < 0: as long as the alarm");
     CHECK(lamp_pattern(CANP_ST_ESTOP, true, false, true, 0, 0) == LAMP_RED, "buzzer_s 0: silent");
-    CHECK(lamp_pattern(CANP_ST_FAULT, true, false, true, 9, 2) == LAMP_RED && lamp_pattern(CANP_ST_FAULT, true, false, false, 9, 2) == 0,
-          "fault: red blinking");
+    CHECK(lamp_pattern(CANP_ST_FAULT, true, false, true, 9, 2, IDLE_OFF, 3, 10) == LAMP_RED &&
+              lamp_pattern(CANP_ST_FAULT, true, false, false, 9, 2, IDLE_OFF, 3, 10) == LAMP_RED,
+          "fault: red steady (no blinking) within fault_s");
+    CHECK(lamp_pattern(CANP_ST_FAULT, true, false, true, 9, 2, IDLE_OFF, 12, 10) == 0, "fault: dark after fault_s");
+    CHECK(lamp_pattern(CANP_ST_FAULT, true, false, false, 9, 2, IDLE_OFF, 600, -1) == LAMP_RED,
+          "fault_s < 0: red as long as the fault");
+    CHECK(lamp_pattern(CANP_ST_FAULT, true, false, true, 9, 2, IDLE_OFF, 0, 0) == 0, "fault_s 0: never lit");
+    CHECK(lamp_pattern(CANP_ST_ESTOP, true, false, false, 3, 2, IDLE_OFF, 600, 10) == LAMP_RED,
+          "e-stop: red steady regardless of fault_s");
     CHECK(lamp_pattern(CANP_ST_IDLE, false, false, true, 0, 2) == 0 && lamp_pattern(CANP_ST_IDLE, false, false, false, 0, 2) == 0,
           "idle (default): dark");
     CHECK(lamp_pattern(CANP_ST_IDLE, false, false, true, 0, 2, IDLE_GREEN) == LAMP_GREEN &&

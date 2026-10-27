@@ -7,14 +7,15 @@
 #include "modbus_rtu.hpp"
 #include "util.hpp"
 namespace des {
-uint8_t lamp_pattern(uint8_t state, bool alarm, bool warn, bool blink, double alarm_age_s, float buzzer_s, uint8_t idle)
+uint8_t lamp_pattern(uint8_t state, bool alarm, bool warn, bool blink, double alarm_age_s, float buzzer_s, uint8_t idle,
+                     double state_age_s, float fault_s)
 {
     uint8_t l = 0;
     switch (state) {
     case CANP_ST_RUN: l = LAMP_GREEN | (warn ? LAMP_YELLOW : 0); break;
     case CANP_ST_PAUSED: l = LAMP_YELLOW; break;
     case CANP_ST_ESTOP: l = LAMP_RED; break;
-    case CANP_ST_FAULT: l = blink ? LAMP_RED : 0; break;
+    case CANP_ST_FAULT: l = fault_s < 0 || state_age_s < fault_s ? LAMP_RED : 0; break;   // steady, then dark
     default:   // IDLE: ready, waiting for START (default dark: no relay clicking while the line stands)
         l = idle == IDLE_GREEN || (idle == IDLE_BLINK && blink) ? LAMP_GREEN : 0;
         break;
@@ -147,6 +148,8 @@ void Rs485Io::loop()
     const double t0 = mono_s();
     double last_read = -1e9, alarm_t = 0, write_hold = -1e9;
     bool prev_alarm = false, written_once = false, known = false;
+    uint8_t prev_state = 0xFF;
+    double state_t = t0;   // when the line entered its current state (fault_s counts from there)
     uint32_t written = 0, cur = 0;   // cur = what the module holds (last read-back, or our last good write)
     uint8_t req[16];
     while (run_) {
@@ -154,9 +157,12 @@ void Rs485Io::loop()
         const bool alarm = alarm_;
         if (alarm && !prev_alarm) alarm_t = now;
         prev_alarm = alarm;
+        const uint8_t state = state_;
+        if (state != prev_state) { prev_state = state; state_t = now; }
         const bool blink = int((now - t0) * 2) % 2 == 0;   // 1 Hz
         const uint8_t lamps = ovr_on_ ? uint8_t(ovr_lamps_ & 0x0F)
-                                      : lamp_pattern(state_, alarm, warn_, blink, now - alarm_t, cfg_.buzzer_s, cfg_.idle);
+                                      : lamp_pattern(state, alarm, warn_, blink, now - alarm_t, cfg_.buzzer_s, cfg_.idle,
+                                                     now - state_t, cfg_.fault_s);
         const uint32_t coils = lamp_to_coils(lamps, cfg_);
         // One relay at a time (FC 05): the 10-26 relay board (bestep 4-ch) ignores FC 0F unless every bit is 0, and
         // FC 05 is what every Modbus relay board takes. Only relays that differ from what the module holds are

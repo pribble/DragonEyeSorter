@@ -167,7 +167,7 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             if (c->contains("x_mm")) { ji::get(*c, "x_mm", bm.x_mm); bm.calibrated = true; }
         Rs485Config &rs = cfg.rs485;
         if (const json *c = sec_gets(j, "rs485", "enabled", rs.enabled, "baud", rs.baud, "timeout_ms", rs.timeout_ms,
-                                     "addr", rs.addr, "coils", rs.coils, "poll_ms", rs.poll_ms, "buzzer_s", rs.buzzer_s,
+                                     "addr", rs.addr, "coils", rs.coils, "poll_ms", rs.poll_ms, "buzzer_s", rs.buzzer_s, "fault_s", rs.fault_s,
                                      "inputs", rs.inputs)) {
             std::string idle = rs.idle == IDLE_GREEN ? "green" : rs.idle == IDLE_BLINK ? "blink" : "off";
             ji::get(*c, "idle", idle);

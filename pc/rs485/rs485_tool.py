@@ -197,7 +197,7 @@ def cmd_demo(bus, a, lc):
     steps = [("idle: dark (des_app.json rs485.idle off)", [[]], 2), ("run: green", [["green"]], 3),
              ("paused: yellow", [["yellow"]], 3),
              ("e-stop: red + buzzer 1 s" if a.buzzer else "e-stop: red (buzzer skipped, --buzzer adds it)", [red], 1),
-             ("e-stop: red", [["red"]], 2), ("fault: red blinks", [["red"], []], 4)]
+             ("e-stop: red", [["red"]], 2), ("fault: red steady (rs485.fault_s), then dark", [["red"]], 3)]
     cur = None
     for title, pats, secs in steps:
         print(title)
