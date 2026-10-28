@@ -6,6 +6,9 @@
 *  状态机 / 地址步进 / 中断语义原样保留。W_rbusy 是厂家原版未驱动 wire（W_REQ 因此含 x），
 *  为保持与 golden 逐位等价原样保留；TD 综合按 0 处理（既有时序行为不变）。
 *  ENABLE_READ / I_W_buf 厂家原版即未使用，保留只为端口契约。
+*2026-10-28 减资源（逐拍等价）：W_addr 由 W_bcnt 派生（删 15 个寄存器，见下）；
+*  中断脉冲分支（W_MS_r==S_DATA2 && W_MS==S_IDLE）不可达，连同 wirq_dly_cnt / W_MS_r 删除，
+*  O_fdma_wirq 恒 0、O_fmda_wbuf 恒 0（与原版的唯一取值相同）。
 *********************************************************************/
 module uidbuf_write #(
 parameter  integer  VIDEO_ENABLE   = 1,   //使能视频帧支持功能
@@ -40,7 +43,7 @@ input  wire                      I_fdma_wbusy,  //FDMA 正在写 AXI
 output wire [AXI_DATA_WIDTH-1:0] O_fdma_wdata,  //FDMA 写数据
 input  wire                      I_fdma_wvalid, //FDMA 写有效
 output wire                      O_fdma_wready, //FDMA 写准备好
-output reg  [7:0]                O_fmda_wbuf = 0,  //FDMA 写帧缓存号
+output wire [7:0]                O_fmda_wbuf,  //FDMA 写帧缓存号（厂家原版仅在不可达分支更新，恒 0）
 output wire                      O_fdma_wirq,   //FDMA 一次写传输完成中断
 input  wire                      camera_start,
 output wire                      camera_done,
@@ -76,35 +79,33 @@ reg                            O_fdma_wareq_r = 1'b0;
 reg                            W_FIFO_Rst = 0;
 wire                           W_FS;
 reg [2:0]                      W_MS = 0;
-reg [W_DSIZEBITS-1:0]          W_addr = 0;
 reg [clog2(WY_BURST_TIMES)-1:0] W_bcnt = 0;      //burst 计数（0..WY_BURST_TIMES-1，位宽收窄）
+// 帧内写地址由 burst 计数派生（不再单独存 W_addr 寄存器，逐拍等价）：
+//   第 k 次增量在 (k mod W_XDIV) == W_XDIV-1 时取行末增量 WX_LAST_ADDR_INC，其余取
+//   WX_BURST_ADDR_INC；k = W_bcnt 时有 floor(bcnt/XDIV) 次行末增量，故
+//   W_addr = bcnt*WX_BURST_ADDR_INC + floor(bcnt/W_XDIV)*(WX_LAST_ADDR_INC-WX_BURST_ADDR_INC)。
+// 本工程 W_XDIV=1 且 XSTRIDE==XSIZE，两项化简为 bcnt*WX_BURST_ADDR_INC（+ 0）。
+// 常量乘除/截断均在本工程参数范围内无溢出（verilator 宽度告警为参数化通用式所致，按 lint 惯例关掉）。
+/* verilator lint_off WIDTHEXPAND */
+/* verilator lint_off WIDTHTRUNC */
+wire [W_DSIZEBITS-1:0]         W_addr = W_bcnt * WX_BURST_ADDR_INC
+                                     + (W_bcnt / W_XDIV) * (WX_LAST_ADDR_INC - WX_BURST_ADDR_INC);
+/* verilator lint_on WIDTHTRUNC */
+/* verilator lint_on WIDTHEXPAND */
 wire [W_RD_DATA_COUNT_WIDTH-1:0] W_rcnt;
 reg                            W_REQ = 0;
-reg [5:0]                      wirq_dly_cnt = 0;
 reg [clog2(W_XDIV)-1:0]        wdiv_cnt = 0;     //XDIV 分次计数（位宽收窄）
 reg [6:0]                      wrst_cnt = 0;     //0..100（位宽收窄）
-reg [7:0]                      O_fmda_wbufn;
-reg [2:0]                      W_MS_r = 0;
 
 assign O_fdma_wready = 1'b1;
 assign O_fdma_wsize  = FDMA_WX_BURST;
-assign O_fdma_wirq   = (wirq_dly_cnt > 0);
+assign O_fdma_wirq   = 1'b0;   //厂家原版只在不可达分支置位，恒 0（见下）
 assign O_fdma_wareq  = O_fdma_wareq_r;
 assign O_fdma_waddr  = W_BASEADDR + W_addr; //缓存号由高位地址实现（FPGA 内做乘法代价高）
 
-always @(posedge I_ui_clk) W_MS_r <= W_MS;
-
-always @(posedge I_ui_clk) begin
-    if(I_ui_rstn == 1'b0)begin
-        wirq_dly_cnt <= 6'd0;
-        O_fmda_wbuf  <= 0;
-    end
-    else if((W_MS_r == S_DATA2) && (W_MS == S_IDLE))begin
-        wirq_dly_cnt <= 60;
-        O_fmda_wbuf  <= O_fmda_wbufn;
-    end
-    else if(wirq_dly_cnt > 0) wirq_dly_cnt <= wirq_dly_cnt - 1'b1;
-end
+// 厂家原版的中断脉冲分支只在「S_DATA2 → S_IDLE」直跳时才触发，而状态机里 S_DATA2 只会去
+// S_FRAME_DONE，故 W_MS_r==S_DATA2 与 W_MS==S_IDLE 永不同拍 → 该分支不可达：
+// O_fdma_wirq 恒 0、O_fmda_wbuf 恒为其复位值 0（等价 TB 与 x_ TB 都 trace 这两根线）。
 
 fs_cap #(.VIDEO_ENABLE(VIDEO_ENABLE)) fs_cap_W0 (
     .I_clk(I_ui_clk), .I_rstn(I_ui_rstn), .I_vs(I_W_FS), .O_fs_cap(W_FS));
@@ -123,15 +124,15 @@ end
 
 always @(posedge I_ui_clk) begin
     if(!I_ui_rstn)begin
-        W_MS <= S_IDLE;  W_FIFO_Rst <= 0;  W_addr <= 0;  O_W_sync_cnt <= 0;
-        W_bcnt <= 0;  wrst_cnt <= 0;  wdiv_cnt <= 0;  O_fmda_wbufn <= 0;
+        W_MS <= S_IDLE;  W_FIFO_Rst <= 0;  O_W_sync_cnt <= 0;
+        W_bcnt <= 0;  wrst_cnt <= 0;  wdiv_cnt <= 0;
         O_fdma_wareq_r <= 1'd0;  camera_done_d1 <= 0;
     end
     else case(W_MS)
         S_IDLE:begin
           camera_done_d1 <= 0;
           if(camera_work_enable)begin
-            W_addr <= 0;  W_bcnt <= 0;  wrst_cnt <= 0;  wdiv_cnt <= 0;
+            W_bcnt <= 0;  wrst_cnt <= 0;  wdiv_cnt <= 0;
             if(W_FS)begin //帧同步，对于非视频数据一般常量为1
                 W_MS          <= S_RST;
                 O_W_start_tgl <= ~O_W_start_tgl;
@@ -140,7 +141,6 @@ always @(posedge I_ui_clk) begin
           end
         end
         S_RST:begin //视频模式复位数据FIFO；非视频模式直接跳过
-           O_fmda_wbufn <= W0_Fbuf;
            wrst_cnt     <= wrst_cnt + 1'b1;
            if((VIDEO_ENABLE == 1) && (wrst_cnt < 40))        W_FIFO_Rst <= 1;
            else if((VIDEO_ENABLE == 1) && (wrst_cnt < 100))  W_FIFO_Rst <= 0;
@@ -157,14 +157,8 @@ always @(posedge I_ui_clk) begin
             if(I_fdma_wbusy == 1'b0)begin
                 if(W_bcnt == WY_BURST_TIMES - 1'b1) W_MS <= S_FRAME_DONE; //一帧传输完毕
                 else begin
-                    if(wdiv_cnt < W_XDIV - 1'b1)begin //XDIV 分次传输时先走 burst 增量
-                        W_addr   <= W_addr + WX_BURST_ADDR_INC;
-                        wdiv_cnt <= wdiv_cnt + 1'b1;
-                    end
-                    else begin                        //最后一次按 stride 计算行末地址增量
-                        W_addr   <= W_addr + WX_LAST_ADDR_INC;
-                        wdiv_cnt <= 0;
-                    end
+                    if(wdiv_cnt < W_XDIV - 1'b1) wdiv_cnt <= wdiv_cnt + 1'b1; //XDIV 分次传输时先走 burst 增量
+                    else                         wdiv_cnt <= 0;               //最后一次按 stride 计算行末地址增量
                     W_bcnt <= W_bcnt + 1'b1;
                     W_MS   <= S_DATA1;
                 end
@@ -216,5 +210,9 @@ assign O_fdma_wirq   = 0;
 assign O_W_full      = 0;
 end
 endgenerate
+
+// O_fmda_wbuf：厂家原版为「只在不可达分支更新、恒为复位值 0」的寄存器，两个 generate 分支
+// 下都恒 0（ENABLE_WRITE=0 时原版保持初始值 0），故在 generate 外统一驱动为 0。
+assign O_fmda_wbuf = 8'd0;
 
 endmodule

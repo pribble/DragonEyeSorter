@@ -19,7 +19,9 @@ module pwm #(
             counter <= 32'd0;
             pwm_out <= 1'b0;
         end else begin
-            counter <= (counter < PERIOD) ? counter + 1'b1 : 32'd0;
+            // counter 由 0 起只在 < PERIOD 时 +1、到 PERIOD 回 0，归纳可知 counter 恒 ≤ PERIOD，
+            // 故「counter < PERIOD」与「counter == PERIOD」逐拍等价（== 常量比较比 < 省 LUT）。
+            counter <= (counter == PERIOD) ? 32'd0 : counter + 1'b1;
             pwm_out <= (counter < DUTY_COUNT);
         end
     end
