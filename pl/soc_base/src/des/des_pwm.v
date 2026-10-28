@@ -13,6 +13,7 @@ module des_pwm #(parameter integer CLK_HZ = 75_000_000) (
     reg [23:0] width_a = 24'd0;
     reg [31:0] periods = 32'd0;
     reg [6:0]  div = 7'd0;
+    wire [16:0] us_next = {1'b0, us} + 17'd1;   // one incrementer, reused by the period compare
     always @(posedge clk) begin
         if (wr) case (waddr[7:2])
             6'h00: en <= wdata[1:0];
@@ -22,9 +23,9 @@ module des_pwm #(parameter integer CLK_HZ = 75_000_000) (
         endcase
         if (div == CLK_PER_US - 1) begin
             div <= 7'd0;
-            if (us >= period_us - 1'b1) begin
+            if (us_next >= {1'b0, period_us}) begin      // us >= period_us - 1
                 us <= 16'd0; periods <= periods + 1'b1; width_a <= width_w;
-            end else us <= us + 1'b1;
+            end else us <= us_next[15:0];
         end else div <= div + 1'b1;
         pwm[0] <= en[0] && (us < width_a[11:0]);
         pwm[1] <= en[1] && (us < width_a[23:12]);

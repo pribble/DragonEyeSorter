@@ -24,11 +24,21 @@ module stepper_ctrl #(
     reg [3:0] req = 0;
     localparam [3:0] REQ_STOP = 0, REQ_HALT = 1, REQ_START = 2, REQ_ZERO = 3;
     wire signed [31:0] dist = dir ? (pos - target) : (target - pos);
-    wire [31:0] remaining = dist[31] ? 0 : dist;
+    // remaining = dist[31] ? 0 : dist is only ever compared, so compare against dist directly:
+    // remaining <= accel_steps == dist[31] | (dist <= accel_steps); remaining == {0,1} == !dist[31] & dist == {0,1}
     wire overshoot = mode && dist[31];
-    wire want_down = stopping || overshoot || (mode && remaining <= accel_steps);
+    wire want_down = stopping || overshoot || (mode && (dist[31] || dist <= accel_steps));
     wire [32:0] phase_next = {1'b0, phase} + {1'b0, cur_inc};
-    wire step_now = moving && (setup_cnt == 0) && phase_next[32] && !(mode && !overshoot && remaining == 0);
+    wire step_now = moving && (setup_cnt == 0) && phase_next[32] && !(mode && !dist[31] && dist == 32'd0);
+    // one ramp distance and one +-acc_inc adder for the vmax approach (the two directions never share a cycle)
+    wire        vmax_up = vmax_inc > cur_inc;
+    wire [31:0] d_up = vmax_inc - cur_inc, d_dn = cur_inc - vmax_inc;
+    wire        ramp_far = vmax_up ? (d_up > acc_inc) : (d_dn > acc_inc);
+    wire [32:0] ramp_sum = {1'b0, cur_inc} + {1'b0, vmax_up ? acc_inc : ~acc_inc} + {32'd0, ~vmax_up};
+    wire        acc_dec = want_down && accel_steps != 0;
+    wire        acc_upd = !want_down && cur_inc < vmax_inc;
+    wire [31:0] acc_step = {{31{acc_dec}}, acc_dec | acc_upd};   // -1 / +1 / 0 in one incrementer
+    wire [31:0] pos_step = {{31{dir}}, 1'b1};                    // dir ? -1 : +1 in one incrementer
     always @(posedge clk) begin
         req <= 0;
         if (wr) case (waddr)
@@ -63,16 +73,15 @@ module stepper_ctrl #(
                         if (stopping || overshoot) begin moving <= 0; stopping <= 0; end
                     end
                 end else if (cur_inc != vmax_inc)
-                    cur_inc <= ((vmax_inc > cur_inc ? vmax_inc - cur_inc : cur_inc - vmax_inc) > acc_inc) ? (vmax_inc > cur_inc ? cur_inc + acc_inc : cur_inc - acc_inc) : vmax_inc;
+                    cur_inc <= ramp_far ? ramp_sum[31:0] : vmax_inc;
             end else acc_cnt <= acc_cnt + 1'b1;
             if (setup_cnt == 0) phase <= phase_next[31:0];
             if (step_now) begin
                 pulse_cnt <= PULSE_CLK;
                 steps_total <= steps_total + 1'b1;
-                pos <= dir ? pos - 1 : pos + 1;
-                if (!want_down && cur_inc < vmax_inc) accel_steps <= accel_steps + 1'b1;
-                else if (want_down && accel_steps != 0) accel_steps <= accel_steps - 1'b1;
-                if (mode && remaining == 1) begin moving <= 0; cur_inc <= 0; end
+                pos <= pos + pos_step;
+                if (mode && !dist[31] && dist == 32'd1) begin moving <= 0; cur_inc <= 0; end
+                accel_steps <= accel_steps + acc_step;
             end
         end
     end

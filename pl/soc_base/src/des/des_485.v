@@ -23,7 +23,11 @@ module des_485 #(parameter integer CLK_HZ = 75_000_000) (
     reg [15:0] div = DIV_9600, t35_us = 16'd4011;
     reg [1:0]  parity = 2'd0;
     reg [31:0] timeout_us = 32'd100000;
-    reg [7:0]  tx_buf [0:63], rx_buf [0:63];
+    reg [7:0]  tx_buf [0:63];              // PS 32-bit writes -> 4 write ports, inferred DRAM
+    // RX_BUF 64 bytes as 4 byte-lane 16x8 RAMs: a 1-byte write port each and one async read port each, so the
+    // PS 32-bit word read is 4 same-address lane reads (the old 64x8 byte array had 4 different async read
+    // addresses and was therefore kept in 512 flip-flops).  Byte k lives in lane k[1:0], word k[5:2].
+    reg [7:0]  rx_b0 [0:15], rx_b1 [0:15], rx_b2 [0:15], rx_b3 [0:15];
     reg [6:0]  tx_len = 7'd0;
     reg        go = 1'b0, want_reply = 1'b0;
     reg [USW-1:0] us_div = 0;
@@ -74,6 +78,8 @@ module des_485 #(parameter integer CLK_HZ = 75_000_000) (
     reg [7:0]  f_cnt = 8'd0, rx_len = 8'd0;
     reg [15:0] f_crc = 16'hFFFF;
     reg        ovf = 1'b0, listen_rdy = 1'b0, lf_ok = 1'b0, lf_ferr = 1'b0;
+    wire [5:0]  rx_wi = frame_on ? f_cnt[5:0] : 6'd0;                 // byte index of the arriving byte
+    wire        rx_we = rx_byte_v && (frame_on ? (f_cnt < 8'd64) : 1'b1);
     wire [6:0]  tx_total = tx_len + 7'd2;
     wire [7:0]  tx_b = (tx_idx < tx_len) ? tx_buf[tx_idx[5:0]] : (tx_idx == tx_len) ? tx_crc[7:0] : tx_crc[15:8];
     wire        tx_p = (parity == 2'd2) ? ~^tx_b : ^tx_b;
@@ -114,14 +120,17 @@ module des_485 #(parameter integer CLK_HZ = 75_000_000) (
         if (rx_byte_v) begin
             if (!frame_on) begin
                 frame_on <= 1'b1; f_cnt <= 8'd1; f_crc <= crc_byte(16'hFFFF, rx_byte); f_bad <= rx_byte_bad;
-                rx_t0 <= rx_ts_start; rx_buf[0] <= rx_byte;
+                rx_t0 <= rx_ts_start;
             end else begin
                 if (f_cnt != 8'hFF) f_cnt <= f_cnt + 1'b1;
                 f_crc <= crc_byte(f_crc, rx_byte); f_bad <= f_bad | rx_byte_bad;
-                if (f_cnt < 8'd64) rx_buf[f_cnt[5:0]] <= rx_byte;
             end
             rx_t1 <= ts;
         end
+        if (rx_we && rx_wi[1:0] == 2'd0) rx_b0[rx_wi[5:2]] <= rx_byte;
+        if (rx_we && rx_wi[1:0] == 2'd1) rx_b1[rx_wi[5:2]] <= rx_byte;
+        if (rx_we && rx_wi[1:0] == 2'd2) rx_b2[rx_wi[5:2]] <= rx_byte;
+        if (rx_we && rx_wi[1:0] == 2'd3) rx_b3[rx_wi[5:2]] <= rx_byte;
         if (f_end) begin
             frame_on <= 1'b0; rx_len <= f_cnt; ovf <= f_cnt > 8'd64;
             if (f_bad) cnt_ferr <= cnt_ferr + 1'b1;
@@ -187,7 +196,7 @@ module des_485 #(parameter integer CLK_HZ = 75_000_000) (
             8'h40: rdata = ID;                    8'h44: rdata = {16'd0, quiet_us};
             default:
                 if (raddr[7:6] == 2'b10)      rdata = {tx_buf[tb+3], tx_buf[tb+2], tx_buf[tb+1], tx_buf[tb]};
-                else if (raddr[7:6] == 2'b11) rdata = {rx_buf[tb+3], rx_buf[tb+2], rx_buf[tb+1], rx_buf[tb]};
+                else if (raddr[7:6] == 2'b11) rdata = {rx_b3[raddr[5:2]], rx_b2[raddr[5:2]], rx_b1[raddr[5:2]], rx_b0[raddr[5:2]]};
                 else                          rdata = 32'hDEAD_BEEF;
         endcase
     end

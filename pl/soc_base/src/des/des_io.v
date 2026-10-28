@@ -49,7 +49,7 @@ module des_io #(
         pa <= fa; pb <= fb; pz <= fz;
         if (wr_ctrl && wdata[1]) begin enc <= 0; enc_ref <= 0; end
         else if (a_chg && b_chg) enc_err <= enc_err + 1'b1;
-        else if (a_chg || b_chg) enc <= (pa == fb) ? enc + 1'b1 : enc - 1'b1;
+        else if (a_chg || b_chg) enc <= enc + {{31{(pa != fb)}}, 1'b1};   // -1/+1 in one incrementer
         if (!fz && pz) begin enc_zpos <= enc; enc_zn <= enc_zn + 1'b1; end
         if (spd_div >= SPEED_N - 1) begin spd_div <= 0; enc_speed <= enc - enc_ref; enc_ref <= enc; end
         else spd_div <= spd_div + 1'b1;

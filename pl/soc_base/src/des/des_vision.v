@@ -35,8 +35,10 @@ module des_vision #(
     always @(posedge pclk) if (ap_s2 != ap_seen) begin ap_seen <= ap_s2; p_cfg <= r_cfg; end
     wire [2:0] a_mode = a_cfg[F_MODE +: 3]; wire a_full = a_cfg[F_FULL];
     wire [7:0] a_thr = a_cfg[F_THR +: 8]; wire [10:0] a_ethr = a_cfg[F_ETHR +: 11];
-    reg tuser_d = 1'b0; wire sof = s_tuser & ~tuser_d; reg [BTW-1:0] bx = 0; reg [YW-1:0] row = 0;
-    wire [BTW-1:0] cur_bx = sof ? 0 : bx; wire [YW-1:0] cur_row = sof ? 0 : row;
+    reg tuser_d = 1'b0; wire sof = s_tuser & ~tuser_d; reg [BTW-1:0] bx = 0; reg [YW-1:0] row1 = {YW{1'b1}};
+    // row1 carries row-1 down the pipeline: ry = row3 - 1 and r = row6 - 1 are consumed directly, so the two
+    // 11-bit -1 subtractors disappear (row == 0 is then row1 == all ones).
+    wire [BTW-1:0] cur_bx = sof ? 0 : bx; wire [YW-1:0] cur_r1 = sof ? {YW{1'b1}} : row1;
     wire [2:0] mode_now = sof ? p_cfg[F_MODE +: 3] : a_mode;
     wire bypass = mode_now == 3'd0 || mode_now > 3'd5;
     reg [5*BTW-1:0] bxq = 0; reg [6*YW-1:0] rowq = 0; reg [4:0] vsr = 0, usr = 0, lsr = 0;
@@ -66,7 +68,7 @@ module des_vision #(
     reg [L-1:0] sel4 = 0, esel4 = 0; reg [XW-1:0] xb = 0;
     integer i, j, k; reg [11:0] gs; reg signed [11:0] gx, gy;
     reg [XW-1:0] cx, bmin, bmax; reg [SXW-1:0] sx_beat; reg [NW-1:0] n_sel, n_edge;
-    reg [YW-1:0] ry, r; reg inroi, rok; reg [8*L-1:0] ovl = 0; reg res_tgl = 1'b0;
+    reg [YW-1:0] r; reg inroi, rok; reg [8*L-1:0] ovl = 0; reg res_tgl = 1'b0;
     reg [20:0] acc_area = 0, acc_edges = 0, res_area = 0, res_edges = 0;
     reg [31:0] acc_sx = 0, acc_sy = 0, cyc = 0, res_sx = 0, res_sy = 0, res_cyc = 0;
     reg [XW-1:0] acc_x0 = {XW{1'b1}}, acc_x1 = 0, res_x0 = {XW{1'b1}}, res_x1 = 0;
@@ -75,11 +77,11 @@ module des_vision #(
         tuser_d <= s_tuser; cyc <= cyc + 1'b1;
         if (s_tvalid) begin
             bx <= (cur_bx == BEATS - 1) ? 0 : cur_bx + 1'b1;
-            row <= (cur_bx == BEATS - 1) ? cur_row + 1'b1 : cur_row;
+            row1 <= (cur_bx == BEATS - 1) ? cur_r1 + 1'b1 : cur_r1;
             lb_rd <= lb[cur_bx];
-        end else if (sof) begin bx <= 0; row <= 0; end
+        end else if (sof) begin bx <= 0; row1 <= {YW{1'b1}}; end
         for (j = 0; j < L; j = j + 1) g1[8*j +: 8] <= gray_of(s_tdata[32*STEP*j +: 24]);
-        bxq <= {bxq[4*BTW-1:0], cur_bx}; rowq <= {rowq[5*YW-1:0], cur_row};
+        bxq <= {bxq[4*BTW-1:0], cur_bx}; rowq <= {rowq[5*YW-1:0], cur_r1};
         vsr <= {vsr[3:0], s_tvalid}; usr <= {usr[3:0], s_tuser}; lsr <= {lsr[3:0], s_tlast};
         if (v1) begin
             lb[bx1] <= rd[16*L-1:0];
@@ -106,8 +108,7 @@ module des_vision #(
         for (j = 0; j < L; j = j + 1) mg3[11*j +: 11] <= ax4[10*j +: 10] + ay4[10*j +: 10];
         gc3 <= gm4; ga3 <= ga4;
         m_tvalid <= bypass ? s_tvalid : v3; m_tuser <= bypass ? s_tuser : u3; m_tlast <= bypass ? s_tlast : l3;
-        ry = row3 - 1'b1;
-        rok = row3 != 0 && (a_full || (ry >= a_cfg[F_Y0 +: YW] && ry <= a_cfg[F_Y1 +: YW]));
+        rok = (row3 != {YW{1'b1}}) && (a_full || (row3 >= a_cfg[F_Y0 +: YW] && row3 <= a_cfg[F_Y1 +: YW]));
         for (j = 0; j < L; j = j + 1) begin
             ovl[8*j +: 8] = out_pixel(a_mode, gc3[8*j +: 8], ga3[8*j +: 8], mg3[11*j +: 11], a_thr, a_ethr);
             cx = {bx3, 2'b00} + STEP * j - STEP;
@@ -120,7 +121,7 @@ module des_vision #(
             m_tdata[32*k +: 32] <= bypass ? s_tdata[32*k +: 32]
                 : {8'd0, ovl[8*(k/STEP) +: 8], ovl[8*(k/STEP) +: 8], ovl[8*(k/STEP) +: 8]};
         xb <= {bx3, 2'b00};
-        n_sel = 0; n_edge = 0; sx_beat = 0; bmin = {XW{1'b1}}; bmax = 0; r = row6 - 1'b1;
+        n_sel = 0; n_edge = 0; sx_beat = 0; bmin = {XW{1'b1}}; bmax = 0; r = row6;
         for (j = 0; j < L; j = j + 1) if (sel4[j]) begin
             cx = xb + STEP * j - STEP; n_sel = n_sel + 1'b1; sx_beat = sx_beat + cx;
             if (cx < bmin) bmin = cx; if (cx > bmax) bmax = cx;
