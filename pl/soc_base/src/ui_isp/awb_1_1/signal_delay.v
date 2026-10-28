@@ -27,9 +27,15 @@ module signal_delay #(
     reg  [VCNT_W-1:0]     v_cnt;          // line index
     reg                   rd_valid;       // read burst active
     reg                   rd_valid_d;
-    reg  [10:0]           addra, addrb;   //synthesis keep
+    reg  [HCNT_W-1:0]     addrb;          //synthesis keep（写地址 addra 与 h_cnt 逐拍同轨迹，已删，见下）
     reg  [DATA_WIDTH-1:0] I_data_r;
     reg                   I_valid_r;
+
+    // 写地址：原 addra 与 h_cnt 的复位/递增/回绕条件逐字相同（同一 always、同 tuser 清零、同 I_valid_r 门控、
+    // 同在 IMG_WIDTH_4x-1 回绕），故二者逐拍恒等，直接复用 h_cnt；BRAM 11bit 地址口零扩展（HCNT_W<=11 即
+    // IMG_WIDTH<=8192，本工程/全部 TB 均 1920）。addrb 的回绕常数 IMG_WIDTH_4x-1 也 < 2^HCNT_W，等宽收窄。
+    wire [10:0] bram_addra = h_cnt;
+    wire [10:0] bram_addrb = addrb;
 
     // 原 3 个 always（输入打拍 / 行列计数 / 读突发与地址）同复位、同时钟、全非阻塞，合并后逐拍等价。
     // beat/line counters advance on valid beats only, cleared at frame start；
@@ -38,7 +44,7 @@ module signal_delay #(
         if (!I_rst_n) begin
             I_valid_r <= 1'b0;  I_data_r <= 0;  rd_valid_d <= 1'b0;
             h_cnt <= 0;         v_cnt <= 0;
-            rd_valid <= 1'b0;   rd_cnt <= 0;  addra <= 0;  addrb <= 0;
+            rd_valid <= 1'b0;   rd_cnt <= 0;  addrb <= 0;
         end else begin
             I_valid_r  <= I_valid;
             I_data_r   <= I_data;
@@ -52,9 +58,8 @@ module signal_delay #(
                          ? ((v_cnt == IMG_HEIGHT - 1) ? 0 : v_cnt + 1'b1) : v_cnt;
             end
             if (I_tuser) begin
-                rd_valid <= 1'b0;  rd_cnt <= 0;  addra <= 0;  addrb <= 0;
+                rd_valid <= 1'b0;  rd_cnt <= 0;  addrb <= 0;
             end else begin
-                addra  <= I_valid_r ? ((addra == IMG_WIDTH_4x - 1) ? 0 : addra + 1'b1) : addra;
                 addrb  <= rd_valid ? ((addrb == IMG_WIDTH_4x - 1) ? 0 : addrb + 1'b1) : addrb;
                 rd_cnt <= (rd_cnt == IMG_WIDTH_4x) ? 0 : (rd_valid ? rd_cnt + 1'b1 : rd_cnt);
                 if (h_cnt == DELAY_CYCLE - 3)         rd_valid <= 1'b1;
@@ -67,8 +72,8 @@ module signal_delay #(
     assign O_tuser = (v_cnt == 0) && (rd_cnt == 1);
 
     blk_mem_gen_awb_delay_signal blk_mem_gen_awb_delay_signal_d (
-      .clka(I_clk), .wea(I_valid_r), .addra(addra), .dia(I_data_r),
-      .clkb(I_clk), .addrb(addrb), .dob(O_data)
+      .clka(I_clk), .wea(I_valid_r), .addra(bram_addra), .dia(I_data_r),
+      .clkb(I_clk), .addrb(bram_addrb), .dob(O_data)
     );
 
 endmodule

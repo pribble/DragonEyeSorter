@@ -18,7 +18,10 @@ module image_correction #(
     reg                    I_raw_tvalid_d;
     reg [DATA_WIDTH-1:0]   I_raw_tdata_r;
     reg [16:0]             cnt;            // 行间空闲计数（位宽/回绕同原版）
-    reg [14:0]             h_cnt, v_cnt;   // 行列计数（位宽/回绕同原版）
+    // 行列计数：所有使用处只和常量 0/1/480/481/1081 比较，故行/列计数在越过 1080 行 / 480 列后
+    // 「饱和保持」与「继续递增」对外部输出完全一致（所有比较结果都已是常量），据此收窄到 $clog2 位宽。
+    reg [8:0]              h_cnt;          // 0..481（饱和）
+    reg [10:0]             v_cnt;          // 0..1081（饱和）
     wire                   V_valid, H_valid, tuser, last;
 
     assign V_valid = (v_cnt > 0) && (v_cnt < 1081);
@@ -31,17 +34,17 @@ module image_correction #(
         if (!I_rst_n) begin
             I_raw_tvalid_d <= 1'b0;
             I_raw_tdata_r  <= {DATA_WIDTH{1'b0}};
-            {cnt, h_cnt, v_cnt} <= 47'd0;
+            cnt <= 17'd0;  h_cnt <= 9'd0;  v_cnt <= 11'd0;
         end else begin
             I_raw_tvalid_d <= I_raw_valid;
             I_raw_tdata_r  <= I_raw_data;
             // 行间空闲计数：valid 清 0，否则加 1；保留 else if(!x) 写法以维持 x 输入时保持的语义
             if (I_raw_valid)        cnt <= 17'd0;
             else if (!I_raw_valid)  cnt <= cnt + 17'd1;
-            // 列/行计数：帧头与行尾清零，行尾使 v_cnt 加 1
-            if (I_raw_frame_start)     {h_cnt, v_cnt} <= 30'd0;
-            else if (last)             {h_cnt, v_cnt} <= {15'd0, v_cnt + 15'd1};
-            else if (I_raw_tvalid_d)   h_cnt <= h_cnt + 15'd1;
+            // 列/行计数：帧头与行尾清零，行尾使 v_cnt 加 1（越界后饱和保持，见上）
+            if (I_raw_frame_start)     begin h_cnt <= 9'd0; v_cnt <= 11'd0; end
+            else if (last)             begin h_cnt <= 9'd0; v_cnt <= (v_cnt == 11'd1081) ? 11'd1081 : v_cnt + 11'd1; end
+            else if (I_raw_tvalid_d)   h_cnt <= (h_cnt == 9'd481) ? 9'd481 : h_cnt + 9'd1;
         end
     end
 

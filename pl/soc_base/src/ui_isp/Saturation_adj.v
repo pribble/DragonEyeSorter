@@ -39,14 +39,16 @@ module Saturation_adj #(
         wire [7:0] g = I_tdata[24*i +  8 +: 8];
         wire [7:0] b = I_tdata[24*i      +: 8];
 
-        reg [16:0] y_r, Y_m, r2, g2, b2;        // 第1级 Y 贡献 / 第3级 Y*|v| 与像素*(255+v)
+        reg [16:0] y_r, r2, g2, b2;              // 第1级 Y 贡献 / 第3级 像素*(255+v)
         reg [17:0] y_g;
         reg [14:0] y_b;
-        reg [7:0]  r0, g0, b0, Y, r1, g1, b1, Y_C_abs_d, Rn, Gn, Bn;
-        reg        Y_C_sign_d;
+        reg [15:0] Y_m;                          // Y*|v|：Y<=255、|v|<=255 → 最大 65025（16bit）
+        reg [7:0]  r0, g0, b0, Y, r1, g1, b1, Rn, Gn, Bn;
 
+        // Y_C_sign / Y_C_abs 只由参数决定（常量的「寄存器」），且每次使用前都已被同一拍流水加载过，
+        // 故直接常量传播，省 4×(1+8)=36 个 FF 与其加载逻辑（逐拍值与流水数据一致）
         wire [17:0] Y_w   = y_r + y_g + y_b;
-        wire [18:0] Y_m_s = Y_C_sign_d ? {2'b0, Y_m} : (~{2'b0, Y_m} + 1);
+        wire [18:0] Y_m_s = Y_C_sign ? {2'b0, Y_m} : (~{3'b0, Y_m} + 1);
         wire [18:0] R_sum = Y_m_s + r2;
         wire [18:0] G_sum = Y_m_s + g2;
         wire [18:0] B_sum = Y_m_s + b2;
@@ -56,7 +58,7 @@ module Saturation_adj #(
         always @(posedge I_clk or negedge I_rst_n) begin
             if (!I_rst_n) begin
                 {y_r, y_g, y_b, r0, g0, b0} <= 0;
-                {Y, r1, g1, b1, Y_C_sign_d, Y_C_abs_d} <= 0;
+                {Y, r1, g1, b1} <= 0;
                 {Y_m, r2, g2, b2} <= 0;
                 {Rn, Gn, Bn} <= 0;
             end else begin
@@ -66,10 +68,9 @@ module Saturation_adj #(
                 end
                 if (I_tvalid_r[0]) begin
                     Y <= Y_w[17:10];  r1 <= r0;  g1 <= g0;  b1 <= b0;
-                    Y_C_sign_d <= Y_C_sign;  Y_C_abs_d <= Y_C_abs;
                 end
                 if (I_tvalid_r[1]) begin
-                    Y_m <= Y * Y_C_abs_d;  r2 <= r1 * RGB_C;  g2 <= g1 * RGB_C;  b2 <= b1 * RGB_C;
+                    Y_m <= Y * Y_C_abs;  r2 <= r1 * RGB_C;  g2 <= g1 * RGB_C;  b2 <= b1 * RGB_C;
                 end
                 if (I_tvalid_r[2]) begin
                     Rn <= clip8(R_sum);  Gn <= clip8(G_sum);  Bn <= clip8(B_sum);

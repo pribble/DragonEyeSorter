@@ -23,7 +23,11 @@ module bilinear_interpolation #(
     // 3x3 窗口字节：行 0/1/2 = 上一行/当前行/下一行；窗口列 0..5 = 相对当前 4 像素组的 -1..+4
     wire [95:0] line [0:2];
     wire [7:0]  w    [0:2][0:5];
-    wire [9:0]  role [0:3][0:3];   // [角色 C/H/V/D][像素位 0..3]，10bit（4 抽头最大 1020）
+    // 角色和（位宽取精确最大值：C 1 抽头 8bit、H/V 2 抽头 9bit、D 4 抽头 10bit）
+    wire [7:0]  role_c [0:3];      // [角色][像素位 0..3]
+    wire [8:0]  role_h [0:3];
+    wire [8:0]  role_v [0:3];
+    wire [9:0]  role_d [0:3];
 
     assign line[0] = matrix_last_line;
     assign line[1] = matrix_cur_line;
@@ -38,40 +42,44 @@ module bilinear_interpolation #(
         end
         for (gj = 0; gj < 4; gj = gj + 1) begin : g_role
             // 8bit 相加先零扩展到 9bit，避免截断；对角 4 抽头扩到 10bit
-            assign role[0][gj] = {2'b0, w[1][gj+1]};
-            assign role[1][gj] = {1'b0, w[1][gj]} + {1'b0, w[1][gj+2]};
-            assign role[2][gj] = {1'b0, w[0][gj+1]} + {1'b0, w[2][gj+1]};
-            assign role[3][gj] = ({1'b0, w[0][gj]} + {1'b0, w[0][gj+2]})
+            assign role_c[gj] = w[1][gj+1];
+            assign role_h[gj] = {1'b0, w[1][gj]}   + {1'b0, w[1][gj+2]};
+            assign role_v[gj] = {1'b0, w[0][gj+1]} + {1'b0, w[2][gj+1]};
+            assign role_d[gj] = ({1'b0, w[0][gj]} + {1'b0, w[0][gj+2]})
                               + ({1'b0, w[2][gj]} + {1'b0, w[2][gj+2]});
         end
     endgenerate
 
-    reg [159:0] q;         // 第 1 级：每像素 40bit = {D, V, H, C}
+    // 第 1 级：每像素 36bit = {D(10), V(9), H(9), C(8)}（原版统一 10bit，高位恒 0；按实际位宽存，逐位等价）
+    reg [143:0] q;
     reg [119:0] mp;        // 第 2 级：每像素 30bit = {B, G, R}，各 10bit
     reg [119:0] mean;      // 第 3 级：同上（值域 <=255，与 9bit 均值等效）
     reg bayer_ypos_r0, bayer_ypos_r1;
     reg [4:0] I_tlast_r, I_tuser_r, I_tvalid_r;
 
     // 第 2 级色表输入的「角色和」= 第 1 级寄存器 q 的 4 角色 × 4 像素（色表取的是打拍后的值）
-    wire [9:0] qr [0:3][0:3];      // [角色 C/H/V/D][像素位 0..3]
+    wire [7:0]  qr_c [0:3];        // [角色][像素位 0..3]
+    wire [8:0]  qr_h [0:3], qr_v [0:3];
+    wire [9:0]  qr_d [0:3];
     genvar gk;
     generate for (gk = 0; gk < 4; gk = gk + 1) begin : g_qrole
-        assign qr[0][gk] = q[40*gk      +: 10];
-        assign qr[1][gk] = q[40*gk + 10 +: 10];
-        assign qr[2][gk] = q[40*gk + 20 +: 10];
-        assign qr[3][gk] = q[40*gk + 30 +: 10];
+        assign qr_c[gk] = q[36*gk      +:  8];
+        assign qr_h[gk] = q[36*gk +  8 +:  9];
+        assign qr_v[gk] = q[36*gk + 17 +:  9];
+        assign qr_d[gk] = q[36*gk + 26 +: 10];
     end endgenerate
 
     // 第 2 级色表（未打拍）：每像素 30bit {B,G,R}、各取一个角色和或其两两和；
     // P/Q 给 RGGB/GBRG，R/S 给 BGGR/GRBG（Q/S 是行奇偶 1 那张表）
-    wire [119:0] P = {qr[2][3], qr[0][3], qr[1][3], qr[3][2], qr[1][2]+qr[2][2], qr[0][2],
-                      qr[2][1], qr[0][1], qr[1][1], qr[3][0], qr[1][0]+qr[2][0], qr[0][0]};
-    wire [119:0] Q = {qr[0][3], qr[1][3]+qr[2][3], qr[3][3], qr[1][2], qr[0][2], qr[2][2],
-                      qr[0][1], qr[1][1]+qr[2][1], qr[3][1], qr[1][0], qr[0][0], qr[2][0]};
-    wire [119:0] R = {qr[1][3], qr[0][3], qr[2][3], qr[0][2], qr[1][2]+qr[2][2], qr[3][2],
-                      qr[1][1], qr[0][1], qr[2][1], qr[0][0], qr[1][0]+qr[2][0], qr[3][0]};
-    wire [119:0] S = {qr[3][3], qr[1][3]+qr[2][3], qr[0][3], qr[2][2], qr[0][2], qr[1][2],
-                      qr[3][1], qr[1][1]+qr[2][1], qr[0][1], qr[2][0], qr[0][0], qr[1][0]};
+    // 各角色按原版 10bit 字段零扩展（q 里 C/H/V 高位恒 0），字段布局与位偏移与原版完全一致
+    wire [119:0] P = {{2'b0,qr_v[3]}, {2'b0,qr_c[3]}, {1'b0,qr_h[3]}, qr_d[2], ({1'b0,qr_h[2]}+{1'b0,qr_v[2]}), {2'b0,qr_c[2]},
+                      {1'b0,qr_v[1]}, {2'b0,qr_c[1]}, {1'b0,qr_h[1]}, qr_d[0], ({1'b0,qr_h[0]}+{1'b0,qr_v[0]}), {2'b0,qr_c[0]}};
+    wire [119:0] Q = {{2'b0,qr_c[3]}, ({1'b0,qr_h[3]}+{1'b0,qr_v[3]}), qr_d[3], {1'b0,qr_h[2]}, {2'b0,qr_c[2]}, {1'b0,qr_v[2]},
+                      {2'b0,qr_c[1]}, ({1'b0,qr_h[1]}+{1'b0,qr_v[1]}), qr_d[1], {1'b0,qr_h[0]}, {2'b0,qr_c[0]}, {1'b0,qr_v[0]}};
+    wire [119:0] R = {{1'b0,qr_h[3]}, {2'b0,qr_c[3]}, {1'b0,qr_v[3]}, {2'b0,qr_c[2]}, ({1'b0,qr_h[2]}+{1'b0,qr_v[2]}), qr_d[2],
+                      {1'b0,qr_h[1]}, {2'b0,qr_c[1]}, {1'b0,qr_v[1]}, {2'b0,qr_c[0]}, ({1'b0,qr_h[0]}+{1'b0,qr_v[0]}), qr_d[0]};
+    wire [119:0] S = {qr_d[3], ({1'b0,qr_h[3]}+{1'b0,qr_v[3]}), {2'b0,qr_c[3]}, {1'b0,qr_v[2]}, {2'b0,qr_c[2]}, {1'b0,qr_h[2]},
+                      qr_d[1], ({1'b0,qr_h[1]}+{1'b0,qr_v[1]}), {2'b0,qr_c[1]}, {1'b0,qr_v[0]}, {2'b0,qr_c[0]}, {1'b0,qr_h[0]}};
 
     // 第 3 级均值：按抽头数右移（C 1 抽头 >>0、H/V 2 抽头 >>1、D 与 H+V 4 抽头 >>2）
     wire [119:0] NP = {mp[110+:10]>>1, mp[100+:10],  mp[90+:10]>>1, mp[80+:10]>>2, mp[70+:10]>>2, mp[60+:10],
@@ -104,10 +112,10 @@ module bilinear_interpolation #(
             {q, bayer_ypos_r0, bayer_ypos_r1, I_tlast_r, I_tuser_r, I_tvalid_r} <= 0;
         end else begin
             if (I_tvalid)
-                q <= {role[3][3], role[2][3], role[1][3], role[0][3],
-                      role[3][2], role[2][2], role[1][2], role[0][2],
-                      role[3][1], role[2][1], role[1][1], role[0][1],
-                      role[3][0], role[2][0], role[1][0], role[0][0]};
+                q <= {role_d[3], role_v[3], role_h[3], role_c[3],
+                      role_d[2], role_v[2], role_h[2], role_c[2],
+                      role_d[1], role_v[1], role_h[1], role_c[1],
+                      role_d[0], role_v[0], role_h[0], role_c[0]};
             // bayer_ypos 打拍：第 2 级用 r0 选色表，第 3 级用 r1 选均值移位
             bayer_ypos_r0 <= bayer_ypos;
             bayer_ypos_r1 <= bayer_ypos_r0;

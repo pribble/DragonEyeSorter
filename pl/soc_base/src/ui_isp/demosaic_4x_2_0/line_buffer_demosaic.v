@@ -13,8 +13,10 @@ module line_buffer_demosaic #(
 );
 
     localparam IMG_WIDTH_4x = IMG_WIDTH >> 2;   // 每行的 4 像素组数
+    // 读写地址只在 IMG_WIDTH_4x-1 回绕，值域恒 < IMG_WIDTH_4x，按 $clog2 收窄（BRAM 11bit 地址口零扩展）
+    localparam AW = ($clog2(IMG_WIDTH_4x) > 0) ? $clog2(IMG_WIDTH_4x) : 1;
 
-    reg  [10:0] addra, addrb;          // 写地址 / 读地址
+    reg  [AW-1:0]  addra, addrb;       // 写地址 / 读地址
     reg  [32:0] data_d0;               // 数据打一拍
     reg         valid_d0;              // 有效打一拍
     reg         tlast_lock_d0;         // 首次写满一行后置位（读侧对齐用）
@@ -25,7 +27,7 @@ module line_buffer_demosaic #(
         if (!I_rst_n) begin
             data_d0 <= 33'd0;
             valid_d0 <= 1'b0;
-            {addra, addrb} <= 22'd0;
+            {addra, addrb} <= 0;
             tlast_lock_d0 <= 1'b0;
         end else begin
             // 数据/有效固定打一拍（不受 tuser 影响）
@@ -33,12 +35,12 @@ module line_buffer_demosaic #(
             valid_d0 <= I_valid;
 
             if (I_tuser) begin
-                {addra, addrb} <= 22'd0;
+                {addra, addrb} <= 0;
                 tlast_lock_d0  <= 1'b0;
             end else begin
-                if (valid_d0)                  addra <= (addra == IMG_WIDTH_4x - 1) ? 11'd0 : addra + 1'b1;
+                if (valid_d0)                  addra <= (addra == IMG_WIDTH_4x - 1) ? 0 : addra + 1'b1;
                 if (addra == IMG_WIDTH_4x - 1) tlast_lock_d0 <= 1'b1;
-                if (rd_en)                     addrb <= (addrb == IMG_WIDTH_4x - 1) ? 11'd0 : addrb + 1'b1;
+                if (rd_en)                     addrb <= (addrb == IMG_WIDTH_4x - 1) ? 0 : addrb + 1'b1;
             end
         end
     end

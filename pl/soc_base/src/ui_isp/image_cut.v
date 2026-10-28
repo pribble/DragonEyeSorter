@@ -20,7 +20,12 @@ module image_cut #(
     input  wire                  O_tready
 );
     localparam IMG_WIDTH_4x = (IMG_WIDTH >> 2);
-    reg [13:0]           h_cnt, v_cnt;              // 位宽/回绕同原版
+    // 行列计数只在常量边界回绕（h_cnt 恒 < IMG_WIDTH_4x、v_cnt 恒 < IMG_HEIGHT），值域与原 14bit 完全相同，
+    // 故按 $clog2 收窄位宽（参与比较时零扩展，结果逐位一致），省 FF 与计数进位链。
+    localparam HCW = ($clog2(IMG_WIDTH_4x) > 0) ? $clog2(IMG_WIDTH_4x) : 1;
+    localparam VCW = ($clog2(IMG_HEIGHT)  > 0) ? $clog2(IMG_HEIGHT)  : 1;
+    reg [HCW-1:0]        h_cnt;
+    reg [VCW-1:0]        v_cnt;
     reg [DATA_WIDTH-1:0] I_tdata_r;
     reg [1:0]            tl_r, tu_r, tv_r;          // tlast/tuser/tvalid 两拍流水（bit1 为输出）
 
@@ -32,16 +37,16 @@ module image_cut #(
     // 行列计数 + 裁剪输出 + 两拍控制流水（原 2 个 always 同复位/同时钟/全非阻塞，合并后逐拍等价）
     always @(posedge I_clk or negedge I_rst_n) begin
         if (!I_rst_n) begin
-            h_cnt <= 14'd0; v_cnt <= 14'd0; O_tdata <= {DATA_WIDTH{1'b0}};
+            h_cnt <= 0; v_cnt <= 0; O_tdata <= {DATA_WIDTH{1'b0}};
             {tl_r, tu_r, tv_r} <= 6'd0;
             I_tdata_r <= {DATA_WIDTH{1'b0}};
         end else begin
             if (I_tuser) begin
-                h_cnt <= 14'd0; v_cnt <= 14'd0;
+                h_cnt <= 0; v_cnt <= 0;
             end else begin
-                h_cnt <= tv_r[0] ? ((h_cnt == IMG_WIDTH_4x - 1) ? 14'd0 : h_cnt + 14'd1) : h_cnt;
+                h_cnt <= tv_r[0] ? ((h_cnt == IMG_WIDTH_4x - 1) ? 0 : h_cnt + 1'b1) : h_cnt;
                 v_cnt <= tv_r[0] && (h_cnt == IMG_WIDTH_4x - 1)
-                         ? ((v_cnt == IMG_HEIGHT - 1) ? 14'd0 : v_cnt + 14'd1) : v_cnt;
+                         ? ((v_cnt == IMG_HEIGHT - 1) ? 0 : v_cnt + 1'b1) : v_cnt;
             end
             O_tdata <= w_skip ? {DATA_WIDTH{1'b0}} : I_tdata_r;
             // 两拍流水：行/帧标志 2 拍，数据 1 拍后进输出寄存器

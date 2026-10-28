@@ -21,6 +21,10 @@ module raw_matrix_3x3_buffer #(
     localparam N            = 3;                   // 3x3 窗口
     localparam DATA_WIDTH   = 32;                  // 每拍 4 个 RAW10 像素
     localparam IMG_WIDTH_4x = (IMG_WIDTH >> 2);    // 每行的 4 像素组数
+    // 行列计数只在常量边界回绕（h_cnt 恒 < IMG_WIDTH_4x、v_cnt 恒 < IMG_HEIGHT），值域与原 14bit 相同，
+    // 按 $clog2 收窄位宽（比较时零扩展，结果逐位一致）
+    localparam HCW = ($clog2(IMG_WIDTH_4x) > 0) ? $clog2(IMG_WIDTH_4x) : 1;
+    localparam VCW = ($clog2(IMG_HEIGHT)  > 0) ? $clog2(IMG_HEIGHT)  : 1;
 
     wire        zhenghe_tlast, zhenghe_tuser, zhenghe_tvalid;
     wire [31:0] zhenghe_tdata, raw_data;
@@ -29,14 +33,14 @@ module raw_matrix_3x3_buffer #(
     // 3 行数据（每行 32bit 数据 + tuser 位）
     wire                valid [0:N-1];
     wire [DATA_WIDTH:0] data  [0:N-1];
-    wire [DATA_WIDTH:0] src   [0:N-1];
-    wire [32:0]         data_d2 = data[2];
-    reg  [32:0]         data_d0_d, data_d0, data_d1;
+    wire [DATA_WIDTH-1:0] src [0:N-1];    // 窗口只用到数据字节（tuser 位不参与窗口），故 src 32bit
+    wire [31:0]         data_d2 = data[2];
+    reg  [DATA_WIDTH-1:0] data_d0_d, data_d0, data_d1;   // 只用于窗口，不含 tuser 位
     reg                 valid_d0, valid_d1;
 
     reg  [95:0] matrix [0:N-1];          // 0=上一行, 1=当前行, 2=下一行
-    reg  [13:0] h_cnt;                   // 行内像素组计数
-    reg  [13:0] v_cnt, v_cnt_d;          // 行计数（v_cnt_d 打一拍）
+    reg  [HCW-1:0] h_cnt;                // 行内像素组计数
+    reg  [VCW-1:0] v_cnt, v_cnt_d;       // 行计数（v_cnt_d 打一拍）
     reg         ch_valid;                // 窗口数据有效
     reg  [5:0]  ctl_pipe;                // {tlast, tuser} 三级对齐（每级 2bit，bit5/4 为输出）
 
@@ -97,7 +101,7 @@ module raw_matrix_3x3_buffer #(
         if (!I_rst_n) begin
             {data_d0_d, data_d0, data_d1} <= 0;
             {valid_d0, valid_d1} <= 0;
-            {h_cnt, v_cnt, v_cnt_d} <= 0;
+            h_cnt <= 0;  v_cnt <= 0;  v_cnt_d <= 0;
             ch_valid <= 1'b0;  ctl_pipe <= 6'd0;
             for (k = 0; k < N; k = k + 1) matrix[k] <= 96'd0;
         end else begin
@@ -114,9 +118,11 @@ module raw_matrix_3x3_buffer #(
                 end else                                   matrix[k] <= 96'd0;
             end
             // 行/列计数器（窗口数据有效时推进）
-            {h_cnt, v_cnt} <= zhenghe_tuser ? 28'd0 :
-                { valid_d1 ? ((h_cnt == IMG_WIDTH_4x - 1) ? 14'd0 : h_cnt + 1'b1) : h_cnt,
-                  (valid_d1 && (h_cnt == IMG_WIDTH_4x - 1)) ? ((v_cnt == IMG_HEIGHT - 1) ? 14'd0 : v_cnt + 1'b1) : v_cnt };
+            h_cnt <= zhenghe_tuser ? 0 :
+                     (valid_d1 ? ((h_cnt == IMG_WIDTH_4x - 1) ? 0 : h_cnt + 1'b1) : h_cnt);
+            v_cnt <= zhenghe_tuser ? 0 :
+                     ((valid_d1 && (h_cnt == IMG_WIDTH_4x - 1))
+                      ? ((v_cnt == IMG_HEIGHT - 1) ? 0 : v_cnt + 1'b1) : v_cnt);
             ch_valid <= valid_d1;
             v_cnt_d  <= v_cnt;
             ctl_pipe <= {ctl_pipe[3:0], zhenghe_tlast, zhenghe_tuser};

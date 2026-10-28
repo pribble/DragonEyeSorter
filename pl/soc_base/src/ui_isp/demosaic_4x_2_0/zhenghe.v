@@ -17,8 +17,10 @@ module zhenghe #(
 );
 
     localparam IMG_WIDTH_4x = IMG_WIDTH >> 2;
+    // 读写地址只在 IMG_WIDTH_4x-1 回绕，值域恒 < IMG_WIDTH_4x，按 $clog2 收窄（BRAM 11bit 地址口零扩展）
+    localparam AW = ($clog2(IMG_WIDTH_4x) > 0) ? $clog2(IMG_WIDTH_4x) : 1;
 
-    reg  [10:0]           addra, addrb;
+    reg  [AW-1:0]         addra, addrb;
     reg                   valid_r0, valid_r1, I_tlast_d0, I_tlast_d1, I_tuser_d0, I_tuser_d1;
     reg  [13:0]           y_cnt;            // 行计数
     reg  [20:0]           x_cnt;            // 行内周期计数
@@ -42,7 +44,7 @@ module zhenghe #(
             {flag_valid_first, flag_valid_d0, flag_valid_d1} <= 3'd0;
             {cnt_first, valid_width} <= {16'd0, IMG_WIDTH_4x};
             {y_cnt, x_cnt} <= 0;
-            {addra, addrb} <= 22'd0;
+            {addra, addrb} <= 0;
             {O_tuser, O_tvalid, O_tlast} <= 3'd0;
         end else begin
             // 输入信号打两拍
@@ -78,12 +80,12 @@ module zhenghe #(
             else                  x_cnt <= 21'd0;
 
             // A 口（写）
-            if (I_tuser)          addra <= 11'd0;
-            else if (valid_r0)    addra <= (addra == IMG_WIDTH_4x - 1) ? 11'd0 : addra + 1'b1;
+            if (I_tuser)          addra <= 0;
+            else if (valid_r0)    addra <= (addra == IMG_WIDTH_4x - 1) ? 0 : addra + 1'b1;
 
             // B 口（读）
-            if (I_tuser)          addrb <= 11'd0;
-            else if (rd_valid)    addrb <= (addrb == IMG_WIDTH_4x - 1) ? 11'd0 : addrb + 1'b1;
+            if (I_tuser)          addrb <= 0;
+            else if (rd_valid)    addrb <= (addrb == IMG_WIDTH_4x - 1) ? 0 : addrb + 1'b1;
 
             // 输出流控制打一拍
             O_tuser  <= (x_cnt == rd_valid_width_d0 + 1) && (y_cnt == 14'd0);
