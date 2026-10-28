@@ -21,3 +21,25 @@ set_clock_groups -exclusive  \
 set_clock_groups -exclusive  \
     -group [get_clocks { clk_mipi } ] \
     -group [get_clocks {design_0_inst/design_0_pll_150m_Inst/dr1_phy_pll_bdb046a15d6b_Inst/u_DR1_PHY_PLL.clkc[0]}]
+
+# ---------------------------------------------------------------------------
+# DragonEyeSorter 2026-10-28 round-6: video timing generator PLL clock is asynchronous
+# to the NPU PLL / 150 MHz PLL.  The VTC pixel clock is its own PLL inside the
+# (encrypted) video timing generator: 148.5 MHz = 2.9697 x p2f_clk0, phase 262 deg;
+# NPU PLL and the 150 MHz PLL are both 150.015 MHz = 3 x p2f_clk0.  They are not
+# frequency-related, and the design does not cross data between them synchronously:
+#   * VTG PLL "locked" -> vendor pwm_0_1 asynchronous reset (recovery)  [place: 14 EP]
+#   * proc_sys_reset (150M) -> AXI4S-to-video async-FIFO reset (recovery) [place: 6 EP]
+#   * AXI4S async-FIFO address crosser -> first synchroniser stage (setup) [place: 5 EP]
+# STA used to time those CDC structures as synchronous setup/recovery: place SWNS
+# -0.954 ns / TNS -17.4 ns / 25 setup EP, none of them fixable by P&R.  The router's
+# setup optimisation chased them and never converged on 2026-10-28 (route Phase 2
+# 1667 overflow / Phase 3 1296 overflow, >2.5 h).  Declare the domains asynchronous;
+# the actual synchronous VTG -> TMDS (PLL_3 = 5 x VTC) relation stays analysed.
+set_clock_groups -asynchronous \
+    -group [get_clocks {design_0_inst/design_0_video_timing_generator_v01_0_Inst/video_timing_generator_v01_e2dadf6740ca_Inst/dr1_pll_vtc_Inst/u_DR1_PHY_PLL.clkc[0]}] \
+    -group [get_clocks {design_0_inst/design_0_PLL_npu_Inst/dr1_phy_pll_dcc52a480158_Inst/u_DR1_PHY_PLL.clkc[0]}]
+
+set_clock_groups -asynchronous \
+    -group [get_clocks {design_0_inst/design_0_video_timing_generator_v01_0_Inst/video_timing_generator_v01_e2dadf6740ca_Inst/dr1_pll_vtc_Inst/u_DR1_PHY_PLL.clkc[0]}] \
+    -group [get_clocks {design_0_inst/design_0_pll_150m_Inst/dr1_phy_pll_bdb046a15d6b_Inst/u_DR1_PHY_PLL.clkc[0]}]
