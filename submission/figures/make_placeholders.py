@@ -1,23 +1,29 @@
 #!/usr/bin/env python3
-"""make_placeholders.py — 生成报告 7 张「待插入实物照片」占位图（PNG 宽 3200 px）。
+"""make_placeholders.py — 生成报告内 2 张「待插入实物照片」占位图（PNG 宽 3200 px）。
 
-    python submission/figures/make_placeholders.py                # 画全部 7 张，写 fig_meta.json
-    python submission/figures/make_placeholders.py overview test  # 只画 id 里含 overview / test 的
-    python submission/figures/make_figures.py                     # 报告生成链：5 线稿 + 7 占位
-    python submission/figures/make_figures.py ph                  # 只画 7 张占位
+    python submission/figures/make_placeholders.py      # 画报告内 2 张（图 5 / 图 6），写 fig_meta.json
+    python submission/figures/make_placeholders.py ui   # 只画 id 里含 ui 的
+    python submission/figures/make_figures.py           # 报告生成链：5 线稿 + 2 占位 = 7 张
+    python submission/figures/make_figures.py ph        # 只画报告内 2 张占位
 
-清单与拍摄要求都在同目录的 ``placeholder_manifest.json``（7 项：id / file / h_pt / 图注 /
-机位 / 光线 / 拍摄要求）。画布按报告落版尺寸 1:1（宽 447.92pt = 15.8cm，高 = 447.92 × 比例），
-观感与线稿图一致：白底、灰色虚线边框、极浅灰填充，居中三行字 ——
-9.5pt 黑体「【待插入实物照片】」+ 8.5pt 说明（标题 / 机位 / 建议分辨率）+ 7.5pt 拍摄要求
-（图内不写「图 N」编号——图号由 PDF 里图下方的正式图注承担，避免重复编号）。
-字号取 ``figkit.FS`` 档位（head / box / sub），全图最小 7.5pt；``fk.save()`` 会核对越界与字号，
-另打印三行字的实测宽度与左右余量。每张图的信息并入 ``fig_meta.json``（与 5 张线稿同一结构，
-供 ``submission/build/verify_report.py`` 复核落版字号与 dpi）。
+清单与拍摄要求都在同目录的 ``placeholder_manifest.json``（7 项：id / in_report / file / h_pt /
+图注 / 机位 / 光线 / 拍摄要求）。**只生成 in_report=true 的 2 张**（图 5 HDMI 操作界面五页、
+图 6 零件与七类缺陷样件，分别是硬性② 人机界面与硬性④ 缺陷分类的直接证据）；in_report=false
+的 5 项（整机全景 / 开发板 / 机械臂 / 导流挡板 / 测试现场）**不进报告版面**，只作「作品照片 +
+演示视频」拍摄清单使用，本脚本不生成它们的 PNG。
 
-拍了实物后：按 manifest 的 ``resolution`` 把照片存成同名 ``ph_xxx.png`` 覆盖占位图，并把该项
-``replaced`` 改为 true —— 本脚本 / ``make_figures.py`` / ``build.ps1`` 之后就不再重画这一项，
-只读实际像素尺寸登记 meta；正文（``技术文档.md``）与图注一字不动。替换流程见 README「占位图」。
+画布按报告落版尺寸 1:1（宽 447.92pt = 15.8cm，高 = 447.92 × 比例），观感与线稿图一致：
+白底、灰色虚线边框、极浅灰填充，居中三行字 —— 9.5pt 黑体「【待插入实物照片】」+ 8.5pt 说明
+（标题 / 机位 / 建议分辨率）+ 7.5pt 拍摄要求（图内不写「图 N」编号——图号由 PDF 里图下方的
+正式图注承担，避免重复编号）。字号取 ``figkit.FS`` 档位（head / box / sub），全图最小 7.5pt；
+``fk.save()`` 会核对越界与字号，另打印三行字的实测宽度与左右余量。每张图的信息并入
+``fig_meta.json``（与 5 张线稿同一结构，只登记报告实际引用的 7 张，供
+``submission/build/verify_report.py`` 复核落版字号与 dpi）。
+
+拍了实物后：按 manifest 的 ``resolution`` 把照片存成同名 ``ph_xxx.png`` 覆盖占位图（只有
+in_report=true 的 2 张需要替换），并把该项 ``replaced`` 改为 true —— 本脚本 / ``make_figures.py`` /
+``build.ps1`` 之后就不再重画这一项，只读实际像素尺寸登记 meta；正文（``技术文档.md``）与图注
+一字不动。替换流程见 README「占位图」。报告外 5 项的拍摄要求见 README「作品照片与视频拍摄清单」。
 """
 import json
 import os
@@ -40,20 +46,30 @@ LINE_YS = (15.0, 1.5, -10.0)                          # 三行字相对画布垂
 
 
 def load_manifest():
-    """读清单并校验（比例 ↔ h_pt、file ↔ id、7 项齐全）；清单错就是脚本错，直接抛 ValueError。"""
+    """读清单并校验（in_report / figure_no、比例 ↔ h_pt、file ↔ id、7 项齐全）；清单错即脚本错。"""
     with open(MANIFEST_PATH, encoding='utf-8') as f:
         man = json.load(f)
     items = man.get('placeholders', [])
     if len(items) != 7:
         raise ValueError('placeholder_manifest.json 应有 7 项，实际 %d 项' % len(items))
+    n_in = sum(1 for it in items if it.get('in_report'))
+    if n_in != 2:
+        raise ValueError('清单里 in_report=true 的项应为 2 项（图 5 / 图 6），实际 %d 项' % n_in)
     ids = set()
     for it in items:
+        if 'in_report' not in it:
+            raise ValueError('清单项缺字段 in_report：%r' % it)
         for k in ('id', 'file', 'h_pt', 'aspect', 'title', 'caption', 'desc', 'shoot'):
             if not it.get(k):
                 raise ValueError('清单项缺字段 %s：%r' % (k, it))
         if it['id'] in ids:
             raise ValueError('清单 id 重复：%s' % it['id'])
         ids.add(it['id'])
+        if it['in_report']:
+            if not isinstance(it.get('figure_no'), int):
+                raise ValueError('%s 是报告内插图，figure_no 必须是整数（图 5 / 图 6）' % it['id'])
+        elif it.get('figure_no') is not None:
+            raise ValueError('%s 不在报告内（in_report=false），figure_no 应为 null' % it['id'])
         if it['file'] != it['id'] + '.png':
             raise ValueError('%s 的 file 必须是 %s.png（报告按这个文件名引用）'
                              % (it['id'], it['id']))
@@ -63,6 +79,16 @@ def load_manifest():
             raise ValueError('%s 的 h_pt=%.2f 与 aspect %s 不符（应为 %.2f）'
                              % (it['id'], it['h_pt'], it['aspect'], want))
     return man
+
+
+def report_items():
+    """报告内需要生成 PNG 的占位项（in_report=true，2 项）。"""
+    return [it for it in load_manifest()['placeholders'] if it.get('in_report')]
+
+
+def report_ids():
+    """报告内占位图的 id 列表（供 fig_meta 只登记报告实际引用的图）。"""
+    return [it['id'] for it in report_items()]
 
 
 def _png_size(path):
@@ -127,13 +153,12 @@ def _register_replaced(item):
 
 
 def run(keys=None):
-    """画占位图（keys 为 id 子串过滤，空 / None = 全部）。返回 (处理项数, 错误清单)。"""
-    man = load_manifest()
+    """画报告内占位图（只处理 in_report=true；keys 为 id 子串过滤，空 / None = 全部）。
+    返回 (处理项数, 错误清单)。报告外（in_report=false）的 5 项只作拍摄清单，不生成 PNG。"""
     keys = [k for k in (keys or []) if k]
-    todo = [it for it in man['placeholders']
-            if not keys or any(k in it['id'] for k in keys)]
+    todo = [it for it in report_items() if not keys or any(k in it['id'] for k in keys)]
     if todo:
-        print('占位图（待拍实物照片）：')
+        print('占位图（报告内待拍实物照片）：')
     n, errors = 0, []
     for it in todo:
         if it.get('replaced'):
@@ -155,17 +180,25 @@ def run(keys=None):
 def main(argv):
     keys = [a for a in argv[1:] if not a.startswith('--')]
     n, errors = run(keys)
-    fk.write_meta()
+    # fig_meta 只登记报告实际引用的图（5 线稿 + 2 占位），顺带清掉已移出报告的旧记录
+    try:
+        import make_figures
+        keep = list(make_figures.MODULE_NAMES) + report_ids()
+    except Exception:                      # noqa: BLE001 —— 独立运行且取不到线稿名单时不裁剪
+        keep = None
+    fk.write_meta(keep=keep)
     if keys and n == 0 and not errors:
-        print('关键字没有匹配到占位图：%s（清单 id：%s）'
-              % (' '.join(keys), ', '.join(i['id'] for i in load_manifest()['placeholders'])))
+        print('关键字没有匹配到报告内占位图：%s（报告内 id：%s）'
+              % (' '.join(keys), ', '.join(report_ids())))
         return 1
     if errors or fk.failed():
         for e in errors:
             print('ERR %s' % e)
         print('占位图有问题 —— 见上面 ERR 行')
         return 1
-    print('占位图完成：本次 %d 项' % n)
+    n_out = len(load_manifest()['placeholders']) - len(report_ids())
+    print('占位图完成：本次 %d 项（报告内共 %d 张；报告外 %d 项为作品照片 / 视频拍摄清单，不生成 PNG）'
+          % (n, len(report_ids()), n_out))
     return 0
 
 

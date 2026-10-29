@@ -6,8 +6,10 @@
 所在目录解析。只认 build/README.md「源写法」表的写法——
   `#` 唯一标题、`**标签**：值` 元信息行（标题后连续行，上限 6 行）、`##` 一级标题、
   `###` 二级标题、普通段落（连续行合并）、`**强调**`、`` `行内代码` ``、
-  `![alt](图)` + 下一行 `**图 N**　说明。`、表格上一行 `**表 N**　说明`、`| … |` 表格、
-  `1. ` 列表（仅参考文献 / 附录）、`---` 分隔线；旧 `*图 N 说明*` 斜体图注兼容。
+  `![alt](图)` + 下一行 `**图 N**　说明。`、表格上一行 `**表 N**　说明`、`| … |` 表格
+  （分隔行 `|:---|:---:|---:|`：破折号个数 = 该列宽度权重、冒号 = 左 / 中 / 右对齐；
+  破折号个数全表相同时回退自动列宽）、`1. ` 列表（仅参考文献 / 附录）、`---` 分隔线；
+  旧 `*图 N 说明*` 斜体图注兼容。
   超范围写法（代码块 / 引用块 / 四级标题 / 项目符号列表 / 图文混排）报错退出并指出行号。
 
 版式令牌（单位 pt）：A4 21×29.7cm、页边距上下左右 2.4cm、页脚距边 1.6cm、
@@ -15,7 +17,8 @@
 （440 twips）、单倍行距、两端对齐；标题黑体 17.5pt 居中（参照实测 17.28pt，OOXML 只能存半磅，
 取最近值 17.5）+ 标题后连续 10pt 元信息行；一级标题黑体 14.5pt（参照实测 14.35pt，同理）、二级 12pt；
 图注 / 表注宋体加粗 10pt 居中，表注在表格上方；三线表 9pt（顶 / 底 1.5pt、表头下 0.75pt，
-无竖线 / 行线 / 底纹，整表 15.6cm 固定布局，表头跨页重复、行不跨页）；图宽 15.8cm；
+无竖线 / 行线 / 底纹，整表 15.6cm 固定布局，表头跨页重复、行不跨页、单元格顶对齐、
+行高只按内容；列宽可由分隔行破折号权重控制，长 token 有硬下限）；图宽 15.8cm；
 行内代码 Consolas 10pt 无底纹；页脚居中 PAGE 域 11pt；全篇纯黑。
 
 行距一律用倍数（lineRule=auto，单倍 = 240）：固定行距会裁字并让上下段叠在一起，见
@@ -23,8 +26,9 @@ set_spacing。宋体单倍行高约 1.286×字号（11pt → 约 14.1pt），参
 1.286em 对参照论文 1.24em「够近，不必压到固定值」。
 
 生成后自检（读回 docx 复核本节令牌：节数 / 页面 / 页边距 / 页脚 / 无页眉 / 无目录域 /
-字号 / 首行缩进 / 表宽与线型 / 图注加粗 / 表注加粗 / 禁项 / 固定行距），任一不过退出码 1。
-自检统计写 -Stats JSON（保留旧字段，新增 placeholders / captions）。
+字号 / 首行缩进 / 表宽与线型 / 图注加粗 / 表注加粗 / 禁项 / 固定行距 / 表列宽与分隔行
+权重偏差 ≤8% / 单格 >6 行告警），任一不过退出码 1。
+自检统计写 -Stats JSON（保留旧字段，新增 placeholders / captions / table_warnings）。
 
 用法（cwd 任意，路径都能用相对 cwd 或绝对路径）：
     python submission/build/md2docx.py [-Source <md>] [-Out <docx>] [-Stats <json>]
@@ -488,6 +492,29 @@ def split_cells(line):
     return [c.strip().replace("\\|", "|") for c in CELL_SPLIT_RE.split(s)]
 
 
+def parse_sep_cells(line):
+    """解析表格分隔行（SPEC 源写法扩展）：
+
+    - **破折号个数 = 该列相对宽度权重**（归一化到整表 15.6cm；全表相同时回退自动算法）；
+    - **冒号 = 对齐**：` :--- ` 左 / ` :---: ` 中 / ` ---: ` 右；都不写 = 沿用默认对齐。
+    """
+    specs = []
+    for cell in split_cells(line):
+        c = cell.strip()
+        left = c.startswith(":")
+        right = len(c) > 1 and c.endswith(":")
+        if left and right:
+            align = "center"
+        elif left:
+            align = "left"
+        elif right:
+            align = "right"
+        else:
+            align = None
+        specs.append({"weight": max(c.count("-"), 1), "align": align})
+    return specs
+
+
 def _caption_text(kind, num, desc):
     """统一成约定的 `图 N　说明` 写法（全角空格分隔编号与说明）。"""
     desc = desc.strip()
@@ -573,7 +600,13 @@ def parse_source(md_path: Path):
                     raise ValueError("表格列数不一致：表头 %d 列 / 本行 %d 列（%r）"
                                      % (len(rows[0]), len(cells), tl[:60]))
                 rows.append(cells)
-            push("table", rows, i + 1)
+            seps = parse_sep_cells(tlines[1])
+            if len(seps) != len(rows[0]):
+                raise ValueError("表格分隔行列数 %d 与表头列数 %d 不一致：%r"
+                                 % (len(seps), len(rows[0]), tlines[1][:60]))
+            weights = [s["weight"] for s in seps]
+            hinted = len(set(weights)) > 1          # 破折号个数全表相同时回退自动列宽
+            push("table", {"rows": rows, "seps": seps, "hinted": hinted}, i + 1)
             continue
         m = IMG_RE.match(s)
         if m and m.group(0) == s:
@@ -843,6 +876,77 @@ def column_widths(rows, total_cm=TABLE_W_CM, size_pt=TABLE_PT):
     return [int(round(w / 28.3465 * TWIPS_PER_CM)) for w in best_w]
 
 
+def _unbreakable_token(cell, size_pt=TABLE_PT):
+    """单元格里最长的**不可断**片段（型号 / 路径 / 代码 / 数字串）。
+
+    CJK 可以逐字断行、全角标点与空格是断点；只有西文数字串这类不能拆的才算下限。
+    （旧算法把整段中文当 token，会把「指标」列硬撑宽，反而抢走数值列的宽度。）
+    """
+    cell = re.sub(r"[*`]", "", cell or "")
+    runs = re.split(r"[\u2e80-\u9fff\u3000-\u303f\uff00-\uffef]+"
+                    r"|[\s、，,；;：:/|（）()\[\]]+", cell)
+    return max(runs or [""], key=len)
+
+
+def table_min_widths(rows, size_pt=TABLE_PT):
+    """每列宽度下限（pt）= 最长不可断 token + 左右单元格内边距（SPEC 表格令牌）。"""
+    ncol = len(rows[0])
+    margin_pt = 2 * CELL_MAR_TW / 20.0
+    mins = []
+    for c in range(ncol):
+        longest = 0.0
+        for r in rows:
+            token = _unbreakable_token(r[c] if c < len(r) else "", size_pt)
+            longest = max(longest, text_w(token, size_pt))
+        mins.append(longest + margin_pt)
+    return mins
+
+
+def hinted_widths(rows, seps, total_cm=TABLE_W_CM, size_pt=TABLE_PT):
+    """按分隔行破折号权重分配列宽（归一化到整表 15.6cm，固定布局）。
+
+    权重 = 目标份额；每列有「最长不可断 token + 内边距」的下限。先满足下限，再按
+    权重把余量分给各列；若某列被下限顶开（长 token 不能拆），其余列按权重让位。
+    返回 twips 列表，合计 = 整表宽。
+    """
+    ncol = len(rows[0])
+    total_pt = total_cm * 28.3465
+    weights = [max(int(s.get("weight") or 0), 1) for s in seps]
+    sw = float(sum(weights))
+    ideal = [total_pt * w / sw for w in weights]
+    mins = table_min_widths(rows, size_pt)
+    if sum(mins) > total_pt:                 # 极端：下限和超整表宽 → 等比缩放
+        scale = total_pt / sum(mins)
+        mins = [m * scale for m in mins]
+    widths = list(mins)
+    extra = total_pt - sum(widths)
+    if extra > 0:
+        caps = [max(ideal[i] - widths[i], 0.0) for i in range(ncol)]
+        cap_sum = sum(caps)
+        if cap_sum > 1e-6:
+            take = min(extra, cap_sum)
+            widths = [widths[i] + take * caps[i] / cap_sum for i in range(ncol)]
+            extra -= take
+        if extra > 1e-6:                     # 各列都到目标份额后仍有剩 → 按权重均摊
+            widths = [widths[i] + extra * weights[i] / sw for i in range(ncol)]
+    scale = total_pt / sum(widths)
+    return [int(round(x * scale / 28.3465 * TWIPS_PER_CM)) for x in widths]
+
+
+JC_BY_NAME = {"left": WD_ALIGN_PARAGRAPH.LEFT,
+              "center": WD_ALIGN_PARAGRAPH.CENTER,
+              "right": WD_ALIGN_PARAGRAPH.RIGHT}
+
+
+def body_cell_align(col, text, seps=None):
+    """表体单元格对齐：分隔行写了冒号按冒号；否则第一列左对齐、其余沿用 cell_align()。"""
+    if seps and col < len(seps) and seps[col].get("align"):
+        return JC_BY_NAME[seps[col]["align"]]
+    if col == 0:
+        return WD_ALIGN_PARAGRAPH.LEFT
+    return cell_align(text)
+
+
 def set_table_borders(table, spec):
     """表格边框（设计令牌）：三线表——顶 / 底粗、表头下细，无竖线 / 行线 / 底纹。"""
     tblPr = table._tbl.tblPr
@@ -895,12 +999,6 @@ def no_row_split(row):
     el.set(qn("w:val"), "true")
 
 
-def set_row_height(row, twips):
-    el = _ordered_child(row._tr.get_or_add_trPr(), "w:trHeight", _TRPR_ORDER)
-    el.set(qn("w:val"), str(int(twips)))
-    el.set(qn("w:hRule"), "atLeast")
-
-
 ONLY_NUM_RE = re.compile(r"^[\d.\s%±~≤≥<>/()\-–—、]+$")
 PCT_RE = re.compile(r"\d\s*[%％]")
 UNIT_RE = re.compile(r"(fps|ms|µs|us|ns|mm|cm|pt|Hz|MHz|kbit|步|次|项|件|轴|页)")
@@ -948,11 +1046,20 @@ def cell_align(text):
     return WD_ALIGN_PARAGRAPH.LEFT
 
 
-def render_table(doc, rows):
+def render_table(doc, payload):
     """三线表：顶 / 底 1.5pt 黑、表头下 0.75pt；无竖线 / 行线 / 底纹；
-    整表 15.6cm 固定布局；表头宋体加粗 9pt、表体宋体 9pt；行不跨页、表头跨页重复。"""
+    整表 15.6cm 固定布局；表头宋体加粗 9pt、表体宋体 9pt；行不跨页、表头跨页重复。
+
+    列宽：分隔行有破折号权重提示时按权重归一化（长 token 下限兜底），破折号个数
+    全表相同时回退自动算法；对齐：冒号提示优先，否则首列左、其余短串居中 / 长文左；
+    单元格垂直顶对齐，行高只按内容（不再给表头设最小行高）。
+    """
+    rows = payload["rows"]
+    seps = payload.get("seps")
+    hinted = bool(payload.get("hinted")) and seps and len(seps) == len(rows[0])
     ncol = len(rows[0])
-    widths = column_widths(rows, size_pt=TABLE_PT)
+    widths = (hinted_widths(rows, seps) if hinted
+              else column_widths(rows, size_pt=TABLE_PT))
     table = doc.add_table(rows=len(rows), cols=ncol)
     table.style = "Table Grid"
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
@@ -977,10 +1084,11 @@ def render_table(doc, rows):
         for c in range(ncol):
             cell = table.cell(r, c)
             cell.width = Twips(widths[c])
-            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
             par = cell.paragraphs[0]
-            fmt_par(par, before=0.0, after=0.0, multiple=SINGLE_LINE,
-                    align=WD_ALIGN_PARAGRAPH.CENTER if r == 0 else cell_align(cells[c]))
+            align = (WD_ALIGN_PARAGRAPH.CENTER if r == 0
+                     else body_cell_align(c, cells[c], seps if hinted else None))
+            fmt_par(par, before=0.0, after=0.0, multiple=SINGLE_LINE, align=align)
             add_runs(par, cells[c], size_pt=TABLE_HEAD_PT if r == 0 else TABLE_PT,
                      bold=(r == 0))
             if r == 0:                              # 栏目线：表头下 0.75pt 细线
@@ -988,7 +1096,6 @@ def render_table(doc, rows):
                                               "color": C_INK})
     for row in table.rows:                       # 行不跨页，再让表头行跨页重复
         no_row_split(row)
-    set_row_height(table.rows[0], TABLE_HEAD_ROW_TW)
     repeat_header(table.rows[0])
     keep_table_rows(table, rows, widths)         # 小表整表同页 / 大表表头不落单
     return table
@@ -1222,9 +1329,11 @@ def _xml_of(zf, name):
 
 
 def self_check(out_path: Path, *, title, n_h1, n_h2, n_img, n_tbl, n_figcap,
-               n_tabcap, n_meta, fig_w, placeholder_names, forbidden):
+               n_tabcap, n_meta, fig_w, placeholder_names, forbidden,
+               table_specs=None):
     """读回 docx 复核令牌表。返回 (issues, stats)。"""
     issues = []
+    warnings = []
 
     def need(ok, msg, detail=""):
         if not ok:
@@ -1437,6 +1546,68 @@ def self_check(out_path: Path, *, title, n_h1, n_h2, n_img, n_tbl, n_figcap,
                         if r is table.rows[0]:
                             need(run.font.bold is True,
                                  "第 %d 张表表头未加粗" % (ti + 1))
+
+    # ---- 单元格垂直对齐 = top（多行行不再上下居中撑高，行高只按内容）
+    for ti, table in enumerate(back.tables):
+        for row in table.rows:
+            for cell in row.cells:
+                tcPr = cell._tc.tcPr
+                v = tcPr.find(qn("w:vAlign")) if tcPr is not None else None
+                need(v is not None and v.get(qn("w:val")) == "top",
+                     "第 %d 张表有单元格不是顶对齐" % (ti + 1))
+
+    # ---- 列宽提示：实测列宽与破折号权重的偏差 ≤8%
+    # 长 token 下限会顶开列宽（否则型号 / 代码会被拆开），这属于规则内的让位：
+    # 和「权重 + 下限」算出来的期望一致就只告警，否则才算实现错误。
+    for ti, table in enumerate(back.tables):
+        spec = ((table_specs or [])[ti]
+                if table_specs and ti < len(table_specs) else None)
+        if not spec or not spec.get("hinted"):
+            continue
+        seps = spec.get("seps") or []
+        rows_src = spec.get("rows") or []
+        if len(seps) != len(table.columns) or not rows_src:
+            continue
+        weights = [max(int(s.get("weight") or 0), 1) for s in seps]
+        sw = float(sum(weights))
+        grid = [int(c.get(qn("w:w")) or 0)
+                for c in table._tbl.tblGrid.findall(qn("w:gridCol"))]
+        total = sum(grid) or 1
+        bounded = hinted_widths(rows_src, seps)
+        for ci, w in enumerate(grid):
+            if ci >= len(weights):
+                break
+            expect = weights[ci] / sw
+            dev = abs(w / total - expect) / expect if expect else 0.0
+            if dev <= 0.08:
+                continue
+            bounded_ok = (ci < len(bounded)
+                          and abs(w - bounded[ci]) <= max(2.0, bounded[ci] * 0.02))
+            if bounded_ok:
+                warnings.append(
+                    "表 %d 第 %d 列宽比破折号权重宽 %.0f%%（最长 token 下限顶开，"
+                    "属规则内让位）" % (ti + 1, ci + 1, dev * 100))
+            else:
+                need(False, "表 %d 第 %d 列宽与权重偏差 %.0f%% > 8%%"
+                     % (ti + 1, ci + 1, dev * 100),
+                     "%.2fcm / 权重份额 %.0f%%"
+                     % (w / TWIPS_PER_CM, expect * 100))
+
+    # ---- 单元格行数 > 6 行告警（源里写得太长，靠排版硬撑会让表高失控）
+    for ti, table in enumerate(back.tables):
+        for ri, row in enumerate(table.rows):
+            for ci, cell in enumerate(row.cells):
+                text = re.sub(r"[*`]", "", cell.text or "")
+                if not text.strip():
+                    continue
+                w_tw = cell.width.twips if cell.width is not None else 0
+                avail = w_tw / 20.0 - 2 * CELL_MAR_TW / 20.0
+                lines = wrapped_lines(text, max(avail, 1.0), TABLE_PT)
+                if lines > 6:
+                    warnings.append(
+                        "表 %d 行 %d 列 %d 约 %d 行（建议精简源单元格）"
+                        % (ti + 1, ri + 1, ci + 1, lines))
+
     # 图注与插图数量一致（每张图有图注、宽 15.8cm）
     need(n_figcap == n_img, "图注数与插图数不一致",
          "图注 %d / 插图 %d" % (n_figcap, n_img))
@@ -1465,6 +1636,7 @@ def self_check(out_path: Path, *, title, n_h1, n_h2, n_img, n_tbl, n_figcap,
         "first_line_twips": CHAR_TWIPS, "margin_cm": MARGIN_CM,
         "figure_width_cm": fig_w, "table_width_cm": TABLE_W_CM,
         "placeholders": placeholder_names,
+        "table_warnings": warnings,
         "self_check_issues": issues,
     }
     return issues, stats
@@ -1517,6 +1689,7 @@ def build(source: Path, out_path: Path, caption_clean=True, caption_rules=None,
     counts = {"h2": 0, "h3": 0, "images": 0, "tables": 0, "figcap": 0,
               "tabcap": 0, "meta": 0}
     figures, placeholders, captions, caption_diffs = [], [], [], []
+    table_specs = []                          # 表格源块（含分隔行权重 / 对齐提示）
 
     for kind, payload, _lineno in blocks:
         if kind == "meta":
@@ -1595,6 +1768,7 @@ def build(source: Path, out_path: Path, caption_clean=True, caption_rules=None,
             add_caption_runs(par, text)
         elif kind == "table":
             render_table(doc, payload)
+            table_specs.append(payload)
             counts["tables"] += 1
             sp = fmt_par(doc.add_paragraph(), before=0.0, after=0.0,
                          multiple=SPACER_LINE, widow=False)
@@ -1626,7 +1800,7 @@ def build(source: Path, out_path: Path, caption_clean=True, caption_rules=None,
         n_img=counts["images"], n_tbl=counts["tables"],
         n_figcap=counts["figcap"], n_tabcap=counts["tabcap"],
         n_meta=counts["meta"], fig_w=fig_w, placeholder_names=placeholders,
-        forbidden=hits)
+        forbidden=hits, table_specs=table_specs)
 
     stats = {
         "source": str(source),
@@ -1658,6 +1832,7 @@ def build(source: Path, out_path: Path, caption_clean=True, caption_rules=None,
         "placeholders": placeholders,
         "captions": captions,
         "figure_width_cm": fig_w,
+        "table_warnings": token_stats.get("table_warnings") or [],
         "caption_clean": bool(caption_clean),
         "caption_cleanups": caption_diffs,
         "tokens": token_stats,
@@ -1725,6 +1900,12 @@ def main(argv=None):
     if stats["caption_cleanups"]:
         for c in stats["caption_cleanups"]:
             print("[md2docx] 图注净化  : 删掉 %s ← %s…" % (c["removed"], c["caption"]))
+    warns = stats.get("table_warnings") or []
+    if warns:
+        print("[md2docx] 表格提示  : %d 条（列宽下限顶开 / 单元格过长；不阻断生成）"
+              % len(warns))
+        for w in warns[:10]:
+            print("[md2docx]   - %s" % w)
     print("[md2docx] footer    : %s（PAGE 域 11pt 居中）"
           % " | ".join(t for t in stats["footers"] if t))
     print("[md2docx] bytes     : %d" % stats["bytes"])

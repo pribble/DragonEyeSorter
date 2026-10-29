@@ -1,38 +1,41 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""作品报告验收自检（SPEC v1 论文式报告；独立复核用，不改任何产物）。
+"""作品报告验收自检（论文式报告；独立复核用，不改任何产物）。
 
-对 **docx + PDF + 源 Markdown** 三方对账，逐项核对 submission/.refactor/SPEC.md
-§2（排版令牌）、§3（源写法）、§5（图表清单）、§8（验收标准）的硬要求，原始结果
-写进 submission/out/_verify_report.txt。检查项按组编号（与 SPEC §8 对应）：
+对 **docx + PDF + 源 Markdown** 三方对账，逐项核对报告版式与内容口径（版式令牌见
+submission/build/README.md，重构结论见 docs/log/2026-10-29-报告重构纯论文式.md），
+原始结果写进 submission/out/_verify_report.txt。检查项按组编号：
 
   1 产物与生成统计：docx / PDF / 源可读，PDF 文件头与 ≤ 50MB，生成侧自检无告警，
     页数取 Word ComputeStatistics（word_to_pdf.ps1 记录），不估算
-  2 源 Markdown：标题层级、图注表注计数与编号连续唯一、图注在图下方 / 表注在表上方、
-    每个图/表都被正文引用、无代码块 / 引用块 / 四级标题 / 「- 」列表 / HTML
+  2 源 Markdown：标题层级、元信息行（标题后连续 `**标签**：值`，上限 6、按实际条数）、
+    图注表注计数与编号连续唯一、图注在图下方 / 表注在表上方、每个图/表都被正文引用、
+    无代码块 / 引用块 / 四级标题 / 「- 」列表 / HTML
   3 DOCX 结构：段落 / 表格 / 插图计数三方对账，单节无封面无目录，标题与元信息、
     章节文字逐条等于源，图注表注数量等于源
   4 版式令牌：正文宋体 11pt / Times 两端对齐 / 首行缩进 440 twips / 单倍行距、
-    标题 17.5pt、H1 14.5pt、H2 12pt（Word 半磅粒度落版值）、图注表注加粗 10pt、行内代码 Consolas
-    10pt、参考列表 10pt 悬挂 1.5 字符、无固定行距、全篇只有黑色
+    标题 17.5pt、H1 14.5pt、H2 12pt（Word 半磅粒度落版值）、图注表注加粗 10pt、
+    行内代码 Consolas 10pt、参考列表 10pt 悬挂 1.5 字符、无固定行距、全篇只有黑色
   5 三线表：≤ 15.6cm 固定布局、上下 1.5pt / 表头下 0.75pt 黑线、无竖线行线底纹、
-    表头重复加粗、行不跨页、单元格内边距 108 twips、表体 9pt
+    表头重复加粗、行不跨页、单元格内边距 108 twips、表体 9pt；
+    **列宽与源分隔行提示（破折号 = 权重）偏差 ≤ 8%**、**列对齐 = 源冒号提示**，
+    单元格估算行数 > 6 行只给 WARN（不判 FAIL）
   6 插图与占位：宽 15.8cm 居中、图注紧跟图下方且与图同页、等效 dpi ≥ 300、
-    落版最小字号 ≥ 7pt、占位图与 placeholder_manifest.json 一一对应；
-    **--final 模式下仍有占位图残留判 FAIL**（交件前门禁）
+    落版最小字号 ≥ 7pt；占位按 placeholder_manifest.json 的 `in_report` 计
+    （图注数 = 源图数 = 报告插图数），**--final 只对 in_report=true 且
+    replaced=false 的占位判残留 FAIL**（交件前门禁）
   7 页面与页码：A4、页边距 2.4cm、页脚距边 1.6cm、无页眉、页脚居中 PAGE 域
     （无 NUMPAGES / 「第 X 页」）、页码从 1 起、附录 A 前分页、PDF 无彩色
   8 PDF 渲染：字体全部嵌入、四族字体齐全（宋体 / 黑体 / Times / Consolas）、
     中文不被回退字体替换、行框无重叠
   9 逐页留白：fill% = 内容高度 / 版心 24.9cm，正文页填充 < 50% 判 FAIL（末页除外），
     无整页空白；底部空白 > 20% 的页逐页列出原因
- 10 数字守恒：调用 .refactor/check_numbers.py（旧报告 → 新报告），
-    「新有旧无」数字必须为 0
+ 10 数字守恒：调用 .refactor/check_numbers.py（该中间产物已随重构收尾删除 → SKIP）
  11 禁项与生成链：无学校 / 学院 / 指导老师 / 参赛队名、无主机绝对路径、无彩色，
     生成链脚本与 README 不含真实主机路径
 
 计数不写死：章 / 节 / 图 / 表数量一律从源 Markdown 与 out/_md2docx.json 取数，
-再与 docx / PDF 对账。
+再与 docx / PDF 对账；元信息行、占位图条数同样按源与 manifest 实际条数核对。
 
 用法：
     python submission/build/verify_report.py                 # 常规验收
@@ -40,12 +43,13 @@
     python submission/build/verify_report.py --fill --pdf <任意 PDF> [--warn 20]
         —— 只跑逐页留白分析（改版前后对比用；可指向旧 PDF）
     python submission/build/verify_report.py --docx a.docx --pdf b.pdf --source c.md
-退出码：0 全部通过 / 1 有 FAIL。
+退出码：0 无 FAIL / 1 有 FAIL（WARN 不影响退出码）。
 """
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import subprocess
 import sys
@@ -122,6 +126,7 @@ ALLOWED = ("2026 全国大学生嵌入式芯片与系统设计竞赛",
 
 GROUPS: list[str] = []
 results: list[tuple[str, str, object, str]] = []
+warnings: list[tuple[str, str, str]] = []      # WARN：只提示，不影响退出码
 LINES: list[str] = []
 _seen_groups: set[str] = set()
 GROUP_ORDER = ["1 产物与生成统计", "2 源 Markdown", "3 DOCX 结构", "4 版式令牌",
@@ -135,15 +140,27 @@ def emit(s: str = "") -> None:
     print(s)
 
 
-def check(group: str, name: str, ok, detail: str = "") -> None:
-    """ok = True 通过 / False 失败 / None 跳过（合理例外，报告写明原因）。"""
+def _group_head(group: str) -> None:
+    """该组第一次出现：报告里起组头。"""
     if group not in GROUPS:
         GROUPS.append(group)
-    if group not in _seen_groups:                  # 该组第一次出现：报告里起组头
+    if group not in _seen_groups:
         _seen_groups.add(group)
         emit("")
         emit("【%s】" % group)
+
+
+def check(group: str, name: str, ok, detail: str = "") -> None:
+    """ok = True 通过 / False 失败 / None 跳过（合理例外，报告写明原因）。"""
+    _group_head(group)
     results.append((group, name, ok, detail))
+
+
+def warn(group: str, name: str, detail: str = "") -> None:
+    """WARN：版面提示项，不算失败、不影响退出码（如单元格 > 6 行）。"""
+    _group_head(group)
+    warnings.append((group, name, detail))
+    emit("  WARN %s%s" % (name, ("  —— " + detail) if detail else ""))
 
 
 def section(group: str) -> None:
@@ -213,12 +230,56 @@ TABLE_ROW_RE = re.compile(r"^\|.*\|$")
 TABLE_SEP_RE = re.compile(r"^\|[\s:|-]+\|$")
 
 
+def split_row(line: str) -> list[str]:
+    """按未转义的 | 切表格行。"""
+    t = line.strip()
+    if t.startswith("|"):
+        t = t[1:]
+    if t.endswith("|"):
+        t = t[:-1]
+    cells, buf, esc = [], [], False
+    for ch in t:
+        if esc:
+            buf.append(ch)
+            esc = False
+        elif ch == "\\":
+            buf.append(ch)
+            esc = True
+        elif ch == "|":
+            cells.append("".join(buf).strip())
+            buf = []
+        else:
+            buf.append(ch)
+    cells.append("".join(buf).strip())
+    return cells
+
+
+def sep_hint(cell: str):
+    """分隔行单元 → (列宽权重, 对齐提示)。
+
+    破折号个数 = 列宽权重（至少 1）；冒号位置 = 对齐：
+    `:---` 左、`:---:` 居中、`---:` 右、无冒号 = 未提示。
+    """
+    c = cell.strip()
+    weight = max(c.count("-"), 1)
+    left, right = c.startswith(":"), c.endswith(":")
+    if left and right:
+        align = "center"
+    elif right:
+        align = "right"
+    elif left:
+        align = "left"
+    else:
+        align = None
+    return weight, align
+
+
 def parse_source(text: str) -> dict:
     """把源 Markdown 解析成结构（独立于 md2docx.py 的统计）。"""
     lines = text.splitlines()
     src = {"title": "", "meta": [], "h1": [], "h2": [], "heading_seq": [],
            "images": [], "fig_captions": [], "tbl_captions": [],
-           "table_blocks": [], "tables": 0}
+           "table_blocks": [], "tables": 0, "tables_data": []}
     meta_open = True                    # 元信息区：标题后连续的 **标签**：值 行（上限 6）
     for i, ln in enumerate(lines):
         t = ln.strip()
@@ -246,10 +307,26 @@ def parse_source(text: str) -> dict:
         elif SRC_CAP_TBL_RE.match(t):
             m = SRC_CAP_TBL_RE.match(t)
             src["tbl_captions"].append((int(m.group(1)), m.group(2), i))
-        elif TABLE_ROW_RE.match(t) and i + 1 < len(lines) \
+    # 表格：表头 / 分隔行（列宽权重 + 对齐提示）/ 数据行
+    tables_data = []
+    i = 0
+    while i < len(lines):
+        t = lines[i].strip()
+        if TABLE_ROW_RE.match(t) and i + 1 < len(lines) \
                 and TABLE_SEP_RE.match(lines[i + 1].strip()):
-            src["table_blocks"].append(i)
-    src["tables"] = len(src["table_blocks"])
+            rows, j = [], i
+            while j < len(lines) and TABLE_ROW_RE.match(lines[j].strip()):
+                rows.append(split_row(lines[j]))
+                j += 1
+            if len(rows) >= 2:
+                tables_data.append({"line": i, "header": rows[0],
+                                    "sep": rows[1], "rows": rows[2:]})
+            i = j
+            continue
+        i += 1
+    src["tables_data"] = tables_data
+    src["table_blocks"] = [d["line"] for d in tables_data]
+    src["tables"] = len(tables_data)
     return src
 
 
@@ -491,6 +568,150 @@ def is_list_item(text: str) -> bool:
 
 
 # ---------------------------------------------------------------- DOCX
+
+# ---------------------------------------------------------------- 表格提示
+def _norm_align(v):
+    """docx 对齐值归一：left / center / right / both。"""
+    v = (v or "").lower()
+    if v in ("", "left", "start"):
+        return "left"
+    if v in ("right", "end"):
+        return "right"
+    if v == "center":
+        return "center"
+    return v
+
+
+def _cell_aligns(cell) -> set:
+    """单元格内非空段落的对齐集合（归一）。"""
+    vals = set()
+    for p in cell.paragraphs:
+        if p.text.strip():
+            vals.add(_norm_align(jc(p)))
+    return vals
+
+
+def _grid_widths_pt(t) -> list[float]:
+    grid = t._tbl.tblGrid
+    if grid is None:
+        return []
+    return [int(c.get(qn("w:w")) or 0) / 20.0
+            for c in grid.findall(qn("w:gridCol"))]
+
+
+def est_cell_lines(cell, avail_pt: float) -> int:
+    """估算单元格排版行数：CJK 9pt、西文约 4.5pt 贪心折行（只用于提示）。"""
+    if avail_pt <= 1.0:
+        return 1
+    total = 0
+    for p in cell.paragraphs:
+        text = p.text.strip()
+        if not text:
+            total += 1
+            continue
+        width = 0.0
+        for ch in text:
+            o = ord(ch)
+            if 0x4E00 <= o <= 0x9FFF or ch in "，。；：、（）「」【】…—·":
+                width += TABLE_PT
+            elif ch == " ":
+                width += TABLE_PT * 0.3
+            else:
+                width += TABLE_PT * 0.5
+        total += max(1, math.ceil(width / avail_pt))
+    return total
+
+
+def check_table_hints(tbls, src: dict) -> None:
+    """列宽 = 源分隔行破折号权重（偏差 ≤ 8%）、对齐 = 源冒号提示；>6 行只 WARN。"""
+    data = src.get("tables_data") or []
+    if not data or len(data) != len(tbls):
+        check("5 三线表", "表格列宽 / 对齐提示", None,
+              "源表 %d 张 / docx %d 张，数量对不上无法核对提示"
+              % (len(data), len(tbls)))
+        return
+
+    width_bad, align_bad, worst_dev = [], [], []
+    n_width_cols = n_align_cols = 0
+    for ti, (t, td) in enumerate(zip(tbls, data), 1):
+        hints = [sep_hint(c) for c in td["sep"]]
+        weights = [h[0] for h in hints]
+        aligns = [h[1] for h in hints]
+        has_weight = len(set(weights)) > 1
+        has_align = any(a is not None for a in aligns)
+        widths = _grid_widths_pt(t)
+        if len(widths) != len(weights):
+            if has_weight or has_align:
+                width_bad.append("表%d 列数 %d ≠ 提示 %d"
+                                 % (ti, len(widths), len(weights)))
+            continue
+        total = sum(widths)
+        if has_weight and total > 0:
+            n_width_cols += len(weights)
+            tw = sum(weights)
+            for ci, (w, hw) in enumerate(zip(widths, weights), 1):
+                exp = hw / tw * total
+                dev = abs(w - exp) / exp if exp > 0 else 0.0
+                worst_dev.append(dev)
+                if dev > 0.08 + 1e-9:
+                    width_bad.append(
+                        "表%d 列%d 实宽 %.2fcm / 提示期望 %.2fcm（偏 %+.0f%%）"
+                        % (ti, ci, w / 28.3465, exp / 28.3465, dev * 100))
+        if has_align:
+            for ci, exp in enumerate(aligns, 1):
+                if exp is None:
+                    continue
+                n_align_cols += 1
+                found = set()
+                for row in t.rows[1:]:              # 表头另算，只核数据行
+                    cells = row.cells
+                    if ci - 1 >= len(cells) or len(cells) != len(weights):
+                        continue                        # 合并单元格行跳过
+                    found |= _cell_aligns(cells[ci - 1])
+                if found - {exp}:
+                    align_bad.append("表%d 列%d 期望 %s 实为 %s"
+                                     % (ti, ci, exp, "/".join(sorted(found))))
+
+    if n_width_cols == 0 and not width_bad:
+        check("5 三线表", "列宽与源提示权重偏差 ≤8%（有提示的列）", None,
+              "源分隔行没有差异化的破折号权重")
+    elif width_bad:
+        check("5 三线表", "列宽与源提示权重偏差 ≤8%%（%d 列）" % n_width_cols, False,
+              "; ".join(width_bad[:5]))
+    else:
+        check("5 三线表", "列宽与源提示权重偏差 ≤8%%（%d 列）" % n_width_cols, True,
+              "最大偏差 %.1f%%" % (max(worst_dev) * 100 if worst_dev else 0))
+    if n_align_cols == 0 and not align_bad:
+        check("5 三线表", "列对齐 = 源冒号提示（有提示的列）", None,
+              "源分隔行没有冒号对齐提示")
+    else:
+        check("5 三线表", "列对齐 = 源冒号提示（%d 列）" % n_align_cols,
+              not align_bad, "; ".join(align_bad[:5]) if align_bad else "全部一致")
+
+    # 单元格 > 6 行：只 WARN（排版提示，不判失败）
+    long_cells = []
+    for ti, t in enumerate(tbls, 1):
+        widths = _grid_widths_pt(t)
+        for ri, row in enumerate(t.rows):
+            for ci, cell in enumerate(row.cells):
+                if ci >= len(widths):
+                    continue
+                avail = widths[ci] - 2 * CELL_MAR_TW / 20.0
+                n = est_cell_lines(cell, avail)
+                if n > 6:
+                    long_cells.append((n, ti, ri + 1, ci + 1,
+                                       cell.text.strip()[:14]))
+    if long_cells:
+        long_cells.sort(reverse=True)
+        n, tb, r, c, txt = long_cells[0]
+        warn("5 三线表", "单元格估算行数 > 6 行（%d 处，仅提示）" % len(long_cells),
+             "最深 %d 行：表%d 行%d 列%d %r；建议缩表或精简文字"
+             % (n, tb, r, c, txt))
+    else:
+        check("5 三线表", "单元格估算行数 ≤ 6 行（%d 张表）" % len(tbls), True,
+              "无超长单元格")
+
+
 def analyze_docx(doc, src: dict, stats: dict) -> dict:
     blocks = list(iter_blocks(doc))
     paras = [b for k, b in blocks if k == "p"]
@@ -971,6 +1192,8 @@ def analyze_docx(doc, src: dict, stats: dict) -> dict:
     check("5 三线表", "单元格无底纹 + 左右内边距 108 twips", not shade_bad and not mar_bad,
           "; ".join((shade_bad + mar_bad)[:4]) if (shade_bad or mar_bad) else "全部合规")
 
+    check_table_hints(tbls, src)
+
     # --- 插图 ---
     img_pars = [p for p in paras if p._p.findall(".//" + qn("w:drawing"))]
     widths_img = [round(s.width.cm, 2) for s in doc.inline_shapes]
@@ -1007,7 +1230,14 @@ def png_size(path: Path):
     return int.from_bytes(b[16:20], "big"), int.from_bytes(b[20:24], "big")
 
 
-def check_figures(src: dict) -> None:
+def _in_report(e: dict, src_files: set) -> bool:
+    """manifest 项是否在报告内：优先 in_report 字段，旧 manifest 回退为「出现在源里」。"""
+    v = e.get("in_report")
+    return (e.get("file") in src_files) if v is None else bool(v)
+
+
+def check_figures(src: dict, stats: dict) -> None:
+    """报告插图清单：线稿 + in_report 占位；fig_meta 只核对报告内插图。"""
     manifest = read_json(MANIFEST)
     meta = read_json(FIG_META)
     ph_list = manifest.get("placeholders", []) if isinstance(manifest, dict) else []
@@ -1017,30 +1247,33 @@ def check_figures(src: dict) -> None:
 
     src_files = [Path(p).name for p in src["images"]]
     src_stems = [Path(p).stem for p in src["images"]]
-    ph_files = [e.get("file", "") for e in ph_list]
+    src_set = set(src_files)
+    in_ph = [e for e in ph_list if _in_report(e, src_set)]
+    out_ph = [e for e in ph_list if not _in_report(e, src_set)]
+    in_files = [e.get("file", "") for e in in_ph]
 
-    # 占位清单 ↔ 源插图一一对应：每张占位图出现一次、图号位置对得上、
-    # 源里每张 ph_*.png 都有清单登记；文件存在且画布 3200px、宽高比符合 aspect
     problems = []
-    for f in ph_files:
+    for f in in_files:                              # 报告内占位必须在源里出现且仅一次
         if f not in src_files:
-            problems.append("源里缺占位图 %s" % f)
+            problems.append("报告内占位图 %s 不在源里" % f)
         elif src_files.count(f) > 1:
             problems.append("占位图 %s 在源里重复" % f)
-    for e in ph_list:
+    for e in in_ph:                                 # 图号位置对得上
         try:
-            no = int(e.get("figure_no", 0))
+            no = int(e.get("figure_no"))
         except (TypeError, ValueError):
-            no = 0
+            continue
         if 1 <= no <= len(src_files) and src_files[no - 1] != e.get("file"):
             problems.append("图 %d 期望 %s 实为 %s"
                             % (no, e.get("file"), src_files[no - 1]))
-    for f in src_files:
-        if f.startswith("ph_") and f not in ph_files:
-            problems.append("%s 未登记占位清单" % f)
-    for e in ph_list:
-        p = FIGURES / e.get("file", "")
-        size = png_size(p)
+    for f in src_files:                             # 源里的 ph_* 都必须是 in_report
+        if f.startswith("ph_") and f not in in_files:
+            problems.append("%s 在源里但 manifest 未标 in_report" % f)
+    for e in out_ph:                                # 移出报告的占位不能再出现
+        if e.get("file") in src_set:
+            problems.append("%s 标 in_report=false 但仍出现在源里" % e.get("file"))
+    for e in in_ph:                                 # 占位 PNG：画布 3200px、宽高比
+        size = png_size(FIGURES / e.get("file", ""))
         if size is None:
             problems.append("%s 缺失或非 PNG" % e.get("file"))
             continue
@@ -1052,7 +1285,8 @@ def check_figures(src: dict) -> None:
             problems.append("%s 非 16:9" % e.get("file"))
         if aspect == "3:2" and abs(h_px / w_px - 2 / 3) > 0.02:
             problems.append("%s 非 3:2" % e.get("file"))
-    # fig_meta：画布宽 = 落版宽、PNG 3200px、落版最小字号 ≥ 7pt
+
+    # fig_meta：只核对报告内插图（画布宽 = 落版宽、PNG 3200px、落版最小字号 ≥ 7pt）
     meta_bad, low_fs = [], []
     for stem in src_stems:
         m = fig_meta.get(stem)
@@ -1067,27 +1301,49 @@ def check_figures(src: dict) -> None:
         if eff < MIN_FIG_PT - 1e-6:
             low_fs.append("%s %.1fpt" % (stem, eff))
     problems_all = problems + meta_bad + low_fs
-    check("6 插图与占位", "插图清单：占位 manifest 一一对应（%d 张）+ fig_meta 齐全"
-          % len(ph_list), not problems_all,
+    n_lines = len(src_files) - len(in_ph)
+    check("6 插图与占位",
+          "插图清单：%d 张线稿 + %d 张 in_report 占位 = %d 张；fig_meta %d 条"
+          % (n_lines, len(in_ph), len(src_files), len(src_stems)),
+          not problems_all,
           "; ".join(problems_all[:6]) if problems_all
-          else "%d 张占位 + %d 张现有 = %d 张；画布 15.8cm / PNG %dpx / 落版字号 ≥ %.1fpt"
-               % (len(ph_list), len(src_files) - len(ph_list), len(src_files),
-                  meta_px, MIN_FIG_PT))
+          else "报告内占位 %d 张（另 %d 张移出报告）；画布 15.8cm / PNG %dpx / 落版字号 ≥ %.1fpt"
+               % (len(in_ph), len(out_ph), meta_px, MIN_FIG_PT))
+
+    # 生成侧占位清单（md2docx 输出的 _md2docx.json 的 placeholders）应与 in_report 一致
+    sb_ph = stats.get("placeholders")
+    if sb_ph is None:
+        check("6 插图与占位", "生成侧占位清单覆盖 manifest in_report 项", None,
+              "_md2docx.json 无 placeholders 字段")
+    else:
+        all_files = {e.get("file", "") for e in ph_list}
+        miss = [f for f in in_files if f not in sb_ph]
+        unknown = [f for f in sb_ph if f not in all_files]
+        check("6 插图与占位", "生成侧占位清单覆盖 manifest in_report 项",
+              not miss and not unknown,
+              ("缺 %s" % miss if miss else "")
+              + ("；未登记 %s" % unknown if unknown else "")
+              if (miss or unknown)
+              else "json %d 项（报告内 %d 项）" % (len(sb_ph), len(in_files)))
 
 
-def check_placeholders_final(final: bool) -> None:
+def check_placeholders_final(final: bool, src: dict) -> None:
+    """--final 门禁：只针对 in_report=true 且 replaced=false 的占位。"""
     manifest = read_json(MANIFEST)
     ph_list = manifest.get("placeholders", []) if isinstance(manifest, dict) else []
-    remain = [e for e in ph_list if not e.get("replaced")]
+    src_set = {Path(p).name for p in src["images"]}
+    in_ph = [e for e in ph_list if _in_report(e, src_set)]
+    out_n = len(ph_list) - len(in_ph)
+    remain = [e for e in in_ph if not e.get("replaced")]
     if final:
-        check("6 插图与占位", "--final 门禁：占位图已全部替换为实物照片", not remain,
-              ("仍残留 %d 张占位图：%s（交件前必须替换并置 replaced=true）"
+        check("6 插图与占位", "--final 门禁：报告内占位图已全部替换", not remain,
+              ("报告内仍残留 %d 张占位图：%s（交件前必须替换并置 replaced=true）"
                % (len(remain), "、".join(e.get("file", "") for e in remain[:8])))
-              if remain else "占位图清零")
+              if remain else "报告内占位图清零")
     else:
-        check("6 插图与占位", "--final 门禁：占位图已全部替换为实物照片", None,
-              "非 --final 模式：%d 张占位图待替换（交件前用 --final 复核）"
-              % len(remain))
+        check("6 插图与占位", "--final 门禁：报告内占位图已全部替换", None,
+              "非 --final 模式：报告内 %d 张占位待替换（另有 %d 张已移出报告，不计门禁）"
+              % (len(remain), out_n))
 
 
 # ---------------------------------------------------------------- PDF
@@ -1605,8 +1861,8 @@ def main(argv=None) -> int:
         from docx import Document
         doc = Document(str(DOCX))
         analyze_docx(doc, src, stats)
-        check_figures(src)
-        check_placeholders_final(args.final)
+        check_figures(src, stats)
+        check_placeholders_final(args.final, src)
         docx_text = "\n".join([p.text for p in doc.paragraphs]
                               + [c.text for t in doc.tables
                                  for row in t.rows for c in row.cells])
@@ -1654,9 +1910,14 @@ def main(argv=None) -> int:
             label = "PASS" if ok is True else ("SKIP" if ok is None else "FAIL")
             emit("  %-4s %s%s" % (label, name, ("  —— " + detail) if detail else ""))
     emit("-" * 86)
-    emit("合计 %d 项：通过 %d，跳过 %d，失败 %d"
+    emit("合计 %d 项：通过 %d，警告 %d，跳过 %d，失败 %d"
          % (len(results), len(results) - len(failed) - len(skipped),
-            len(skipped), len(failed)))
+            len(warnings), len(skipped), len(failed)))
+    if warnings:
+        emit("")
+        emit("警告项（WARN，不影响退出码）：%d" % len(warnings))
+        for g, name, detail in warnings:
+            emit("  WARN  【%s】%s%s" % (g, name, ("  —— " + detail) if detail else ""))
     if skipped:
         emit("跳过项（需人工确认）：")
         for _, name, _, detail in skipped:

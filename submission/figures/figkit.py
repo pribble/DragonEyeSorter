@@ -298,8 +298,12 @@ def _report_line(r):
     return r['bad']
 
 
-def write_meta():
-    """写 fig_meta.json。与已有文件合并：只重画其中几张时，其余图的记录保持不变。"""
+def write_meta(keep=None):
+    """写 fig_meta.json。与已有文件合并：只重画其中几张时，其余图的记录保持不变。
+
+    ``keep`` 给一个图名集合时只保留集合内的条目：报告只引用部分插图（例如占位图精简后
+    有图被移出报告版面），用它一并清掉旧记录，避免 verifier 把已移出报告的图当成报告插图。
+    """
     old = {}
     if os.path.isfile(META_PATH):
         try:
@@ -309,6 +313,11 @@ def write_meta():
             old = {}
     merged = dict(old)
     merged.update(_meta)
+    dropped = []
+    if keep is not None:
+        keep = set(keep)
+        dropped = [k for k in merged if k not in keep]
+        merged = {k: v for k, v in merged.items() if k in keep}
     for v in merged.values():          # 旧记录里已废弃的重点框字段 regions 一并清掉
         if isinstance(v, dict):
             v.pop('regions', None)
@@ -316,7 +325,9 @@ def write_meta():
         json.dump(dict(figure_width_pt=FIG_W, png_width=PNG_W, figures=merged), f,
                   ensure_ascii=False, indent=1)
         f.write('\n')
-    print('wrote %s（本次 %d 图，合并后 %d 图）' % (_out_rel(META_PATH), len(_meta), len(merged)))
+    print('wrote %s（本次 %d 图，合并后 %d 图%s）' % (
+        _out_rel(META_PATH), len(_meta), len(merged),
+        '；清掉 %d 条已移出报告的旧记录' % len(dropped) if dropped else ''))
 
 
 def failed():
