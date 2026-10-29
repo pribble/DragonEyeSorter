@@ -42,7 +42,7 @@ models/part_cls.json	/root/des/part_cls.json	model	yes	NPU 网络描述，由 tr
 models/part_cls_uint8.onnx	/root/des/part_cls_uint8.onnx	model	yes	上面 json 里 model 字段指向它（按 json 所在目录解析）——两个文件必须同批导出，名字也不能改（见 ps/src/app/config.hpp）
 
 # ---------- 板上生成、别覆盖（也不搬回仓库） ----------
-# autostart.conf（自启开关 / MODE / CAN）、ui_params.json（界面参数）、calib.json（相机与传送带标定）、arm_home.json（机械臂初始姿态，界面「设为初始姿态」写）、
+# autostart.conf（自启开关 / MODE / CAN）、ui_params.json（界面参数）、calib.json（相机与传送带标定）、arm_home.json（机械臂初始姿态，界面「设为初始姿态」写）、flat.json（平场，des_tool calib-flat 写）、
 # data/（CSV、NG 图、service.log）
 
 # ---------- 手动上板：测试 / 调试件（**故意不登记**，别往里加） ----------
