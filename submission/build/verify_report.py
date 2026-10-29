@@ -15,7 +15,7 @@
   9 TOC 域与 updateFields
  10 疑似行框重叠（PyMuPDF 逐页两两求交）
  11 **插图清晰度：每张插图等效 dpi ≥ 300**（Word 导出只有 96，靠 pdf_images_hires.py 提上来）
- 12 **插图可读性：每张插图落版最小字号 ≥ 7pt**（figkit 按 15.8cm 落版 1:1 作图，读 paper/fig_meta.json）
+ 12 **插图可读性：每张插图落版最小字号 ≥ 7pt**（figkit 按 15.8cm 落版 1:1 作图，读 submission/figures/fig_meta.json）
  13 **逐页底部空白分析**（信息项：每页数值 + >20% 的页及原因）+ 正文页不被撑空（填充 ≥ 50%）
  14 代码包与 README 登记
 
@@ -43,6 +43,7 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 BUILD = Path(__file__).resolve().parent
 REPO = BUILD.parent.parent
 OUT = REPO / "submission" / "out"
+FIGURES = REPO / "submission" / "figures"
 DOCX = OUT / "龙瞳分拣_作品报告.docx"
 PDF = OUT / "龙瞳分拣_作品报告.pdf"
 SOURCE = REPO / "submission" / "技术文档.md"
@@ -247,25 +248,27 @@ def main(argv=None) -> int:
     drive = "[A-Za-z]" + ":" + "[\\\\/]"
     unc = "\\\\\\\\" + "[A-Za-z0-9_.-]+" + "\\\\"
     candidates = re.compile("(" + drive + "[^\\s\"'`,;)]*|" + unc + "[^\\s\"'`,;)]*)")
-    # 本任务写入范围内的文件；其余（同事的 PPT 链）扫到只记 SKIP，不算我这条线的失败
-    mine = {"md2docx.py", "word_to_pdf.ps1", "build.ps1", "pack_code.ps1",
-            "verify_report.py", "pdf_images_hires.py", "README.md"}
-    offenders, others = [], []
-    for f in sorted(BUILD.glob("*")):
-        if not (f.is_file() and f.suffix in (".py", ".ps1", ".md")):
-            continue
-        for i, ln in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
-            for m in candidates.finditer(ln):
-                p = m.group(1).rstrip("\\/")
-                parts = [x for x in re.split("[\\\\/]+", p[2:]) if x]
-                if len(parts) >= 2 and Path(p).exists():
-                    (offenders if f.name in mine else others).append(
-                        "%s:%d %s" % (f.name, i, p))
-    check("build/ 报告链脚本与 README 无真实主机绝对路径", not offenders,
+    # build/ 与 figures/ 下的脚本与 README 都属报告生成链：命中即失败
+    offenders = []
+    for d in (BUILD, FIGURES):
+        for f in sorted(d.glob("*")):
+            if not (f.is_file() and f.suffix in (".py", ".ps1", ".md")):
+                continue
+            for i, ln in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+                for m in candidates.finditer(ln):
+                    p = m.group(1).rstrip("\\/")
+                    parts = [x for x in re.split("[\\\\/]+", p[2:]) if x]
+                    if len(parts) >= 2 and Path(p).exists():
+                        offenders.append("%s/%s:%d %s" % (d.name, f.name, i, p))
+    check("报告生成链脚本与 README 无真实主机绝对路径（build/ + figures/）", not offenders,
           "; ".join(offenders) if offenders else "0 处（检测用模式串按片段拼接，不自扫）")
-    check("build/ 同事 PPT 链文件无真实主机绝对路径（不在本任务写入范围）",
-          None if others else True,
-          ("非本任务文件，不改：" + "; ".join(others)) if others else "0 处")
+    # 答辩演示件已不作提交件：其生成链整体下线，build/ 里不应再有脚本或 README 引用。
+    # 文件名按片段拼接，免得本文件自己被自己的规则扫到。
+    legacy = ["make_" + "ppt.py", "export_" + "ppt" + "_preview.ps1", "ppt" + "_pdf_hires.py"]
+    build_readme = (BUILD / "README.md").read_text(encoding="utf-8")
+    stale = [n for n in legacy if (BUILD / n).exists() or n in build_readme]
+    check("build/ 已下线演示件生成链无残留（脚本已删、README 不引用）", not stale,
+          ("仍在：" + ", ".join(stale)) if stale else "3 个脚本与 README 引用均已清")
 
     # ---- 统计对账：生成侧 out/_md2docx.json（内容源在持续优化，计数不写死） ----
     stats = {}
@@ -628,9 +631,9 @@ def main(argv=None) -> int:
         # ---- 12 插图字号：落版 1:1 作图，图内字号就是纸面字号 ----
         # 教训（本版重画的起因）：旧插图按 16in（1152pt）画布作图、再缩到 15.8cm 落版，
         # 缩放 0.389 → 图内 8pt 落到纸面只剩 3.1pt，报告里整片文字读不动。
-        # 现在 docs/figures/figkit.py 强制「画布宽 = 落版宽、字号 = 纸面字号」，
-        # 这里拿报告用的 paper 主题 fig_meta.json 的原始记录独立复核一遍等效字号。
-        meta_p = REPO / "docs" / "figures" / "paper" / "fig_meta.json"
+        # 现在 submission/figures/figkit.py 强制「画布宽 = 落版宽、字号 = 纸面字号」，
+        # 这里拿报告插图的 fig_meta.json 原始记录独立复核一遍等效字号。
+        meta_p = REPO / "submission" / "figures" / "fig_meta.json"
         figs_meta = {}
         if meta_p.is_file():
             figs_meta = json.loads(meta_p.read_text(encoding="utf-8")).get("figures", {})
@@ -640,7 +643,7 @@ def main(argv=None) -> int:
                for k in FIG_NAMES if k in figs_meta]
         low = ["%s %.1fpt" % (k, e) for k, e in eff if e < MIN_FIG_PT - 1e-6]
         if missing:
-            fs_txt = "fig_meta.json 缺条目：" + ", ".join(missing) + "（先跑 docs/figures/make_figures.py --paper）"
+            fs_txt = "fig_meta.json 缺条目：" + ", ".join(missing) + "（先跑 submission/figures/make_figures.py）"
         elif low:
             fs_txt = "低于阈值：" + "; ".join(low)
         else:
@@ -694,11 +697,15 @@ def main(argv=None) -> int:
               "未生成：跑 pwsh -File submission/build/pack_code.ps1")
     readme = (BUILD / "README.md").read_text(encoding="utf-8")
     scripts = ("md2docx.py", "word_to_pdf.ps1", "build.ps1", "pack_code.ps1",
-               "verify_report.py", "pdf_images_hires.py",
-               "export_ppt_preview.ps1", "make_ppt.py", "ppt_pdf_hires.py")
-    missing = [n for n in scripts if n not in readme]
-    check("README 登记全部 build/ 脚本", not missing,
-          ("缺：" + ",".join(missing)) if missing else "%d 个脚本全部登记" % len(scripts))
+               "verify_report.py", "pdf_images_hires.py")
+    fig_readme_p = FIGURES / "README.md"
+    fig_readme = fig_readme_p.read_text(encoding="utf-8") if fig_readme_p.is_file() else ""
+    fig_scripts = ("figkit.py", "make_figures.py", "fig_architecture.py", "fig_timebase.py",
+                   "fig_pl_regs.py", "fig_pick_sequence.py", "fig_layout.py")
+    missing = ([n for n in scripts if n not in readme]
+               + [n for n in fig_scripts if n not in fig_readme])
+    check("README 登记全部报告生成链脚本（build/ + figures/）", not missing,
+          ("缺：" + ",".join(missing)) if missing else "%d 个脚本全部登记" % (len(scripts) + len(fig_scripts)))
 
 
     # ---- 汇总 ----

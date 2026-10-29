@@ -6,7 +6,7 @@
 轴端注明「示意」（各段从 16ms 到数百 ms，不按比例）；
 下：左「零件的带坐标」、右「带来的好处」两块面板。
 数值取自技术文档 §2.3 与旧图脚本：卷帘读出 ≈16ms、定位 / 测量 ~6ms、NPU 7.9ms、
-停带误差 ≤0.08mm。版式：事件用小色标刻度（轴为中性灰），文字两级（名称墨色粗体、限定次级灰）。
+停带误差 ≤0.08mm。版式：事件用小刻度（黑色，轴为中性灰），文字两级（名称墨色粗体、限定次级灰）。
 """
 import figkit as fk
 
@@ -68,16 +68,9 @@ def draw():
     return fig, ax
 
 
-# PPT 重点框（pt，左下原点）：两次锁存 + 卷帘读出 + 行插值公式 / 下方两块说明面板
-REGIONS = {
-    'latency': (4, 100, 242, 192),
-    'formula': (4, 1, 444, 102),
-}
-
-
 def main():
     fig, ax = draw()
-    return fk.save(fig, NAME, REGIONS)
+    return fk.save(fig, NAME)
 
 
 if __name__ == '__main__':

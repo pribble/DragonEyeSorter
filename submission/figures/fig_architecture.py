@@ -3,7 +3,7 @@
 
 画布 = 报告落版宽度 447.9pt（15.8cm）× 300pt，字面字号即纸面字号（见 figkit 顶部说明）。
 版式：四列（外设 / PL / PS / 外设）+ 行对齐；卡片只写「名称 + 极短限定」，细节写正文
-（§2.1 / §2.4 / §3、§4.1）。域识别靠卡片左侧色条与分组标题，不靠高饱和填充。
+（§2.1 / §2.4 / §3、§4.1）。域识别靠分组标题与灰色虚线框，不用高饱和填充。
 """
 import figkit as fk
 
@@ -124,16 +124,9 @@ def draw():
     return fig, ax
 
 
-# PPT 重点框（pt，左下原点）：PL 自研模块区 / PS 软件分工区
-REGIONS = {
-    'pl_modules': (PL_X + 2, 48, PL_X + PL_W - 2, 266),
-    'ps_threads': (PS_X + 2, 92, PS_X + PS_W - 2, 266),
-}
-
-
 def main():
     fig, ax = draw()
-    return fk.save(fig, NAME, REGIONS)
+    return fk.save(fig, NAME)
 
 
 if __name__ == '__main__':

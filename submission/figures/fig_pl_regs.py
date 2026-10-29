@@ -3,8 +3,9 @@
 
 画布 = 报告落版宽度 447.9pt（15.8cm）× 280pt，字面字号即纸面字号（见 figkit 顶部说明）。
 左栏：PS 驱动 → 官方 fvdma_ctrl 的 64KB 窗口（地址线 4 → 16 位）→ 自研寄存器总线
-→ 按 ``addr[11:8]`` 分段译码；右栏做成「寄存器段表」：每行一个段，左侧偏移标签、
-中间模块与两行限定、右侧管脚，行间细线与斑马底。表比堆框更清楚，也不再画总线干线。
+→ 按 ``addr[11:8]`` 分段译码；右栏做成「寄存器段表」三线表：每行一个段，左侧偏移标签、
+中间模块与两行限定、右侧管脚，顶线 / 底线 + 行间极浅分隔，不用行框与斑马底。表比堆框更
+清楚，也不再画总线干线。
 """
 import figkit as fk
 
@@ -38,20 +39,6 @@ MODS = [
      ['急停锁存 → 立即停脉冲', '对射 / 限位 · 编码器计数'],
      ['ESTOP_IN V11 · IR1 V6', 'ENC A/B/Z U10/T5/U5']),
 ]
-
-
-def _row(ax, y, idx, off, name, lines, pins):
-    x = RX + 6
-    w = RW - 12
-    face = '#FBFCFD' if idx % 2 else fk.WHITE
-    fk.box(ax, x, y, w, ROW_H, '', 'pl', fc=face, bar=False)
-    fk.chip(ax, x + 8, y + 20, 38, 14, off, 'pl')
-    fk.text(ax, x + 52, y + 27, name, fs=fk.FS['box'], weight='bold', color=fk.INK)
-    for i, s in enumerate(lines):
-        fk.text(ax, x + 52, y + 15 - i * 9.6, s, fs=fk.FS['sub'], color=fk.MUTED)
-    fk.vline(ax, y + 5, y + ROW_H - 5, x + SEP, color=fk.RULE)
-    for i, s in enumerate(pins):
-        fk.text(ax, x + SEP + 8, y + 15 - i * 9.6, s, fs=fk.FS['sub'], color=fk.FAINT)
 
 
 def _row_paper(ax, y, idx, off, name, lines, pins):
@@ -106,27 +93,14 @@ def draw():
     fk.arrow(ax, (cx, 84), (cx, 78), ms=6.0)
 
     # ---------------- 右栏：寄存器段表 ----------------
-    if fk.PAPER:
-        _table_paper(ax)
-    else:
-        for i, (off, name, lines, pins) in enumerate(MODS):
-            y = ROW_TOP - ROW_H - i * (ROW_H + ROW_GAP)
-            _row(ax, y, i, off, name, lines, pins)
+    _table_paper(ax)
 
     return fig, ax
 
 
-# PPT 重点框（pt，左下原点）：左栏寄存器通道 / 0x100 与 0x200 两行（仲裁与步进）
-REGIONS = {
-    'regs': (LX + 2, 34, LX + LW - 2, 252),
-    'modules': (RX + 2, ROW_TOP - 3 * ROW_H - 2 * ROW_GAP, RX + RW - 2,
-                ROW_TOP - ROW_H - ROW_GAP + 2),
-}
-
-
 def main():
     fig, ax = draw()
-    return fk.save(fig, NAME, REGIONS)
+    return fk.save(fig, NAME)
 
 
 if __name__ == '__main__':

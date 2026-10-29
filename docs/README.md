@@ -25,14 +25,14 @@
 | 10 | [测试与验证](测试与验证.md) | 出测试报告、找一个实测数字 | **全部实测数字的唯一汇总**、量化报告框架、验证清单 | 🟡 |
 | 11 | [到货联调清单](到货联调清单.md) | 到货后逐项联调 | 逐步操作与判定标准（数字引用 [测试与验证](测试与验证.md)） | 🟡 |
 
-## 提交件（官方 2026 初赛：作品报告 + 演示视频；决赛：答辩 PPT）
+## 提交件（官方 2026 初赛：作品报告 + 演示视频；决赛：作品介绍演示）
 
 | 文档 | 用途 | 唯一源是什么 | 状态 |
 |---|---|---|---|
-| [技术文档](../submission/技术文档.md) | 作品报告正文（生成 PDF 提交；已移入 submission/ 与生成链同处） | 提交件本身；插图与生成脚本在 [figures/](figures/) | 🟡 |
+| [技术文档](../submission/技术文档.md) | 作品报告正文（生成 PDF 提交；已移入 submission/ 与生成链同处） | 提交件本身；插图与生成脚本都在 [submission/figures/](../submission/figures/) | 🟡 |
 | [演示视频脚本](../submission/演示视频脚本.md) | 拍摄当天照着走（已移入 submission/） | **分镜、解说词、字幕、时长、拍摄与交付要求的唯一来源** | ⬜ |
-| [参赛材料骨架](参赛材料骨架.md) | 备赛管理 | 赛题条目 → 证据对照、PPT 提纲、风险登记、冻结前必拿的数 | 🟡 |
-| [submission/](../submission/README.md) | 提交材料工作区：报告 / PPT 生成链、代码打包 | [提交材料清单](../submission/提交材料清单.md) 是官方要求与倒排的唯一核对入口 | 🟡 |
+| [参赛材料骨架](参赛材料骨架.md) | 备赛管理 | 赛题条目 → 证据对照、风险登记、冻结前必拿的数 | 🟡 |
+| [submission/](../submission/README.md) | 提交材料工作区：报告生成链、报告插图、代码打包 | [提交材料清单](../submission/提交材料清单.md) 是官方要求与倒排的唯一核对入口 | 🟡 |
 | [ref/](ref/) | 外部参考资料 PDF（赛题指南、舵机协议、规格书） | 各自原件；来源登记见 [ref/README.md](ref/README.md) | ✅ |
 
 ## 文档类型与放置
@@ -46,7 +46,7 @@
 | 一次实测 / 验证记录 | `docs/log/YYYY-MM-DD-主题.md`（索引 [log/README](log/README.md)） | 长期结论（应吸收进设计文档）；log 允许历史主机路径与 IP |
 | 实测数字 | [测试与验证](测试与验证.md)（唯一汇总） | 同一数字在正文复述（摘要引用必须带链接） |
 | 决策沿革 / 被推翻方案 | `docs/log/` | 写进设计文档正文 |
-| 提交件（报告 / 视频 / PPT / 清单） | `submission/`（核对入口 = [材料清单](../submission/提交材料清单.md)） | 工程细节（链接 docs） |
+| 提交件（报告 / 视频 / 清单） | `submission/`（核对入口 = [材料清单](../submission/提交材料清单.md)） | 工程细节（链接 docs） |
 | 代码说明 | 各目录 README（索引见下「代码侧 README」） | 重复 docs 的设计内容 |
 | 术语 / 排错 / 复盘 / 变更 | P1 待建：`docs/术语表.md`、`docs/FAQ.md`、`docs/复盘/`、`docs/变更记录.md` | 设计正文（链接过去） |
 
@@ -74,7 +74,7 @@ pwsh -File scripts/check/selftest.ps1         # 检查器自测（注入坏样�
 | [scripts/README.md](../scripts/README.md) | 四个目录的分工：`env/` 环境准备（含 `sdk_fix_sonames.sh`）、`check/` 文档与源码检查、`boot/` BOOT.bin 打包与烧卡、[deploy](../scripts/deploy/README.md) 板端部署与上板 |
 | [train/README.md](../train/README.md) | 合成数据、训练、导出 + UINT8 量化、评估与上板核对 |
 | [pc/README.md](../pc/README.md) | PC 侧工具索引：PLC 模拟器（CAN）、测试报告出数、Modbus-TCP / RS485 客户端、现场数据接收 |
-| [figures/README.md](figures/README.md) | 技术文档插图的生成脚本与用法 |
+| [figures/README.md](figures/README.md) | 整机接线图的生成脚本与用法（报告插图在 `submission/figures/`） |
 
 ## 写作约定
 

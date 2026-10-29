@@ -78,10 +78,8 @@ def draw():
     fk.box(ax, *BOX2, '料盒：返修', 'acc')
     ax.plot([300, 56], [BY0 + 11, BY0 + 11], color=red, lw=1.0, ls=(0, (5, 3)), zorder=1.2)
     fk.arrow(ax, (120, BY0 + 11), (56, BY0 + 11), color=red, lw=1.0, ls=(0, (5, 3)), ms=6.0)
-    if fk.PAPER:                        # 线稿风：标签放在线上方、避开视野框下边
-        fk.text(ax, 170, BY0 + 15, 'NG 不停带分流', fs=S, ha='center', color=red)
-    else:
-        fk.text(ax, 250, BY0 + 11, 'NG 不停带分流', fs=S, ha='center', color=red, bg=True)
+    # 线稿风：标签放在线上方、避开视野框下边
+    fk.text(ax, 170, BY0 + 15, 'NG 不停带分流', fs=S, ha='center', color=red)
     fk.box(ax, 2, 92, 40, 34, '带尾\n复检箱', 'ext')
     fk.arrow(ax, (56, 109), (43, 109), ms=5.0)
 
@@ -96,16 +94,9 @@ def draw():
     return fig, ax
 
 
-REGIONS = {
-    # PPT 重点框（pt，左下原点）
-    'view': (213, 80, 436, 200),           # 相机视野框 + 原点标注
-    'pick': (138, 122, 292, 272),          # 抓取线 + 机械臂
-}
-
-
 def main():
     fig, ax = draw()
-    return fk.save(fig, NAME, REGIONS)
+    return fk.save(fig, NAME)
 
 
 if __name__ == '__main__':

@@ -1,0 +1,46 @@
+{
+ "figure_width_pt": 447.92,
+ "png_width": 3200,
+ "figures": {
+  "fig_architecture": {
+   "w_pt": 447.92,
+   "h_pt": 300.0,
+   "png_w": 3200,
+   "png_h": 2143,
+   "px_per_pt": 7.1441,
+   "min_fs_pt": 7.5
+  },
+  "fig_timebase": {
+   "w_pt": 447.92,
+   "h_pt": 195.0,
+   "png_w": 3200,
+   "png_h": 1393,
+   "px_per_pt": 7.1441,
+   "min_fs_pt": 7.5
+  },
+  "fig_pl_regs": {
+   "w_pt": 447.92,
+   "h_pt": 280.0,
+   "png_w": 3200,
+   "png_h": 2000,
+   "px_per_pt": 7.1441,
+   "min_fs_pt": 7.5
+  },
+  "fig_pick_sequence": {
+   "w_pt": 447.92,
+   "h_pt": 212.0,
+   "png_w": 3200,
+   "png_h": 1515,
+   "px_per_pt": 7.1441,
+   "min_fs_pt": 7.5
+  },
+  "fig_layout": {
+   "w_pt": 447.92,
+   "h_pt": 280.0,
+   "png_w": 3200,
+   "png_h": 2000,
+   "px_per_pt": 7.1441,
+   "min_fs_pt": 7.5
+  }
+ }
+}

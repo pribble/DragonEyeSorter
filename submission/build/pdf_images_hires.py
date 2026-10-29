@@ -13,7 +13,7 @@
 
     # ② 高清化：按**文档出现顺序**把 --order 里的图逐张替换
     python submission/build/pdf_images_hires.py --pdf out/报告.pdf \
-        --order docs/figures/a.png docs/figures/b.png ... [--inplace]
+        --order submission/figures/a.png submission/figures/b.png ... [--inplace]
 
     --inplace          直接写回原 PDF（否则默认写 <同名>.hires.pdf，原文件不动）
     --out <路径>        指定输出 PDF（与 --inplace 二选一）

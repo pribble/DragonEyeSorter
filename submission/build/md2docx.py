@@ -103,7 +103,7 @@ TABLE_W_CM = 15.6                            # 整表上限，留 2mm 余量
 FIG_MAX_CM = TEXT_W_CM                       # 插图默认满版心 15.8cm
 
 # 个别图想窄一点（例如左右对比图放大后更难看清）：按源文件名覆盖宽度，单位 cm。
-# 键 = `![alt](figures/paper/xxx.png)` 里的文件名，值 = 厘米。空 = 全部按 FIG_MAX_CM。
+# 键 = `![alt](figures/xxx.png)` 里的文件名，值 = 厘米。空 = 全部按 FIG_MAX_CM。
 FIG_WIDTH_OVERRIDE: dict[str, float] = {}
 
 BODY_PT = 10.5                               # 五号：正文

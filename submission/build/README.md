@@ -1,8 +1,8 @@
 # submission/build/ —— 提交件生成链
 
-把内容源 [技术文档.md](../技术文档.md) 转成可提交的 Word / PDF，把答辩 PPT 导出成兜底 PDF，并从仓库打代码包。**技术文档是唯一内容源**：改内容改那里，本目录只负责排版与导出，不改源文件。
+把内容源 [技术文档.md](../技术文档.md) 转成可提交的 Word / PDF，并从仓库打代码包。**技术文档是唯一内容源**：改内容改那里，本目录只负责排版与导出，不改源文件。
 
-常用命令：`pwsh -File submission/build/build.ps1`（报告全链）、`python submission/build/verify_report.py`（验收自检）、`python submission/build/make_ppt.py`（答辩 PPT）。
+常用命令：`pwsh -File submission/build/build.ps1`（报告全链）、`python submission/build/verify_report.py`（验收自检）、`pwsh -File submission/build/pack_code.ps1`（代码包）。
 
 ## 脚本清单
 
@@ -14,11 +14,9 @@
 | [pdf_images_hires.py](pdf_images_hires.py) | 插图高清化：按出现顺序把 PDF 里的图像对象换回源图原生像素，图框 / 文字 / 页码不动；`--report` 只测量 | `build.ps1` 第 ③ 步；`python … --pdf <pdf> --report` |
 | [verify_report.py](verify_report.py) | 验收自检 59 项（见「自检与验收」），结果写 `out/_verify_report.txt` | `python submission/build/verify_report.py` |
 | [pack_code.ps1](pack_code.ps1) | `git archive` 打「作品重要代码」zip | `pwsh -File submission/build/pack_code.ps1` |
-| [make_ppt.py](make_ppt.py) | 答辩 PPT 生成：页纲见[参赛材料骨架](../../docs/参赛材料骨架.md) 的 PPT 提纲 | `python submission/build/make_ppt.py` |
-| [export_ppt_preview.ps1](export_ppt_preview.ps1) | pptx → 兜底 PDF + 1600×900 逐页 PNG，随后插图回填与逐页版面度量 | `pwsh -File submission/build/export_ppt_preview.ps1` |
-| [ppt_pdf_hires.py](ppt_pdf_hires.py) | PPT 兜底 PDF 的插图回填与体检（由导出脚本调用） | `python … --pdf <pdf> --report` |
+| [figures/](../figures/README.md) | 报告插图的生成脚本与生成物（`figkit.py` / `make_figures.py` / 5 个 `fig_*.py` + PNG / SVG / `fig_meta.json`），不是 `build/` 的脚本但属报告生成链 | `python submission/figures/make_figures.py` |
 
-报告链改完内容跑 `build.ps1` → `verify_report.py`（确认全 PASS）；只改 PPT 跑 PPT 链那两条。两条链产物不同，互不影响。PPT 链的用法、门禁与排错见 [PPT制作指南](../PPT制作指南.md)。
+报告链改完内容跑 `build.ps1` → `verify_report.py`（确认全 PASS）；改了插图脚本再跑 `python submission/figures/make_figures.py` 后重出报告。
 
 ## 一键命令与常用参数
 
@@ -40,7 +38,7 @@ python submission/build/verify_report.py --fill --pdf <任意 PDF>   # 只跑逐
 ## 依赖
 
 - **报告链**：Microsoft Word 桌面版（走 `Word.Application` COM 转 PDF；没有 Word 用 `-NoPdf` 只出 docx）；Python 3 + `python-docx`（生成 docx）；Python 3 + **PyMuPDF**（插图高清化，缺了第 ③ 步硬失败）；字体宋体 / 黑体 / Times New Roman / Consolas（系统与 Office 自带）。
-- **PPT 链**：需要 Windows + 桌面版 PowerPoint + Python 3 + `python-pptx` / `Pillow` / `PyMuPDF`，见 [PPT制作指南](../PPT制作指南.md)。
+- **插图生成**：Python 3 + matplotlib（`python -c "import matplotlib"`），脚本与生成物都在 [figures/](../figures/)。
 - 安装位置、版本与逐项验证命令见 [环境与上手](../../docs/环境与上手.md) §1「需要哪些环境」。
 - 脚本**不写死解释器**：`build.ps1` 按 `python` → `py -3` 在 PATH 上找，并按「该解释器有没有这个模块」分别挑（① 要 `docx`，③ 要 `pymupdf`）。要指定解释器就直接调对应的 `.py`。
 - **缺 PyMuPDF 时第 ③ 步硬失败是故意的**：没有高清化的 PDF 图内文字是糊的，不能当成品交；临时跳过用 `-NoHires`。
@@ -54,7 +52,6 @@ python submission/build/verify_report.py --fill --pdf <任意 PDF>   # 只跑逐
 | `submission/out/龙瞳分拣_作品报告.pdf` | **正式提交件** | ❌ 可重建 |
 | `submission/out/_md2docx.json` · `_word_to_pdf.json` · `_verify_report.txt` | 自检统计与验收结果 | ❌ |
 | `submission/out/render/` | PDF 逐页 PNG，验收看图用 | ❌ |
-| `submission/out/龙瞳分拣_答辩.pptx` / `.pdf` · `ppt_preview/` | 决赛演示件 / 现场兜底件 / 逐页预览（PPT 链产物） | ❌ |
 
 交件文件名按 [提交材料清单](../提交材料清单.md) §5 改名（如 `DragonEyeSorter_龙瞳分拣_作品报告_v1.0.pdf`），不要在仓库里改产物本体名。
 
@@ -81,14 +78,14 @@ python submission/build/verify_report.py --fill --pdf <任意 PDF>   # 只跑逐
 | `### 1.1 应用场景` | 二级标题（黑体 13pt） |
 | 普通段落（连续行合并） | 正文（宋体 10.5pt、首行缩进 2 字符） |
 | `**强调**` · `` `行内代码` `` | 黑体 · Consolas（无底纹） |
-| `![alt](../docs/figures/paper/xxx.png)` 独占一行 | 插图，宽 = 满版心 15.8cm 居中；路径**相对源文件（技术文档.md）所在目录解析**，图不存在直接报错 |
+| `![alt](figures/fig_xxx.png)` 独占一行 | 插图，宽 = 满版心 15.8cm 居中；路径**相对源文件（技术文档.md）所在目录解析**（即 `submission/figures/`），图不存在直接报错 |
 | 图下一行 `*图 2-1 说明*` | 图注（居中 9pt 黑字，跟图同页，过一遍净化规则） |
 | `\| … \|` 表格 | 三线表（无底色无竖线，跨页重复表头） |
 | `- ` / `1. ` 列表 | 黑色标记 + 悬挂缩进（编号照抄，不自动重编号） |
 | `---` | 分隔线（不渲染） |
 
 - **标题编号照抄源文本**，脚本不自动重编号；新增 `###` 要保证编号唯一（目录按编号生成，重复会出现两个同名条目）。
-- **新图按落版尺寸 1:1 作图**：画布宽 447.9pt（= 15.8cm）、图内最小字号 ≥7.5pt、PNG 建议 ≥3200px 宽（满版心约 514dpi；源图 <1900px 会跌破 300dpi 门禁）。报告用 `paper` 主题、PPT 用 `slide` 主题，同一份脚本出图，改图后两套都重跑：`python docs/figures/make_figures.py` 与 `--paper`；作图约定见 [figures/README.md](../../docs/figures/README.md)。
+- **新图按落版尺寸 1:1 作图**：画布宽 447.9pt（= 15.8cm）、图内最小字号 ≥7.5pt、PNG 建议 ≥3200px 宽（满版心约 514dpi；源图 <1900px 会跌破 300dpi 门禁）。图由 [figures/](../figures/) 的脚本按 [figures/README.md](../figures/README.md) 的约定生成到 `submission/figures/`，改图后重跑 `python submission/figures/make_figures.py`（入库 PNG + SVG + `fig_meta.json`）。
 - **图注净化**：图注里的构建说明（`figures/`、`make_*.py`、`.svg`、`生成` 等）在生成 docx 时自动删掉，源 Markdown 不必手改；要调整改 `md2docx.py` 的 `CAPTION_KEEP_RULES` / `CAPTION_STRIP_RULES`，或用 `--caption-rules <json>`、`--no-caption-clean`。
 
 ## 代码包（作品重要代码）
@@ -123,4 +120,4 @@ python -c "import pymupdf; d=pymupdf.open('submission/out/龙瞳分拣_作品报
 3. **孤行 / 寡行控制开着**（`widowControl=1`），个别页尾会多留 2~4 行（在 20% 阈值内）；关掉会填得更满，但段首 / 段尾会落单，要求是打开。
 4. **表格分页**：小表整表同页；大表只保证「表头 + 前两行」同页，其余允许跨页（重复表头兜底）；行不跨页（`cantSplit`）没有布局代价。
 5. **页数随内容源长度变化，以最终 build 为准**；多处指标仍标「待测」属内容侧。
-6. **改插图后两套主题都重跑**：`make_figures.py` 与 `make_figures.py --paper`；第 12 项自检按 `docs/figures/paper/fig_meta.json` 核对落版字号。
+6. **改插图后重跑生成脚本**：`python submission/figures/make_figures.py`（脚本与生成物同在 `submission/figures/`）；第 12 项自检按 `submission/figures/fig_meta.json` 核对落版字号。
