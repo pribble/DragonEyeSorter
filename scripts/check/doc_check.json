@@ -24,6 +24,11 @@
       "file": "submission/技术文档.md",
       "target": "^figures/fig_(?:architecture|timebase|pl_regs|pick_sequence|layout)\\.png$",
       "reason": "报告插图生成物：同上，由 build.ps1 第 0 步 / make_figures.py 重画、不入库，先重画再出 docx / PDF"
+    },
+    {
+      "file": "submission/技术文档.md",
+      "target": "^figures/ph_(?:overview|board|ui|samples|arm|flap|test)[.]png$",
+      "reason": "报告占位图：由 submission/figures/make_placeholders.py 生成、被 submission/figures/.gitignore 挡住不入库（拍完实物照片替换时才强制入库），干净检出时缺失属正常，先跑 submission/build/build.ps1 或 make_figures.py 重画"
     }
   ],
   "inlinePaths": {

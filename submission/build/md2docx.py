@@ -1,44 +1,37 @@
 # -*- coding: utf-8 -*-
-"""submission/技术文档.md → submission/out/龙瞳分拣_作品报告.docx（竞赛作品报告排版）。
+"""submission/技术文档.md → submission/out/龙瞳分拣_作品报告.docx（纯论文式单节版式）。
 
-内容源只有一份：submission/技术文档.md（本脚本只读它，从不改写）。插图按 Markdown 里的
-相对路径相对源文件所在目录解析。脚本只认技术文档实际用到的 Markdown 写法——
-`#` 封面标题、`##` 章、`###` 节、普通段落、**加粗**、行内 `代码`、`![alt](图)`
-加下一行 *斜体图注*、`| … |` 表格、`- `/`1. ` 列表、`---` 分隔线——
-不写通用大而全的解析器：遇到没见过的写法直接报错退出，不会静默丢内容。
+版式令牌见本文件顶部常量与 build/README.md「报告排版必须守住的结论」；参考值取自参照论文 PDF 实测。
+本脚本只读内容源（submission/技术文档.md，只此一份），从不改写；插图路径相对源文件
+所在目录解析。只认 build/README.md「源写法」表的写法——
+  `#` 唯一标题、`**标签**：值` 元信息行（标题后连续行，上限 6 行）、`##` 一级标题、
+  `###` 二级标题、普通段落（连续行合并）、`**强调**`、`` `行内代码` ``、
+  `![alt](图)` + 下一行 `**图 N**　说明。`、表格上一行 `**表 N**　说明`、`| … |` 表格、
+  `1. ` 列表（仅参考文献 / 附录）、`---` 分隔线；旧 `*图 N 说明*` 斜体图注兼容。
+  超范围写法（代码块 / 引用块 / 四级标题 / 项目符号列表 / 图文混排）报错退出并指出行号。
 
-设计语言（学术作品报告：黑白灰、无装饰色，正文宋体 / 标题黑体 / 西文 Times）：
-  版式只认 python-docx 能表达的东西（段落边框 / 底纹 / 字色），不引第三方库：
-    白底黑字，不用强调色；图注 / 页眉页脚用深灰；表格线与页眉线用灰。
-    中文正文宋体 10.5pt（五号），标题黑体，西文与数字 Times New Roman，
-    行内代码 Consolas（不加底纹）。
-  A4、页边距 2.6cm（版心 15.8cm），封面 / 目录 / 正文三节；封面无页眉页脚，正文页码从 1 起
-  封面：居中标题页——赛事 / 「作品报告」/ 作品名 / 技术副标题 / 参赛队 · 编号 · 年月，
-        无彩色短线、无色块；只有作品信息，绝无学校名与指导老师字样（竞赛禁项，生成后自检）
-  正文：宋体 10.5pt / 首行缩进 2 字符（420 twips）/ 两端对齐 / 1.5 倍行距
-        （宋体单倍行高约 1.286×，1.5 倍 ≈ 20.25pt，见 LINE_FACTOR 注释）/
-        段前 0、段后 0（段落靠首行缩进分隔，学术排版惯例）/ 孤行寡行控制开
-  标题：黑体左对齐、无装饰线（16 / 13 / 11.5pt）；标题 keepNext + keepLines，
-        不落在页底；段前段后统一
-  表格：三线表——顶线 / 底线粗、表头下细线，无竖线、无行线、无表头底色、无斑马；
-        表头黑体、正文宋体 9pt；整表 15.6cm 按版心、跨页重复表头、行不跨页
-  插图：居中、宽 = 满版心 15.8cm（FIG_MAX_CM）；图注宋体 9pt 居中，图与图注同页
-  图注渲染前过一遍**净化**（CAPTION_STRIP_RULES）：去掉「（…生成，SVG 可直接放进 PPT）」
-  这类给维护者看的构建说明，保留有证据价值的括号（如「管脚取自 src/constraint/io.adc」）
-  目录：Word 域 TOC（word_to_pdf.ps1 导出前更新页码）；「目录」黑体标题、条目宋体；
-        TOC 1/2/3 样式单独设（单倍行距 + plan_toc_styles() 按条目数挑段后距），
-        不继承正文 1.5 倍行距
-  页眉：左「龙瞳分拣 · 塑胶传动件在线质检分拣系统」+ 右标签 + 下细线（灰）；页脚
-        「第 X 页 / 共 Y 页」用 PAGE / NUMPAGES 域；字体小号深灰
-  **行距一律用倍数（lineRule=auto）**：固定行距会裁字并让上下段叠在一起，见 set_spacing
+版式令牌（单位 pt）：A4 21×29.7cm、页边距上下左右 2.4cm、页脚距边 1.6cm、
+单节、无封面 / 无目录 / 无页眉；正文宋体 11pt + 西文 Times New Roman、首行缩进 2 字符
+（440 twips）、单倍行距、两端对齐；标题黑体 17.5pt 居中（参照实测 17.28pt，OOXML 只能存半磅，
+取最近值 17.5）+ 标题后连续 10pt 元信息行；一级标题黑体 14.5pt（参照实测 14.35pt，同理）、二级 12pt；
+图注 / 表注宋体加粗 10pt 居中，表注在表格上方；三线表 9pt（顶 / 底 1.5pt、表头下 0.75pt，
+无竖线 / 行线 / 底纹，整表 15.6cm 固定布局，表头跨页重复、行不跨页）；图宽 15.8cm；
+行内代码 Consolas 10pt 无底纹；页脚居中 PAGE 域 11pt；全篇纯黑。
+
+行距一律用倍数（lineRule=auto，单倍 = 240）：固定行距会裁字并让上下段叠在一起，见
+set_spacing。宋体单倍行高约 1.286×字号（11pt → 约 14.1pt），参照实测表明 Word 单倍
+1.286em 对参照论文 1.24em「够近，不必压到固定值」。
+
+生成后自检（读回 docx 复核本节令牌：节数 / 页面 / 页边距 / 页脚 / 无页眉 / 无目录域 /
+字号 / 首行缩进 / 表宽与线型 / 图注加粗 / 表注加粗 / 禁项 / 固定行距），任一不过退出码 1。
+自检统计写 -Stats JSON（保留旧字段，新增 placeholders / captions）。
 
 用法（cwd 任意，路径都能用相对 cwd 或绝对路径）：
     python submission/build/md2docx.py [-Source <md>] [-Out <docx>] [-Stats <json>]
-                                       [--caption-rules <json>] [--no-caption-clean]
-                                       [--fig-width <cm>]
+                                       [--fig-width <cm>] [--caption-clean]
 
-依赖 python-docx（装没装：`python -m pip show python-docx`）。本文件不含主机绝对
-路径：源、输出、插图位置全部从脚本位置 __file__ 推导。退出码 0 成功 / 1 失败。
+依赖 python-docx（`python -m pip show python-docx`）。本文件不含主机绝对路径：源、
+输出、插图位置全部从脚本位置 __file__ 推导。退出码 0 成功 / 1 失败。
 """
 from __future__ import annotations
 
@@ -48,11 +41,11 @@ import re
 import struct
 import sys
 import unicodedata
+import zipfile
 from pathlib import Path
 
 try:
     from docx import Document
-    from docx.enum.section import WD_SECTION
     from docx.enum.style import WD_STYLE_TYPE
     from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
     from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -78,116 +71,63 @@ DEFAULT_SOURCE = SUBMISSION / "技术文档.md"
 DEFAULT_OUT = SUBMISSION / "out" / "龙瞳分拣_作品报告.docx"
 
 # ---------------------------------------------------------------- 设计令牌
-# 学术报告口径：黑白灰，颜色不参与信息表达。
-# 只存 6 位十六进制，写进 OOXML 的 w:color / w:fill 属性。
-C_INK = "000000"          # 黑：标题 / 正文 / 表格文字
-C_TEAL = "000000"         # 历史名（原强调色）：现在章号、列表标记与正文同色
-C_TEAL_DEEP = "000000"    # 历史名：行内代码文字色（不再用青绿）
-C_AMBER = "000000"        # 历史名：原警示色，学术版不再用彩色
-C_GRAY = "3F3F3F"         # 深灰：图注 / 页眉页脚
-C_LINE = "808080"         # 灰线：页眉细线 / 三线表中线
-C_HEAD_FILL = "FFFFFF"    # 表头不填色（三线表）
-C_ZEBRA = "FFFFFF"        # 不设斑马纹
-C_CODE_FILL = "F2F2F2"    # 行内代码底纹（默认不加，保留令牌备用）
+# 全篇只有黑色：不参与信息表达的颜色一律不出现（无灰、无底纹、无彩线）。
+C_INK = "000000"          # 黑：正文 / 标题 / 表格线 / 图注 / 页脚
+C_LINE = C_INK            # 三线表线色（旧名保留）
 
 FONT_CN = "宋体"            # 中文正文
 FONT_HEI = "黑体"           # 中文标题 / 强调
 FONT_EN = "Times New Roman"  # 西文与数字
 FONT_CODE = "Consolas"     # 行内代码
-FONT_EN_PLAIN = "Times New Roman"
 
 PAGE_W_CM, PAGE_H_CM = 21.0, 29.7            # A4
-MARGIN_CM = 2.6                              # 左右 2.6cm → 版心 15.8cm
-TEXT_W_CM = PAGE_W_CM - 2 * MARGIN_CM
-TABLE_W_CM = 15.6                            # 整表上限，留 2mm 余量
-FIG_MAX_CM = TEXT_W_CM                       # 插图默认满版心 15.8cm
+MARGIN_CM = 2.4                              # 四边 2.4cm → 版心 16.2×24.9cm
+TEXT_W_CM = PAGE_W_CM - 2 * MARGIN_CM        # 16.2cm
+FOOTER_DIST_CM = 1.6                         # 页脚距边 1.6cm
+TABLE_W_CM = 15.6                            # 整表上限，留 6mm 余量
+FIG_MAX_CM = 15.8                            # 插图默认宽度 15.8cm
 
-# 个别图想窄一点（例如左右对比图放大后更难看清）：按源文件名覆盖宽度，单位 cm。
-# 键 = `![alt](figures/xxx.png)` 里的文件名，值 = 厘米。空 = 全部按 FIG_MAX_CM。
-FIG_WIDTH_OVERRIDE: dict[str, float] = {}
+BODY_PT = 11.0                               # 正文
+TITLE_PT = 17.5                              # 标题：参照实测 17.28；OOXML 半磅粒度只有
+                                             # 17.0 / 17.5，取 17.5（离参照 17.28 更近）
+H1_PT = 14.5                                 # 一级标题：参照实测 14.35；半磅粒度取 14.5
+H2_PT = 12.0                                 # 二级标题
+META_PT = 10.0                               # 元信息行
+CAPTION_PT = 10.0                            # 图注 / 表注（加粗）
+TABLE_PT = 9.0                               # 表体
+TABLE_HEAD_PT = 9.0                          # 表头（宋体加粗）
+CODE_PT = 10.0                               # 行内代码
+LIST_PT = 10.0                               # 列表（仅参考文献 / 附录）
+FOOTER_PT = 11.0                             # 页脚页码
 
-BODY_PT = 10.5                               # 五号：正文
-# 行距：Word 关闭「对齐网格」后，宋体 10.5pt 的单倍行高实测 13.5pt（1.286×字号），
-# 1.5 倍 = 20.25pt，是中文报告常见的密度；行距只给倍数（见 set_spacing）。
-LINE_FACTOR = 1.286                          # 宋体单倍行高 / 字号（Word 实测 10.5pt → 13.5pt）
-HEI_FACTOR = 1.31                            # 黑体单倍行高 / 字号（实测 16pt → 21pt）
-BODY_LINE = 1.5                              # 正文：1.5 倍行距（学术报告常规）
-TIGHT_LINE = 1.0                             # 页眉页脚 / 目录：单倍
-CELL_LINE = 1.0                              # 表格单元格 / 图注：单倍（靠内边距喘气）
-HEAD_LINE = 1.0                              # 标题：黑体单倍行高 1.31×字号，够高不裁字
-BODY_AFTER = 0.0                             # 段落靠首行缩进分隔，不加段后距
-H_GAP = {"h1": (18.0, 10.0), "h2": (12.0, 6.0), "h3": (10.0, 4.0)}   # 段前 / 段后 pt
-H1_PT, H2_PT, H3_PT = 16.0, 13.0, 11.5
-TABLE_PT = 9.0                               # 表格正文（小五）
-TABLE_HEAD_PT = 9.0                          # 表头
-CAPTION_PT = 9.0                             # 图注
-SMALL_PT = 9.0                               # 页眉页脚
+# 行距一律倍数（lineRule=auto）；单倍 = 1.0。宋体单倍行高 ≈ 1.286×字号。
+LINE_FACTOR = 1.286                          # 宋体单倍行高 / 字号（Word 实测）
+SINGLE_LINE = 1.0
+
+TITLE_GAP = (24.0, 10.0)                     # 标题段前 / 段后
+META_AFTER = 1.0                             # 元信息行段后
+H_GAP = {"h1": (14.0, 8.0), "h2": (12.0, 6.0)}
+FIG_GAP = (8.0, 3.0)                         # 插图段前 / 段后
+FIGCAP_GAP = (0.0, 6.0)                      # 图注段前 / 段后
+TABCAP_GAP = (6.0, 3.0)                      # 表注段前 / 段后（表注在表格上方）
+LIST_AFTER = 2.0                             # 列表条目段后
+BODY_AFTER = 0.0                             # 正文段后（段落靠首行缩进区分）
+SPACER_LINE = 0.6                            # 表后细空行（144）
 
 TWIPS_PER_CM = 566.929
-CHAR_TWIPS = int(round(BODY_PT * 20 * 2))    # 2 字符 = 2em = 420 twips
-LIST_LEFT_TW = 840                           # 列表正文左缩进 4 字符（2 字符正文缩进 + 2 字符标记位）
-LIST_HANG_TW = 420                           # 列表悬挂 2 字符（标记落在正文首行缩进处）
-CELL_MAR_TW = 108                            # 单元格左右内边距（无竖线，靠留白分隔）
+CHAR_TWIPS = int(round(BODY_PT * 20 * 2))    # 首行缩进 2 字符 = 2em = 440 twips
+LIST_LEFT_TW = 300                           # 列表左缩进 1.5 字符（10pt → 300 twips）
+LIST_HANG_TW = 300                           # 悬挂 1.5 字符（标记落在左边距）
+CELL_MAR_TW = 108                            # 单元格左右内边距
+TABLE_HEAD_ROW_TW = 300                      # 表头行最小行高（15pt，给 9pt 字喘气）
 
-# 封面文案（内容无关：版式常量，不读源标题；改文案改这里）
-COVER_BRAND = "龙瞳分拣"
-COVER_BRAND_EN = "DragonEyeSorter"
-COVER_TITLE = "基于安路飞龙 SoC 的塑胶传动件在线质检分拣系统"
-COVER_SERIES = ("2026 全国大学生嵌入式芯片与系统设计竞赛",
-                "FPGA 创新设计赛道 · 安路选题四")
-COVER_KIND = "作品报告"
-COVER_TEAM = "参赛队：____________"
-COVER_ID = "作品编号：______________"
-COVER_DATE = "2026 年 11 月"
-HEADER_TEXT = "龙瞳分拣 · 塑胶传动件在线质检分拣系统"
-HEADER_TOC = "目录"
-HEADER_BODY = "作品报告"
-FOOT_LEFT, FOOT_MID, FOOT_RIGHT = "第 ", " 页 / 共 ", " 页"
-TOC_INSTR = r'TOC \o "1-3" \h \z \u'
-TOC_PLACEHOLDER = "（打开文档后 Word 自动更新目录；也可全选后按 F9 手动更新）"
-# 目录条目样式：**必须单独设**。目录条目默认用 Normal（正文 1.5 倍行距）+ 段后距，
-# 36 条能撑成两页且第二页只填一半；这里给单倍行距 + 小段后距，压回一页。
-# key = (样式名, 显示字号, 加粗, 左缩进 twips, 段后 pt)；Word 内置名是小写的 toc N。
-# 实际档位由 plan_toc_styles() 按条目数算（行高按宋体单倍 1.286×字号估），
-# 下面的 TOC_STYLES 是缺省档位。
-TOC_INDENT_TW = 420
-# 目录一页可用高度：版心 694.5 − 标题块 ~57 − 目录域末尾空段一行 ~18 − 余量。
-# Word 更新 TOC 域后，域末尾还会留一个空段落（行高按 Normal 算），预算要把它留出来，
-# 否则最后一条贴底时会被顶到下一页，多出一页只有页眉的空白目录页。
-TOC_BUDGET_PT = 612.0
-TOC_STYLES = (("toc 1", 10.5, False, 0, 3.0),
-              ("toc 2", 10.0, False, TOC_INDENT_TW, 1.5),
-              ("toc 3", 10.0, False, 2 * TOC_INDENT_TW, 0.0))
-
-
-def plan_toc_styles(n1, n2):
-    """按章 / 节条目数挑一组能压进一页的 TOC 字号 + 段后距（内容无关）。"""
-    tiers = (("toc 1", 10.5, False, 3.0), ("toc 2", 10.0, False, 1.5)), \
-            (("toc 1", 10.5, False, 2.0), ("toc 2", 10.0, False, 1.0)), \
-            (("toc 1", 10.5, False, 1.0), ("toc 2", 10.0, False, 0.5)), \
-            (("toc 1", 10.5, False, 0.0), ("toc 2", 10.0, False, 0.0)), \
-            (("toc 1", 10.0, False, 0.0), ("toc 2", 9.5, False, 0.0))
-    for styles in tiers:
-        need = sum(n * (sz * LINE_FACTOR + after)
-                   for n, (_, sz, _, after) in zip((n1, n2), styles))
-        if need <= TOC_BUDGET_PT:
-            out = []
-            for name, sz, bold, after in styles:
-                left = 0 if name == "toc 1" else TOC_INDENT_TW
-                out.append((name, sz, bold, left, after))
-            out.append(("toc 3", styles[1][1], False, 2 * TOC_INDENT_TW, 0.0))
-            return tuple(out)
-    return TOC_STYLES
-TOC_LINE = 1.0                               # 目录条目单倍行距（不继承正文 1.5 倍）
+# 个别图想窄一点：按源文件名覆盖宽度，单位 cm。键 = ![](...) 里的文件名。
+FIG_WIDTH_OVERRIDE: dict[str, float] = {}
 
 # ---------------------------------------------------------------- 图注净化
-# 图注里的构建说明是写给维护者的（「这张图哪个脚本生成的、还能怎么用」），
-# 不该出现在提交报告里。规则：按**括号**逐组判断——
-#   ① 命中 KEEP（有证据价值，如来源文件、测量口径）→ 整组保留，优先于 strip；
-#   ② 命中 STRIP（构建说明：生成脚本 / SVG / PPT / 排版链）→ 整组删掉；
-#   ③ 都不命中 → 原样保留（保守，宁可留着也不误删证据）。
-# 想改规则：改这两个元组，或用 --caption-rules <json> 传 {"strip": [...], "keep": [...]}，
-# 或用 --no-caption-clean 整关闭。括号内的文字用非贪婪匹配，不支持嵌套括号。
+# 默认**关闭**：约定新源里的图注就是最终说明（替换实物图时只换 PNG、
+# 不动文本），净化反而可能删掉有证据价值的括号。旧源的「生成脚本 / SVG / PPT」类
+# 构建说明仍可加 --caption-clean 打开（按括号逐组判断，keep 优先于 strip）。
 CAPTION_STRIP_RULES = (
     r"make_[A-Za-z0-9_]*\.py",               # 插图生成脚本名
     r"figures/",                             # 插图目录（仓库内部路径）
@@ -208,7 +148,8 @@ CAPTION_PAREN_RE = re.compile(r"[（(]([^（）()]*)[）)]")
 # 官方赛事名里天然含「大学生」「学校」，先按整串剔除再扫，避免误报。
 FORBIDDEN = ("大学", "学院", "学校", "指导老师", "指导教师", "导师",
              "校徽", "学号", "班级", "队名")
-ALLOWED_PHRASES = ("2026 全国大学生嵌入式芯片与系统设计竞赛", "全国大学生嵌入式芯片与系统设计竞赛")
+ALLOWED_PHRASES = ("2026 全国大学生嵌入式芯片与系统设计竞赛",
+                   "全国大学生嵌入式芯片与系统设计竞赛")
 
 
 def forbidden_hits(text):
@@ -219,11 +160,7 @@ def forbidden_hits(text):
 
 
 def clean_caption(text, strip=None, keep=None):
-    """图注净化：逐组括号判断该留该删，返回 (净化后文本, 被删掉的括号列表)。
-
-    规则见 CAPTION_STRIP_RULES / CAPTION_KEEP_RULES（keep 优先）。整条图注被删空时
-    退回原文——宁可留一句维护说明，也不能把图注弄没。
-    """
+    """图注净化：逐组括号判断该留该删，返回 (净化后文本, 被删掉的括号列表)。"""
     strip_res = [re.compile(p) for p in (CAPTION_STRIP_RULES if strip is None else strip)]
     keep_res = [re.compile(p) for p in (CAPTION_KEEP_RULES if keep is None else keep)]
     removed = []
@@ -239,14 +176,25 @@ def clean_caption(text, strip=None, keep=None):
 
     new = CAPTION_PAREN_RE.sub(repl, text)
     new = re.sub(r"[ \t]{2,}", " ", new).strip()
-    if not new or not re.sub(r"^图\s*[\d.\-–]+\s*", "", new).strip():
+    if not new or not re.sub(r"^(图|表)\s*[\d.\-–]+\s*", "", new).strip():
         return text, []                      # 删空了：退回原文，不当净化
     return new, removed
+
 
 ALIGN = {WD_ALIGN_PARAGRAPH.LEFT: "left", WD_ALIGN_PARAGRAPH.CENTER: "center",
          WD_ALIGN_PARAGRAPH.RIGHT: "right", WD_ALIGN_PARAGRAPH.JUSTIFY: "both"}
 
 # ---------------------------------------------------------------- 基础工具
+
+
+def _set_size(rpr, size_pt):
+    """在 <w:rPr> 上写 pt 字号（w:sz 与 w:szCs 都写，半磅整数）。"""
+    for tag in ("w:sz", "w:szCs"):
+        el = rpr.find(qn(tag))
+        if el is None:
+            el = OxmlElement(tag)
+            rpr.append(el)
+        el.set(qn("w:val"), str(int(round(size_pt * 2))))
 
 
 def set_run_font(run, cn=FONT_CN, en=FONT_EN, size_pt=None, bold=None, color=C_INK):
@@ -261,9 +209,11 @@ def set_run_font(run, cn=FONT_CN, en=FONT_EN, size_pt=None, bold=None, color=C_I
     rfonts.set(qn("w:eastAsia"), cn)
     rfonts.set(qn("w:cs"), en)
     if size_pt is not None:
-        run.font.size = Pt(size_pt)
+        run.font.size = Pt(size_pt)          # 半磅粒度：只传 .0 / .5 结尾的值
+        _set_size(rpr, size_pt)
     if bold is not None:
         run.font.bold = bold
+        run.font.italic = False
     if color:
         run.font.color.rgb = RGBColor.from_string(color)
     return run
@@ -286,10 +236,8 @@ def strip_theme_fonts(st_el):
             rpr.remove(el)
 
 
-def fresh_pPr(st_el, par=None):
-    """拿一个干净的 pPr：样式上清掉旧的，段落上则直接取。"""
-    if par is not None:
-        return par._p.get_or_add_pPr()
+def fresh_pPr(st_el):
+    """拿一个干净的 pPr：把样式上可能继承的旧段落格式整块清掉。"""
     old = st_el.find(qn("w:pPr"))
     if old is not None:
         st_el.remove(old)
@@ -300,8 +248,8 @@ def set_spacing(pPr, before_pt=0.0, after_pt=0.0, multiple=None):
     """段距 / 行距。行距只用**倍数**（lineRule=auto），绝不用 fixed / exact：
 
     固定行距会把行框钉死在指定高度，中文字号略大（或字体回退到更大的字形）时上行
-    会把下行盖住——实测标题 16pt 配 exact 20pt、表格 10.5pt 配 exact 12pt 都会叠字。
-    倍数行距由 Word 按字号算行高，天然不会裁字。线号 240 = 单倍。
+    会把下行盖住——实测标题配 exact 会叠字。倍数行距由 Word 按字号算行高，天然不裁字。
+    线号 240 = 单倍。
     """
     sp = pPr.get_or_add_spacing()
     sp.set(qn("w:before"), str(int(round(before_pt * 20))))
@@ -331,14 +279,32 @@ def set_keep(pPr, next_=False, lines=False, widow=False):
     pPr.get_or_add_widowControl().set(qn("w:val"), "1" if widow else "0")
 
 
-def fmt_par(par, *, before=0.0, after=0.0, multiple=BODY_LINE, first=0, left=0,
+def set_jc(pPr, val):
+    pPr.get_or_add_jc().set(qn("w:val"), val)
+
+
+def _no_snap(pPr):
+    """行距按倍数算，别吸附到文档网格（网格行高会覆盖单倍行距）。"""
+    el = pPr.find(qn("w:snapToGrid"))
+    if el is None:
+        el = OxmlElement("w:snapToGrid")
+        pPr.append(el)
+    el.set(qn("w:val"), "0")
+
+
+def _no_overflow_punct(pPr):
+    """关掉「允许标点溢出边界」：行末标点不再挂到版心外，页边距 2.4cm 实测才站得住。"""
+    el = _ordered_child(pPr, "w:overflowPunct", _PPR_ORDER)
+    el.set(qn("w:val"), "0")
+
+
+def fmt_par(par, *, before=0.0, after=0.0, multiple=SINGLE_LINE, first=0, left=0,
             hanging=0, align=WD_ALIGN_PARAGRAPH.JUSTIFY, keep_next=False,
-            keep_lines=False, widow=True):
+            keep_lines=False, widow=True, page_break_before=False):
     """段落直接格式：一律显式写，不依赖样式继承。行距只给倍数。
 
-    widow=True 是默认值：孤行 / 寡行控制开着，段首或段尾的单行不会被甩到相邻页
-    （正文段落靠它避免「一页只剩一两行」）。整段不许跨页用 keep_lines=True，
-    必须与下段同页（标题、图）用 keep_next=True。
+    widow=True 是默认值：孤行 / 寡行控制开着，段首或段尾的单行不会被甩到相邻页。
+    整段不许跨页用 keep_lines=True，必须与下段同页（标题、图、表注）用 keep_next=True。
     """
     pPr = par._p.get_or_add_pPr()
     old = pPr.find(qn("w:spacing"))
@@ -348,18 +314,34 @@ def fmt_par(par, *, before=0.0, after=0.0, multiple=BODY_LINE, first=0, left=0,
     set_spacing(pPr, before, after, multiple)
     set_ind(pPr, first, left, hanging)
     set_jc(pPr, ALIGN[align])
-    snap = OxmlElement("w:snapToGrid")          # 行距按倍数，别吸附到文档网格
-    snap.set(qn("w:val"), "0")
-    pPr.append(snap)
+    _no_snap(pPr)
+    _no_overflow_punct(pPr)
+    pb = pPr.find(qn("w:pageBreakBefore"))
+    if pb is None:
+        pb = OxmlElement("w:pageBreakBefore")
+        pPr.append(pb)
+    pb.set(qn("w:val"), "1" if page_break_before else "0")
     return par
 
 
-def set_jc(pPr, val):
-    pPr.get_or_add_jc().set(qn("w:val"), val)
+def set_para_mark_font(par, size_pt=1.0, color=C_INK):
+    """段落标记的字号 / 颜色（空段落靠它控制行高）。"""
+    pPr = par._p.get_or_add_pPr()
+    rpr = pPr.find(qn("w:rPr"))
+    if rpr is None:
+        rpr = OxmlElement("w:rPr")
+        pPr.append(rpr)
+    set_rfonts_element(rpr)
+    _set_size(rpr, size_pt)
+    el = rpr.find(qn("w:color"))
+    if el is None:
+        el = OxmlElement("w:color")
+        rpr.append(el)
+    el.set(qn("w:val"), color)
 
 
-def add_field(par, instr, placeholder, cn=FONT_CN, size_pt=SMALL_PT, bold=False,
-              color=C_GRAY):
+def add_field(par, instr, placeholder, cn=FONT_CN, size_pt=FOOTER_PT, bold=False,
+              color=C_INK):
     """插入 Word 域：fldChar begin → instrText → separate → 占位 → end。"""
     def marker(kind):
         r = par.add_run()
@@ -447,83 +429,15 @@ def set_rfonts_element(rpr, cn=FONT_CN, en=FONT_EN):
     rfonts.set(qn("w:cs"), en)
 
 
-def set_pPr_border(pPr, *, top=None, left=None, bottom=None, right=None):
-    """给 <w:pPr> 加段落边框（段落与样式共用；设计令牌里的细线 / 色块都靠它）。
-
-    edge 值是 dict：{"sz": 磅的 1/8, "color": 六位色, "space": 与文字间距 pt}。
-    """
-    old = pPr.find(qn("w:pBdr"))
-    if old is not None:
-        pPr.remove(old)
-    specs = {"top": top, "left": left, "bottom": bottom, "right": right}
-    if not any(specs.values()):
-        return
-    bdr = _ordered_child(pPr, "w:pBdr", _PPR_ORDER)
-    for edge in ("top", "left", "bottom", "right"):
-        cfg = specs[edge]
-        if not cfg:
-            continue
-        el = OxmlElement("w:" + edge)
-        el.set(qn("w:val"), cfg.get("val", "single"))
-        el.set(qn("w:sz"), str(cfg.get("sz", 4)))
-        el.set(qn("w:space"), str(cfg.get("space", 1)))
-        el.set(qn("w:color"), cfg.get("color", C_LINE))
-        bdr.append(el)
-
-
-def para_border(par, *, top=None, left=None, bottom=None, right=None):
-    """段落直接格式版的 set_pPr_border。"""
-    set_pPr_border(par._p.get_or_add_pPr(), top=top, left=left,
-                   bottom=bottom, right=right)
-
-
-def add_tab_stop(par, pos_tw, align="left", leader=None, clear=()):
-    """给段落加制表位（clear 里的位置先清掉，避免继承 Header / 目录样式的旧制表位）。"""
-    pPr = par._p.get_or_add_pPr()
-    tabs = pPr.get_or_add_tabs()
-    for pos in clear:
-        el = OxmlElement("w:tab")
-        el.set(qn("w:val"), "clear")
-        el.set(qn("w:pos"), str(int(pos)))
-        tabs.append(el)
-    el = OxmlElement("w:tab")
-    el.set(qn("w:val"), align)
-    el.set(qn("w:pos"), str(int(pos_tw)))
-    if leader:
-        el.set(qn("w:leader"), leader)
-    tabs.append(el)
-
-
 def set_char_spacing(run, twips):
-    """字符间距（twips，1/20 pt）。小标签类的字距就靠它。"""
+    """字符间距（twips，1/20 pt，可为负）：元信息行一行放不下时轻微收紧用。"""
     rpr = run._element.get_or_add_rPr()
     el = _ordered_child(rpr, "w:spacing", _RPR_ORDER)
     el.set(qn("w:val"), str(int(twips)))
 
 
-def shade_run(run, fill=C_CODE_FILL):
-    """行内代码的极浅底纹。"""
-    rpr = run._element.get_or_add_rPr()
-    shd = _ordered_child(rpr, "w:shd", _RPR_ORDER)
-    shd.set(qn("w:val"), "clear")
-    shd.set(qn("w:color"), "auto")
-    shd.set(qn("w:fill"), fill)
-
-
-def set_para_mark_font(par, size_pt=1.0, color=C_INK):
-    """段落标记的字号 / 颜色：空段落（封面上画短线用）靠它把行高压到最小。"""
-    pPr = par._p.get_or_add_pPr()
-    rpr = _ordered_child(pPr, "w:rPr", _PPR_ORDER)
-    set_rfonts_element(rpr)
-    for tag in ("w:sz", "w:szCs"):
-        el = _ordered_child(rpr, tag, _RPR_ORDER)
-        el.set(qn("w:val"), str(max(2, int(round(size_pt * 2)))))
-    el = _ordered_child(rpr, "w:color", _RPR_ORDER)
-    el.set(qn("w:val"), color)
-
-
 def set_cell_border(cell, **edges):
-    """单元格边框（表头行的栏目细线用）。"""
+    """单元格边框（三线表的表头下细线用）。"""
     tcPr = cell._tc.get_or_add_tcPr()
     old = tcPr.find(qn("w:tcBorders"))
     if old is not None:
@@ -539,7 +453,7 @@ def set_cell_border(cell, **edges):
         el.set(qn("w:val"), cfg.get("val", "single"))
         el.set(qn("w:sz"), str(cfg.get("sz", 4)))
         el.set(qn("w:space"), str(cfg.get("space", 0)))
-        el.set(qn("w:color"), cfg.get("color", C_LINE))
+        el.set(qn("w:color"), cfg.get("color", C_INK))
         bdr.append(el)
 
 
@@ -556,6 +470,10 @@ def clear_par(par):
 
 IMG_RE = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
 CAPTION_RE = re.compile(r"^\*([^*].*?)\*$")
+# 图注 / 表注：`**图 N**　说明。` / `**表 N**　说明`（编号与说明间为全角空格）
+CAP_CAPTION_RE = re.compile(r"^\*\*(图|表)\s*([0-9]+(?:[-–.][0-9]+)*)\*\*\s*(.*)$")
+# 元信息行：`**标签**：值`（标题后连续行，遇空行结束；上限 6 行）
+META_RE = re.compile(r"^\*\*([^*]+?)\*\*\s*[：:]\s*(.*)$")
 TABLE_SEP_RE = re.compile(r"^\|?[\s:|-]+\|[\s:|-]*$")
 CELL_SPLIT_RE = re.compile(r"(?<!\\)\|")
 OL_RE = re.compile(r"^(\d+)\.\s+(.*)$")
@@ -570,49 +488,74 @@ def split_cells(line):
     return [c.strip().replace("\\|", "|") for c in CELL_SPLIT_RE.split(s)]
 
 
+def _caption_text(kind, num, desc):
+    """统一成约定的 `图 N　说明` 写法（全角空格分隔编号与说明）。"""
+    desc = desc.strip()
+    if desc:
+        return "%s %s　%s" % (kind, num, desc)
+    return "%s %s" % (kind, num)
+
+
 def parse_source(md_path: Path):
-    """拆块；遇到不认识的写法直接抛错。返回 (封面标题, blocks)。"""
+    """拆块；遇到不认识的写法直接抛错。返回 (标题, blocks)。
+
+    blocks 为 (kind, payload, 行号) 三元组，kind ∈
+    meta / h2 / h3 / p / image / figcap / tabcap / table / ol。
+    """
     lines = md_path.read_text(encoding="utf-8").replace(
         "\r\n", "\n").replace("\r", "\n").split("\n")
     title, blocks, buf = None, [], []
+    meta_count = 0
+    meta_open = False                 # 标题后到第一条正文 / 空行之间：元信息窗口
+    body_started = False
     n = len(lines)
 
     def flush():
+        nonlocal meta_open
         if buf:
-            blocks.append(("p", " ".join(x.strip() for x in buf)))
+            blocks.append(("p", " ".join(x.strip() for x in buf), 0))
             buf.clear()
+            meta_open = False
+
+    def push(kind, payload, lineno, is_meta=False):
+        nonlocal body_started, meta_open
+        flush()
+        blocks.append((kind, payload, lineno))
+        if not is_meta:
+            body_started = True
+            meta_open = False
 
     i = 0
     while i < n:
         s = lines[i].strip()
         if not s:
             flush()
+            if meta_count:            # 元信息块以第一个空行结束
+                meta_open = False
             i += 1
             continue
         if s.startswith("```"):
-            raise ValueError("第 %d 行：不支持代码块（源里没用过）" % (i + 1))
+            raise ValueError("第 %d 行：不支持代码块（论文体不用）" % (i + 1))
         if re.match(r"^-{3,}$", s):
             flush()
             i += 1
             continue
         if s.startswith("#### "):
-            raise ValueError("第 %d 行：只支持到 ### 三级标题，源里出现 4 级" % (i + 1))
+            raise ValueError("第 %d 行：只支持到 ### 二级标题，源里出现 4 级" % (i + 1))
         if s.startswith("### "):
-            flush()
-            blocks.append(("h3", s[4:].strip()))
+            push("h3", s[4:].strip(), i + 1)
             i += 1
             continue
         if s.startswith("## "):
-            flush()
-            head = s[3:].strip()
-            blocks.append(("h2", head))
+            push("h2", s[3:].strip(), i + 1)
             i += 1
             continue
         if s.startswith("# "):
             flush()
             if title is not None:
-                raise ValueError("源里出现多个一级标题，只能有一个作封面标题")
+                raise ValueError("源里出现多个一级标题，只能有一个作论文标题")
             title = s[2:].strip()
+            meta_open = True          # 标题后开始元信息窗口（允许标题与元信息间有空行）
             i += 1
             continue
         if s.startswith("|"):
@@ -630,87 +573,159 @@ def parse_source(md_path: Path):
                     raise ValueError("表格列数不一致：表头 %d 列 / 本行 %d 列（%r）"
                                      % (len(rows[0]), len(cells), tl[:60]))
                 rows.append(cells)
-            blocks.append(("table", rows))
+            push("table", rows, i + 1)
             continue
         m = IMG_RE.match(s)
         if m and m.group(0) == s:
-            flush()
-            blocks.append(("image", m.group(1)))
+            push("image", m.group(1), i + 1)
             i += 1
             continue
         if IMG_RE.search(s):
             raise ValueError("第 %d 行：插图请独占一行，不支持图文混排" % (i + 1))
+        cm = CAP_CAPTION_RE.match(s)
+        if cm:
+            kind = "figcap" if cm.group(1) == "图" else "tabcap"
+            push(kind, _caption_text(cm.group(1), cm.group(2), cm.group(3)), i + 1)
+            i += 1
+            continue
         cm = CAPTION_RE.match(s)
         if cm and not s.startswith("**"):
-            flush()
-            blocks.append(("caption", cm.group(1).strip()))
+            # 旧写法 `*图 2-1 说明*`：只用于图注，兼容为同一套加粗 10pt 图注
+            old = cm.group(1).strip()
+            om = re.match(r"^(图|表)\s*([0-9]+(?:[-–.][0-9]+)*)\s*(.*)$", old)
+            if not om:
+                raise ValueError("第 %d 行：不支持整行斜体（旧源里只用于图注）"
+                                 % (i + 1))
+            kind = "figcap" if om.group(1) == "图" else "tabcap"
+            push(kind, _caption_text(om.group(1), om.group(2), om.group(3)), i + 1)
             i += 1
             continue
         if s.startswith("- "):
-            flush()
-            items = []
-            while i < n and lines[i].strip().startswith("- "):
-                items.append(lines[i].strip()[2:].strip())
-                i += 1
-            blocks.append(("ul", items))
-            continue
-        if OL_RE.match(s):
+            raise ValueError("第 %d 行：论文体不用项目符号列表——改成「（1）…（2）…」"
+                             "或表格" % (i + 1))
+        mm = OL_RE.match(s)
+        if mm:
             flush()
             items = []
             while i < n:
-                mm = OL_RE.match(lines[i].strip())
-                if not mm:
+                mo = OL_RE.match(lines[i].strip())
+                if not mo:
                     break
-                items.append((int(mm.group(1)), mm.group(2)))
+                items.append((int(mo.group(1)), mo.group(2), i + 1))
                 i += 1
-            blocks.append(("ol", items))
+            push("ol", items, items[0][2])
             continue
         if s.startswith(">"):
-            raise ValueError("第 %d 行：不支持引用块（源里没用过）" % (i + 1))
+            raise ValueError("第 %d 行：不支持引用块（论文体不用）" % (i + 1))
+        mm = META_RE.match(s)
+        if mm:
+            if title is None:
+                raise ValueError("第 %d 行：元信息行不能出现在标题之前" % (i + 1))
+            if not meta_open:
+                raise ValueError("第 %d 行：元信息行只允许出现在标题后、第一条正文前"
+                                 "（连续 `**标签**：值` 行，遇空行即结束）" % (i + 1))
+            if meta_count >= 6:
+                raise ValueError("第 %d 行：元信息行最多 6 行" % (i + 1))
+            meta_count += 1
+            push("meta", (mm.group(1).strip(), mm.group(2).strip()), i + 1,
+                 is_meta=True)
+            i += 1
+            continue
         buf.append(s)
         i += 1
     flush()
     if title is None:
-        raise ValueError("源里没有一级标题，无法生成封面")
+        raise ValueError("源里没有一级标题（`# 论文标题`），无法生成标题块")
+
+    # ---- 图注 / 表注与图表的配对检查（图注在图下一行、表注在表格上一行）
+    for idx, (kind, _payload, lineno) in enumerate(blocks):
+        prev = blocks[idx - 1][0] if idx > 0 else None
+        nxt = blocks[idx + 1][0] if idx + 1 < len(blocks) else None
+        if kind == "figcap" and prev != "image":
+            raise ValueError("第 %d 行：图注必须紧跟插图行（图下一行）" % lineno)
+        if kind == "image" and nxt != "figcap":
+            raise ValueError("第 %d 行：插图下一行必须是「**图 N**　说明」图注"
+                             % lineno)
+        if kind == "tabcap" and nxt != "table":
+            raise ValueError("第 %d 行：表注必须紧贴表格上方（表格上一行）" % lineno)
+        if kind == "table" and prev != "tabcap":
+            raise ValueError("第 %d 行：表格上一行必须是「**表 N**　说明」表注"
+                             % lineno)
     return title, blocks
 
 
 # ---------------------------------------------------------------- 行内文本
 
 INLINE_RE = re.compile(r"(\*\*.+?\*\*|`[^`]+`)")
+# CJK / 全角字符（强调的西文部分走 Times Bold）
+CJK_RE = re.compile(r"[\u2e80-\u303f\u3200-\u4dbf\u4e00-\u9fff"
+                    r"\uf900-\ufaff\ufe30-\ufe4f\uff00-\uffef]+")
 
 
-def add_runs(par, text, size_pt=BODY_PT, heading=False, base_cn=None,
-             color=C_INK, code_size=None, code_color=None, code_shade=False):
-    """写一行带 **强调** 与 `行内代码` 的文本。
+def add_emphasis_runs(par, text, size_pt=BODY_PT, color=C_INK):
+    """`**强调**`：中文黑体（本身即重，不再叠字重）、西文 Times Bold，同字号。"""
+    pos = 0
+    for m in CJK_RE.finditer(text):
+        if m.start() > pos:
+            write(par, text[pos:m.start()], FONT_EN, FONT_EN, size_pt, True, color)
+        write(par, m.group(0), FONT_HEI, FONT_EN, size_pt, False, color)
+        pos = m.end()
+    if pos < len(text):
+        write(par, text[pos:], FONT_EN, FONT_EN, size_pt, True, color)
 
-    中文强调走黑体（中文排版惯例，黑体本身即重），不再给宋体叠字重；
-    ``heading=True`` 用于标题段：整段（含西文、行内代码）都走黑体 / Times，标题段里
-    不出现第三、第四种字面。行内代码默认 Consolas、不加底纹（学术报告里不上色块）。
+
+def add_runs(par, text, size_pt=BODY_PT, heading=False, bold=False, color=C_INK):
+    """写一行带 `**强调**` 与 `` `行内代码` `` 的文本。
+
+    heading=True 用于标题段：整段（含西文、行内代码）都走黑体 / Times，标题段里不
+    出现第三、第四种字面。行内代码默认 Consolas、不加底纹、黑色；在 9pt 表格里降到
+    9pt（不撑破表格行高），正文里是 10pt。
     """
-    cn = FONT_HEI if heading else (base_cn or FONT_CN)
-    code_color = C_INK if code_color is None else code_color
-    code_pt = code_size if code_size is not None else max(size_pt - 1.0, 9.0)
+    cn = FONT_HEI if heading else FONT_CN
     for piece in INLINE_RE.split(text):
         if not piece:
             continue
         if piece.startswith("**") and piece.endswith("**") and len(piece) > 4:
-            write(par, piece[2:-2], FONT_HEI, size_pt=size_pt, bold=False, color=color)
-        elif piece.startswith("`") and piece.endswith("`") and len(piece) > 2:
-            if heading:                     # 标题里的行内代码跟标题同字体，不引 Consolas
-                write(par, piece[1:-1], cn, size_pt=size_pt, bold=False, color=color)
+            inner = piece[2:-2]
+            if heading:
+                write(par, inner, cn, FONT_EN, size_pt, False, color)
             else:
-                run = write(par, piece[1:-1], FONT_CN, FONT_CODE, code_pt, False,
-                            code_color)
-                if code_shade:
-                    shade_run(run, C_CODE_FILL)
+                add_emphasis_runs(par, inner, size_pt, color)
+        elif piece.startswith("`") and piece.endswith("`") and len(piece) > 2:
+            if heading:
+                write(par, piece[1:-1], cn, FONT_EN, size_pt, bold, color)
+            else:
+                code_pt = min(CODE_PT, size_pt)
+                write(par, piece[1:-1], FONT_CN, FONT_CODE, code_pt, bold, color)
         else:
-            write(par, piece, cn, size_pt=size_pt, bold=False, color=color)
+            write(par, piece, cn, FONT_EN, size_pt, bold, color)
 
 
-def add_chapter_runs(par, text, size_pt=H1_PT):
-    """章标题：黑体整段（编号与标题同色、同字体，学术报告不玩色块）。"""
-    add_runs(par, text, size_pt=size_pt, heading=True)
+def add_caption_runs(par, text):
+    """图注 / 表注：宋体加粗 10pt，编号与说明同一字面，居中由段落给。"""
+    for piece in INLINE_RE.split(text):
+        if not piece:
+            continue
+        if piece.startswith("**") and piece.endswith("**") and len(piece) > 4:
+            write(par, piece[2:-2], FONT_CN, FONT_EN, CAPTION_PT, True, C_INK)
+        elif piece.startswith("`") and piece.endswith("`") and len(piece) > 2:
+            write(par, piece[1:-1], FONT_CN, FONT_CODE, CAPTION_PT, True, C_INK)
+        else:
+            write(par, piece, FONT_CN, FONT_EN, CAPTION_PT, True, C_INK)
+
+
+def add_meta_runs(par, label, value, char_tw=0):
+    """元信息行：`**标签**` 渲染黑体，后接全角冒号 + 10pt 值。
+
+    一行放不下时按字符间距轻微收紧（char_tw < 0，最多 -0.4pt/字），10pt 字号不变，
+    保证元信息每条各占一行（版式观感；换行会让标题块散架）。
+    """
+    first = len(par.runs)
+    write(par, label, FONT_HEI, FONT_EN, META_PT, False, C_INK)
+    add_runs(par, "：" + value, size_pt=META_PT)
+    if char_tw:
+        for r in par.runs[first:]:
+            set_char_spacing(r, char_tw)
 
 
 # ---------------------------------------------------------------- 图片 / 表格
@@ -780,23 +795,21 @@ def wrapped_lines(s, avail_pt, size_pt=TABLE_PT):
 def column_widths(rows, total_cm=TABLE_W_CM, size_pt=TABLE_PT):
     """列宽（twips）：每列不小于 3 个字宽，且让整表估高最小；合计 = 整表宽。"""
     ncol = len(rows[0])
-    total_tw = int(round(total_cm * TWIPS_PER_CM))
-    usable_pt = (total_cm - 2 * CELL_MAR_TW / TWIPS_PER_CM) * 28.3465
+    usable_pt = total_cm * 28.3465          # 整表宽（含单元格内边距）→ 固定布局 15.6cm
     min_pt = []
     for c in range(ncol):
         longest = 0.0
         for r in rows:
             cell = re.sub(r"[*`]", "", r[c] if c < len(r) else "")
             token = max(re.split(r"[\s、，,；;：:/|（）()]+", cell) or [""], key=len)
-            longest = max(longest, text_w(cell) / max(1, wrapped_lines(cell, 1e9)), 
+            longest = max(longest, text_w(cell) / max(1, wrapped_lines(cell, 1e9)),
                           text_w(token, size_pt))
         # 列宽下限：至少容下最长 token（长路径 / 文件名不能被拆开），但不超过 12 个字宽
         min_pt.append(min(max(longest, 3 * size_pt * 1.7), 12 * size_pt))
-    if sum(min_pt) / 28.3465 > usable_pt / 28.3465:
+    if sum(min_pt) > usable_pt:
         min_pt = [usable_pt / ncol] * ncol
-    min_cm = [p / 28.3465 for p in min_pt]
 
-    def evaluate(weights, width_penalty=1.0):
+    def evaluate(weights):
         raw = [max(w, 1e-6) for w in weights]
         s = sum(raw)
         widths = [usable_pt * w / s for w in raw]
@@ -812,9 +825,8 @@ def column_widths(rows, total_cm=TABLE_W_CM, size_pt=TABLE_PT):
             est += max(wrapped_lines(r[c] if c < len(r) else "",
                                      widths[c] - 2 * CELL_MAR_TW / TWIPS_PER_CM * 28.3465)
                        for c in range(ncol))
-        # 轻微偏好「按内容分配」，避免极端等分把窄列拉宽
-        est += width_penalty * sum(text_w(r[c] if c < len(r) else "", size_pt)
-                                   for r in rows for c in range(ncol)) / 600.0
+        est += sum(text_w(r[c] if c < len(r) else "", size_pt)
+                   for r in rows for c in range(ncol)) / 600.0
         return est, widths
 
     natural = [max(text_w(r[c] if c < len(r) else "", size_pt) for r in rows)
@@ -832,11 +844,7 @@ def column_widths(rows, total_cm=TABLE_W_CM, size_pt=TABLE_PT):
 
 
 def set_table_borders(table, spec):
-    """表格边框（设计令牌）：spec = {edge: {"sz","color","val"}}。
-
-    学术报告用三线表：顶线 / 底线粗、表头下一条细线，不画竖线与行线（靠单元格
-    留白分隔）。正文与 PPT 无关——报告只求清楚、端庄。
-    """
+    """表格边框（设计令牌）：三线表——顶 / 底粗、表头下细，无竖线 / 行线 / 底纹。"""
     tblPr = table._tbl.tblPr
     old = tblPr.find(qn("w:tblBorders"))
     if old is not None:
@@ -852,7 +860,7 @@ def set_table_borders(table, spec):
         borders.append(el)
 
 
-def set_cell_margins(table):
+def set_table_cell_margins(table):
     tblPr = table._tbl.tblPr
     old = tblPr.find(qn("w:tblCellMar"))
     if old is not None:
@@ -871,29 +879,26 @@ def set_table_indent(table):
     ind.set(qn("w:type"), "dxa")
 
 
+def set_table_layout_fixed(table):
+    lay = _ordered_child(table._tbl.tblPr, "w:tblLayout", _TBLPR_ORDER)
+    lay.set(qn("w:type"), "fixed")
+
+
 def repeat_header(row):
     el = _ordered_child(row._tr.get_or_add_trPr(), "w:tblHeader", _TRPR_ORDER)
     el.set(qn("w:val"), "true")
 
 
 def no_row_split(row):
-    """行内不跨页：整行挪到下一页，表格不会在行中间被拦腰截断（跨页更整齐）。"""
+    """行内不跨页：整行挪到下一页，表格不会在行中间被拦腰截断。"""
     el = _ordered_child(row._tr.get_or_add_trPr(), "w:cantSplit", _TRPR_ORDER)
     el.set(qn("w:val"), "true")
 
 
 def set_row_height(row, twips):
-    """表头行最小高度（atLeast）：表头浅底 + 粗体加一行内边距才好喘气。"""
     el = _ordered_child(row._tr.get_or_add_trPr(), "w:trHeight", _TRPR_ORDER)
     el.set(qn("w:val"), str(int(twips)))
     el.set(qn("w:hRule"), "atLeast")
-
-
-def shade(cell, fill):
-    shd = _ordered_child(cell._tc.get_or_add_tcPr(), "w:shd", _TCPR_ORDER)
-    shd.set(qn("w:val"), "clear")
-    shd.set(qn("w:color"), "auto")
-    shd.set(qn("w:fill"), fill)
 
 
 ONLY_NUM_RE = re.compile(r"^[\d.\s%±~≤≥<>/()\-–—、]+$")
@@ -907,11 +912,7 @@ def _set_keep_next(par, value=True):
 
 
 def _table_est_height(rows, widths, ncol):
-    """估表格高度（pt）：行数最多的那列行数 × 单倍行高 + 单元格内边距。
-
-    宋体的单倍行高 ≈ 1.286 × 字号（见 LINE_FACTOR），按 1.3 估只差几个点，
-    整表同页的判断才准。
-    """
+    """估表格高度（pt）：单行行数 × 单倍行高 + 单元格内边距。"""
     total = 0.0
     for cells in rows:
         lines = 1
@@ -924,12 +925,8 @@ def _table_est_height(rows, widths, ncol):
     return total
 
 
-def keep_table_rows(table, rows, widths, threshold_pt=260.0):
-    """表格分页控制：整表放得下就整表同页；放不下时至少表头 + 前两行同页。
-
-    Word 没有「表格整体不跨页」开关，靠给行内段落 keepNext 串起来实现；大表仍允许
-    跨页（跨页有重复表头），但不会出现「表头孤零零留在页底、正文行从下一页开始」。
-    """
+def keep_table_rows(table, rows, widths, threshold_pt=280.0):
+    """表格分页控制：整表放得下就整表同页；放不下时至少表头 + 前两行同页。"""
     ncol = len(rows[0])
     est = _table_est_height(rows, widths, ncol)
     last_keep = len(rows) - 2 if est <= threshold_pt else min(2, len(rows) - 1)
@@ -940,11 +937,7 @@ def keep_table_rows(table, rows, widths, threshold_pt=260.0):
 
 
 def cell_align(text):
-    """表头 / 短串 / 数值 / 带单位测量值居中，长文字左对齐。
-
-    长中文串里天然会出现「件 / 次 / 步」这类单位字，不能一命中就居中——只有
-    短串（≤16 字）才按单位判断，长段落一律左对齐，整张表才有阅读方向。
-    """
+    """表头 / 短串 / 数值 / 带单位测量值居中，长文字左对齐。"""
     t = text.strip()
     if not t:
         return WD_ALIGN_PARAGRAPH.CENTER
@@ -956,16 +949,20 @@ def cell_align(text):
 
 
 def render_table(doc, rows):
-    """表格：三线表——顶线 / 底线粗、表头下细线；无竖线、无行线、无底色、无斑马。"""
+    """三线表：顶 / 底 1.5pt 黑、表头下 0.75pt；无竖线 / 行线 / 底纹；
+    整表 15.6cm 固定布局；表头宋体加粗 9pt、表体宋体 9pt；行不跨页、表头跨页重复。"""
     ncol = len(rows[0])
     widths = column_widths(rows, size_pt=TABLE_PT)
     table = doc.add_table(rows=len(rows), cols=ncol)
     table.style = "Table Grid"
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     table.autofit = False
+    set_table_layout_fixed(table)
     for i, w in enumerate(widths):
         table.columns[i].width = Twips(w)       # 网格列宽与 tcW 都写，Word 排版才稳
     tblW = table._tbl.tblPr.find(qn("w:tblW"))
+    if tblW is None:
+        tblW = _ordered_child(table._tbl.tblPr, "w:tblW", _TBLPR_ORDER)
     tblW.set(qn("w:type"), "dxa")
     tblW.set(qn("w:w"), str(sum(widths)))
     set_table_borders(table, {
@@ -974,7 +971,7 @@ def render_table(doc, rows):
         "left": {"val": "none"}, "right": {"val": "none"},
         "insideV": {"val": "none"}, "insideH": {"val": "none"},   # 三线表：不画行线
     })
-    set_cell_margins(table)
+    set_table_cell_margins(table)
     set_table_indent(table)
     for r, cells in enumerate(rows):
         for c in range(ncol):
@@ -982,50 +979,32 @@ def render_table(doc, rows):
             cell.width = Twips(widths[c])
             cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
             par = cell.paragraphs[0]
-            fmt_par(par, before=0.0, after=0.0, multiple=CELL_LINE,
+            fmt_par(par, before=0.0, after=0.0, multiple=SINGLE_LINE,
                     align=WD_ALIGN_PARAGRAPH.CENTER if r == 0 else cell_align(cells[c]))
             add_runs(par, cells[c], size_pt=TABLE_HEAD_PT if r == 0 else TABLE_PT,
-                     heading=(r == 0))
+                     bold=(r == 0))
             if r == 0:                              # 栏目线：表头下 0.75pt 细线
                 set_cell_border(cell, bottom={"val": "single", "sz": 6,
                                               "color": C_INK})
     for row in table.rows:                       # 行不跨页，再让表头行跨页重复
         no_row_split(row)
-    set_row_height(table.rows[0], 400)
+    set_row_height(table.rows[0], TABLE_HEAD_ROW_TW)
     repeat_header(table.rows[0])
     keep_table_rows(table, rows, widths)         # 小表整表同页 / 大表表头不落单
     return table
 
 
 def render_image(doc, src: Path, width_cm=FIG_MAX_CM):
-    """插图：默认满版心 15.8cm（图内小字才能看清），细高图按高度上限再压。
-
-    Word 导出 PDF 时会把插图重采样到 96 dpi，图框越大越糊——所以图框用满版心是
-    清晰度的前提；像素换回原图靠 build.ps1 的第 3 步 pdf_images_hires.py。
-    单张想窄一点：改 FIG_WIDTH_OVERRIDE；整篇想窄一点：--fig-width <cm>。
-    """
+    """插图：居中、宽 15.8cm（现有图按 1:1 落版），与图注同页。"""
     w_px, h_px = image_size_px(src)
     width_cm = FIG_WIDTH_OVERRIDE.get(src.name, width_cm)
-    if h_px and w_px / h_px < 0.35:            # 细高图再按高度压一压（≤ 22cm）
+    if h_px and w_px / h_px < 0.35:            # 细高图按高度上限再压一压（≤ 22cm）
         width_cm = min(width_cm, 22.0 * w_px / h_px)
-    par = doc.add_paragraph()
-    fmt_par(par, before=9.0, after=3.0, multiple=TIGHT_LINE,
-            align=WD_ALIGN_PARAGRAPH.CENTER, keep_next=True)
+    par = fmt_par(doc.add_paragraph(), before=FIG_GAP[0], after=FIG_GAP[1],
+                  multiple=SINGLE_LINE, align=WD_ALIGN_PARAGRAPH.CENTER,
+                  keep_next=True)
     par.add_run().add_picture(str(src), width=Cm(width_cm))
     return par
-
-
-CAPTION_NUM_RE = re.compile(r"^(图\s*[\dA-Za-z.\-–]+)\s*(.*)$")
-
-
-def add_caption_runs(par, text):
-    """图注：宋体 9pt 居中、黑色，编号与说明同一字面（学术报告不上色、不加粗）。
-
-    说明文字走 add_runs：图注里偶尔有 `行内代码`（如「管脚取自 `src/…`」），
-    不能把反引号原样印到 PDF 上；图注里的代码用 Consolas 同色，不上底纹。
-    """
-    add_runs(par, text, size_pt=CAPTION_PT, color=C_INK,
-             code_size=CAPTION_PT, code_color=C_INK, code_shade=False)
 
 
 # ---------------------------------------------------------------- 文档搭建
@@ -1039,121 +1018,152 @@ def style_el(styles, name):
     raise KeyError(name)
 
 
-def build_styles(doc, toc_styles=None):
-    styles = doc.styles
-    normal = styles["Normal"]
-    strip_theme_fonts(style_el(styles, "Normal"))
-    pPr = fresh_pPr(style_el(styles, "Normal"))
-    set_keep(pPr, widow=True)
-    set_spacing(pPr, 0.0, 0.0, BODY_LINE)
-    set_ind(pPr, 0, 0)
-    set_jc(pPr, "both")
-    _ordered_child(pPr, "w:snapToGrid", _PPR_ORDER).set(qn("w:val"), "0")
-    normal.font.size = Pt(BODY_PT)
-    normal.font.name = FONT_EN
-    normal.font.color.rgb = RGBColor.from_string(C_INK)
-    set_rfonts_element(style_el(styles, "Normal").get_or_add_rPr())
+def _new_par_style(styles, name):
+    st = styles.add_style(name, WD_STYLE_TYPE.PARAGRAPH)
+    st.base_style = styles["Normal"]
+    return st
 
-    # 标题靠内置 Heading 样式提供大纲级别（目录域据此取条目）。
-    # 学术报告标题：黑体、一级 16pt / 二级 13pt / 三级 11.5pt，不加装饰线、不设强调色；
-    # 段前 / 段后取正值，行距 1.0 倍——黑体单倍行高 1.31×字号，固定行距会裁字，见 set_spacing
-    for name, size_pt, level in (("Heading 1", H1_PT, 0),
-                                 ("Heading 2", H2_PT, 1),
-                                 ("Heading 3", H3_PT, 2)):
+
+def _style_rpr(st_el):
+    rpr = st_el.find(qn("w:rPr"))
+    if rpr is None:
+        rpr = OxmlElement("w:rPr")
+        st_el.append(rpr)
+    return rpr
+
+
+def _setup_para_style(st_el, *, before, after, multiple, first=0, left=0,
+                      hanging=0, align="both", keep_next=False, keep_lines=False,
+                      widow=True, outline=None, size_pt=BODY_PT,
+                      cn=FONT_CN, en=FONT_EN, bold=False, italic=False):
+    """样式级段落格式：与 fmt_par 同一套令牌，保证「样式 + 直接格式」两边一致。"""
+    pPr = fresh_pPr(st_el)
+    set_keep(pPr, keep_next, keep_lines, widow)
+    set_spacing(pPr, before, after, multiple)
+    set_ind(pPr, first, left, hanging)
+    set_jc(pPr, align)
+    _no_snap(pPr)
+    _no_overflow_punct(pPr)
+    if outline is not None:
+        el = pPr.find(qn("w:outlineLvl"))
+        if el is None:
+            el = OxmlElement("w:outlineLvl")
+            pPr.append(el)
+        el.set(qn("w:val"), str(outline))
+    rpr = _style_rpr(st_el)
+    set_rfonts_element(rpr, cn, en)
+    _set_size(rpr, size_pt)
+    for tag, val in (("w:b", "1" if bold else "0"),
+                     ("w:i", "1" if italic else "0"),
+                     ("w:color", C_INK)):
+        el = rpr.find(qn(tag))
+        if el is None:
+            el = OxmlElement(tag)
+            rpr.append(el)
+        el.set(qn("w:val"), val)
+
+
+def setup_doc_defaults(doc):
+    """docDefaults 也钉死字体 / 字号 / 单倍行距：空段落与未显式设字体的文字不走主题字体。"""
+    styles_el = doc.styles.element
+    dd = styles_el.find(qn("w:docDefaults"))
+    if dd is None:
+        dd = OxmlElement("w:docDefaults")
+        styles_el.insert(0, dd)
+    rpr_default = dd.find(qn("w:rPrDefault"))
+    if rpr_default is None:
+        rpr_default = OxmlElement("w:rPrDefault")
+        dd.append(rpr_default)
+    rpr = rpr_default.find(qn("w:rPr"))
+    if rpr is None:
+        rpr = OxmlElement("w:rPr")
+        rpr_default.append(rpr)
+    for tag in ("w:rFonts", "w:color"):
+        el = rpr.find(qn(tag))
+        if el is not None:
+            rpr.remove(el)
+    set_rfonts_element(rpr)
+    _set_size(rpr, BODY_PT)
+    ppr_default = dd.find(qn("w:pPrDefault"))
+    if ppr_default is None:
+        ppr_default = OxmlElement("w:pPrDefault")
+        dd.append(ppr_default)
+    pPr = ppr_default.find(qn("w:pPr"))
+    if pPr is None:
+        pPr = OxmlElement("w:pPr")
+        ppr_default.append(pPr)
+    old = pPr.find(qn("w:spacing"))
+    if old is not None:
+        pPr.remove(old)
+    set_spacing(pPr, 0.0, 0.0, SINGLE_LINE)
+
+
+def build_styles(doc):
+    """样式：令牌全部在这里再设一遍（验收脚本按样式名取样，不靠对齐方式猜）。"""
+    styles = doc.styles
+    setup_doc_defaults(doc)
+
+    # Normal：宋体 11pt / Times、单倍行距、无缩进（具体段落由 BodyCN 等覆盖）
+    normal = styles["Normal"]
+    st_el = style_el(styles, "Normal")
+    _setup_para_style(st_el, before=0.0, after=0.0, multiple=SINGLE_LINE,
+                      align="both", widow=True, size_pt=BODY_PT)
+    normal.font.name = FONT_EN
+    normal.font.size = Pt(BODY_PT)
+    normal.font.bold = False
+    normal.font.italic = False
+    normal.font.color.rgb = RGBColor.from_string(C_INK)
+
+    # 标题块：黑体 17.5pt 居中，段前 24 / 段后 10，与元信息同页
+    _new_par_style(styles, "TitleCN")
+    _setup_para_style(style_el(styles, "TitleCN"),
+                      before=TITLE_GAP[0], after=TITLE_GAP[1],
+                      multiple=SINGLE_LINE, align="center", keep_next=True,
+                      keep_lines=True, size_pt=TITLE_PT, cn=FONT_HEI)
+    # 元信息行：10pt、单倍、段后 1pt、左对齐（标签黑体由 run 直接格式给）
+    _new_par_style(styles, "MetaCN")
+    _setup_para_style(style_el(styles, "MetaCN"), before=0.0, after=META_AFTER,
+                      multiple=SINGLE_LINE, align="left", keep_lines=True,
+                      size_pt=META_PT)
+
+    # 一级 / 二级标题：黑体、左对齐、段前段后见令牌表，与下段同页；靠内置样式给大纲级别
+    for name, size_pt, level in (("Heading 1", H1_PT, 0), ("Heading 2", H2_PT, 1)):
         before, after = H_GAP["h%d" % (level + 1)]
         st = styles[name]
-        st_el = style_el(styles, name)
-        strip_theme_fonts(st_el)
-        pPr = fresh_pPr(st_el)
-        set_keep(pPr, next_=True, lines=True)
-        set_spacing(pPr, before, after, HEAD_LINE)
-        set_ind(pPr, 0, 0)
-        set_jc(pPr, "left")
-        out = OxmlElement("w:outlineLvl")
-        out.set(qn("w:val"), str(level))
-        pPr.append(out)
+        _setup_para_style(style_el(styles, name), before=before, after=after,
+                          multiple=SINGLE_LINE, align="left", keep_next=True,
+                          keep_lines=True, widow=True, outline=level,
+                          size_pt=size_pt, cn=FONT_HEI)
         st.font.name = FONT_EN
         st.font.size = Pt(size_pt)
-        st.font.bold = False                 # 黑体本身即重，不再叠字重
-        st.font.color.rgb = RGBColor.from_string(C_INK)
-        set_rfonts_element(st_el.get_or_add_rPr(), FONT_HEI, FONT_EN)
-
-    # 图注：居中、宋体 9pt、黑色、无斜体、无缩进
-    cap = styles.add_style("CaptionCN", WD_STYLE_TYPE.PARAGRAPH)
-    cap.base_style = styles["Normal"]
-    strip_theme_fonts(style_el(styles, "CaptionCN"))
-    pPr = fresh_pPr(style_el(styles, "CaptionCN"))
-    set_keep(pPr, next_=False, lines=True, widow=True)
-    set_spacing(pPr, 4.0, 10.0, CELL_LINE)
-    set_ind(pPr, 0, 0)
-    set_jc(pPr, "center")
-    cap.font.name = FONT_EN
-    cap.font.size = Pt(CAPTION_PT)
-    cap.font.bold = False
-    cap.font.italic = False
-    cap.font.color.rgb = RGBColor.from_string(C_INK)
-    set_rfonts_element(style_el(styles, "CaptionCN").get_or_add_rPr())
-
-    # 目录条目：TOC 1/2/3 单倍行距 + 小段后距。不这么设，条目会继承 Normal 的
-    # 1.3 倍行距，36 条目录能占两页、第二页只填一半（改版前的实测现象）。
-    # Word 内置样式名是小写 "toc 1"、styleId 是 "TOC1"——名字改回内置写法，
-    # Word 更新 TOC 域时才会认这几个样式，而不是另建一套。
-    for toc_name, sz, bold, left_tw, after_pt in (toc_styles or TOC_STYLES):
-        disp_name = toc_name.upper()                       # python-docx 里叫 "TOC 1"
-        if disp_name in [s.name for s in styles]:
-            st = styles[disp_name]
-        else:
-            st = styles.add_style(disp_name, WD_STYLE_TYPE.PARAGRAPH)
-            st.base_style = styles["Normal"]
-        st_el = style_el(styles, disp_name)
-        st_el.find(qn("w:name")).set(qn("w:val"), toc_name)   # 内置名 "toc 1"
-        # python-docx 新建样式会打 w:customStyle="1"；去掉它，Word 才会把 "toc N"
-        # 当成内置目录样式来用（否则目录条目仍会退回 Normal 的 1.3 倍行距）
-        if st_el.get(qn("w:customStyle")) is not None:
-            del st_el.attrib[qn("w:customStyle")]
-        strip_theme_fonts(st_el)
-        pPr = fresh_pPr(st_el)
-        set_keep(pPr, next_=False, lines=True, widow=True)
-        set_spacing(pPr, 0.0, after_pt, TOC_LINE)
-        set_ind(pPr, 0, left_tw)
-        set_jc(pPr, "left")
-        # 页码右对齐靠样式里的右对齐制表位（带点线）：版心右边界 = TEXT_W_CM
-        tabs = pPr.get_or_add_tabs()            # 按 schema 顺序插在 spacing 之前
-        tab = OxmlElement("w:tab")
-        tab.set(qn("w:val"), "right")
-        tab.set(qn("w:leader"), "dot")
-        tab.set(qn("w:pos"), str(int(round(TEXT_W_CM * TWIPS_PER_CM))))
-        tabs.append(tab)
-        # 章条目用黑体拉开层级，节条目宋体；目录域重建后只认样式里的字体
-        toc_cn = FONT_HEI if toc_name == "toc 1" else FONT_CN
-        st.font.name = FONT_EN
-        st.font.size = Pt(sz)
         st.font.bold = False
+        st.font.italic = False
         st.font.color.rgb = RGBColor.from_string(C_INK)
-        set_rfonts_element(st_el.get_or_add_rPr(), toc_cn, FONT_EN)
 
-    # 正文 / 列表：单独给样式名，验收脚本按样式取样，不再靠对齐方式猜
-    for name, first, left, hanging, after, align, tabs_at in (
-            ("BodyCN", CHAR_TWIPS, 0, 0, BODY_AFTER, "both", None),
-            ("ListCN", 0, LIST_LEFT_TW, LIST_HANG_TW, 2.5, "left", LIST_LEFT_TW)):
-        st = styles.add_style(name, WD_STYLE_TYPE.PARAGRAPH)
-        st.base_style = styles["Normal"]
-        strip_theme_fonts(style_el(styles, name))
-        pPr = fresh_pPr(style_el(styles, name))
-        set_keep(pPr, widow=True)
-        set_spacing(pPr, 0.0, after, BODY_LINE)
-        set_ind(pPr, first, left, hanging)
-        set_jc(pPr, align)
-        if tabs_at:
-            tabs = pPr.get_or_add_tabs()
-            tab = OxmlElement("w:tab")
-            tab.set(qn("w:val"), "left")
-            tab.set(qn("w:pos"), str(int(tabs_at)))
-            tabs.append(tab)
-        st.font.name = FONT_EN
-        st.font.size = Pt(BODY_PT)
-        st.font.color.rgb = RGBColor.from_string(C_INK)
-        set_rfonts_element(style_el(styles, name).get_or_add_rPr())
+    # 正文：宋体 11pt / Times、两端对齐、首行缩进 440 twips、单倍行距
+    _new_par_style(styles, "BodyCN")
+    _setup_para_style(style_el(styles, "BodyCN"), before=0.0, after=BODY_AFTER,
+                      multiple=SINGLE_LINE, first=CHAR_TWIPS, align="both",
+                      widow=True, size_pt=BODY_PT)
+
+    # 图注：宋体加粗 10pt、居中、段前 0 / 段后 6
+    _new_par_style(styles, "CaptionCN")
+    _setup_para_style(style_el(styles, "CaptionCN"),
+                      before=FIGCAP_GAP[0], after=FIGCAP_GAP[1],
+                      multiple=SINGLE_LINE, align="center", keep_lines=True,
+                      size_pt=CAPTION_PT, bold=True)
+    # 表注：宋体加粗 10pt、居中、段前 6 / 段后 3，在表格上方且与表同页
+    _new_par_style(styles, "TableCaptionCN")
+    _setup_para_style(style_el(styles, "TableCaptionCN"),
+                      before=TABCAP_GAP[0], after=TABCAP_GAP[1],
+                      multiple=SINGLE_LINE, align="center", keep_next=True,
+                      keep_lines=True, size_pt=CAPTION_PT, bold=True)
+
+    # 列表（仅参考文献 / 附录）：10pt、悬挂缩进 1.5 字符、单倍、段后 2pt
+    _new_par_style(styles, "ListCN")
+    _setup_para_style(style_el(styles, "ListCN"), before=0.0, after=LIST_AFTER,
+                      multiple=SINGLE_LINE, left=LIST_LEFT_TW,
+                      hanging=LIST_HANG_TW, align="left", size_pt=LIST_PT)
 
 
 def setup_section(section):
@@ -1163,58 +1173,16 @@ def setup_section(section):
     section.bottom_margin = Cm(MARGIN_CM)
     section.left_margin = Cm(MARGIN_CM)
     section.right_margin = Cm(MARGIN_CM)
-    section.header_distance = Cm(1.5)
-    section.footer_distance = Cm(1.5)
-
-
-def blank(section):
-    """封面节：页眉页脚都清空（阻断继承，保证封面上什么也没有）。"""
-    section.header.is_linked_to_previous = False
-    section.footer.is_linked_to_previous = False
-    for part in (section.header, section.footer):
-        for par in part.paragraphs:
-            clear_par(par)
-            fmt_par(par, before=0.0, after=0.0, multiple=TIGHT_LINE, widow=False)
-
-
-def decorate(section, right_label, page_numbers=False):
-    """目录 / 正文节：页眉「左品牌 + 右标签 + 下细线」；正文页脚加页码域。
-
-    Header / Footer 内置样式自带 Letter 纸的居中 / 右对齐制表位（4680 / 9360
-    twips），这里先 clear 掉再在版心右边界重设，右侧标签才不会被推到页中间。
-    """
-    section.header.is_linked_to_previous = False
-    section.footer.is_linked_to_previous = False
-    hp = section.header.paragraphs[0]
-    clear_par(hp)
-    fmt_par(hp, before=0.0, after=0.0, multiple=TIGHT_LINE,
-            align=WD_ALIGN_PARAGRAPH.LEFT, widow=False)
-    add_tab_stop(hp, int(round(TEXT_W_CM * TWIPS_PER_CM)), align="right",
-                 clear=(4680, 9360, 12240))
-    write(hp, HEADER_TEXT, size_pt=SMALL_PT, color=C_GRAY)
-    hp.add_run("\t")
-    write(hp, right_label, size_pt=SMALL_PT, color=C_GRAY)
-    para_border(hp, bottom={"sz": 4, "space": 4, "color": C_LINE})
-
-    fp = section.footer.paragraphs[0]
-    clear_par(fp)
-    fmt_par(fp, before=0.0, after=0.0, multiple=TIGHT_LINE,
-            align=WD_ALIGN_PARAGRAPH.CENTER, widow=False)
-    if page_numbers:
-        write(fp, FOOT_LEFT, size_pt=SMALL_PT, color=C_GRAY)
-        add_field(fp, " PAGE ", "1", size_pt=SMALL_PT, color=C_INK)
-        write(fp, FOOT_MID, size_pt=SMALL_PT, color=C_GRAY)
-        add_field(fp, " NUMPAGES ", "1", size_pt=SMALL_PT, color=C_GRAY)
-        write(fp, FOOT_RIGHT, size_pt=SMALL_PT, color=C_GRAY)
+    section.header_distance = Cm(1.5)          # 无页眉，值不参与版式
+    section.footer_distance = Cm(FOOTER_DIST_CM)
 
 
 def restart_page_numbering(section):
-    """本节的 <w:pgNumType w:start="1"/>：正文页码从 1 起（封面 / 目录不计数重排）。"""
+    """单节文档页码从 1 起：<w:pgNumType w:start="1"/>（显式声明，不靠默认值）。"""
     sectPr = section._sectPr
     el = sectPr.find(qn("w:pgNumType"))
     if el is None:
         el = OxmlElement("w:pgNumType")
-        # schema 顺序：pgNumType 在 pgMar 之后、cols 之前
         anchor = sectPr.find(qn("w:cols"))
         if anchor is None:
             anchor = sectPr.find(qn("w:docGrid"))
@@ -1225,91 +1193,299 @@ def restart_page_numbering(section):
     el.set(qn("w:start"), "1")
 
 
-def _cover_par(doc, *, before=0.0, after=0.0, line=1.0,
-               align=WD_ALIGN_PARAGRAPH.CENTER):
-    """封面段落：居中对齐、统一的段距 / 行距，段落标记压到 1pt（空段落不占行高）。"""
-    p = fmt_par(doc.add_paragraph(), before=before, after=after, multiple=line,
-                align=align, widow=False)
-    set_para_mark_font(p, 1.0)
-    return p
-
-
-def add_cover(doc):
-    """封面：居中的学术标题页——赛事 / 作品报告 / 作品名 / 技术副标题 / 参赛信息。
-
-    纯文字、黑白，不画短线与色块；层级靠字号与字体（黑体标题 + 宋体副标题）。
-    只有作品信息，绝无学校名与指导老师字样。
-    """
-    p = _cover_par(doc, before=55.0, after=0.0)
-    write(p, COVER_SERIES[0], size_pt=12.0, color=C_INK)
-    p = _cover_par(doc, before=4.0, after=0.0)
-    write(p, COVER_SERIES[1], size_pt=12.0, color=C_INK)
-
-    p = _cover_par(doc, before=185.0, after=0.0)
-    write(p, COVER_KIND, size_pt=22.0, cn=FONT_HEI, color=C_INK)
-    p = _cover_par(doc, before=16.0, after=0.0)
-    write(p, COVER_BRAND, size_pt=30.0, cn=FONT_HEI, color=C_INK)
-    p = _cover_par(doc, before=6.0, after=0.0)
-    write(p, COVER_BRAND_EN, size_pt=12.0, color=C_GRAY)
-    p = _cover_par(doc, before=28.0, after=0.0)
-    write(p, COVER_TITLE, size_pt=15.0, color=C_INK)
-
-    p = _cover_par(doc, before=175.0, after=0.0)
-    write(p, "%s　　%s" % (COVER_TEAM, COVER_ID), size_pt=11.0, color=C_INK)
-    p = _cover_par(doc, before=8.0, after=0.0)
-    write(p, COVER_DATE, size_pt=11.0, color=C_INK)
-
-
-def add_toc(doc):
-    """目录页：黑体「目录」标题 + Word TOC 域；无小标签、无色块。"""
-    p = fmt_par(doc.add_paragraph(), before=0.0, after=10.0, multiple=TIGHT_LINE,
-                align=WD_ALIGN_PARAGRAPH.LEFT, widow=False)
-    set_para_mark_font(p, 1.0)
-    write(p, "目录", size_pt=H1_PT, cn=FONT_HEI, color=C_INK)
-    p = doc.add_paragraph()
-    fmt_par(p, before=0.0, after=0.0, multiple=TIGHT_LINE,
-            align=WD_ALIGN_PARAGRAPH.LEFT, widow=False)
-    set_para_mark_font(p, 1.0, C_GRAY)
-    add_field(p, TOC_INSTR, TOC_PLACEHOLDER, size_pt=BODY_PT, color=C_GRAY)
-
-
-def compact_section_breaks(doc):
-    """把装 sectPr 的空段压到 1pt 行高。
-
-    python-docx 的 add_section() 会在上一节末尾留一个「装着上一节 sectPr 的空段落」。
-    这个段落默认继承 Normal（10.5pt / 1.3 倍行距），会独占约 24pt：目录最后一条正好
-    贴到版心底时，它就被顶到下一页，于是目录后面多出一整页空白。压到 1pt 后只是页面
-    底部看不见的一条线，不会白白多一页。
-    """
-    for par in doc.paragraphs:
-        pPr = par._p.pPr
-        if pPr is None:
-            continue
-        sect = pPr.find(qn("w:sectPr"))
-        if sect is None:
-            continue
-        clear_par(par)
-        for child in list(pPr):
-            if child is not sect:
-                pPr.remove(child)
-        sp = _ordered_child(pPr, "w:spacing", _PPR_ORDER)
-        sp.set(qn("w:before"), "0")
-        sp.set(qn("w:after"), "0")
-        sp.set(qn("w:line"), "240")
-        sp.set(qn("w:lineRule"), "auto")
-        rpr = _ordered_child(pPr, "w:rPr", _PPR_ORDER)
-        set_rfonts_element(rpr)
-        for tag in ("w:sz", "w:szCs"):
-            _ordered_child(rpr, tag, _RPR_ORDER).set(qn("w:val"), "2")
-        _ordered_child(rpr, "w:color", _RPR_ORDER).set(qn("w:val"), C_INK)
+def setup_footer(section):
+    """页脚：居中 PAGE 域 11pt 黑字（不写「第 X 页 / 共 Y 页」）。"""
+    footer = section.footer
+    footer.is_linked_to_previous = False
+    fp = footer.paragraphs[0]
+    clear_par(fp)
+    fmt_par(fp, before=0.0, after=0.0, multiple=SINGLE_LINE,
+            align=WD_ALIGN_PARAGRAPH.CENTER, widow=False)
+    set_para_mark_font(fp, FOOTER_PT)
+    add_field(fp, " PAGE ", "1", cn=FONT_CN, size_pt=FOOTER_PT, color=C_INK)
 
 
 def set_update_fields(doc):
-    """让 Word 打开时自动更新域（目录 / 页码因此不会停在占位文本）。"""
+    """让 Word 打开时自动更新域（页脚 PAGE 不会停在占位文本）。"""
     el = OxmlElement("w:updateFields")
     el.set(qn("w:val"), "true")
     doc.settings.element.append(el)
 
+
+# ---------------------------------------------------------------- 生成后自检
+
+def _xml_of(zf, name):
+    try:
+        return zf.read(name).decode("utf-8", "replace")
+    except KeyError:
+        return ""
+
+
+def self_check(out_path: Path, *, title, n_h1, n_h2, n_img, n_tbl, n_figcap,
+               n_tabcap, n_meta, fig_w, placeholder_names, forbidden):
+    """读回 docx 复核令牌表。返回 (issues, stats)。"""
+    issues = []
+
+    def need(ok, msg, detail=""):
+        if not ok:
+            issues.append(msg if not detail else "%s（%s）" % (msg, detail))
+
+    def near(a, b, tol=0.02):
+        return a is not None and abs(float(a) - float(b)) <= tol
+
+    back = Document(str(out_path))
+    zf = zipfile.ZipFile(str(out_path))
+    docxml = _xml_of(zf, "word/document.xml")
+    stylesxml = _xml_of(zf, "word/styles.xml")
+    footxml = "".join(_xml_of(zf, n) for n in zf.namelist()
+                      if re.match(r"word/footer\d*\.xml$", n))
+    headxml = "".join(_xml_of(zf, n) for n in zf.namelist()
+                      if re.match(r"word/header\d*\.xml$", n))
+    usedxml = docxml + footxml
+
+    # ---- 单节 / A4 / 页边距 / 页脚距边
+    need(len(back.sections) == 1, "不是单节文档", "%d 节" % len(back.sections))
+    sec = back.sections[0]
+    need(near(sec.page_width.cm, PAGE_W_CM, 0.01)
+         and near(sec.page_height.cm, PAGE_H_CM, 0.01), "页面不是 A4",
+         "%.2f×%.2f cm" % (sec.page_width.cm, sec.page_height.cm))
+    bad_m = [m for m in ("left_margin", "right_margin", "top_margin", "bottom_margin")
+             if not near(getattr(sec, m).cm, MARGIN_CM, 0.01)]
+    need(not bad_m, "页边距不是 2.4cm", ",".join(bad_m))
+    need(near(sec.footer_distance.cm, FOOTER_DIST_CM, 0.02), "页脚距边不是 1.6cm",
+         "%.2fcm" % sec.footer_distance.cm)
+
+    # ---- 无页眉 / 无目录域
+    need("w:headerReference" not in docxml, "文档里仍有页眉引用")
+    head_text = "".join(re.findall(r"<w:t[^>]*>([^<]*)</w:t>", headxml))
+    need(not head_text.strip(), "页眉有文字", head_text[:30])
+    instr_all = "".join(re.findall(r"<w:instrText[^>]*>([^<]*)</w:instrText>", docxml))
+    need("TOC" not in instr_all, "文档里仍有 TOC 目录域", instr_all[:40])
+    need(docxml.count("<w:sectPr") == 1, "sectPr 不是唯一一个",
+         "count=%d" % docxml.count("<w:sectPr"))
+
+    # ---- 页脚：PAGE 域、11pt、居中、黑、无「共 Y 页」
+    need("w:footerReference" in docxml, "没有页脚引用")
+    need("PAGE" in footxml, "页脚没有 PAGE 域")
+    need("NUMPAGES" not in footxml, "页脚仍有「共 Y 页」（NUMPAGES 域）")
+    need('w:sz w:val="%d"' % int(round(FOOTER_PT * 2)) in footxml
+         or 'w:sz w:val="%d"' % int(round(FOOTER_PT * 2)) in footxml,
+         "页脚字号不是 11pt")
+    need('w:jc w:val="center"' in footxml, "页脚不是居中")
+    foot_text = "".join(re.findall(r"<w:t[^>]*>([^<]*)</w:t>", footxml))
+    need("第 " not in foot_text and "共" not in foot_text,
+         "页脚仍有「第 X 页 / 共 Y 页」文字", foot_text[:30])
+
+    # ---- 页码从 1 起
+    need(re.search(r'<w:pgNumType[^>]*w:start="1"', docxml) is not None,
+         "没有 pgNumType start=1（页码不是从 1 起）")
+
+    # ---- 结构计数（与源块一一对应）
+    h1 = sum(1 for p in back.paragraphs if p.style.name == "Heading 1")
+    h2 = sum(1 for p in back.paragraphs if p.style.name == "Heading 2")
+    need(h1 == n_h1, "一级标题数与源块不一致", "docx %d / 源 %d" % (h1, n_h1))
+    need(h2 == n_h2, "二级标题数与源块不一致", "docx %d / 源 %d" % (h2, n_h2))
+    need(len(back.tables) == n_tbl, "表格数与源块不一致",
+         "docx %d / 源 %d" % (len(back.tables), n_tbl))
+    need(len(back.inline_shapes) == n_img, "插图数与源块不一致",
+         "docx %d / 源 %d" % (len(back.inline_shapes), n_img))
+
+    # ---- 标题块 / 元信息
+    title_pars = [p for p in back.paragraphs if p.style.name == "TitleCN"]
+    need(len(title_pars) == 1, "标题块不是唯一一个", "%d 个" % len(title_pars))
+    if title_pars:
+        tp = title_pars[0]
+        need(tp.text == title, "标题文字与源不一致", tp.text[:20])
+        need(tp.alignment == WD_ALIGN_PARAGRAPH.CENTER, "标题不居中")
+        need(near(tp.paragraph_format.space_before.pt, TITLE_GAP[0], 0.05),
+             "标题段前不是 24pt")
+        need(near(tp.paragraph_format.space_after.pt, TITLE_GAP[1], 0.05),
+             "标题段后不是 10pt")
+        sizes = {r.font.size.pt for r in tp.runs if r.font.size is not None}
+        need(sizes == {TITLE_PT}, "标题字号不是 17.5pt", str(sorted(sizes)))
+        fonts = {_run_fonts(r)[0] for r in tp.runs if r.text.strip()}
+        need(fonts == {FONT_HEI}, "标题中文不是黑体", str(sorted(fonts)))
+    meta_pars = [p for p in back.paragraphs if p.style.name == "MetaCN"]
+    need(len(meta_pars) == n_meta, "元信息行数不符",
+         "docx %d / 源 %d" % (len(meta_pars), n_meta))
+    need(len(meta_pars) <= 6, "元信息行超过 6 行", str(len(meta_pars)))
+
+    # ---- 样式字号 / 字体
+    expect_styles = {"Normal": BODY_PT, "BodyCN": BODY_PT, "Heading 1": H1_PT,
+                     "Heading 2": H2_PT, "TitleCN": TITLE_PT,
+                     "MetaCN": META_PT, "CaptionCN": CAPTION_PT,
+                     "TableCaptionCN": CAPTION_PT, "ListCN": LIST_PT}
+    for name, pt in expect_styles.items():
+        st = back.styles[name]
+        need(st.font.size is not None and near(st.font.size.pt, pt, 0.01),
+             "样式 %s 字号不是 %.1fpt" % (name, pt),
+             "%.2f" % (st.font.size.pt if st.font.size else float("nan")))
+    for name, cn in (("BodyCN", FONT_CN), ("Heading 1", FONT_HEI),
+                     ("Heading 2", FONT_HEI), ("TitleCN", FONT_HEI),
+                     ("CaptionCN", FONT_CN)):
+        fonts = _style_fonts(back.styles, name)
+        need(fonts[0] == cn, "样式 %s 中文字体不是 %s" % (name, cn), str(fonts))
+        need(fonts[1] == FONT_EN, "样式 %s 西文字体不是 Times" % name, str(fonts))
+    need(back.styles["CaptionCN"].font.bold, "图注样式不加粗")
+    need(back.styles["TableCaptionCN"].font.bold, "表注样式不加粗")
+    need(not back.styles["BodyCN"].font.bold, "正文样式被加粗了")
+
+    # ---- 正文：首行缩进 440 twips / 单倍 / 两端对齐 / 11pt
+    body_pars = [p for p in back.paragraphs if p.style.name == "BodyCN"]
+    need(bool(body_pars), "没有正文段落")
+    if body_pars:
+        bp = body_pars[0]
+        fli = bp.paragraph_format.first_line_indent
+        need(fli is not None and near(fli.pt, CHAR_TWIPS / 20.0, 0.05),
+             "正文首行缩进不是 440 twips", "%s twips" % (fli.twips if fli else None))
+        need(near(bp.paragraph_format.line_spacing, SINGLE_LINE, 0.01)
+             or bp.paragraph_format.line_spacing == 1.0, "正文行距不是单倍")
+        need(bp.alignment == WD_ALIGN_PARAGRAPH.JUSTIFY, "正文不是两端对齐")
+        sizes = {r.font.size.pt for r in bp.runs if r.text.strip()
+                 and _run_fonts(r)[0] != FONT_CODE}
+        need(sizes == {BODY_PT}, "正文字号不是 11pt", str(sorted(sizes)))
+
+    # ---- 标题字号 / 段距
+    for name, size_pt, gap in (("Heading 1", H1_PT, H_GAP["h1"]),
+                               ("Heading 2", H2_PT, H_GAP["h2"])):
+        pars = [p for p in back.paragraphs if p.style.name == name]
+        if not pars:
+            continue
+        sizes = {r.font.size.pt for r in pars[0].runs if r.text.strip()}
+        need(sizes == {size_pt}, "%s 字号不是 %.1fpt" % (name, size_pt),
+             str(sorted(sizes)))
+        need(near(pars[0].paragraph_format.space_before.pt, gap[0], 0.05),
+             "%s 段前不是 %.0fpt" % (name, gap[0]))
+        need(near(pars[0].paragraph_format.space_after.pt, gap[1], 0.05),
+             "%s 段后不是 %.0fpt" % (name, gap[1]))
+
+    # ---- 图注 / 表注：加粗 10pt 居中
+    for style_name, expected in (("CaptionCN", n_figcap),
+                                 ("TableCaptionCN", n_tabcap)):
+        pars = [p for p in back.paragraphs if p.style.name == style_name]
+        need(len(pars) == expected, "%s 段落数与源块不一致" % style_name,
+             "docx %d / 源 %d" % (len(pars), expected))
+        for p in pars:
+            need(p.alignment == WD_ALIGN_PARAGRAPH.CENTER,
+                 "%s 不居中" % style_name, p.text[:20])
+            for r in p.runs:
+                if r.text.strip():
+                    need(r.font.bold is True, "%s 有未加粗的片段" % style_name,
+                         r.text[:20])
+                    need(r.font.size is not None
+                         and near(r.font.size.pt, CAPTION_PT, 0.01),
+                         "%s 字号不是 10pt" % style_name, r.text[:20])
+        # 表注在表格上方：表注段落下标 < 表对象在 body 里的位置
+    if n_tabcap:
+        body_children = list(back.element.body.iterchildren())
+        tbl_idx = [i for i, el in enumerate(body_children) if el.tag == qn("w:tbl")]
+        cap_idx = [i for i, el in enumerate(body_children)
+                   if el.tag == qn("w:p")
+                   and el.find(qn("w:pPr")) is not None
+                   and el.find(qn("w:pPr")).find(qn("w:pStyle")) is not None
+                   and el.find(qn("w:pPr")).find(qn("w:pStyle")).get(qn("w:val"))
+                   in ("TableCaptionCN",)]
+        need(len(cap_idx) == n_tabcap and len(tbl_idx) == n_tbl
+             and all(cap < tbl for cap, tbl in zip(cap_idx, tbl_idx)),
+             "表注没有全部位于表格上方")
+
+    # ---- 表格：三线表 / 9pt / 15.6cm / 固定布局 / 表头重复 / 行不跨页
+    for ti, table in enumerate(back.tables):
+        tblPr = table._tbl.tblPr
+        tblW = tblPr.find(qn("w:tblW"))
+        width_cm = (int(tblW.get(qn("w:w"))) / TWIPS_PER_CM) if tblW is not None else 0
+        need(near(width_cm, TABLE_W_CM, 0.05), "第 %d 张表宽不是 15.6cm" % (ti + 1),
+             "%.2fcm" % width_cm)
+        lay = tblPr.find(qn("w:tblLayout"))
+        need(lay is not None and lay.get(qn("w:type")) == "fixed",
+             "第 %d 张表不是固定布局" % (ti + 1))
+        borders = tblPr.find(qn("w:tblBorders"))
+        need(borders is not None, "第 %d 张表没有表格边框定义" % (ti + 1))
+        if borders is not None:
+            for edge, want_sz, want_val in (("top", 12, "single"), ("bottom", 12, "single"),
+                                            ("left", 0, "none"), ("right", 0, "none"),
+                                            ("insideH", 0, "none"), ("insideV", 0, "none")):
+                el = borders.find(qn("w:" + edge))
+                val = el.get(qn("w:val")) if el is not None else None
+                sz = int(el.get(qn("w:sz"))) if el is not None and el.get(qn("w:sz")) else 0
+                need(val == want_val and sz == want_sz,
+                     "第 %d 张表 %s 线不对" % (ti + 1, edge),
+                     "%s/%s" % (val, sz))
+        tr = table.rows[0]._tr.find(qn("w:trPr"))
+        need(tr is not None and tr.find(qn("w:tblHeader")) is not None,
+             "第 %d 张表表头不跨页重复" % (ti + 1))
+        hdr_cell_borders = table.cell(0, 0)._tc.find(qn("w:tcPr")).find(qn("w:tcBorders"))
+        need(hdr_cell_borders is not None, "第 %d 张表表头下无 0.75pt 细线" % (ti + 1))
+        if hdr_cell_borders is not None:
+            bottom = hdr_cell_borders.find(qn("w:bottom"))
+            need(bottom is not None and int(bottom.get(qn("w:sz"))) == 6,
+                 "第 %d 张表表头下线条不是 0.75pt" % (ti + 1))
+        for row in table.rows:
+            trPr = row._tr.find(qn("w:trPr"))
+            need(trPr is not None and trPr.find(qn("w:cantSplit")) is not None,
+                 "第 %d 张表有行允许跨页" % (ti + 1))
+        for r in table.rows:
+            for cell in r.cells:
+                for p in cell.paragraphs:
+                    for run in p.runs:
+                        if not run.text.strip():
+                            continue
+                        need(run.font.size is not None
+                             and near(run.font.size.pt, TABLE_PT, 0.01),
+                             "第 %d 张表有单元格字号不是 9pt" % (ti + 1),
+                             run.text[:16])
+                        if r is table.rows[0]:
+                            need(run.font.bold is True,
+                                 "第 %d 张表表头未加粗" % (ti + 1))
+    # 图注与插图数量一致（每张图有图注、宽 15.8cm）
+    need(n_figcap == n_img, "图注数与插图数不一致",
+         "图注 %d / 插图 %d" % (n_figcap, n_img))
+    for i, shape in enumerate(back.inline_shapes):
+        need(near(shape.width.cm, fig_w, 0.05), "第 %d 张插图宽不是 %.1fcm"
+             % (i + 1, fig_w), "%.2fcm" % shape.width.cm)
+
+    # ---- 全篇纯黑；无固定行距（144 的表后空行除外）
+    colors = {c.upper() for c in re.findall(r'w:color w:val="([0-9A-Fa-f]{6})"', usedxml)}
+    weird = sorted(c for c in colors if c != C_INK)
+    need(not weird, "出现非黑色字色", ",".join(weird[:8]))
+    bad_rule = re.findall(r'w:lineRule="(exact|atLeast|fixed)"',
+                          docxml + stylesxml + footxml)
+    need(not bad_rule, "出现固定行距", str(sorted(set(bad_rule))))
+    tiny_line = sorted({int(v) for v in re.findall(r'w:line="(\d+)"',
+                                                   docxml + stylesxml + footxml)
+                        if int(v) < 240 and int(v) != int(SPACER_LINE * 240)})
+    need(not tiny_line, "有倍数行距 < 1.0 的 w:line 值", str(tiny_line))
+
+    # ---- 禁项
+    need(not forbidden, "禁项命中", ",".join(forbidden))
+
+    stats = {
+        "title_pt": TITLE_PT, "h1_pt": H1_PT, "h2_pt": H2_PT, "body_pt": BODY_PT,
+        "caption_pt": CAPTION_PT, "table_pt": TABLE_PT, "footer_pt": FOOTER_PT,
+        "first_line_twips": CHAR_TWIPS, "margin_cm": MARGIN_CM,
+        "figure_width_cm": fig_w, "table_width_cm": TABLE_W_CM,
+        "placeholders": placeholder_names,
+        "self_check_issues": issues,
+    }
+    return issues, stats
+
+
+def _run_fonts(run):
+    rpr = run._element.find(qn("w:rPr"))
+    fonts = rpr.find(qn("w:rFonts")) if rpr is not None else None
+    return (fonts.get(qn("w:eastAsia")) if fonts is not None else None,
+            fonts.get(qn("w:ascii")) if fonts is not None else None)
+
+
+def _style_fonts(styles, name):
+    el = style_el(styles, name)
+    rpr = el.find(qn("w:rPr"))
+    fonts = rpr.find(qn("w:rFonts")) if rpr is not None else None
+    return (fonts.get(qn("w:eastAsia")) if fonts is not None else None,
+            fonts.get(qn("w:ascii")) if fonts is not None else None)
+
+
+# ---------------------------------------------------------------- 主流程
 
 def build(source: Path, out_path: Path, caption_clean=True, caption_rules=None,
           fig_width_cm=None):
@@ -1321,64 +1497,72 @@ def build(source: Path, out_path: Path, caption_clean=True, caption_rules=None,
         strip_rules = caption_rules.get("strip")
         keep_rules = caption_rules.get("keep")
     fig_w = float(fig_width_cm) if fig_width_cm else FIG_MAX_CM
-    if not 3.0 <= fig_w <= TEXT_W_CM:
-        raise SystemExit("--fig-width 只允许 3.0~%.1fcm（版心宽）" % TEXT_W_CM)
+    if not 3.0 <= fig_w <= FIG_MAX_CM:
+        raise SystemExit("--fig-width 只允许 3.0~%.1fcm（落版宽）" % FIG_MAX_CM)
 
     doc = Document()
-    n_ch = sum(1 for k, _ in blocks if k == "h2")
-    n_sec = sum(1 for k, _ in blocks if k == "h3")
-    build_styles(doc, plan_toc_styles(n_ch, n_sec))
-    setup_section(doc.sections[0])
-    add_cover(doc)
+    build_styles(doc)
+    sec = doc.sections[0]
+    setup_section(sec)
+    setup_footer(sec)
+    restart_page_numbering(sec)
 
-    sec_toc = doc.add_section(WD_SECTION.NEW_PAGE)
-    setup_section(sec_toc)
-    add_toc(doc)
+    # 标题块 + 元信息行（唯一标题 + 标题后连续若干行元信息）
+    fmt_par(doc.add_paragraph(style="TitleCN"), before=TITLE_GAP[0],
+            after=TITLE_GAP[1], multiple=SINGLE_LINE,
+            align=WD_ALIGN_PARAGRAPH.CENTER, keep_next=True, keep_lines=True)
+    tpar = doc.paragraphs[-1]
+    add_runs(tpar, title, size_pt=TITLE_PT, heading=True)
 
-    sec_body = doc.add_section(WD_SECTION.NEW_PAGE)
-    setup_section(sec_body)
-    restart_page_numbering(sec_body)
+    counts = {"h2": 0, "h3": 0, "images": 0, "tables": 0, "figcap": 0,
+              "tabcap": 0, "meta": 0}
+    figures, placeholders, captions, caption_diffs = [], [], [], []
 
-    counts = {"h2": 0, "h3": 0, "images": 0, "tables": 0}
-    figures, caption_diffs = [], []
-    for kind, payload in blocks:
-        if kind in ("pagebreak",):
-            continue
-        if kind == "h2":
+    for kind, payload, _lineno in blocks:
+        if kind == "meta":
+            counts["meta"] += 1
+            par = fmt_par(doc.add_paragraph(style="MetaCN"), before=0.0,
+                          after=META_AFTER, multiple=SINGLE_LINE,
+                          align=WD_ALIGN_PARAGRAPH.LEFT, keep_lines=True)
+            line = "%s：%s" % (payload[0], payload[1])
+            est = text_w(line, META_PT)
+            avail = TEXT_W_CM * 28.3465
+            char_tw = 0
+            if est > avail and line:
+                # 只收紧到刚好放得下，上限 0.4pt/字（再长就该在内容源里改写）
+                squeeze_pt = min((est - avail) / len(line) + 0.02, 0.4)
+                char_tw = -int(round(squeeze_pt * 20))
+            add_meta_runs(par, payload[0], payload[1], char_tw)
+        elif kind == "h2":
             counts["h2"] += 1
             before, after = H_GAP["h1"]
-            # keepNext：章标题不单独留在页尾（孤行标题）
+            is_appendix = payload.lstrip().startswith("附录")
             par = fmt_par(doc.add_paragraph(style="Heading 1"), before=before,
-                          after=after, multiple=HEAD_LINE, keep_next=True,
-                          keep_lines=True, align=WD_ALIGN_PARAGRAPH.LEFT)
-            add_chapter_runs(par, payload, size_pt=H1_PT)
+                          after=after, multiple=SINGLE_LINE, keep_next=True,
+                          keep_lines=True, align=WD_ALIGN_PARAGRAPH.LEFT,
+                          page_break_before=is_appendix)
+            add_runs(par, payload, size_pt=H1_PT, heading=True)
         elif kind == "h3":
             counts["h3"] += 1
             before, after = H_GAP["h2"]
-            add_runs(fmt_par(doc.add_paragraph(style="Heading 2"), before=before,
-                             after=after, multiple=HEAD_LINE, keep_next=True,
-                             keep_lines=True, align=WD_ALIGN_PARAGRAPH.LEFT),
-                     payload, size_pt=H2_PT, heading=True)
+            par = fmt_par(doc.add_paragraph(style="Heading 2"), before=before,
+                          after=after, multiple=SINGLE_LINE, keep_next=True,
+                          keep_lines=True, align=WD_ALIGN_PARAGRAPH.LEFT)
+            add_runs(par, payload, size_pt=H2_PT, heading=True)
         elif kind == "p":
-            add_runs(fmt_par(doc.add_paragraph(style="BodyCN"), before=0.0,
-                             after=BODY_AFTER, multiple=BODY_LINE,
-                             first=CHAR_TWIPS), payload)
-        elif kind == "ul":
-            for item in payload:
-                par = fmt_par(doc.add_paragraph(style="ListCN"), before=0.0,
-                              after=2.5, multiple=BODY_LINE, left=LIST_LEFT_TW,
-                              hanging=LIST_HANG_TW)
-                write(par, "•", size_pt=BODY_PT, color=C_INK)
-                par.add_run("\t")
-                add_runs(par, item, size_pt=BODY_PT)
+            par = fmt_par(doc.add_paragraph(style="BodyCN"), before=0.0,
+                          after=BODY_AFTER, multiple=SINGLE_LINE,
+                          first=CHAR_TWIPS)
+            add_runs(par, payload, size_pt=BODY_PT)
         elif kind == "ol":
-            for num, item in payload:
+            for num, item, _ln in payload:
                 par = fmt_par(doc.add_paragraph(style="ListCN"), before=0.0,
-                              after=2.5, multiple=BODY_LINE, left=LIST_LEFT_TW,
-                              hanging=LIST_HANG_TW)
-                write(par, "%d." % num, size_pt=BODY_PT, color=C_INK)
+                              after=LIST_AFTER, multiple=SINGLE_LINE,
+                              left=LIST_LEFT_TW, hanging=LIST_HANG_TW,
+                              align=WD_ALIGN_PARAGRAPH.LEFT)
+                write(par, "%d." % num, size_pt=LIST_PT, color=C_INK)
                 par.add_run("\t")
-                add_runs(par, item, size_pt=BODY_PT)
+                add_runs(par, item, size_pt=LIST_PT)
         elif kind == "image":
             src = (source.parent / payload).resolve()
             if not src.is_file():
@@ -1386,103 +1570,115 @@ def build(source: Path, out_path: Path, caption_clean=True, caption_rules=None,
             render_image(doc, src, fig_w)
             counts["images"] += 1
             figures.append(src)
-        elif kind == "caption":
+            if src.name.startswith("ph_"):
+                placeholders.append(src.name)
+        elif kind in ("figcap", "tabcap"):
             text = payload
             if caption_clean:
                 text, removed = clean_caption(payload, strip_rules, keep_rules)
                 for r in removed:
                     caption_diffs.append({"caption": payload[:40], "removed": r})
-            par = fmt_par(doc.add_paragraph(style="CaptionCN"), before=4.0,
-                          after=10.0, multiple=CELL_LINE, keep_lines=True,
-                          align=WD_ALIGN_PARAGRAPH.CENTER)
+            captions.append({"kind": "figure" if kind == "figcap" else "table",
+                             "text": text})
+            if kind == "figcap":
+                counts["figcap"] += 1
+                par = fmt_par(doc.add_paragraph(style="CaptionCN"),
+                              before=FIGCAP_GAP[0], after=FIGCAP_GAP[1],
+                              multiple=SINGLE_LINE, keep_lines=True,
+                              align=WD_ALIGN_PARAGRAPH.CENTER)
+            else:
+                counts["tabcap"] += 1
+                par = fmt_par(doc.add_paragraph(style="TableCaptionCN"),
+                              before=TABCAP_GAP[0], after=TABCAP_GAP[1],
+                              multiple=SINGLE_LINE, keep_next=True,
+                              keep_lines=True, align=WD_ALIGN_PARAGRAPH.CENTER)
             add_caption_runs(par, text)
         elif kind == "table":
             render_table(doc, payload)
             counts["tables"] += 1
-            fmt_par(doc.add_paragraph(), before=0.0, after=0.0,
-                    multiple=0.6)                 # 表后间隔（细空行，144 twips）
+            sp = fmt_par(doc.add_paragraph(), before=0.0, after=0.0,
+                         multiple=SPACER_LINE, widow=False)
+            set_para_mark_font(sp, 9.0)            # 表后细空行（144 twips）
         else:  # pragma: no cover
             raise ValueError("未知块类型 %r" % kind)
 
-    compact_section_breaks(doc)
-    blank(doc.sections[0])
-    decorate(doc.sections[1], HEADER_TOC)
-    decorate(doc.sections[2], HEADER_BODY, page_numbers=True)
     set_update_fields(doc)
-
+    doc.core_properties.title = title
     out_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(out_path))
 
-    # ---- 自检：读回统计 + 禁项扫描 ----
+    # ---- 自检：读回统计 + 令牌复核 + 禁项扫描 ----
     back = Document(str(out_path))
-    h1 = sum(1 for p in back.paragraphs if p.style.name == "Heading 1")
-    h2 = sum(1 for p in back.paragraphs if p.style.name == "Heading 2")
-    h3 = sum(1 for p in back.paragraphs if p.style.name == "Heading 3")
     text_all = "\n".join(p.text for p in back.paragraphs)
     for t in back.tables:
         for row in t.rows:
             for cell in row.cells:
                 text_all += "\n" + cell.text
-    header_texts, footer_texts = [], []
-    for s in back.sections:
-        header_texts += [p.text for p in s.header.paragraphs]
-        footer_texts += [p.text for p in s.footer.paragraphs]
-    text_all += "\n" + "\n".join(header_texts + footer_texts)
+    for p in back.sections[0].footer.paragraphs:
+        text_all += "\n" + p.text
     hits = forbidden_hits(text_all)
-    # 行距回归检查：全文（含样式与页眉页脚）不得出现 fixed / exact 行距，
-    # 也不得有 line 值小于单倍（240）的倍数行距——那正是标题压字的成因
-    import zipfile
-    with zipfile.ZipFile(str(out_path)) as zf:
-        xml_all = "".join(zf.read(n).decode("utf-8", "replace")
-                          for n in zf.namelist()
-                          if n.endswith(".xml") and n.startswith("word/"))
-    bad_rule = re.findall(r'w:lineRule="(exact|atLeast|fixed)"', xml_all)
-    # 144 = 表后细空行的 0.6 倍行距（本脚本有意为之），不算问题
-    tiny_line = sorted({int(v) for v in re.findall(r'w:line="(\d+)"', xml_all)
-                        if int(v) < 240 and int(v) != 144})
-    spacing_issues = []
-    if bad_rule:
-        spacing_issues.append("固定行距 %s" % sorted(set(bad_rule)))
-    if tiny_line:
-        spacing_issues.append("行距倍数 < 1.0 的 w:line 值 %s" % tiny_line)
+
+    # 页眉不建：优先按 header 部件判（访问 section.header 会凭空创建部件）
+    header_texts = []
+    footers = [p.text for p in back.sections[0].footer.paragraphs]
+    issues, token_stats = self_check(
+        out_path, title=title, n_h1=counts["h2"], n_h2=counts["h3"],
+        n_img=counts["images"], n_tbl=counts["tables"],
+        n_figcap=counts["figcap"], n_tabcap=counts["tabcap"],
+        n_meta=counts["meta"], fig_w=fig_w, placeholder_names=placeholders,
+        forbidden=hits)
+
     stats = {
         "source": str(source),
         "source_title": title,
         "docx": str(out_path),
         "paragraphs": len(back.paragraphs),
-        "headings": {"h1": h1, "h2": h2, "h3": h3, "total": h1 + h2 + h3},
-        "tables": len(back.tables),
-        "images": len(back.inline_shapes),
+        "headings": {"h1": counts["h2"], "h2": counts["h3"], "h3": 0,
+                     "total": counts["h2"] + counts["h3"]},
+        "tables": counts["tables"],
+        "images": counts["images"],
         "sections": len(back.sections),
         "headers": header_texts,
-        "footers": footer_texts,
+        "footers": footers,
         "bytes": out_path.stat().st_size,
         "forbidden_hits": hits,
-        "spacing_issues": spacing_issues,
+        "spacing_issues": [] if not token_stats["self_check_issues"] else
+                          [m for m in token_stats["self_check_issues"]
+                           if "行距" in m or "w:line" in m],
         "source_blocks": {"chapters": counts["h2"], "sections": counts["h3"],
-                          "images": counts["images"], "tables": counts["tables"]},
-        # 插图顺序 = 正文里 ![](...) 的出现顺序：build.ps1 第 3 步
+                          "images": counts["images"], "tables": counts["tables"],
+                          "figure_captions": counts["figcap"],
+                          "table_captions": counts["tabcap"],
+                          "meta_lines": counts["meta"]},
+        # 插图顺序 = 正文里 ![](...) 的出现顺序：build.ps1 第 ③ 步
         # （pdf_images_hires.py --order …）照这个列表替换，保证与 PDF 内插图一一对应
         "figures": [str(f.relative_to(REPO)).replace("\\", "/") if REPO in f.parents
                     else f.name for f in figures],
+        # 占位图文件名（交件 --final 时须清零）与图注 / 表注文本
+        "placeholders": placeholders,
+        "captions": captions,
         "figure_width_cm": fig_w,
         "caption_clean": bool(caption_clean),
         "caption_cleanups": caption_diffs,
+        "tokens": token_stats,
+        "self_check_issues": issues,
     }
     return stats
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="技术文档 Markdown → 作品报告 DOCX")
+    ap = argparse.ArgumentParser(description="技术文档 Markdown → 论文版式作品报告 DOCX")
     ap.add_argument("-Source", "--source", default=str(DEFAULT_SOURCE))
     ap.add_argument("-Out", "--out", default=str(DEFAULT_OUT))
     ap.add_argument("-Stats", "--stats", default=None, help="自检统计写成 JSON")
+    ap.add_argument("--caption-clean", action="store_true",
+                    help="打开图注净化（默认开；旧源里的构建说明才会命中）")
     ap.add_argument("--no-caption-clean", action="store_true",
-                    help="关闭图注净化（默认开：去掉图注里的构建说明）")
+                    help="关闭图注净化（新源图注即最终说明，可不净化）")
     ap.add_argument("--caption-rules", default=None,
                     help='图注净化规则 JSON：{"strip": ["正则", …], "keep": ["正则", …]}')
     ap.add_argument("--fig-width", type=float, default=None,
-                    help="插图宽度 cm（默认满版心 15.8；想整体窄一点才用，最大 15.8）")
+                    help="插图宽度 cm（默认落版宽 15.8）")
     args = ap.parse_args(argv)
     rules = None
     if args.caption_rules:
@@ -1500,9 +1696,10 @@ def main(argv=None):
                         print("[error] --caption-rules 的 %s 里正则不合法 %r：%s"
                               % (key, pat, exc), file=sys.stderr)
                         return 1
+    clean = not args.no_caption_clean
     try:
         stats = build(Path(args.source).resolve(), Path(args.out).resolve(),
-                      caption_clean=not args.no_caption_clean, caption_rules=rules,
+                      caption_clean=clean, caption_rules=rules,
                       fig_width_cm=args.fig_width)
     except SystemExit as exc:
         print("[error] %s" % exc.code, file=sys.stderr)
@@ -1510,32 +1707,38 @@ def main(argv=None):
     except ValueError as exc:
         print("[error] %s" % exc, file=sys.stderr)
         return 1
+
     print("[md2docx] source    : %s" % stats["source"])
     print("[md2docx] docx      : %s" % stats["docx"])
-    print("[md2docx] paragraphs: %d   sections: %d" % (stats["paragraphs"],
-                                                       stats["sections"]))
-    print("[md2docx] headings  : H1(章)=%d H2(节)=%d H3=%d"
-          % (stats["headings"]["h1"], stats["headings"]["h2"],
-             stats["headings"]["h3"]))
-    print("[md2docx] tables    : %d   images: %d（宽 %.1fcm）"
+    print("[md2docx] paragraphs: %d   sections: %d（单节）"
+          % (stats["paragraphs"], stats["sections"]))
+    print("[md2docx] headings  : H1(一级)=%d H2(二级)=%d"
+          % (stats["headings"]["h1"], stats["headings"]["h2"]))
+    print("[md2docx] tables    : %d（三线表 9pt）   images: %d（宽 %.1fcm）"
           % (stats["tables"], stats["images"], stats["figure_width_cm"]))
+    print("[md2docx] captions  : 图注 %d / 表注 %d（加粗 10pt 居中）"
+          % (stats["source_blocks"]["figure_captions"],
+             stats["source_blocks"]["table_captions"]))
+    print("[md2docx] meta      : %d 行   占位图: %d %s"
+          % (stats["source_blocks"]["meta_lines"], len(stats["placeholders"]),
+             "、".join(stats["placeholders"]) or "（无）"))
     if stats["caption_cleanups"]:
         for c in stats["caption_cleanups"]:
             print("[md2docx] 图注净化  : 删掉 %s ← %s…" % (c["removed"], c["caption"]))
-    else:
-        print("[md2docx] 图注净化  : 没命中构建说明（规则见 CAPTION_STRIP_RULES）")
-    print("[md2docx] footer    : %s" % " | ".join(t for t in stats["footers"] if t))
+    print("[md2docx] footer    : %s（PAGE 域 11pt 居中）"
+          % " | ".join(t for t in stats["footers"] if t))
     print("[md2docx] bytes     : %d" % stats["bytes"])
     if stats["forbidden_hits"]:
         print("[md2docx] 禁项扫描  : 命中 %s —— 不得提交"
               % ",".join(stats["forbidden_hits"]), file=sys.stderr)
         return 1
     print("[md2docx] 禁项扫描  : 通过（无学校名 / 指导老师字样）")
-    if stats["spacing_issues"]:
-        print("[md2docx] 行距检查  : 异常 %s —— 会出现标题 / 正文叠字"
-              % "；".join(stats["spacing_issues"]), file=sys.stderr)
+    if stats["self_check_issues"]:
+        for msg in stats["self_check_issues"]:
+            print("[md2docx] 自检失败  : %s" % msg, file=sys.stderr)
         return 1
-    print("[md2docx] 行距检查  : 通过（全篇倍数行距，无 fixed/exact）")
+    print("[md2docx] 版式自检  : 通过（A4 / 2.4cm / 单节 / 无页眉 / 字号 / 三线表 / "
+          "图注表注加粗 / 页脚 PAGE 域）")
     if args.stats:
         Path(args.stats).write_text(json.dumps(stats, ensure_ascii=False, indent=2),
                                     encoding="utf-8")

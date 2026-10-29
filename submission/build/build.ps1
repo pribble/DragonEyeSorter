@@ -5,8 +5,8 @@
 .DESCRIPTION
     四步串起来跑，最后打印产物路径 / 页数 / 大小（含插图等效 dpi）：
       ⓪ make_figures.py       报告插图按脚本重生成（SVG / PNG / fig_meta.json；生成物不入库）
-      ① md2docx.py            Markdown → DOCX（封面 / 目录 / 正文排版，python-docx）
-      ② word_to_pdf.ps1       DOCX → PDF（Word COM，导出前更新页脚与目录域）
+      ① md2docx.py            Markdown → DOCX（论文单节版式：A4 / 页边距 2.4cm / 无封面目录页眉，python-docx）
+      ② word_to_pdf.ps1       DOCX → PDF（Word COM，导出前更新页脚页码域）
       ③ pdf_images_hires.py   PDF 里的插图换回源图分辨率（Word 导出会压到 96 dpi）
     任何一步失败即停，退出码非 0。中间产物（_md2docx.json / _word_to_pdf.json）放在
     out/ 下，可随时重建。报告插图生成物不入库（submission/figures/.gitignore），所以每次
@@ -189,15 +189,13 @@ if ($pdfBytes) {
     Write-Host ("PDF  : {0}" -f (Get-RelPath $Pdf))
     Write-Host ("       {0:N0} 字节（{1:N2} MB）" -f $pdfBytes, ($pdfBytes / 1MB))
     Write-Host ("       页数：{0} 页（Word ComputeStatistics(wdStatisticPages)）" -f $pages)
-    Write-Host ("       文件头：%PDF- ✓  目录域更新：{0} 个" -f (
-        (Get-Content -LiteralPath (Join-Path $OutDir '_word_to_pdf.json') -Raw `
-            -Encoding UTF8 | ConvertFrom-Json).TocsUpdated))
+    Write-Host "       文件头：%PDF- ✓（页脚 PAGE 页码域已更新）"
 } else {
     Write-Host 'PDF  : （未生成）'
 }
 if (Test-Path -LiteralPath $Stats) {
     $s = Get-Content -LiteralPath $Stats -Raw -Encoding UTF8 | ConvertFrom-Json
-    Write-Host ("段落 {0} · 表格 {1} · 插图 {2} · 章 {3} · 节 {4} · 页眉页脚节 {5}" -f `
+    Write-Host ("段落 {0} · 表格 {1} · 插图 {2} · 一级标题 {3} · 二级标题 {4} · 节 {5}" -f `
         $s.paragraphs, $s.tables, $s.images, $s.headings.h1, $s.headings.h2, $s.sections)
     if ($s.forbidden_hits -and $s.forbidden_hits.Count -gt 0) {
         Write-Host ("[!] 禁项命中：{0}" -f ($s.forbidden_hits -join ',')) -ForegroundColor Red

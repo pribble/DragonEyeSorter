@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""fig_architecture — 图 2-1 系统架构（PL 硬实时 + PS 调度 + NPU 推理）。
+"""fig_architecture — 图 3 系统架构（PL 硬实时 + PS 调度 + NPU 推理）。
 
 画布 = 报告落版宽度 447.9pt（15.8cm）× 300pt，字面字号即纸面字号（见 figkit 顶部说明）。
 版式：四列（外设 / PL / PS / 外设）+ 行对齐；卡片只写「名称 + 极短限定」，细节写正文
-（§2.1 / §2.4 / §3、§4.1）。域识别靠分组标题与灰色虚线框，不用高饱和填充。
+（§II / §III / §IV）。域识别靠分组标题与灰色虚线框，不用高饱和填充。
 """
 import figkit as fk
 
@@ -83,7 +83,7 @@ def draw():
            's = x − B → 停带 / 挡板调度', 'ps')
 
     y, h = ROW['r3']
-    fk.box(ax, PS_L, y, PS_LW, h, 'NPU 线程\nROI 224²\n7.9ms / 件', 'npu')
+    fk.box(ax, PS_L, y, PS_LW, h, 'NPU 线程\nROI 224²\n8.0 ms / 次', 'npu')
     fk.box(ax, PS_R, y, PS_RW, h, 'CAN 状态机\n10Hz 状态\n每件结果', 'ps')
 
     y, h = ROW['r4']

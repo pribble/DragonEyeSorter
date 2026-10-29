@@ -7,10 +7,10 @@
     LibreOffice / pandoc）。脚本对源 docx 只读打开，全程隐藏窗口，导出后不改动源文件。
 
     导出前先更新域，这一步不能省：
-      ① $doc.Fields.Update()          —— 页脚 PAGE / NUMPAGES
-      ② 目录域的 Update()             —— TOC 条目与页码
-    否则 PDF 里的目录页码会停在「未更新」的占位文本上。Word 打开文档时也会按
-    settings.xml 的 w:updateFields 自动更新一次，但导出是脚本驱动的，仍显式调一遍。
+      $doc.Fields.Update()            —— 页脚居中的 PAGE 页码
+    论文版式只有一节的页脚页码，没有目录 / 页眉，所以不再更新 TOC 域。否则 PDF 里
+    的页码会停在「未更新」的占位文本上。Word 打开文档时也会按 settings.xml 的
+    w:updateFields 自动更新一次，但导出是脚本驱动的，仍显式调一遍。
 
     再用 ComputeStatistics(2)（wdStatisticPages）报页数，并检查文件头是不是 %PDF-。
     输入输出一律解析成绝对路径：Word COM 不认相对路径（它按自己的进程目录解析，
@@ -82,8 +82,6 @@ $word = $null
 $docs = $null
 $doc = $null
 $fieldsUpdated = $false
-$tocUpdated = $false
-$tocCount = 0
 $pages = $null
 
 try {
@@ -104,7 +102,7 @@ try {
     # Open(FileName, ConfirmConversions, ReadOnly, AddToRecentFiles)
     $doc = $docs.Open($InputPath, $false, $true, $false)
 
-    # ① 全部域：页脚 PAGE / NUMPAGES 等
+    # ① 全部域：页脚居中 PAGE 页码（论文版式无目录 / 页眉，没有别的域）
     try {
         [void]$doc.Fields.Update()
         $fieldsUpdated = $true
@@ -112,28 +110,12 @@ try {
         Write-Warning "Fields.Update() 失败（PDF 里页码可能是旧值）：$($_.Exception.Message)"
     }
 
-    # ② 目录：逐个 TOC 域单独更新（Fields.Update() 对 TOC 的条目重建不总是生效）
-    try {
-        foreach ($toc in @($doc.TablesOfContents)) {
-            $tocCount++
-            [void]$toc.Update()
-            $tocUpdated = $true
-        }
-        if ($tocCount -eq 0) {
-            Write-Warning "文档里没有 TOC 域 —— 目录页只有占位文本，请检查 md2docx.py 的目录段"
-        } else {
-            Write-Host ("[word_to_pdf] 目录域: {0} 个，已更新" -f $tocCount)
-        }
-    } catch {
-        Write-Warning "目录 Update() 失败：$($_.Exception.Message)"
-    }
-
-    # ③ 页数（分页统计）
+    # ② 页数（分页统计）
     try { $pages = [int]$doc.ComputeStatistics($wdStatisticPages) } catch {
         Write-Warning "ComputeStatistics(wdStatisticPages) 失败：$($_.Exception.Message)"
     }
 
-    # ④ 导出 PDF
+    # ③ 导出 PDF
     Write-Host ("[word_to_pdf] 导出  : {0}" -f $OutputPath)
     try {
         $doc.ExportAsFixedFormat(
@@ -196,7 +178,6 @@ $result = [pscustomobject]@{
     MB           = [math]::Round($fi.Length / 1MB, 2)
     ValidPdf     = $true
     FieldsUpdate = $fieldsUpdated
-    TocsUpdated  = $tocCount
 }
 $result | Format-List
 

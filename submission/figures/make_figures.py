@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""make_figures.py — 生成作品报告的 5 张插图（SVG + PNG + fig_meta.json），写在本目录。
+"""make_figures.py — 生成作品报告的 12 张插图（5 张线稿 + 7 张实物照片占位图），写在本目录。
 
-    python submission/figures/make_figures.py              # 重画全部
-    python submission/figures/make_figures.py arch time    # 只重画名字里含 arch / time 的
+    python submission/figures/make_figures.py              # 重画全部 12 张
+    python submission/figures/make_figures.py arch time    # 只重画名字里含 arch / time 的线稿图
+    python submission/figures/make_figures.py ph           # 只重画 7 张占位图
+    python submission/figures/make_figures.py overview     # 只重画 id 含 overview 的占位图
     python submission/figures/fig_timebase.py              # 单张调试（只跑这一张）
 
 生成物（SVG / PNG / fig_meta.json）由本脚本重建、不入库（见本目录 .gitignore）；
 submission/build/build.ps1 每次出报告前会自动先跑一遍本脚本。
 
 约定与图元都在 figkit.py：**画布按报告落版尺寸（15.8cm 宽，单位 pt）作图，字号即纸面字号**，
-每张图保存前会核对文字越界与字号（见文件头注释）。单张图的画法看 fig_architecture.py。
+每张图保存前会核对文字越界与字号（见文件头注释）。单张线稿图的画法看 fig_architecture.py；
+占位图的清单与画法在 placeholder_manifest.json / make_placeholders.py（关键字按占位图 id 过滤）。
 每个 fig_*.py 要暴露 draw()，并能单独 `python submission/figures/fig_xxx.py` 跑。
 """
 import importlib
@@ -23,12 +26,15 @@ sys.path.insert(0, HERE)
 import figkit as fk                                   # noqa: E402
 
 MODULE_NAMES = ['fig_architecture', 'fig_timebase', 'fig_pl_regs', 'fig_pick_sequence', 'fig_layout']
+PLACEHOLDER_MODULE = 'make_placeholders'              # 7 张待拍实物照片占位图（清单见 placeholder_manifest.json）
 
 
 def main(argv):
     keys = [a for a in argv[1:] if not a.startswith('--')]
-    skipped, drawn = [], 0
+    skipped, n_line, n_ph, ph_errors = [], 0, 0, []
     print('输出目录：%s' % os.path.relpath(fk.OUT_DIR, ROOT).replace('\\', '/'))
+
+    # ---- 5 张线稿图：关键字匹配模块名（arch / time / pl_regs / pick / layout）----
     for name in MODULE_NAMES:
         if keys and not any(k in name for k in keys):
             continue
@@ -41,14 +47,30 @@ def main(argv):
         print('%s：' % name)
         fig, _ = mod.draw()
         fk.save(fig, name)
-        drawn += 1
+        n_line += 1
+
+    # ---- 7 张占位图：关键字匹配占位图 id（ph / overview / board / ui / samples / arm / flap / test）----
+    try:
+        ph = importlib.import_module(PLACEHOLDER_MODULE)
+    except ModuleNotFoundError as e:
+        print('跳过占位图：%s' % e)
+        skipped.append(PLACEHOLDER_MODULE)
+    else:
+        n_ph, ph_errors = ph.run(keys)
+
     fk.write_meta()
     if skipped:
-        print('缺少模块：%s —— 5 张图必须齐全，报告验收会拦' % ', '.join(skipped))
-    if fk.failed() or skipped:
-        print('有插图越界 / 字号不足 / 模块缺失 —— 见上面的 ERR 行')
+        print('缺少模块：%s —— 插图必须齐全，报告验收会拦' % ', '.join(skipped))
+    for e in ph_errors:
+        print('ERR %s' % e)
+    if keys and n_line + n_ph == 0:
+        print('关键字没有匹配到任何插图：%s' % ' '.join(keys))
         return 1
-    print('全部 %d 张插图完成' % drawn)
+    if fk.failed() or skipped or ph_errors:
+        print('有插图越界 / 字号不足 / 模块缺失 / 占位图未就绪 —— 见上面的 ERR 行')
+        return 1
+    head = '按关键字重画' if keys else '全部'
+    print('%s %d 张插图完成（线稿 %d + 占位图 %d）' % (head, n_line + n_ph, n_line, n_ph))
     return 0
 
 

@@ -2,7 +2,7 @@
 
 本目录只剩**整机接线图**这条链：`make_system_wiring.py` 生成 `fig_system_wiring.png`，供 [硬件与接线](../硬件与接线.md) 引用（实物照片的补充，不占报告版心）。
 
-作品报告用的 5 张插图只在提交件里用，已整体放在 [submission/figures/](../../submission/figures/)：生成脚本入库，PNG / SVG / `fig_meta.json` 由脚本重画、不入库（见其 README）；本目录不再放报告插图。
+作品报告用的 12 张插图（5 张线稿 + 7 张占位）只在提交件里用，已整体放在 [submission/figures/](../../submission/figures/)：生成脚本入库，PNG / SVG / `fig_meta.json` 由脚本重画、不入库（见其 README）；本目录不再放报告插图。
 
 ## 用法
 

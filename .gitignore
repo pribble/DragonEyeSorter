@@ -94,6 +94,8 @@ scripts/boot/flash_log.txt
 
 # ---------- 10. 提交材料生成物（submission/out/：可由 submission/build/ 重建，不入库） ----------
 submission/out/
+# 报告重构工作区（规格 / 分片 / 审计台账；成稿合并后分片删除，过程件不入库）
+submission/.refactor/
 
 # pl/sim/equiv 的终验证据是本机生成物（可一键复现，不入库）；脚本 / 桩 / testbench 入库
 pl/sim/equiv/audit/evidence/

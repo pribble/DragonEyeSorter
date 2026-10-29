@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""fig_layout — 图 7-1 工位布局（俯视，按比例）。
+"""fig_layout — 图 9 工位布局（俯视、按比例）。
 
 画布 = 报告落版宽度 447.9pt（15.8cm）× 280pt，字面字号即纸面字号（见 figkit 顶部说明）。
-比例尺 0.5pt/mm：皮带 800×300mm → 400×150pt，相机视野 398×224mm → 199×112pt，尺寸与
-`submission/技术文档.md` §2.1 / §7 一致。零件从右往左走，机械臂在行程的右手侧（图上方），
-龙门与灯在另一侧；抓取线 = 视野下游边 + 80mm，挡板 1 报废 / 挡板 2 返修在抓取线下游。
+比例尺 0.5pt/mm：皮带 800×300mm → 400×150pt，相机视野 373×214mm → 186.5×107pt，尺寸与
+`submission/技术文档.md` §II-A / §VII-A 一致（相机定版实测：373×214mm、0.1945 mm/像素）。零件从
+右往左走，机械臂在行程的右手侧（图上方），龙门与灯在另一侧；抓取线 = 视野下游边 + 65mm，
+挡板 1 报废 / 挡板 2 返修在抓取线下游。
 """
 import figkit as fk
 
@@ -15,11 +16,11 @@ K = 0.5                                # pt / mm
 BX0, BW = 44.0, 400.0                  # 皮带 800mm
 BY0, BH = 62.0, 150.0                  # 皮带 300mm
 CY = BY0 + BH / 2.0
-FOV_W, FOV_H = 398 * K, 224 * K        # 相机视野 398 × 224mm
+FOV_W, FOV_H = 373 * K, 214 * K        # 相机视野 373 × 214mm（相机定版实测）
 FOV_R = BX0 + BW - 60 * K              # 视野上游边距上料端 60mm
 FOV_L = FOV_R - FOV_W
 FOV_B, FOV_T = CY - FOV_H / 2.0, CY + FOV_H / 2.0
-PICK = FOV_L - 80 * K                  # 抓取线 = 视野下游边 + 80mm
+PICK = FOV_L - 65 * K                  # 抓取线 = 视野下游边 + 65mm（正文 §VII-A）
 ARM_X0, ARM_W = 146.0, 106.0           # 机械臂（跨在抓取线上方）
 BIN_X0, BIN_W = 40.0, 104.0            # 良品料盒
 FLAP1, FLAP2 = 124.0, 80.0             # 挡板 1（报废）/ 挡板 2（返修）
@@ -44,9 +45,9 @@ def draw():
     # ---------------- 相机视野 + 定位 / 测量 ----------------
     fk.rect(ax, FOV_L, FOV_B, FOV_W, FOV_H, fc=fk.C['pl'][0], ec=teal, lw=0.9, alpha=1.0)
     cx = (FOV_L + FOV_R) / 2.0
-    fk.text(ax, cx, CY + 20, '相机视野 398 × 224mm', fs=B, color=teal, weight='bold', ha='center')
+    fk.text(ax, cx, CY + 20, '相机视野 373 × 214mm', fs=B, color=teal, weight='bold', ha='center')
     fk.text(ax, cx, CY + 8, '4.2mm 镜头 · 离带面约 300mm', fs=S, ha='center', color=fk.BODY)
-    fk.text(ax, cx, CY - 3, '0.21mm/像素 · 定位亚像素测量', fs=S, ha='center', color=fk.BODY)
+    fk.text(ax, cx, CY - 3, '0.1945 mm/像素 · 定位亚像素测量', fs=S, ha='center', color=fk.BODY)
     fk.text(ax, cx, CY - 14, 'NPU 分类 3~6 次软投票 → 判定', fs=S, ha='center', color=fk.BODY)
     # 台面原点在视野上游边中点，+x = 走料方向（向左），+y = 机械臂的另一侧
     fk.circle(ax, FOV_R, CY, 1.3, teal)
@@ -62,11 +63,11 @@ def draw():
 
     # ---------------- 抓取线 + 机械臂 ----------------
     ax.plot([PICK, PICK], [BY0, BY0 + BH], color=blue, lw=1.2, ls=(0, (4, 2.5)), zorder=1.5)
-    fk.text(ax, PICK + 4, FOV_T + 13, '抓取线 = 视野下游边 + 80mm', fs=S, color=blue)
+    fk.text(ax, PICK + 4, FOV_T + 13, '抓取线 = 视野下游边 +65mm', fs=S, color=blue)
     fk.box(ax, ARM_X0, 234, ARM_W, 36, '6 轴机械臂（侧装）\n不入镜 · 工作半径 ~300mm\n'
            'SYNC WRITE 一帧下发 6 轴', 'ps')
     fk.arrow(ax, (PICK, 234), (PICK, BY0 + BH), color=blue, lw=1.0, ms=6.5)
-    fk.text(ax, PICK + 5, 224, '良品停带抓取', fs=S, color=blue)
+    fk.text(ax, PICK - 5, 224, '良品停带抓取', fs=S, color=blue, ha='right')
     fk.box(ax, BIN_X0, 234, BIN_W, 36, '料盒：齿轮\n按规格 · 颜色分选', 'ps')
 
     # ---------------- 挡板分流（抓取线下游）+ 带尾复检 ----------------

@@ -267,6 +267,20 @@ def save(fig, name):
     return rep['bad']
 
 
+def register_meta(name, w_pt, h_pt, png_w, png_h, min_fs_pt=None):
+    """登记一张**不由本库绘制**、但已放进报告的图（目前只用于已替换的实物照片）。
+
+    ``save()`` 是「画完顺手登记」；照片是现成文件，走这里只登记尺寸，让
+    ``fig_meta.json`` 保持 12 条、verifier 复核落版字号 / dpi 时不缺条目。
+    报告按落版宽 15.8cm 插图，所以 ``w_pt`` 通常就是 ``FIG_W``；``h_pt`` 由实际像素
+    高宽比折算。``min_fs_pt`` 给 ``None`` 时按 ``FS_MIN`` 记 —— 照片没有图内文字，
+    不该被「最小字号」门禁误判（占位图的设计最小字号也正好是 7.5pt）。
+    """
+    _meta[name] = dict(w_pt=round(w_pt, 2), h_pt=round(h_pt, 2), png_w=int(png_w),
+                       png_h=int(png_h), px_per_pt=round(png_w / w_pt, 4),
+                       min_fs_pt=FS_MIN if min_fs_pt is None else min_fs_pt)
+
+
 def _report_line(r):
     """打印一图结论，返回越界清单（含字号不合格）。"""
     _report.append(r)
