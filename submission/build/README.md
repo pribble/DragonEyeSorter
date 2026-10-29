@@ -8,21 +8,21 @@
 
 | 脚本 | 用途 | 入口 |
 |---|---|---|
-| [build.ps1](build.ps1) | 报告**一键入口**：`md2docx.py` → `word_to_pdf.ps1` → `pdf_images_hires.py`，末尾打印产物路径 / 页数 / 大小 / 插图 dpi | `pwsh -File submission/build/build.ps1` |
+| [build.ps1](build.ps1) | 报告**一键入口**：`make_figures.py` → `md2docx.py` → `word_to_pdf.ps1` → `pdf_images_hires.py`，末尾打印产物路径 / 页数 / 大小 / 插图 dpi | `pwsh -File submission/build/build.ps1` |
 | [md2docx.py](md2docx.py) | Markdown → DOCX（封面 / 目录域 / 正文 / 表格 / 插图 / 图注净化），生成后自检（禁项 / 行距 / 计数） | 由 `build.ps1` 调用；可单独跑 |
 | [word_to_pdf.ps1](word_to_pdf.ps1) | DOCX → PDF（Word COM；导出前更新页眉页脚与目录域，回报页数） | 由 `build.ps1` 调用 |
 | [pdf_images_hires.py](pdf_images_hires.py) | 插图高清化：按出现顺序把 PDF 里的图像对象换回源图原生像素，图框 / 文字 / 页码不动；`--report` 只测量 | `build.ps1` 第 ③ 步；`python … --pdf <pdf> --report` |
 | [verify_report.py](verify_report.py) | 验收自检 59 项（见「自检与验收」），结果写 `out/_verify_report.txt` | `python submission/build/verify_report.py` |
 | [pack_code.ps1](pack_code.ps1) | `git archive` 打「作品重要代码」zip | `pwsh -File submission/build/pack_code.ps1` |
-| [figures/](../figures/README.md) | 报告插图的生成脚本与生成物（`figkit.py` / `make_figures.py` / 5 个 `fig_*.py` + PNG / SVG / `fig_meta.json`），不是 `build/` 的脚本但属报告生成链 | `python submission/figures/make_figures.py` |
+| [figures/](../figures/README.md) | 报告插图的生成脚本（`figkit.py` / `make_figures.py` / 5 个 `fig_*.py`，入库）+ 生成物（PNG / SVG / `fig_meta.json`，不入库、可重建），不是 `build/` 的脚本但属报告生成链 | `python submission/figures/make_figures.py` |
 
-报告链改完内容跑 `build.ps1` → `verify_report.py`（确认全 PASS）；改了插图脚本再跑 `python submission/figures/make_figures.py` 后重出报告。
+报告链改完内容跑 `build.ps1` → `verify_report.py`（确认全 PASS）；`build.ps1` 第 0 步会自动按当前脚本重画插图，改了图脚本直接重出报告即可。
 
 ## 一键命令与常用参数
 
 ```powershell
-pwsh -File submission/build/build.ps1               # 三步串跑：md2docx → word_to_pdf → pdf_images_hires
-pwsh -File submission/build/build.ps1 -NoPdf        # 本机没装 Word：只出 docx
+pwsh -File submission/build/build.ps1               # 四步串跑：make_figures → md2docx → word_to_pdf → pdf_images_hires
+pwsh -File submission/build/build.ps1 -NoPdf        # 本机没装 Word：只出 docx（插图仍会重画）
 pwsh -File submission/build/build.ps1 -NoHires      # 出 PDF 但不做高清化（只调排版用；交件前必须跑完整链）
 python submission/build/md2docx.py -Out <别的.docx> -Stats <别的.json>
 python submission/build/md2docx.py --fig-width 14.5     # 插图整体收窄（默认满版心 15.8cm）
@@ -33,12 +33,13 @@ python submission/build/verify_report.py --fill --pdf <任意 PDF>   # 只跑逐
 ```
 
 - `build.ps1` 任一步失败即停（退出码非 0），末尾打印产物路径 / 页数 / 大小。
+- 第 0 步先跑 `make_figures.py` 重画插图（生成物不入库，见 [figures/README.md](../figures/README.md)）；缺 matplotlib 时这一步报错并提示安装（`python -m pip install matplotlib`）。
 - 第 ③ 步的插图顺序取自 `out/_md2docx.json` 的 `figures`（= 正文里 `![](...)` 的出现顺序），与 PDF 内插图一一对应：数量对不上、或任一张低于 `--min-dpi`（默认 300）即非零退出，并打印哪一张不达标。加图 / 删图不用手工维护清单。
 
 ## 依赖
 
 - **报告链**：Microsoft Word 桌面版（走 `Word.Application` COM 转 PDF；没有 Word 用 `-NoPdf` 只出 docx）；Python 3 + `python-docx`（生成 docx）；Python 3 + **PyMuPDF**（插图高清化，缺了第 ③ 步硬失败）；字体宋体 / 黑体 / Times New Roman / Consolas（系统与 Office 自带）。
-- **插图生成**：Python 3 + matplotlib（`python -c "import matplotlib"`），脚本与生成物都在 [figures/](../figures/)。
+- **插图生成**：Python 3 + matplotlib（`python -c "import matplotlib"`）；`build.ps1` 第 0 步用它重画插图（生成物不入库，脚本与用法见 [figures/](../figures/README.md)）。
 - 安装位置、版本与逐项验证命令见 [环境与上手](../../docs/环境与上手.md) §1「需要哪些环境」。
 - 脚本**不写死解释器**：`build.ps1` 按 `python` → `py -3` 在 PATH 上找，并按「该解释器有没有这个模块」分别挑（① 要 `docx`，③ 要 `pymupdf`）。要指定解释器就直接调对应的 `.py`。
 - **缺 PyMuPDF 时第 ③ 步硬失败是故意的**：没有高清化的 PDF 图内文字是糊的，不能当成品交；临时跳过用 `-NoHires`。
@@ -85,7 +86,7 @@ python submission/build/verify_report.py --fill --pdf <任意 PDF>   # 只跑逐
 | `---` | 分隔线（不渲染） |
 
 - **标题编号照抄源文本**，脚本不自动重编号；新增 `###` 要保证编号唯一（目录按编号生成，重复会出现两个同名条目）。
-- **新图按落版尺寸 1:1 作图**：画布宽 447.9pt（= 15.8cm）、图内最小字号 ≥7.5pt、PNG 建议 ≥3200px 宽（满版心约 514dpi；源图 <1900px 会跌破 300dpi 门禁）。图由 [figures/](../figures/) 的脚本按 [figures/README.md](../figures/README.md) 的约定生成到 `submission/figures/`，改图后重跑 `python submission/figures/make_figures.py`（入库 PNG + SVG + `fig_meta.json`）。
+- **新图按落版尺寸 1:1 作图**：画布宽 447.9pt（= 15.8cm）、图内最小字号 ≥7.5pt、PNG 建议 ≥3200px 宽（满版心约 514dpi；源图 <1900px 会跌破 300dpi 门禁）。图由 [figures/](../figures/) 的脚本按 [figures/README.md](../figures/README.md) 的约定生成到 `submission/figures/`，改图后重跑 `python submission/figures/make_figures.py`（生成物不入库，`build.ps1` 也会自动重画）。
 - **图注净化**：图注里的构建说明（`figures/`、`make_*.py`、`.svg`、`生成` 等）在生成 docx 时自动删掉，源 Markdown 不必手改；要调整改 `md2docx.py` 的 `CAPTION_KEEP_RULES` / `CAPTION_STRIP_RULES`，或用 `--caption-rules <json>`、`--no-caption-clean`。
 
 ## 代码包（作品重要代码）
@@ -120,4 +121,4 @@ python -c "import pymupdf; d=pymupdf.open('submission/out/龙瞳分拣_作品报
 3. **孤行 / 寡行控制开着**（`widowControl=1`），个别页尾会多留 2~4 行（在 20% 阈值内）；关掉会填得更满，但段首 / 段尾会落单，要求是打开。
 4. **表格分页**：小表整表同页；大表只保证「表头 + 前两行」同页，其余允许跨页（重复表头兜底）；行不跨页（`cantSplit`）没有布局代价。
 5. **页数随内容源长度变化，以最终 build 为准**；多处指标仍标「待测」属内容侧。
-6. **改插图后重跑生成脚本**：`python submission/figures/make_figures.py`（脚本与生成物同在 `submission/figures/`）；第 12 项自检按 `submission/figures/fig_meta.json` 核对落版字号。
+6. **改插图后重跑生成脚本**：`python submission/figures/make_figures.py`（`build.ps1` 第 0 步自动跑；生成物不入库）；第 12 项自检按 `submission/figures/fig_meta.json` 核对落版字号。

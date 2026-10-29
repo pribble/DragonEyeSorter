@@ -5,6 +5,9 @@
     python submission/figures/make_figures.py arch time    # 只重画名字里含 arch / time 的
     python submission/figures/fig_timebase.py              # 单张调试（只跑这一张）
 
+生成物（SVG / PNG / fig_meta.json）由本脚本重建、不入库（见本目录 .gitignore）；
+submission/build/build.ps1 每次出报告前会自动先跑一遍本脚本。
+
 约定与图元都在 figkit.py：**画布按报告落版尺寸（15.8cm 宽，单位 pt）作图，字号即纸面字号**，
 每张图保存前会核对文字越界与字号（见文件头注释）。单张图的画法看 fig_architecture.py。
 每个 fig_*.py 要暴露 draw()，并能单独 `python submission/figures/fig_xxx.py` 跑。

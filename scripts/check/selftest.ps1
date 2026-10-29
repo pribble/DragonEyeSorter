@@ -11,6 +11,8 @@
 param([switch]$Keep)
 
 $ErrorActionPreference = 'Stop'
+# 本机控制台默认 GBK(936)：git ls-files 与子检查器输出都按 UTF-8 解码，中文文件名才不会漏拷 / 误判
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $tmp = Join-Path $env:TEMP ("des-check-selftest_" + $PID)
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)

@@ -643,7 +643,7 @@ def main(argv=None) -> int:
                for k in FIG_NAMES if k in figs_meta]
         low = ["%s %.1fpt" % (k, e) for k, e in eff if e < MIN_FIG_PT - 1e-6]
         if missing:
-            fs_txt = "fig_meta.json 缺条目：" + ", ".join(missing) + "（先跑 submission/figures/make_figures.py）"
+            fs_txt = "fig_meta.json 缺条目：" + ", ".join(missing) + "（先跑 submission/build/build.ps1 或 submission/figures/make_figures.py）"
         elif low:
             fs_txt = "低于阈值：" + "; ".join(low)
         else:

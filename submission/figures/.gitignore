@@ -1,0 +1,5 @@
+# 本目录只入库生成脚本 + README；下列生成物由 make_figures.py 重画、不入库（见 README「文件」）
+# 报告插图：5 张 PNG + 5 张 SVG + fig_meta.json（verify_report.py 第 12 项读它复核落版字号）
+fig_*.png
+fig_*.svg
+fig_meta.json

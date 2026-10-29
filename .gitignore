@@ -3,7 +3,7 @@
 #
 # 约定：
 #   ① 本文件只放"全仓库"规则；仓库局部规则写在各目录自己的 .gitignore
-#      （现有：pc/plc_sim/.gitignore 厂商 DLL/LIB，train/.gitignore 数据与训练输出）
+#      （现有：pc/plc_sim/.gitignore 厂商 DLL/LIB，train/.gitignore 数据与训练输出，submission/figures/.gitignore 报告插图生成物）
 #   ② gitignore 是"最后匹配者生效"：任何白名单 `!` 行必须排在所有能命中它的忽略行之后
 #   ③ 注释只能独占一行（行首 #），不能写在规则同一行
 # =============================================================================

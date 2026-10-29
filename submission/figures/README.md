@@ -1,6 +1,6 @@
 # figures/ — 作品报告插图（脚本生成，不手工画）
 
-本目录是报告插图的**唯一位置**：5 张图的生成脚本 + 生成物（SVG / PNG）+ `fig_meta.json` 同处。只有作品报告用这一套——[技术文档](../技术文档.md) 按 `figures/fig_*.png` 引用，[build.ps1](../build/build.ps1) 排进 PDF，[verify_report.py](../build/verify_report.py) 读本目录的 `fig_meta.json` 复核落版字号。
+本目录是报告插图的**唯一位置**：5 张图的生成脚本入库，生成物（SVG / PNG / `fig_meta.json`）由 `make_figures.py` 重画、不入库（见 `.gitignore`）。只有作品报告用这一套——[技术文档](../技术文档.md) 按 `figures/fig_*.png` 引用，[build.ps1](../build/build.ps1) 每次先重画再排进 PDF，[verify_report.py](../build/verify_report.py) 读本目录的 `fig_meta.json` 复核落版字号。
 
 仓库工程文档用的整机接线图不在这里：它在 [docs/figures/](../../docs/figures/)（`make_system_wiring.py`，给 [硬件与接线](../../docs/硬件与接线.md) 用，不占报告版心）。
 
@@ -26,7 +26,7 @@ python submission/figures/make_figures.py arch time      # 只重画名字里含
 python submission/figures/fig_timebase.py                # 单张调试（跑单张 + 打印该图门禁）
 ```
 
-导出 SVG（矢量、文字可编辑）+ PNG 宽 3200px（报告满版心 15.8cm 时 ≈514 dpi），同时写 `fig_meta.json`（画布尺寸、`px_per_pt`、最小字号）。**改插图后重跑一次即可**（只有一套图），生成物与脚本一起入库。
+导出 SVG（矢量、文字可编辑）+ PNG 宽 3200px（报告满版心 15.8cm 时 ≈514 dpi），同时写 `fig_meta.json`（画布尺寸、`px_per_pt`、最小字号）。**改插图后重跑一次即可**（只有一套图）；生成物不入库（重画即得），本目录只提交脚本与 README。`build.ps1` 每次出报告前会自动先跑本脚本（第 0/3 步），所以改完图脚本直接重出报告也行。
 
 ## 文件
 
@@ -39,4 +39,5 @@ python submission/figures/fig_timebase.py                # 单张调试（跑单
 | `fig_pl_regs.py` | 图 3-1 PL 自研模块、寄存器窗口与管脚 |
 | `fig_pick_sequence.py` | 图 4-1 良品抓取 / NG 导流挡板时序 |
 | `fig_layout.py` | 图 7-1 工位布局（俯视，按比例） |
-| `fig_*.svg` · `fig_*.png` · `fig_meta.json` | 生成物（入库）：技术文档引用 PNG，SVG 留作矢量编辑 |
+| `.gitignore` | 忽略下面的生成物：本目录只入库脚本 + README |
+| `fig_*.svg` · `fig_*.png` · `fig_meta.json` | 生成物（**不入库**，跑 `make_figures.py` 重建）：技术文档引用 PNG，SVG 留作矢量编辑 |

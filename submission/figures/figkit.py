@@ -17,7 +17,8 @@
 5. 渲染为期刊线稿风：白底、方框细边、虚线分组框、黑色细箭头、Times 西文 + 宋体中文、无装饰色。
 6. 导出：SVG（矢量，文字可编辑）+ PNG 宽 3200px；同时写本目录的 ``fig_meta.json``
    （画布尺寸、``px_per_pt``、最小字号），供 ``submission/build/verify_report.py`` 复核落版字号。
-   本目录（``submission/figures/``）= 报告插图脚本 + 生成物，改了脚本重跑 ``make_figures.py``。
+   本目录（``submission/figures/``）只入库脚本 + README；生成物由 ``make_figures.py`` 重画、
+   不入库（``.gitignore``），``build.ps1`` 每次出报告前会先重画一遍。
 """
 import json
 import os
@@ -36,7 +37,7 @@ from matplotlib.patches import Circle, FancyArrowPatch, FancyBboxPatch, Rectangl
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))          # 仓库根：submission/figures → submission → 根
-OUT_DIR = HERE                                         # 脚本与生成物同处（提交件目录，入库）
+OUT_DIR = HERE                                         # 脚本与生成物同处（生成物不入库：见本目录 .gitignore）
 META_PATH = os.path.join(OUT_DIR, 'fig_meta.json')
 
 # 期刊线稿：西文 Times、中文宋体（matplotlib 逐字回退）

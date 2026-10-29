@@ -14,7 +14,18 @@
     "log": { "index": "docs/log/README.md", "dir": "docs/log" },
     "requiredTopDirs": [ "docs", "pl", "ps", "scripts", "train", "pc", "submission" ]
   },
-  "linkExceptions": [],
+  "linkExceptions": [
+    {
+      "file": "README.md",
+      "target": "^submission/figures/fig_architecture\\.png$",
+      "reason": "报告插图生成物：由 submission/figures/make_figures.py 重画、不入库（见该目录 .gitignore），干净检出时缺失属正常，先跑 submission/build/build.ps1 或 make_figures.py"
+    },
+    {
+      "file": "submission/技术文档.md",
+      "target": "^figures/fig_(?:architecture|timebase|pl_regs|pick_sequence|layout)\\.png$",
+      "reason": "报告插图生成物：同上，由 build.ps1 第 0 步 / make_figures.py 重画、不入库，先重画再出 docx / PDF"
+    }
+  ],
   "inlinePaths": {
     "_说明": "扫描行内代码 span 与围栏代码块里的仓内路径（只查 prefixes 前缀，避免误伤散文），Test-Path 校验；不存在的路径是 error。allowExact 用 path 字段、allowGlobs 用 glob 字段，每条必须写 reason（构建产物 / 运行期文件等）。",
     "prefixes": [ "scripts/" ],

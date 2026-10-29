@@ -1,17 +1,19 @@
 ﻿<#
 .SYNOPSIS
-    作品报告一键生成：submission/技术文档.md → submission/out/龙瞳分拣_作品报告.docx → 同名 PDF → 插图高清化。
+    作品报告一键生成：submission/figures/make_figures.py → submission/技术文档.md → submission/out/龙瞳分拣_作品报告.docx → 同名 PDF → 插图高清化。
 
 .DESCRIPTION
-    三步串起来跑，最后打印产物路径 / 页数 / 大小（含插图等效 dpi）：
+    四步串起来跑，最后打印产物路径 / 页数 / 大小（含插图等效 dpi）：
+      ⓪ make_figures.py       报告插图按脚本重生成（SVG / PNG / fig_meta.json；生成物不入库）
       ① md2docx.py            Markdown → DOCX（封面 / 目录 / 正文排版，python-docx）
       ② word_to_pdf.ps1       DOCX → PDF（Word COM，导出前更新页脚与目录域）
       ③ pdf_images_hires.py   PDF 里的插图换回源图分辨率（Word 导出会压到 96 dpi）
     任何一步失败即停，退出码非 0。中间产物（_md2docx.json / _word_to_pdf.json）放在
-    out/ 下，可随时重建。
+    out/ 下，可随时重建。报告插图生成物不入库（submission/figures/.gitignore），所以每次
+    出报告先按当前脚本重画，保证图与脚本一致。
 
     依赖：本机 Microsoft Word（转 PDF 用）+ python-docx（生成 docx 用）
-    + PyMuPDF（第 ③ 步换图用，import 名 pymupdf）。Python 解释器按
+    + matplotlib（第 ⓪ 步重画插图用）+ PyMuPDF（第 ③ 步换图用，import 名 pymupdf）。Python 解释器按
     `python` → `py -3` 顺序在 PATH 上找，按「该解释器有没有这个模块」分别挑，
     脚本里不写死解释器路径；要指定解释器就直接调对应的 .py。
     缺 PyMuPDF 时第 ③ 步失败并给出安装 / 换解释器提示（这是**故意**的硬失败：
@@ -85,6 +87,16 @@ function Show-Step([string] $Name) {
 }
 
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
+
+# ---------------------------------------------------------------- ⓪ 报告插图重生成
+# 生成物（SVG / PNG / fig_meta.json）不入库，见 submission/figures/.gitignore：每次出报告
+# 先按当前脚本重画，保证 ① 有图可嵌、③ 有源图可换、verify_report.py 第 12 项有 meta 可复核。
+Show-Step "0/3  报告插图重生成（make_figures.py）"
+$FigDir = Join-Path $Submission 'figures'
+$pyFig = Get-PythonExe -Module 'matplotlib' -Hint 'python -m pip install matplotlib'
+Write-Host ("解释器：{0}" -f $pyFig.Exe)
+& $pyFig.Exe @($pyFig.Args + @((Join-Path $FigDir 'make_figures.py')))
+if ($LASTEXITCODE -ne 0) { throw "make_figures.py 失败（退出码 $LASTEXITCODE）" }
 
 # ---------------------------------------------------------------- ① md → docx
 Show-Step "1/3  Markdown → DOCX"
