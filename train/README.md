@@ -1,6 +1,6 @@
 # train/ — 零件分类模型（NPU，赛题硬性项④）
 
-**路线**：PS 用 OpenCV 定位（已在 60fps 主循环里）→ 每件按自身方向转正裁 **56×56mm → 224×224**（`ps/src/measure/roi_crop`，约 0.25mm/像素）→ NPU 跑 **YOLOv8n-cls@224（激活换成 ReLU）** 分 5 类（`scripts/deploy/out/label_list.json`：良品 / 缺料轻 / 缺料重 / 脏污轻 / 脏污重；飞边两级数据已采齐、7 类模型待训练）→ 过视野时分类 3~6 次、概率软投票（`Tracker::vote`）→ 去向。
+**路线**：PS 用 OpenCV 定位（已在 60fps 主循环里）→ 每件按自身方向转正裁 **56×56mm → 224×224**（`ps/src/measure/roi_crop`，约 0.25mm/像素）→ NPU 跑 **YOLOv8n-cls@224（激活换成 ReLU）** 分 7 类（`scripts/deploy/out/label_list.json`：良品 / 缺料轻 / 缺料重 / 脏污轻 / 脏污重 / 飞边轻 / 飞边重）→ 过视野时分类 3~6 次、概率软投票（`Tracker::vote`）→ 去向。
 
 不用整帧检测：整帧约 0.19mm/像素，缩到 416 后约 0.90mm/像素，1mm 的黑点 / 缺料只剩 1 个像素；裁切后同样的缺陷约 4 个像素，计算量约为整帧 YOLOv8n@416 的 1/7。**训练和推理用同一个裁切函数**（`roi_crop`），归一化一致（RGB、÷255、均值 0）。
 
@@ -67,21 +67,24 @@ cd <仓库根>/train
 # 真实数据（采集会话拷到 WSL 本地盘再训，/mnt/d 很慢）
 # 每个采集会话：带激光红点的图不收，其余拷进 collect7/<会话名>/<编号>_<类别>（测试组会话名带 val_）
 ~/des-train/bin/python drop_laser.py --src <会话目录> --dst ~/des-work/collect7/<会话名>/<编号>_<类别>
-~/des-train/bin/python prepare_dataset.py --src ~/des-work/collect7 --out ~/des-work/real --val-sessions val_ --max-train 450
-~/des-train/bin/python train_cls.py --data ~/des-work/real --epochs 40 --name real --project ~/des-work/runs
-~/des-train/bin/python export_npu.py --weights ~/des-work/runs/real/weights/best.pt --calib ~/des-work/real/train --out ../models/part_cls
+~/des-train/bin/python prepare_dataset.py --src ~/des-work/collect7 --out ~/des-work/real --val-sessions val_ --val-gray
+# 训满 60 轮、取最后一轮（--patience 0；best.pt 是按测试集挑的，数字偏乐观）
+~/des-train/bin/python train_cls.py --data ~/des-work/real --epochs 60 --patience 0 --name real --project ~/des-work/runs
+~/des-train/bin/python export_npu.py --weights ~/des-work/runs/real/weights/last.pt --calib ~/des-work/real/train --out ../models/part_cls
 ~/des-train/bin/python eval_onnx.py --model ../models/part_cls --val ~/des-work/real/val --refs out/part_cls_refs
+~/des-train/bin/python eval_onnx.py --model ../models/part_cls --val ~/des-work/real/val_gray   # 颜色依赖检查
 # 板上
 scp ../models/part_cls_uint8.onnx ../models/part_cls.json $BOARD_HOST:/root/des/
 scp -r out/part_cls_refs $BOARD_HOST:/root/des/
 ssh $BOARD_HOST /root/bin/test_npu /root/des/part_cls.json /root/des/part_cls_refs 200
 ```
 
-**冒烟测试**（零件没到时验链路）：`synth_crops.py` 按 `label_list.json` 生成合成裁切图（现为齿轮 5 类，缺陷带轻 / 重分级），走完上面全部步骤。下列数字是 4 类时期的历史跑分（600 + 120 张 / 类、12 轮、480 张合成验证集）：NPU **95.42%**、OK/NG 96.0%，PC fp32 97.5% / uint8 95.6%，单次 7.80ms。合成数据**只验证工具链与 NPU 耗时**，不代表真实精度。
+**冒烟测试**（零件没到时验链路）：`synth_crops.py` 按 `label_list.json` 生成合成裁切图（现为齿轮 7 类，缺陷带轻 / 重分级），走完上面全部步骤。下列数字是 4 类时期的历史跑分（600 + 120 张 / 类、12 轮、480 张合成验证集）：NPU **95.42%**、OK/NG 96.0%，PC fp32 97.5% / uint8 95.6%，单次 7.80ms。合成数据**只验证工具链与 NPU 耗时**，不代表真实精度。
 
 ## 采集建议（每类目标 ≥300 张、≥30 个零件）
 
 - 一个会话只放**一类**；验证集用**另外的零件编号**单独采（会话名带 `val_`），整理时 `--val-sessions val_`。
 - 皮带低速（`--belt 30`），零件随机方向、靠中线；每件存 ≤10 张（`--max`）、间隔 6 帧（`--every`）。光照、相机高度定了再采正式数据；改了光照要补采。
 - **对射激光红点**：零件经过对射光束时，侧面（齿尖边缘）会被照出约 9×7 像素的小红点，只出现在光束位置的 1~3 张里。10-27 以前采的组（良品 / 缺料 / 脏污）没有激光，红点只会出现在之后采的类别里，模型可能把它当成判断依据 → 训练集、测试集都不收带红点的图（用户 10-28 定）：`drop_laser.py` 按「R − max(G, B) > 30 的像素 ≥5 个，或任一像素 > 60」剔除（没被照到的图都 ≤30），清单写在 `<会话名>.dropped_laser.txt`，板上原图不删。最后开着激光实测：不影响就保持；有影响先试投票时跳过带红点的帧，要把红点图加回训练集，得每一类都有带激光的图。
+- **7 类训练的三条教训（10-29，[../docs/log/2026-10-29](../docs/log/2026-10-29-7类模型训练与上板.md)）**：① 不做灰度增强（`--gray-frac`）：训练图随机转灰度让 UINT8 逐层量化掉 10~20 个点，换校准设置不管用；② 训满 `--epochs`（`--patience 0`）：提前停在高学习率时量化同样掉分；③ 良品类要含全部规格，没训过的 30 齿孔 8 有 38% 的图被判成飞边。另：数据加载进程默认改 2 个（8 个把 WSL 8GB 内存撑爆）。
 - 要检测模型备选时加 `--full 30`：每 30 帧存整帧 + 定位器自动生成的 YOLO 框。
