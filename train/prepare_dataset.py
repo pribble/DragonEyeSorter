@@ -11,8 +11,16 @@ the session split cannot.
   --max-train <n>              at most ~n training images per class: every track is kept, each with fewer crops
                                (evenly spaced along its pass; crops of one pass are near-duplicates anyway). The
                                collected crops are never deleted, the cap only applies to the copy in --out.
+  --gray-frac <p>              save about this share of the TRAINING crops as grayscale (3 channels), so that colour
+                               alone cannot carry a class (the flash samples are a slightly pink filler, a real
+                               molding flash has the part's colour). Validation crops stay in colour.
+                               NOT used for the board model: 2026-10-29, 0.3 made the uint8 per-tensor model lose
+                               10~20 points against fp32 on the 7-class test set (no calibration setting helped);
+                               without it the loss is ~0 and the gray test set still scores within a few points.
+  --val-gray                   also write <out>/val_gray: every validation crop in grayscale (same classes), to check
+                               that the accuracy does not drop without colour.
 
-    python prepare_dataset.py --src /path/to/collect --out data/real --val-sessions val_
+    python prepare_dataset.py --src /path/to/collect --out data/real --val-sessions val_ --gray-frac 0.3 --val-gray
 """
 import argparse
 import collections
@@ -30,7 +38,11 @@ def main():
     ap.add_argument("--val-frac", type=float, default=0.2)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--max-train", type=int, default=0, help="cap training images per class (0 = all)")
+    ap.add_argument("--gray-frac", type=float, default=0.0, help="share of training crops saved as grayscale (0 = none)")
+    ap.add_argument("--val-gray", action="store_true", help="also write <out>/val_gray (validation crops in grayscale)")
     a = ap.parse_args()
+    if a.gray_frac > 0 or a.val_gray:
+        from PIL import Image   # only needed for the grayscale copies
 
     parts = collections.defaultdict(list)          # (class folder, session, track) -> files
     for root in a.src:
@@ -82,19 +94,30 @@ def main():
             if out_n == r_n or out_n.startswith(r_n + os.sep):
                 raise SystemExit("--out %s is inside collect root %s: refusing to delete the source crops" % (a.out, root))
         shutil.rmtree(a.out)
-    stats = collections.defaultdict(lambda: [0, 0, 0, 0])   # train parts, train images, val parts, val images
-    for key, files in parts.items():
+    stats = collections.defaultdict(lambda: [0, 0, 0, 0, 0])   # train parts, train images, val parts, val images, gray
+    gray_rng = random.Random(a.seed + 1)
+    to_gray = lambda src, dst: Image.open(src).convert("L").convert("RGB").save(dst, quality=95)
+    for key, files in sorted(parts.items()):   # sorted: the grayscale draw does not depend on the glob order
         s = split[key]
         d = os.path.join(a.out, s, key[0])
         os.makedirs(d, exist_ok=True)
-        for f in files:
-            shutil.copy2(f, os.path.join(d, os.path.basename(f)))
         st = stats[key[0]]
+        for f in sorted(files):
+            dst = os.path.join(d, os.path.basename(f))
+            if s == "train" and a.gray_frac > 0 and gray_rng.random() < a.gray_frac:
+                to_gray(f, dst)
+                st[4] += 1
+            else:
+                shutil.copy2(f, dst)
+            if s == "val" and a.val_gray:
+                dg = os.path.join(a.out, "val_gray", key[0])
+                os.makedirs(dg, exist_ok=True)
+                to_gray(f, os.path.join(dg, os.path.basename(f)))
         st[0 if s == "train" else 2] += 1
         st[1 if s == "train" else 3] += len(files)
-    print(f"{'class':<16s} {'train parts':>11s} {'images':>7s} {'val parts':>9s} {'images':>7s}")
+    print(f"{'class':<16s} {'train parts':>11s} {'images':>7s} {'(gray)':>7s} {'val parts':>9s} {'images':>7s}")
     for c in sorted(stats):
-        print(f"{c:<16s} {stats[c][0]:>11d} {stats[c][1]:>7d} {stats[c][2]:>9d} {stats[c][3]:>7d}")
+        print(f"{c:<16s} {stats[c][0]:>11d} {stats[c][1]:>7d} {stats[c][4]:>7d} {stats[c][2]:>9d} {stats[c][3]:>7d}")
     missing = [c for c in sorted(stats) if stats[c][2] == 0]
     if missing:
         print("WARNING: no validation parts for", ", ".join(missing))

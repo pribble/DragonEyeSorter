@@ -31,7 +31,11 @@ def main():
     ap.add_argument("--imgsz", type=int, default=224)
     ap.add_argument("--batch", type=int, default=64)
     ap.add_argument("--device", default="auto", help="auto = GPU 0 if CUDA works (RTX 4060 laptop), else cpu")
-    ap.add_argument("--workers", type=int, default=8)
+    # 8 loader workers filled the 8 GB of WSL with shared memory on the 7-class set (2026-10-29: killed at epoch 3)
+    ap.add_argument("--workers", type=int, default=2)
+    # early stopping cut the 7-class run at epoch 31 of 60 with the learning rate still high: that model lost 19
+    # points when quantized to uint8 -> 0 = train all --epochs, the learning rate decays to the end
+    ap.add_argument("--patience", type=int, default=10, help="early stopping patience in epochs (0 = off)")
     ap.add_argument("--project", default="runs")
     ap.add_argument("--name", default="cls")
     a = ap.parse_args()
@@ -45,7 +49,7 @@ def main():
         model.load(a.pretrained)   # transfer matching weights (e.g. ReLU variant from the SiLU checkpoint)
     model.train(
         data=a.data, epochs=a.epochs, imgsz=a.imgsz, batch=a.batch, device=a.device, workers=a.workers,
-        project=a.project, name=a.name, exist_ok=True, patience=10, plots=True, seed=0, deterministic=True,
+        project=a.project, name=a.name, exist_ok=True, patience=a.patience, plots=True, seed=0, deterministic=True,
         # mild, defect-preserving augmentation
         fliplr=0.5, flipud=0.5, hsv_h=0.0, hsv_s=0.2, hsv_v=0.3, scale=0.1, erasing=0.0,
     )
