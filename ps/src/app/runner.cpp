@@ -14,6 +14,11 @@ static const char *state_name(uint8_t s)
     static const char *n[] = {"IDLE", "RUN", "PAUSED", "ESTOP", "FAULT"};
     return s <= 4 ? n[s] : "?";
 }
+static const char *state_cn(uint8_t s)   // the operator panel (status_line); the log keeps the English names
+{
+    static const char *n[] = {"停止", "运行", "暂停", "急停", "故障"};
+    return s <= 4 ? n[s] : "?";
+}
 Runner::Runner(des_hw_t *hw, const AppConfig &cfg, const RunOptions &opt)
     : hw_(hw), cfg_(cfg), opt_(opt), belt_(hw, cfg.belt), arm_(hw, cfg.arm), arm_cfg_(cfg.arm), ir_(MB_N_IR, 0),
       flaps_(cfg.flaps, cfg.picker.gates)
@@ -78,7 +83,7 @@ std::string Runner::start()
     prev_status_ = des_step_status(hw_);
     belt_.enable(true);
     arm_thread_ = std::thread(&Runner::arm_loop, this);
-    set_state(can_fd_ >= 0 ? CANP_ST_IDLE : CANP_ST_RUN, can_fd_ >= 0 ? "waiting for PLC START" : "running (no CAN)");
+    set_state(can_fd_ >= 0 ? CANP_ST_IDLE : CANP_ST_RUN, can_fd_ >= 0 ? "等待 PLC 启动" : "运行（没有 CAN）");
     return "";
 }
 // Frames written back to back can be lost by the CAN controller (soak 10-11, loopback: 1000 of 108691, 79 of 82 lost
@@ -128,24 +133,24 @@ uint8_t Runner::command(uint8_t cmd, const char *who)
     std::string why = std::string(who) + " ";
     switch (cmd) {
     case CANP_CMD_START:
-        if (st == CANP_ST_IDLE || st == CANP_ST_PAUSED) set_state(CANP_ST_RUN, (why + "start").c_str());
+        if (st == CANP_ST_IDLE || st == CANP_ST_PAUSED) set_state(CANP_ST_RUN, (why + "启动").c_str());
         else if (st != CANP_ST_RUN) return CANP_ACK_REJECTED;
         return CANP_ACK_OK;
     case CANP_CMD_STOP:
-        jog_dir_ = 0; set_state(CANP_ST_IDLE, (why + "stop").c_str());
+        jog_dir_ = 0; set_state(CANP_ST_IDLE, (why + "停止").c_str());
         return CANP_ACK_OK;
     case CANP_CMD_PAUSE:
-        if (st == CANP_ST_RUN) set_state(CANP_ST_PAUSED, (why + "interlock pause").c_str());
+        if (st == CANP_ST_RUN) set_state(CANP_ST_PAUSED, (why + "联锁暂停").c_str());
         else if (st != CANP_ST_PAUSED) return CANP_ACK_REJECTED;
         return CANP_ACK_OK;
     case CANP_CMD_RESUME:
-        if (st != CANP_ST_PAUSED) { return CANP_ACK_REJECTED; } set_state(CANP_ST_RUN, (why + "resume").c_str());
+        if (st != CANP_ST_PAUSED) { return CANP_ACK_REJECTED; } set_state(CANP_ST_RUN, (why + "恢复").c_str());
         return CANP_ACK_OK;
     case CANP_CMD_RESET_ALARM:
         // v11: the PL keeps the e-stop latched (stepper held) until cleared; it refuses while the button is pressed
         // (older bitstreams: des_estop_clear answers DES_E_ARG, the alarm still clears)
         if (des_estop_clear(hw_) == 1) { return CANP_ACK_REJECTED; } alarm_ = 0;
-        if (st == CANP_ST_ESTOP || st == CANP_ST_FAULT) { set_state(CANP_ST_IDLE, "alarm reset"); } return CANP_ACK_OK;
+        if (st == CANP_ST_ESTOP || st == CANP_ST_FAULT) { set_state(CANP_ST_IDLE, "报警已复位"); } return CANP_ACK_OK;
     default: return CANP_ACK_UNKNOWN;
     }
 }
@@ -154,7 +159,7 @@ uint8_t Runner::set_speed(double mm_s, const char *who)
     if (mm_s <= 0 || mm_s > 200) return CANP_ACK_BAD_VALUE;
     belt_.set_speed(mm_s);
     speed_mm_s_ = mm_s;
-    last_event_ = fmt("%s speed %.1f mm/s", who, mm_s);
+    last_event_ = fmt("%s 设带速 %.1f mm/s", who, mm_s);
     return CANP_ACK_OK;
 }
 uint8_t Runner::jog(int dir, const char *who)
@@ -163,7 +168,7 @@ uint8_t Runner::jog(int dir, const char *who)
     if (state_ != CANP_ST_IDLE) return CANP_ACK_REJECTED;   // running / paused / e-stop: no manual moves
     if (des_estop_latched(hw_) == 1) return CANP_ACK_REJECTED;   // < DES_VERSION_IO: DES_E_ARG != 1, same verdict
     jog_dir_ = dir > 0 ? 1 : -1;
-    last_event_ = std::string(who) + (jog_dir_ > 0 ? " belt jog forward" : " belt jog reverse");
+    last_event_ = std::string(who) + (jog_dir_ > 0 ? " 皮带正转点动" : " 皮带反转点动");
     return CANP_ACK_OK;
 }
 uint8_t Runner::select_recipe(int id, const char *who)
@@ -172,7 +177,7 @@ uint8_t Runner::select_recipe(int id, const char *who)
     if (!r) return CANP_ACK_BAD_VALUE;
     if (state_ == CANP_ST_RUN) return CANP_ACK_REJECTED;   // changeover only with the line stopped / paused
     pending_recipe_ = id;
-    last_event_ = std::string(who) + " recipe " + std::to_string(id) + " " + r->name;
+    last_event_ = std::string(who) + " 换配方 " + std::to_string(id) + " " + r->name;
     return CANP_ACK_OK;
 }
 uint8_t Runner::set_lamp(uint8_t mode, uint8_t lamps, const char *who)
@@ -180,7 +185,7 @@ uint8_t Runner::set_lamp(uint8_t mode, uint8_t lamps, const char *who)
     if (mode > 1 || (lamps & 0xF0)) return CANP_ACK_BAD_VALUE;
     if (!rs485_) return CANP_ACK_REJECTED;   // no RS485 bus running
     rs485_->set_override(mode == 1, lamps);
-    last_event_ = mode ? fmt("%s lamps %X via RS485", who, lamps) : std::string(who) + " lamps back to the line state";
+    last_event_ = mode ? fmt("%s 三色灯手动 %X（RS485）", who, lamps) : std::string(who) + " 三色灯回到跟随线体状态";
     return CANP_ACK_OK;
 }
 int Runner::take_recipe()
@@ -209,9 +214,9 @@ void Runner::handle_can(double now)
         case CANP_ID_PLC_HB: last_plc_hb_ = now; break;
         case CANP_ID_TIME: {   // the PLC's wall clock (no RTC here): records use our clock + this offset
             const int64_t ms = canp_time_ms(&f);
-            if (f.len < 6 || ms < 1700000000000LL) { last_event_ = "PLC TIME frame ignored (not a clock)"; break; }   // as Modbus
+            if (f.len < 6 || ms < 1700000000000LL) { last_event_ = "PLC 对时帧无效，已忽略"; break; }   // as Modbus
             const bool first = !wall_synced(); wall_apply_ms(ms, "PLC");
-            if (first) { last_event_ = "clock synced from PLC"; } break;
+            if (first) { last_event_ = "已从 PLC 对时"; } break;
         }
         default: break;
         }
@@ -238,7 +243,7 @@ void Runner::handle_modbus(double now)
             case MB_HR_TIME_LO: {
                 const int64_t unix_s = (int64_t(mb_time_hi_) << 16) | v; if (unix_s < 1700000000) { r = CANP_ACK_BAD_VALUE; break; }   // before 2023: not a clock
                 const bool first = !wall_synced(); wall_apply_ms(unix_s * 1000, "Modbus");
-                if (first) { last_event_ = "clock synced from Modbus"; } r = CANP_ACK_OK;
+                if (first) { last_event_ = "已从 Modbus 对时"; } r = CANP_ACK_OK;
                 break;  }
             default: r = CANP_ACK_REJECTED; break;   // RESULT / SEQ / spare: read only
             }
@@ -306,7 +311,7 @@ void Runner::cycle(Tracker &tr, Picker &pk)
                            ? des_estop_latched(hw_) == 1
                            : (st & DES_ST_STATUS_HALTED) && !(prev_status_ & DES_ST_STATUS_HALTED) && state_ == CANP_ST_RUN;
     if (estop && state_ != CANP_ST_ESTOP) {
-        alarm_ = 1; set_state(CANP_ST_ESTOP, hw_->version >= DES_VERSION_IO ? "e-stop latched (PL)" : "e-stop: stepper halted");
+        alarm_ = 1; set_state(CANP_ST_ESTOP, hw_->version >= DES_VERSION_IO ? "急停按下（PL 已锁存）" : "急停：步进已停");
         send(canp_alarm(1, 2, 0));
     }
     prev_status_ = st;
@@ -314,7 +319,7 @@ void Runner::cycle(Tracker &tr, Picker &pk)
     if (done_.drain(done_buf_))
         for (const Done &d : done_buf_) {
             pk.job_done(tr, d.id, d.ok); if (d.ok) cnt_.ok++;
-            else { cnt_.recheck++; last_event_ = "pick failed: " + d.why; }
+            else { cnt_.recheck++; last_event_ = "抓取失败：" + d.why; }
         }
     // Newly decided part: counts + PART frame (decision time; a later failed pick is counted as recheck)
     auto report_part = [&](const Track &t) {
@@ -376,7 +381,7 @@ void Runner::cycle(Tracker &tr, Picker &pk)
     }
     // side diverter gates (des_pwm channel = gate), in every state: open from the start, a gate closed for a part
     // keeps it until the belt has carried that part past its release (no-op before v7 or when disabled)
-    if (cfg_.picker.gates_active()) {
+    if (cfg_.picker.gates_active() && !flap_manual_) {
         const FlapSequencer::State &fs = flaps_.update(flap_events_, belt_.belt_mm(), now);
         const int n = int(std::min<size_t>(cfg_.picker.gates.size(), 2));
         for (int ch = 0; ch < n; ch++)
@@ -409,13 +414,22 @@ std::string Runner::status_line() const
 {
     char q[48] = "";
     if (txq_.size() > 4 || tx_dropped_)
-        snprintf(q, sizeof q, "CAN txq %zu dropped %llu  ", txq_.size(), (unsigned long long)tx_dropped_);
+        snprintf(q, sizeof q, "CAN 发送排队 %zu 丢弃 %llu  ", txq_.size(), (unsigned long long)tx_dropped_);
     const double t = mono_s();
-    return fmt("%s  belt %.1f mm/s  arm %s  total %u ok %u ng %u recheck %u  %s%s%s%s%s", state_name(state_),
-               belt_.speed_mm_s(), arm_busy_ ? "busy" : "idle", cnt_.total, cnt_.ok, cnt_.ng, cnt_.recheck,
-               can_fd_ >= 0 ? (t - last_plc_hb_ < 1.0 ? "PLC ok  " : "PLC --  ") : "",
-               mb_ ? (t - last_mb_ < 1.0 ? "Modbus ok  " : "Modbus --  ") : "",
-               rs485_ ? (rs485_->link_ok() ? "485 ok  " : "485 --  ") : "", q, last_event_.c_str());
+    // operator panel: Chinese, words separated by spaces (the panel wraps there)
+    return fmt("%s  带速 %.1f mm/s  机械臂 %s  总数 %u 良品 %u 不良 %u 复检 %u  %s%s%s%s%s", state_cn(state_),
+               belt_.speed_mm_s(), arm_busy_ ? "忙" : "空闲", cnt_.total, cnt_.ok, cnt_.ng, cnt_.recheck,
+               can_fd_ >= 0 ? (t - last_plc_hb_ < 1.0 ? "PLC 在线  " : "PLC 未连  ") : "",
+               mb_ ? (t - last_mb_ < 1.0 ? "Modbus 在线  " : "Modbus 未连  ") : "",
+               rs485_ ? (rs485_->link_ok() ? "RS485 在线  " : "RS485 断开  ") : "", q, last_event_.c_str());
+}
+void Runner::set_flap_manual(bool on)
+{
+    if (flap_manual_ && !on) {   // handed back: the sequencer writes its widths and the enable again
+        flap_us_[0] = flap_us_[1] = -1;
+        pwm_enabled_ = false;
+    }
+    flap_manual_ = on;
 }
 void Runner::set_home(const std::array<int, 6> &counts)
 {

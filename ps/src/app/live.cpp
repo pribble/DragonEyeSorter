@@ -25,6 +25,7 @@
 #include <opencv2/imgproc.hpp>
 #include "arm_io.hpp"
 #include "display.hpp"
+#include "flap_manual.hpp"
 #include "hmi.hpp"
 #include "locate.hpp"
 #include "npu.hpp"
@@ -41,7 +42,7 @@ struct TrackView {
     TrackState st = TrackState::New;
     Disposition disp = Disposition::None;
     float s = 0, y = 0, len = 0, wid = 0, axis = 0;
-    char meas[48] = {0};   // measurement summary for the label (empty = not measured)
+    char meas[96] = {0};   // measurement summary for the label (empty = not measured)
 };
 
 // One processed frame, immutable once published (no strings; the status line lives in the panel).
@@ -91,54 +92,48 @@ constexpr int kVidW = 1440, kVidH = Hmi::Y0;
 constexpr double kVidScale = 0.75;
 constexpr int kSrcH = kVidH * 4 / 3, kCropY = (1080 - kSrcH) / 2;   // source rows shown, first row shown
 constexpr int kPanelX = kVidW, kPanelW = 1920 - kVidW, kPanelH = Hmi::Y0;
-// Hershey text is expensive: rendered here on core 1 (~10 Hz), never on the capture core, which only blits it.
-cv::Mat render_panel(const Snapshot &s, const Shared &sh, uint32_t pl_frame, uint64_t lag, double belt_mm,
-                     const std::string &run_line)
+const char *plan_cn(BeltPlan::Kind k)
 {
-    cv::Mat panel(kPanelH, kPanelW, CV_8UC3, cv::Scalar(34, 31, 29));
-    cv::line(panel, {0, 0}, {0, kPanelH - 1}, cv::Scalar(80, 76, 72), 2);
-    int y = 40;
-    auto line = [&](const std::string &t, const cv::Scalar &c, double size = 0.62, int gap = 34) {
-        cv::putText(panel, t, cv::Point(18, y), cv::FONT_HERSHEY_SIMPLEX, size, c, 1, cv::LINE_AA);
+    return k == BeltPlan::Run ? "一直走" : k == BeltPlan::StopAt ? "停到抓取线" : "停住（机械臂在带上）";
+}
+// Status panel right of the picture: Chinese (FreeType) on the light theme of the HMI band (2026-10-30, user). Rendered
+// here on core 1 (~10 Hz), never on the capture core, which only blits it.
+cv::Mat render_panel(const Snapshot &s, const Shared &sh, uint32_t pl_frame, uint64_t lag, double belt_mm,
+                     const std::string &run_line, TextFT &txt)
+{
+    using namespace ui;
+    cv::Mat panel(kPanelH, kPanelW, CV_8UC3, BG);
+    cv::line(panel, {0, 0}, {0, kPanelH - 1}, LINE, 2);
+    int y = 16;
+    auto line = [&](const std::string &t, const cv::Scalar &c, int px = 20, int gap = 34) {
+        txt.draw(panel, t, 18, y, px, c);
         y += gap;
     };
-    const cv::Scalar white(235, 235, 235), dim(160, 160, 160), green(90, 220, 90), yellow(70, 215, 235);
-    char b[160];
-    line(std::string("DragonEyeSorter  ") + (run_line.empty() ? "live" : "run"), green, 0.85, 46);
-    snprintf(b, sizeof b, "display %.1f fps   skipped %llu", sh.disp_fps.load(), (unsigned long long)sh.disp_skipped.load());
-    line(b, white);
-    snprintf(b, sizeof b, "PL frame %u   worker lag %llu", pl_frame, (unsigned long long)lag);
-    line(b, dim, 0.62, 48);
-    snprintf(b, sizeof b, "locate %.1f ms   worker %.1f ms", (s.tm.gray_us + s.tm.thresh_us + s.tm.contour_us) * 1e-3,
-             s.work_ms);
-    line(b, white);
-    snprintf(b, sizeof b, "measure %.1f ms  (%llu / %llu)", s.meas_ms, (unsigned long long)s.measured,
-             (unsigned long long)(s.measured + s.meas_failed));
-    line(b, white);
-    if (s.npu) snprintf(b, sizeof b, "npu %.1f ms  (%llu runs)", s.npu_ms, (unsigned long long)s.npu_runs);
-    else snprintf(b, sizeof b, "npu off");
-    line(b, white);
-    snprintf(b, sizeof b, "tracks %zu   belt %.1f mm", s.tracks.size(), belt_mm);
-    line(b, white, 0.62, 48);
-    snprintf(b, sizeof b, "pick %llu   flap %llu   recheck %llu", (unsigned long long)s.st.decided_pick,
-             (unsigned long long)s.st.decided_flap, (unsigned long long)s.st.decided_recheck);
-    line(b, white);
-    snprintf(b, sizeof b, "noise %llu   belt plan %s", (unsigned long long)s.st.noise, s.plan_on ? to_str(s.plan.kind) : "-");
-    line(b, white);
-    snprintf(b, sizeof b, "saved %llu  (images %llu)", (unsigned long long)s.logged, (unsigned long long)s.log_images);
-    line(b, white, 0.62, 48);
-        const int wrap_px = kPanelW - 2 * 18;
-    auto fits = [&](const std::string &t) {
-        int base = 0;
-        return cv::getTextSize(t, cv::FONT_HERSHEY_SIMPLEX, 0.62, 1, &base).width <= wrap_px;
-    };
+    line(std::string("DragonEyeSorter  ") + (run_line.empty() ? "演示模式" : "产线模式"), ACCENT, 26, 50);
+    line(fmt("显示 %.1f 帧/秒", double(sh.disp_fps.load())) +
+             fmt("   跳帧 %llu", (unsigned long long)sh.disp_skipped.load()), TEXT);
+    line(fmt("PL 帧号 %u", pl_frame) + fmt("   处理落后 %llu 帧", (unsigned long long)lag), DIM, 20, 46);
+    line(fmt("定位 %.1f ms", (s.tm.gray_us + s.tm.thresh_us + s.tm.contour_us) * 1e-3) +
+             fmt("   单帧处理 %.1f ms", s.work_ms), TEXT);
+    line(fmt("测量 %.1f ms", s.meas_ms) + fmt("（成功 %llu", (unsigned long long)s.measured) +
+             fmt(" / 共 %llu）", (unsigned long long)(s.measured + s.meas_failed)), TEXT);
+    line(s.npu ? fmt("NPU 推理 %.1f ms", s.npu_ms) + fmt("（已推理 %llu 次）", (unsigned long long)s.npu_runs)
+               : std::string("NPU 未加载"), TEXT);
+    line(fmt("跟踪中 %zu 件", s.tracks.size()) + fmt("   皮带走过 %.1f mm", belt_mm), TEXT, 20, 46);
+    line(fmt("抓取 %llu", (unsigned long long)s.st.decided_pick) + fmt("   挡板 %llu", (unsigned long long)s.st.decided_flap) +
+             fmt("   复检 %llu", (unsigned long long)s.st.decided_recheck), TEXT);
+    line(fmt("噪点 %llu", (unsigned long long)s.st.noise) + "   皮带计划：" + (s.plan_on ? plan_cn(s.plan.kind) : "—"), TEXT);
+    line(fmt("已记录 %llu 件", (unsigned long long)s.logged) + fmt("（存图 %llu 张）", (unsigned long long)s.log_images),
+         TEXT, 20, 46);
+    // the runner's status line, wrapped at its spaces (Chinese words have none inside)
+    const int wrap_px = kPanelW - 2 * 18;
     std::string word, cur;
-    auto flush = [&] { if (!cur.empty()) line(cur, yellow, 0.62, 30); cur.clear(); };
+    auto flush = [&] { if (!cur.empty()) line(cur, VALUE, 18, 28); cur.clear(); };
     for (size_t i = 0; i <= run_line.size(); i++) {
         const char ch = i < run_line.size() ? run_line[i] : ' ';
         if (ch != ' ') { word += ch; continue; }
         if (word.empty()) continue;
-        if (!cur.empty() && !fits(cur + " " + word)) flush();
+        if (!cur.empty() && txt.width(cur + " " + word, 18) > wrap_px) flush();
         cur += (cur.empty() ? "" : " ") + word;
         word.clear();
     }
@@ -192,6 +187,9 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
     }
         Hmi hmi(cfg, cfg.config_dir + "/ui_params.json");
     if (!hmi.fonts_ok()) fprintf(stderr, "hmi: Chinese font not found, ASCII fallback\n");
+    TextFT panel_txt;   // status panel right of the picture (this thread renders it)
+    panel_txt.open();
+    FlapManual flap_manual(&hw);   // 挡板 page: the flap servos by hand
         ArmManual arm_manual(&hw, cfg.arm, cfg.arm_home_taught, cfg.config_dir + "/data/arm_teach.csv",
                          cfg.config_dir + "/arm_home.json");
     auto apply_params = [&](const HmiParams &p) {
@@ -201,7 +199,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
         r.gear_od = p.gear_od; r.gear_od_tol = p.gear_od_tol; r.gear_bore = p.gear_bore; r.gear_bore_tol = p.gear_bore_tol;
         tr.config().min_conf = p.min_conf;
         plog.set_images(p.images == 0 ? "none" : p.images == 2 ? "all" : "ng");
-        if (runner) runner->set_speed(p.belt_speed, "HMI");
+        if (runner) runner->set_speed(p.belt_speed, "界面");
         des_vis_config(&hw, p.pl_mode, 0, p.pl_thr, p.pl_edge_thr);   // PL display mode + thresholds (no-op before v6)
     };
     struct PlMeas { uint32_t area = 0; float d = 0, w = 0, h = 0; };
@@ -366,15 +364,15 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
                 // are listed after it. Off the axis the teeth are not judged and the count is not shown (it reads
                 // 28..30 at random there, 2026-10-24: users took z29 -> z30 near the centre for a vanishing defect).
                 if (t.meas.valid && t.meas.kind == 'g' && t.meas.teeth_judged) {
-                    int n = snprintf(tv.meas, sizeof tv.meas, "OD%.2f z%d", t.meas.size, t.meas.teeth);
+                    int n = snprintf(tv.meas, sizeof tv.meas, "外径%.2f %d齿", t.meas.size, t.meas.teeth);
                     if (t.meas.missing_teeth && n < int(sizeof tv.meas))
-                        n += snprintf(tv.meas + n, sizeof tv.meas - n, " miss%d", t.meas.missing_teeth);
+                        n += snprintf(tv.meas + n, sizeof tv.meas - n, " 缺齿%d", t.meas.missing_teeth);
                     if (t.meas.short_teeth && n < int(sizeof tv.meas))
-                        n += snprintf(tv.meas + n, sizeof tv.meas - n, " short%d", t.meas.short_teeth);
+                        n += snprintf(tv.meas + n, sizeof tv.meas - n, " 缺料%d", t.meas.short_teeth);
                     if (t.meas.flash_gaps && n < int(sizeof tv.meas))
-                        snprintf(tv.meas + n, sizeof tv.meas - n, " flash%d", t.meas.flash_gaps);
+                        snprintf(tv.meas + n, sizeof tv.meas - n, " 飞边%d", t.meas.flash_gaps);
                 } else if (t.meas.valid && t.meas.kind == 'g')
-                    snprintf(tv.meas, sizeof tv.meas, "OD%.2f off-axis", t.meas.size);
+                    snprintf(tv.meas, sizeof tv.meas, "外径%.2f 离轴未判齿", t.meas.size);
                 else if (t.meas.valid)
                     snprintf(tv.meas, sizeof tv.meas, "%.2f mm", t.meas.size);
                 s->tracks.push_back(tv);
@@ -441,18 +439,28 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
                 arm_manual.context(hmi.arm_page(), why == nullptr, why);
                 hs.arm = arm_manual.view();
             }
+            {   // flap servos by hand only with the line stopped; the runner leaves the gates to the page meanwhile
+                const int st = runner ? int(runner->state()) : -1;
+                const char *why = st == CANP_ST_RUN ? "产线运行中" : st == CANP_ST_PAUSED ? "产线暂停中"
+                                : st == CANP_ST_ESTOP ? "急停中" : st == CANP_ST_FAULT ? "故障中" : nullptr;
+                flap_manual.context(hmi.flap_page(), why == nullptr, why);
+                hs.flap = flap_manual.view();
+            }
             hmi.status(hs, now);
             if (input)
                 for (const HmiAction &a : hmi.handle(input->take())) {
                     if (a.kind == HmiAction::Params) apply_params(hmi.params());
                     else if (a.kind == HmiAction::Arm) arm_manual.request(a.arm);
+                    else if (a.kind == HmiAction::Flap) flap_manual.request(a.flap);
                     else if (a.kind == HmiAction::Recipe) {
-                        if (runner) runner->select_recipe(a.cmd, "HMI");   // applied below, same path as the PLC's
+                        if (runner) runner->select_recipe(a.cmd, "界面");   // applied below, same path as the PLC's
                         else if (hmi.set_recipe(a.cmd)) apply_params(hmi.params());
                     } else if (a.kind == HmiAction::Jog) {
-                        if (runner) runner->jog(a.cmd, "HMI");
-                    } else if (runner) runner->command(uint8_t(a.cmd), "HMI");
+                        if (runner) runner->jog(a.cmd, "界面");
+                    } else if (runner) runner->command(uint8_t(a.cmd), "界面");
                 }
+            flap_manual.tick(now);   // slow moves of the flap page, one step per cycle
+            if (runner) runner->set_flap_manual(flap_manual.active());
             {   // ready pose re-taught on the arm page: the production picks use it from the next one
                 std::array<int, 6> home;
                 if (arm_manual.take_home(home) && runner) runner->set_home(home);
@@ -483,7 +491,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
             if (runner) run_line = runner->status_line();
             else if (col) run_line = col->status();
             else run_line.clear();
-            panel = render_panel(*s, sh, f.pl_frame, sh.cap_seq.load() - seq, obs.belt_mm, run_line);
+            panel = render_panel(*s, sh, f.pl_frame, sh.cap_seq.load() - seq, obs.belt_mm, run_line, panel_txt);
             last_panel = end;
         }
         s->panel = panel;   // reference-counted: the main thread only reads it
@@ -509,19 +517,27 @@ cv::Scalar color_of(const TrackView &t)
          : t.disp == Disposition::Recheck ? cv::Scalar(0, 165, 255) : cv::Scalar(0, 220, 220);   // tracking
 }
 cv::Point to_screen(float x, float y) { return cv::Point(int(x * kVidScale + 0.5), int((y - kCropY) * kVidScale + 0.5)); }
-void line_at_x(cv::Mat &vid, const Homography &hinv, float x, const char *label, cv::Scalar col)
+const char *track_cn(const TrackView &t)
+{
+    if (t.st == TrackState::New) return "新";
+    if (t.st == TrackState::Tracking) return "跟踪中";
+    if (t.st == TrackState::Picking) return "抓取中";
+    return t.disp == Disposition::Pick ? "抓取" : t.disp == Disposition::Flap ? "挡板" : t.disp == Disposition::Recheck ? "复检" : "—";
+}
+void line_at_x(cv::Mat &vid, const Homography &hinv, float x, const char *label, cv::Scalar col, TextFT &txt)
 {
     Vec2 a = hinv.map({x, -400.f}), b = hinv.map({x, 400.f});
     cv::line(vid, to_screen(a.x, a.y), to_screen(b.x, b.y), col, 2, cv::LINE_8);
     const cv::Point pm = to_screen(hinv.map({x, 0.f}).x, hinv.map({x, 0.f}).y);
     if (pm.x > 0 && pm.x < vid.cols - 90)
-        cv::putText(vid, label, cv::Point(pm.x + 6, vid.rows - 16), cv::FONT_HERSHEY_SIMPLEX, 0.6, col, 1);
+        txt.draw_solid(vid, label, pm.x + 6, vid.rows - 34, 20, col);
 }
 struct BufState {
     cv::Mat panel, hmi;
     cv::Rect cursor;
 };
-void draw(cv::Mat &img, const Snapshot &s, const Homography &hinv, double belt_mm, const AppConfig &cfg, BufState &b)
+void draw(cv::Mat &img, const Snapshot &s, const Homography &hinv, double belt_mm, const AppConfig &cfg, BufState &b,
+          TextFT &txt)
 {
     cv::Mat vid = img(cv::Rect(0, 0, kVidW, kVidH));
     for (const auto &r : s.blobs) {
@@ -529,7 +545,7 @@ void draw(cv::Mat &img, const Snapshot &s, const Homography &hinv, double belt_m
         for (int i = 0; i < 4; i++) pts[i] = to_screen(r[2 * i], r[2 * i + 1]);
         for (int i = 0; i < 4; i++) cv::line(vid, pts[i], pts[(i + 1) & 3], cv::Scalar(200, 200, 200), 1, cv::LINE_8);
     }
-    char text[96];
+    char text[160];
     for (const TrackView &t : s.tracks) {   // tracks, re-projected to this frame's belt position
         ORect r{{float(t.s + belt_mm), t.y}, t.len / 2, t.wid / 2, t.axis};
         const auto c = r.corners();
@@ -548,15 +564,14 @@ void draw(cv::Mat &img, const Snapshot &s, const Homography &hinv, double belt_m
         if (right < 0 || left >= kVidW || bottom < 0 || top >= kVidH) continue;
         cv::Scalar col = color_of(t);
         for (int i = 0; i < 4; i++) cv::line(vid, poly[i], poly[(i + 1) & 3], col, 2, cv::LINE_8);
-        snprintf(text, sizeof text, "#%d %s %s", t.id,
-                 t.st == TrackState::Decided || t.st == TrackState::Picking ? to_str(t.disp) : to_str(t.st), t.meas);
-        // thickness 1: Hershey text at thickness 2 is drawn as many filled thick segments (~1 ms per label)
-        cv::putText(vid, text, cv::Point(left, std::max(top - 8, 18)), cv::FONT_HERSHEY_SIMPLEX, 0.6, col, 1);
+        snprintf(text, sizeof text, "#%d %s %s", t.id, track_cn(t), t.meas);
+        // write-only glyphs: the display buffer is uncached, a blended (read-modify-write) label would cost ms
+        txt.draw_solid(vid, text, left, std::max(top - 26, 0), 20, col);
     }
-    line_at_x(vid, hinv, cfg.tracker.decide_x, "decide", cv::Scalar(255, 255, 255));
-    line_at_x(vid, hinv, cfg.picker.pick_x, "pick", cv::Scalar(0, 210, 0));
+    line_at_x(vid, hinv, cfg.tracker.decide_x, "判定线", cv::Scalar(255, 255, 255), txt);
+    line_at_x(vid, hinv, cfg.picker.pick_x, "抓取线", cv::Scalar(0, 210, 0), txt);
     if (s.beam >= 0)   // through-beam: red while something blocks it
-        line_at_x(vid, hinv, cfg.beam.x_mm, "beam", s.beam ? cv::Scalar(0, 0, 255) : cv::Scalar(0, 200, 255));
+        line_at_x(vid, hinv, cfg.beam.x_mm, "光束", s.beam ? cv::Scalar(0, 0, 255) : cv::Scalar(0, 200, 255), txt);
     // Panel + band, rendered by the worker (~10 / 8 Hz): copy only when the buffer holds an older one (saves ~3 ms).
     const bool new_panel = !s.panel.empty() && s.panel.cols == kPanelW && s.panel.data != b.panel.data;
     const bool new_hmi = !s.hmi.empty() && s.hmi.cols == img.cols && s.hmi.data != b.hmi.data;
@@ -634,6 +649,8 @@ int run_live(des_hw_t &hw, const AppConfig &cfg, CameraRig &cam, const LiveOptio
     CapturedFrame f;
     std::shared_ptr<const Snapshot> snap;
     BufState bufs[2];   // per display buffer
+    TextFT overlay_txt;   // labels on the picture (this thread; its own glyph cache)
+    overlay_txt.open();
     // overlay belt position: the same wrap-safe chaining as the worker's tracker feed (PosAccum, same PL-zero anchor)
     PosAccum disp(mmps);
     while (!stop && (opt.seconds <= 0 || mono_s() - t_start < opt.seconds)) {
@@ -669,7 +686,7 @@ int run_live(des_hw_t &hw, const AppConfig &cfg, CameraRig &cam, const LiveOptio
         const double tc = mono_s();
         sh.disp_fps.store(float(fps)); sh.disp_skipped.store(skipped);
         BufState &bs = bufs[hdmi.back_index()];
-        if (!no_overlay) draw(dst, snap ? *snap : kEmptySnapshot, hinv, belt_frame, cfg, bs);
+        if (!no_overlay) draw(dst, snap ? *snap : kEmptySnapshot, hinv, belt_frame, cfg, bs, overlay_txt);
         bs.cursor = draw_cursor(dst, input);
         const double td = mono_s();
         if (!opt.dump.empty() && seq == 180) {

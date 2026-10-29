@@ -47,6 +47,8 @@ public:
     const BeltPlan &belt_plan() const { return plan_; }   // the picker's last belt plan (valid while RUN)
     bool arm_busy() const { return arm_busy_; }   // a pick is being executed (the manual arm page waits)
     void set_home(const std::array<int, 6> &counts);   // HMI arm page: ready pose of every following pick
+    // HMI flap page unlocked: the gates are driven by hand, leave the PWM alone; handing them back rewrites them
+    void set_flap_manual(bool on);
     double speed_mm_s() const { return speed_mm_s_; }
     void set_active_recipe(int id) { active_recipe_ = id; }   // for the Modbus read-back (the worker applies recipes)
     // tower light on RS485 (CAN LAMP / Modbus HR 7): mode 1 = these lamps (LAMP_*), 0 = follow the line state
@@ -97,6 +99,7 @@ private:
     BeltPlan plan_;              // the picker's last belt plan (HMI panel; worker thread only)
     int flap_us_[2] = {-1, -1};  // last written pulse widths
     bool pwm_enabled_ = false;
+    bool flap_manual_ = false;   // set_flap_manual
     std::thread arm_thread_;
     BgQueue<ArmJob> jobs_{1};    // one pick in flight; the worker only dispatches while arm_busy_ is clear
     BgQueue<Done> done_;

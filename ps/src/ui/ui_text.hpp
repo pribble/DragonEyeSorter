@@ -18,9 +18,12 @@
 namespace des {
 
 namespace ui {
-inline const cv::Scalar BG(34, 31, 29), PANEL(52, 48, 45), LINE(80, 76, 72), WHITE(235, 235, 235),
-    DIM(150, 150, 150), GREEN(90, 200, 90), RED(80, 80, 235), ORANGE(40, 165, 255), CYAN(220, 200, 70),
-    YELLOW(70, 215, 235), ACCENT(225, 150, 60);
+// Light theme (2026-10-30, user: white interface). BGR. Named by use, not by hue: TEXT = normal text, VALUE = numbers the
+// operator reads / sets, INFO = secondary data, ON_TEXT = text on a filled colour (on buttons, state bars). On a white
+// page the status colours are darker than they were on the old dark theme so they keep their contrast.
+inline const cv::Scalar BG(250, 250, 250), PANEL(236, 234, 232), LINE(196, 192, 188), TEXT(40, 36, 33),
+    DIM(118, 114, 110), GREEN(40, 140, 40), RED(40, 40, 200), ORANGE(0, 120, 225), INFO(150, 110, 0),
+    VALUE(170, 80, 20), ACCENT(200, 120, 40), ON_TEXT(255, 255, 255), SEL(250, 228, 205);
 struct Hit {
     cv::Rect box;
     int action = 0, arg = 0;
@@ -34,6 +37,10 @@ public:
     bool ok() const { return face_ != nullptr; }
     // UTF-8 text, line box top-left at (x, y), px = font pixel size
     void draw(cv::Mat &bgr, const std::string &utf8, int x, int y, int px, const cv::Scalar &color);
+    // Same, but only writes: pixels whose coverage passes a threshold get the colour, nothing is read back. For the
+    // video overlay drawn straight into the display buffer, which is not cached (a read per pixel would cost
+    // milliseconds per label at 60 fps); the edges are hard, like the Hershey text it replaces.
+    void draw_solid(cv::Mat &bgr, const std::string &utf8, int x, int y, int px, const cv::Scalar &color);
     int width(const std::string &utf8, int px);
 
 private:
