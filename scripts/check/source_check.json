@@ -20,10 +20,7 @@
   "labels": {
     "json": "scripts/deploy/out/label_list.json",
     "doc": "docs/视觉与检测.md",
-    "allowedExtraDocIds": [
-      { "id": 5, "reason": "飞边·轻（gear_flash_l）：类别表已登记为待定类，label_list.json 待样品到位后再并入" },
-      { "id": 6, "reason": "飞边·重（gear_flash_h）：同上，待样品到位后再并入 label_list.json" }
-    ]
+    "allowedExtraDocIds": []
   },
   "deploy": {
     "manifest": "scripts/deploy/manifest.tsv",
