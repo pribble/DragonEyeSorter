@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""make_placeholders.py — 生成报告内 2 张「待插入实物照片」占位图（PNG 宽 3200 px）。
+"""make_placeholders.py — 生成报告内 4 张「待插入实物照片」占位图（PNG 宽 3200 px）。
 
-    python submission/figures/make_placeholders.py      # 画报告内 2 张（图 5 / 图 6），写 fig_meta.json
+    python submission/figures/make_placeholders.py      # 画报告内 4 张（图 1 / 6 / 7 / 8），写 fig_meta.json
     python submission/figures/make_placeholders.py ui   # 只画 id 里含 ui 的
-    python submission/figures/make_figures.py           # 报告生成链：5 线稿 + 2 占位 = 7 张
-    python submission/figures/make_figures.py ph        # 只画报告内 2 张占位
+    python submission/figures/make_figures.py           # 报告生成链：6 线稿 + 4 占位 = 10 张
+    python submission/figures/make_figures.py ph        # 只画报告内 4 张占位
 
-清单与拍摄要求都在同目录的 ``placeholder_manifest.json``（7 项：id / in_report / file / h_pt /
-图注 / 机位 / 光线 / 拍摄要求）。**只生成 in_report=true 的 2 张**（图 5 HDMI 操作界面五页、
-图 6 零件与七类缺陷样件，分别是硬性② 人机界面与硬性④ 缺陷分类的直接证据）；in_report=false
-的 5 项（整机全景 / 开发板 / 机械臂 / 导流挡板 / 测试现场）**不进报告版面**，只作「作品照片 +
+清单与拍摄要求都在同目录的 ``placeholder_manifest.json``（8 项：id / in_report / file / h_pt /
+图注 / 机位 / 光线 / 拍摄要求）。**只生成 in_report=true 的 4 张**（图 1 整机实物全景、
+图 6 HDMI 操作界面五页、图 7 整幅视野与单件 ROI 对比、图 8 零件与七类缺陷样件）——图 6 / 图 8
+分别是硬性② 人机界面与硬性④ 缺陷分类的直接证据，图 1 是作品完成度锚点（同一张照片兼作品照片
+主图），图 7 支撑按零件 ROI 分类的分辨率论证（素材为已有采集图导出，无需拍摄）；in_report=false
+的 4 项（开发板特写 / 机械臂 / 导流挡板 / 测试现场）**不进报告版面**，只作「作品照片 +
 演示视频」拍摄清单使用，本脚本不生成它们的 PNG。
 
 画布按报告落版尺寸 1:1（宽 447.92pt = 15.8cm，高 = 447.92 × 比例），观感与线稿图一致：
@@ -21,9 +23,9 @@
 ``submission/build/verify_report.py`` 复核落版字号与 dpi）。
 
 拍了实物后：按 manifest 的 ``resolution`` 把照片存成同名 ``ph_xxx.png`` 覆盖占位图（只有
-in_report=true 的 2 张需要替换），并把该项 ``replaced`` 改为 true —— 本脚本 / ``make_figures.py`` /
+in_report=true 的 4 张需要替换），并把该项 ``replaced`` 改为 true —— 本脚本 / ``make_figures.py`` /
 ``build.ps1`` 之后就不再重画这一项，只读实际像素尺寸登记 meta；正文（``技术文档.md``）与图注
-一字不动。替换流程见 README「占位图」。报告外 5 项的拍摄要求见 README「作品照片与视频拍摄清单」。
+一字不动。替换流程见 README「占位图」。报告外 4 项的拍摄要求见 README「作品照片与视频拍摄清单」。
 """
 import json
 import os
@@ -46,15 +48,15 @@ LINE_YS = (15.0, 1.5, -10.0)                          # 三行字相对画布垂
 
 
 def load_manifest():
-    """读清单并校验（in_report / figure_no、比例 ↔ h_pt、file ↔ id、7 项齐全）；清单错即脚本错。"""
+    """读清单并校验（in_report / figure_no、比例 ↔ h_pt、file ↔ id、8 项齐全）；清单错即脚本错。"""
     with open(MANIFEST_PATH, encoding='utf-8') as f:
         man = json.load(f)
     items = man.get('placeholders', [])
-    if len(items) != 7:
-        raise ValueError('placeholder_manifest.json 应有 7 项，实际 %d 项' % len(items))
+    if len(items) != 8:
+        raise ValueError('placeholder_manifest.json 应有 8 项，实际 %d 项' % len(items))
     n_in = sum(1 for it in items if it.get('in_report'))
-    if n_in != 2:
-        raise ValueError('清单里 in_report=true 的项应为 2 项（图 5 / 图 6），实际 %d 项' % n_in)
+    if n_in != 4:
+        raise ValueError('清单里 in_report=true 的项应为 4 项（图 1 / 6 / 7 / 8），实际 %d 项' % n_in)
     ids = set()
     for it in items:
         if 'in_report' not in it:
@@ -82,7 +84,7 @@ def load_manifest():
 
 
 def report_items():
-    """报告内需要生成 PNG 的占位项（in_report=true，2 项）。"""
+    """报告内需要生成 PNG 的占位项（in_report=true，4 项）。"""
     return [it for it in load_manifest()['placeholders'] if it.get('in_report')]
 
 
@@ -180,7 +182,7 @@ def run(keys=None):
 def main(argv):
     keys = [a for a in argv[1:] if not a.startswith('--')]
     n, errors = run(keys)
-    # fig_meta 只登记报告实际引用的图（5 线稿 + 2 占位），顺带清掉已移出报告的旧记录
+    # fig_meta 只登记报告实际引用的图（6 线稿 + 4 占位），顺带清掉已移出报告的旧记录
     try:
         import make_figures
         keep = list(make_figures.MODULE_NAMES) + report_ids()

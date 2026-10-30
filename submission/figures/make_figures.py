@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
-"""make_figures.py — 生成作品报告的 7 张插图（5 张线稿 + 2 张报告内实物照片占位图），写在本目录。
+"""make_figures.py — 生成作品报告的 10 张插图（6 张线稿 + 4 张报告内实物图占位图），写在本目录。
 
-    python submission/figures/make_figures.py              # 重画全部 7 张
+    python submission/figures/make_figures.py              # 重画全部 10 张
     python submission/figures/make_figures.py arch time    # 只重画名字里含 arch / time 的线稿图
-    python submission/figures/make_figures.py ph           # 只重画 2 张报告内占位图（图 5 / 图 6）
-    python submission/figures/make_figures.py ui           # 只重画 id 含 ui 的占位图（图 5）
+    python submission/figures/make_figures.py ph           # 只重画 4 张报告内占位图（图 1 / 6 / 7 / 8）
+    python submission/figures/make_figures.py ui           # 只重画 id 含 ui 的占位图（图 6）
     python submission/figures/fig_timebase.py              # 单张调试（只跑这一张）
 
 生成物（SVG / PNG / fig_meta.json）由本脚本重建、不入库（见本目录 .gitignore）；
 submission/build/build.ps1 每次出报告前会自动先跑一遍本脚本。fig_meta.json 只登记报告实际
-引用的 7 张（5 线稿 + 2 占位），已移出报告的旧记录由 figkit.write_meta(keep=...) 一并清掉。
+引用的 10 张（6 线稿 + 4 占位），已移出报告的旧记录由 figkit.write_meta(keep=...) 一并清掉。
 
-其余 5 项实物照片（整机全景 / 开发板特写 / 机械臂 / 导流挡板 / 测试现场）不进报告版面（作品照片
-是单独必交材料，报告不插这 5 张），只保留在 placeholder_manifest.json 的 in_report=false 项里，
-作为「作品照片 + 演示视频」拍摄清单（见 README）；本脚本不为它们生成 PNG。
+其余 4 项实物照片（开发板特写 / 机械臂 / 导流挡板 / 测试现场）不进报告版面（作品照片
+是单独必交材料，报告不插这 4 张），只保留在 placeholder_manifest.json 的 in_report=false 项里，
+作为「作品照片 + 演示视频」拍摄清单（见 README）；本脚本不为它们生成 PNG。整机全景在
+报告内（图 1），同一张照片兼作品照片主图，属 in_report=true 占位。
 
 约定与图元都在 figkit.py：**画布按报告落版尺寸（15.8cm 宽，单位 pt）作图，字号即纸面字号**，
 每张图保存前会核对文字越界与字号（见文件头注释）。单张线稿图的画法看 fig_architecture.py；
@@ -30,8 +31,9 @@ sys.path.insert(0, HERE)
 
 import figkit as fk                                   # noqa: E402
 
-MODULE_NAMES = ['fig_architecture', 'fig_timebase', 'fig_pl_regs', 'fig_pick_sequence', 'fig_layout']
-PLACEHOLDER_MODULE = 'make_placeholders'              # 报告内 2 张待拍实物照片占位图（清单见 placeholder_manifest.json）
+MODULE_NAMES = ['fig_architecture', 'fig_timebase', 'fig_pl_regs', 'fig_pick_sequence',
+                'fig_layout', 'fig_perclass']
+PLACEHOLDER_MODULE = 'make_placeholders'              # 报告内 4 张待插入实物图占位（清单见 placeholder_manifest.json）
 
 
 def main(argv):
@@ -40,7 +42,7 @@ def main(argv):
     keep = None
     print('输出目录：%s' % os.path.relpath(fk.OUT_DIR, ROOT).replace('\\', '/'))
 
-    # ---- 5 张线稿图：关键字匹配模块名（arch / time / pl_regs / pick / layout）----
+    # ---- 6 张线稿图：关键字匹配模块名（arch / time / pl_regs / pick / layout / perclass）----
     for name in MODULE_NAMES:
         if keys and not any(k in name for k in keys):
             continue
@@ -55,7 +57,7 @@ def main(argv):
         fk.save(fig, name)
         n_line += 1
 
-    # ---- 报告内 2 张占位图：关键字匹配占位图 id（ph / ui / samples）----
+    # ---- 报告内 4 张占位图：关键字匹配占位图 id（ph / overview / ui / roi / samples）----
     try:
         ph = importlib.import_module(PLACEHOLDER_MODULE)
     except ModuleNotFoundError as e:
@@ -63,7 +65,7 @@ def main(argv):
         skipped.append(PLACEHOLDER_MODULE)
     else:
         n_ph, ph_errors = ph.run(keys)
-        keep = MODULE_NAMES + ph.report_ids()          # fig_meta 只留报告实际引用的 7 张
+        keep = MODULE_NAMES + ph.report_ids()          # fig_meta 只留报告实际引用的 10 张
 
     fk.write_meta(keep=keep)
     if skipped:
@@ -71,8 +73,8 @@ def main(argv):
     for e in ph_errors:
         print('ERR %s' % e)
     if keys and n_line + n_ph == 0:
-        print('关键字没有匹配到任何插图：%s（报告内占位图只认 ui / samples，其余 5 项为报告外拍摄清单）'
-              % ' '.join(keys))
+        print('关键字没有匹配到任何插图：%s（报告内占位图只认 overview / ui / roi / samples，'
+              '其余 4 项为报告外拍摄清单）' % ' '.join(keys))
         return 1
     if fk.failed() or skipped or ph_errors:
         print('有插图越界 / 字号不足 / 模块缺失 / 占位图未就绪 —— 见上面的 ERR 行')

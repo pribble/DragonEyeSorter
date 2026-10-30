@@ -7,9 +7,9 @@
 | 路径 | 内容 | 入库 |
 |---|---|---|
 | [提交材料清单.md](提交材料清单.md) | 官方要求 → 要交什么 → 现状 → 倒排 → 打包命名 → 上传前检查 → 决赛准备；唯一核对入口 | ✅ |
-| [技术文档.md](技术文档.md) | 作品报告正文（**纯论文式**：技术标题 + 摘要 + 关键词 + `I.`~`IX.` 节 + 参考文献 + 附录 A，无封面 / 目录 / 页眉，标题不含作品名与版本）；`build/` 的 md2docx 只读它，改内容改这里；当前 **25 页 / 7 图 / 11 表**，其中 2 张报告内占位（图 5 界面、图 6 样件）待替换 | ✅ |
+| [技术文档.md](技术文档.md) | 作品报告正文（**纯论文式**：技术标题 + 摘要 + 关键词 + `I.`~`IX.` 节 + 参考文献 + 附录 A，无封面 / 目录 / 页眉，标题不含作品名与版本）；`build/` 的 md2docx 只读它，改内容改这里；当前 **26 页 / 10 图 / 11 表**，其中 4 张报告内占位（图 1 全景、图 6 界面、图 7 ROI 对比、图 8 样件）待替换 | ✅ |
 | [演示视频脚本.md](演示视频脚本.md) | 演示视频分镜 / 解说 / 拍摄 / 交付唯一源（未拍 ⬜） | ✅ |
-| [figures/](figures/) | 报告插图：5 张线稿图 + 2 张报告内占位图（图 5 界面、图 6 样件）的生成脚本（`figkit.py` / `make_figures.py` / `make_placeholders.py` / 5 个 `fig_*.py` / `placeholder_manifest.json`，后者另含 5 项报告外实物照片拍摄清单）入库，生成物（SVG / PNG / `fig_meta.json`）本地重画、不入库，不手工画；用法见 [figures/README.md](figures/README.md) | ✅ 脚本 |
+| [figures/](figures/) | 报告插图：6 张线稿图 + 4 张报告内占位图（图 1 全景、图 6 界面、图 7 ROI 对比、图 8 样件）的生成脚本（`figkit.py` / `make_figures.py` / `make_placeholders.py` / 6 个 `fig_*.py` / `placeholder_manifest.json`，后者另含 4 项报告外实物照片拍摄清单）入库，生成物（SVG / PNG / `fig_meta.json`）本地重画、不入库，不手工画；用法见 [figures/README.md](figures/README.md) | ✅ 脚本 |
 | `build/` | 生成链脚本：报告 Markdown → DOCX → PDF → 插图高清化、报告验收自检、代码打包；版式令牌与用法见 [build/README.md](build/README.md) | ✅ 脚本 |
 | `out/` | 生成物（`.docx` / `.pdf` / 预览 PNG / 代码 zip），可随时重建 | ❌ gitignore |
 
@@ -18,7 +18,7 @@
 | 要交的东西 | 唯一源 |
 |---|---|
 | 报告正文 | [技术文档.md](技术文档.md)（已收进本目录，与生成链同处） |
-| 插图与占位图清单 | [figures/](figures/)（只入库生成脚本；生成物重画即得，见其 `.gitignore`）+ `placeholder_manifest.json`（报告内 2 张占位与报告外 5 项作品照片的机位 / 光线 / 分辨率要求） |
+| 插图与占位图清单 | [figures/](figures/)（只入库生成脚本；生成物重画即得，见其 `.gitignore`）+ `placeholder_manifest.json`（报告内 4 张占位与报告外 4 项作品照片的机位 / 光线 / 分辨率要求；整机全景一张两用） |
 | 分镜 / 解说 / 字幕 / 拍摄 / 时长 / 导出规格 | [演示视频脚本.md](演示视频脚本.md)（已收进本目录） |
 | 赛题条目 → 材料对照 | [docs/参赛材料骨架.md](../docs/参赛材料骨架.md)（「赛题条目 → 证据」） |
 | 实测数字 | [docs/测试与验证.md](../docs/测试与验证.md) |
@@ -30,7 +30,7 @@
 pwsh -File submission/build/build.ps1                   # 报告全链：插图 / 占位图重生成 → md → docx → pdf → 插图高清化
 python submission/build/verify_report.py                # 验收自检 64 项 → out/_verify_report.txt
 python submission/build/verify_report.py --final        # 交件门禁：报告内占位图未全部替换即 FAIL
-python submission/figures/make_figures.py               # 7 张插图单独重生成（5 线稿 + 2 报告内占位；build.ps1 会自动跑）
+python submission/figures/make_figures.py               # 10 张插图单独重生成（6 线稿 + 4 报告内占位；build.ps1 会自动跑）
 pwsh -File submission/build/pack_code.ps1               # 作品重要代码包（git archive）
 ```
 
@@ -38,7 +38,7 @@ pwsh -File submission/build/pack_code.ps1               # 作品重要代码包�
 
 ## 交件前必做
 
-1. **替换报告内 2 张占位图**（图 5 界面截图 `ph_ui.png`、图 6 缺陷样件 `ph_samples.png`）：按 [placeholder_manifest.json](figures/placeholder_manifest.json) 的 `file` 与 `aspect` 拍好 / 截图，覆盖同名 `ph_*.png`，并把该项 `replaced` 置为 `true`——之后 `build.ps1` 重跑不会覆盖照片，正文与图注一字不动。其余 5 项报告外实物照片（整机全景、开发板特写、机械臂、导流挡板、测试现场）按 `placeholder_manifest.json` 里 `in_report=false` 的条目拍摄，走「作品相关照片」材料，不进报告。
+1. **替换报告内 4 张占位图**（图 1 整机全景 `ph_overview.png`、图 6 界面截图 `ph_ui.png`、图 7 整幅 vs ROI 对比 `ph_roi.png`、图 8 缺陷样件 `ph_samples.png`）：按 [placeholder_manifest.json](figures/placeholder_manifest.json) 的 `file` 与 `aspect` 拍好 / 截图（图 7 由已有采集图导出，无需拍摄），覆盖同名 `ph_*.png`，并把该项 `replaced` 置为 `true`——之后 `build.ps1` 重跑不会覆盖照片，正文与图注一字不动。其余 4 项报告外实物照片（开发板特写、机械臂、导流挡板、测试现场）按 `placeholder_manifest.json` 里 `in_report=false` 的条目拍摄，走「作品相关照片」材料，不进报告；整机全景一张两用（报告图 1 + 作品照片主图）。
 2. `python submission/build/verify_report.py --final` 全 PASS（报告内占位图清零 + 版式 / 数字 / 禁项 / dpi 各项过关）。
 3. 按 [提交材料清单](提交材料清单.md) §6 逐项打勾。
 

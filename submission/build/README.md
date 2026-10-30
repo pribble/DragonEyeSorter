@@ -108,7 +108,7 @@ python submission/build/verify_report.py --fill --pdf <任意 PDF>   # 只跑逐
 - **标题编号照抄源文本**，脚本不自动编号；`##` 用 `I.` `II.` …，`###` 用 `A.` `B.` …（见上表）。
 - **交叉引用**写法：`如图 1 所示`、`见表 2`、`第 III-A 节`；图 / 表编号按出现顺序全文唯一。
 - **新图按落版尺寸 1:1 作图**：画布宽 447.9pt（= 15.8cm）、图内最小字号 ≥7.5pt、PNG 建议 ≥3200px 宽（满版心约 514dpi；源图 <1900px 会跌破 300dpi 门禁）。图由 [figures/](../figures/) 的脚本按 [figures/README.md](../figures/README.md) 的约定生成到 `submission/figures/`，改图后重跑 `python submission/figures/make_figures.py`（生成物不入库，`build.ps1` 也会自动重画）。
-- **占位图**：文件名以 `ph_` 开头（`ph_ui.png`、`ph_samples.png`）的插图会被记进 `_md2docx.json` 的 `placeholders`；实物照片替换后只换 PNG、不动图注文本，交件前 `verify_report.py --final` 门禁要求清零（报告内 2 张；另有 5 项实物照片不进报告，见 [figures/placeholder_manifest.json](../figures/placeholder_manifest.json) 的 `in_report=false`）。
+- **占位图**：文件名以 `ph_` 开头（现为图 1 / 6 / 7 / 8 四张 `ph_overview` / `ph_ui` / `ph_roi` / `ph_samples`）的插图会被记进 `_md2docx.json` 的 `placeholders`；实物照片替换后只换 PNG、不动图注文本，交件前 `verify_report.py --final` 门禁要求清零（报告内 4 张；另有 4 项实物照片不进报告，见 [figures/placeholder_manifest.json](../figures/placeholder_manifest.json) 的 `in_report=false`）。
 
 ## 代码包（作品重要代码）
 
