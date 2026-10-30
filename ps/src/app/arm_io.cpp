@@ -120,7 +120,14 @@ ArmExec::Result ArmExec::run(const std::vector<ServoFrame> &wp, bool dry, const 
                    f.pos[2], f.pos[3], f.pos[4], f.pos[5], f.check_grasp ? "  [grasp check]" : "",
                    f.belt_clear ? "  [belt clear]" : "");
         } else {
-            const int rc = send(f.pos, f.ms); if (rc != DES_OK) {
+            // one frame = one SYNC WRITE; a servo that does not confirm (stepper noise while the belt runs during the
+            // way back from the bin) used to abort the whole pick and leave the part in the gripper (10-30). The command
+            // is a position target, so re-sending it is harmless: retry twice in place before giving up.
+            int rc = send(f.pos, f.ms);
+            for (int a = 0; rc != DES_OK && a < 2; a++) {
+                sleep_ms(100);   // let the belt's driver noise pass, then repeat the same target
+                rc = send(f.pos, f.ms); }
+            if (rc != DES_OK) {
                 res.why = std::string("SYNC WRITE failed: ") + des_strerror(rc); res.ms = (mono_us() - t0) * 1e-3;
                 return res;  }
             sleep_ms(f.ms + settle_ms); if (f.check_grasp) {

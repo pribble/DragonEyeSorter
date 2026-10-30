@@ -354,6 +354,9 @@ void Runner::cycle(Tracker &tr, Picker &pk)
                 const double dd = pk.config().pick_x - t.x_at(in.belt_mm); if (dd > 0 && (nearest_pick < 0 || dd < nearest_pick)) nearest_pick = dd;
             }
             report_part(t);
+            // why a decided "pick" part is dropped (10-30: a part stayed "decided" and the belt never stopped for it)
+            if (t.disp == Disposition::Recheck && recheck_log_.insert(t.id).second)
+                fprintf(stderr, "[run] track #%d recheck: %s (x %.0f, y %.0f)\n", t.id, t.why, double(t.x_at(in.belt_mm)), double(t.y));
         }
         // speed adaptation while the arm is busy (fewer full stops; the StopAt still comes from the picker)
         if (cfg_.belt.adapt.enabled) {

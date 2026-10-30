@@ -178,12 +178,14 @@ const char *arm_raise(const ArmConfig &c, const JointAngles &j, float dz, JointA
 }
 static uint16_t move_ms(const ArmConfig &c, const std::array<uint16_t, 6> &a, const std::array<uint16_t, 6> &b)
 {
-    float worst = 0;
+    float ms = 0;   // worst joint: its travel in degrees at that joint's speed
     for (int i = 0; i < 5; i++) {
         const float cpd = std::fabs(c.joint[i].counts_per_deg);
-        if (cpd > 0) worst = std::max(worst, std::abs(int(a[i]) - int(b[i])) / cpd);
+        if (cpd <= 0) continue;
+        const float spd = (i == 0 && c.yaw_speed > 0) ? c.yaw_speed : c.joint_speed;   // base may move slower
+        ms = std::max(ms, std::abs(int(a[i]) - int(b[i])) / cpd / spd * 1000.f);
     }
-    return uint16_t(std::min(std::max(worst / c.joint_speed * 1000.f, float(c.min_ms)), 5000.f));
+    return uint16_t(std::min(std::max(ms, float(c.min_ms)), 5000.f));
 }
 // gripper below the travel height (taught bin, an interrupted pick): straight up to it first, so the next joint
 // move cannot drag the gripper / #6 servo sideways below the belt surface along the belt edge or the box (10-26:

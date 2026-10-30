@@ -63,6 +63,8 @@ struct ArmConfig {
     float z_safe = 60;           // travel height of the grasp point above the belt
     float z_grasp = 6;           // grasp point height above the belt when closing
     float joint_speed = 120;     // deg/s used to size move times
+    float yaw_speed = 0;         // deg/s for the base (#1) only; 0 = same as joint_speed (10-30: the 113 deg swing to
+                                 // the bin felt too fast at 220 deg/s while the other joints were fine)
     uint16_t min_ms = 150, descend_ms = 400, close_ms = 300, open_ms = 250;
     std::array<float, 5> home_deg{{0, 60, -120, -30, 0}};   // ready pose, outside the camera view ⚠ teach
     float home_grip_count = -1;  // gripper count at the ready pose (taught on the HMI arm page; -1 = open)

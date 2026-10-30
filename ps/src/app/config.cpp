@@ -119,8 +119,8 @@ std::string load_config(const std::string &path, AppConfig &cfg)
                 for (const auto &e : (*c)["grip_table"]) if (e.size() == 2) a.grip_table.push_back({e[0].get<float>(), e[1].get<float>()});
                 a.grip_sorted = false;  // no longer the sorted table the arm cached
             }
-            ji::gets(*c, "z_safe", a.z_safe, "z_grasp", a.z_grasp, "joint_speed", a.joint_speed, "min_ms", a.min_ms,
-                     "descend_ms", a.descend_ms, "close_ms", a.close_ms, "open_ms", a.open_ms);
+            ji::gets(*c, "z_safe", a.z_safe, "z_grasp", a.z_grasp, "joint_speed", a.joint_speed, "yaw_speed", a.yaw_speed,
+                     "min_ms", a.min_ms, "descend_ms", a.descend_ms, "close_ms", a.close_ms, "open_ms", a.open_ms);
             if (c->contains("joints"))
                 for (size_t i = 0; i < (*c)["joints"].size() && i < 6; i++) {
                     JointCal &jc = a.joint[i]; int id = jc.id ? jc.id : int(i + 1); ji::get((*c)["joints"][i], "id", id); jc.id = uint8_t(id);
