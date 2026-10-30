@@ -27,7 +27,7 @@
                "min_conf": 0.5, "pick_unclassified": false, "unclassified_bin": 0 },
 
   "picker_comment": "pick_after_fov_mm > 0 时抓取线 = 标定出的视野下游边 fov_x1 + 该值（10-11 先定 80，10-22 手眼标定后改 65 = 机械臂底座正前方），pick_x 被覆盖。keep_wrist（10-26 用户提）：圆形件按初始姿态的腕部朝向合拢（两指横跨皮带），抓取全程 #5 不转；两侧有别的零件挡着才每 15° 换一个方向；false = 旧做法（先试切向，腕部要转约 90°）",
-  "picker": { "pick_after_fov_mm": 65, "pick_x": 380, "pick_tol": 3, "reach_y0": -80, "reach_y1": 80, "brake_margin": 5,
+  "picker": { "pick_after_fov_mm": 65, "pick_x": 380, "pick_tol": 3, "reach_y0": -10, "reach_y1": 80, "brake_margin": 5,
               "finger_w": 12, "finger_t": 6, "grip_clear": 4, "max_open": 60, "round_ratio": 1.3,
               "neighbor_gap": 2, "keep_wrist": true,
               "flying_comment": "拦截式不停带夹取（docs/运动控制与分拣.md）：竖直可达区（离底座轴 r0~r1）的圆形良品，夹爪提前下探到抓取线、两指横跨皮带（axis_deg 90）张到最大，零件从两指间穿入，带位置到「到线 − 带速 × close_lead_s」时合爪，皮带不停；ready_s = 从初始姿态到下探就位的时间（按当前带速提前派活），gap_mm 内有别的零件就不拦截。不符合 / 来不及 / 臂忙的仍停带抓取。⚠ 停带抓取跑通、底座装好后再开，r0 / r1 按实测可达范围改",
