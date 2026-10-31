@@ -6,19 +6,15 @@
 
 在官方 NPU demo 工程 `soc_prj`（MIPI RX + ISP + VDMA + HDMI + NPU 软核，已过 P&R）上叠加自研模块；顶层 `src/system_top.v`，PS 与 AXI 互联在块设计 `design_0`。
 
-v15（已被 v16 取代）= 第三轮重构源码（`9e01d8f`，自研 + 厂家明文 RTL + `pl/sim` 框架）全量重编 + 上板（`BOOT.bin` `b0aef232…`，比特流 `e14fbb65…`；56m25s、0 error）；`pl_check.sh` 回归通过、2min soak 0 error；寄存器 `VERSION` 仍 12（接口未变）。自研各域 0 违例，NPU 软核域内 −0.093ns / 42 端点仍属厂家加密 IP；TMDS 视觉待复核 ⚠。2026-10-24 又对**厂家明文 RTL（非 des）**与**自研 `des/` + 顶层 + `pl/sim` 框架**各做一轮零行为重构（当时未重编比特流，源码由 v15 全量重编转正），明细见 [log/2026-10-24-PL厂家RTL重构](log/2026-10-24-PL厂家RTL重构.md) · [log/2026-10-24-PL第三轮重构](log/2026-10-24-PL第三轮重构.md) · [log/2026-10-24-PL第三轮重编上板v15](log/2026-10-24-PL第三轮重编上板v15.md)。逐版改动与上板记录见 [pl/soc_base/README](../pl/soc_base/README.md) 与 [log/](log/README.md)。
+**板端当前 v16**（BOOT `71f41a20` / 比特流 `f0f63c91`；`pl_check.sh` 0 失败）：新增 `des_485`（RS485 Modbus-RTU，窗口 `0x6xx`，J11 第 5 / 6 位）与帧起始锁存的编码器计数（`CAP_ENC0/1`），`VERSION` 16；对原有全部输出的整顶层等价回归逐拍一致。回退点 tag `v15-board-20261024`。逐版上板台账见 [pl/soc_base/README](../pl/soc_base/README.md)；逐轮重构与构建收敛明细见 [log/](log/README.md)。
 
-**板端当前 v16（10-25 上板：BOOT `71f41a20` / 比特流 `f0f63c91`；`pl_check.sh` 0 失败）**：新增 `des_485`（RS485 Modbus-RTU，窗口 `0x6xx`，J11 第 5 / 6 位）与帧起始锁存的编码器计数（`CAP_ENC0/1`），`VERSION` 16；对原有全部输出的整顶层等价回归逐拍一致。回退点 tag `v15-board-20261024`。见下面「RS485 `des_485`」。
-
-**第六轮（10-28）**：10-28 全量重编在 route 阶段 2h36m 未收敛的根因确定为**两段式 CLI 构建在 phy 段丢失 `timing.sdc` 的全部 clock group**（phy 日志 12 条 `USR-6001`）+ **`timing.sdc` 缺 VTC ↔ NPU / 150M 异步组**（25 个厂家 CDC 端点被当同步路径优化）；修复为单进程构建（`read_design`→`bitgen`）+ 追加 2 条 `set_clock_groups -asynchronous` + 三路 RTL 零行为减资源（19 RTL 文件 + `timing.sdc`，+233/−151 行；端口 / 参数 / 寄存器接口 / `VERSION` 16 零变）。默认 `opt_timing=high` 的单进程全流程 **59m16s 收敛、Routed 0 个 setup / hold 违例**（Setup WNS +0.007ns / Hold +0.022ns，**余量很薄** ⚠；结果见 [测试与验证](测试与验证.md)「阶段验证」）；**板端仍 v16，本轮未上板**。第五轮精简（39 RTL 文件零增删、净 −805 行）与 medium 档候选结果见 [log/2026-10-28-PL第五轮精简](log/2026-10-28-PL第五轮精简.md)，第六轮见 [log/2026-10-28-PL第六轮构建收敛](log/2026-10-28-PL第六轮构建收敛.md)。
-
-**CAN 管脚（最新版已引到）**：底板 CAN 收发器接 PL 管脚 F20（TX）/ F19（RX），LVCMOS33、RX 上拉；RS485 接 L17（TX）/ N16（RX）/ N15（DE，1 = 发送；与 /RE 并联，原理图 p14）（硬件手册 p21），v16 起由 PL `des_485` 驱动。官方 demo 块设计没开 PS CAN（`CAN0_Available=0`，收发脚未约束）→ 最新版把 PS 硬核 `can0_tx_out` / `can0_rx_in` 经块设计引到 `system_top`，再到 F20 / F19。单节点验证：无人应答时发送错误计数按 CAN 规则累加、进 ERROR-PASSIVE 不进 BUS-OFF → 收发回路已通（明细见 log）；10-23 J11 接 PC USB-CAN 双节点实测通过（240/240，见 [测试与验证](测试与验证.md)）。注意：① ipms_canfd 驱动的错误帧把 ACK 位置码 0x19 写进 data[2]，candump 会显示成 bit-error，别被误导；② 驱动只支持 FD 模式，`ip link … fd off` 直接 EINVAL，收发经典帧不受影响（`can_up.sh` 照用）；③ 底板 B2B 管脚表（20250526）把 CAN / HDMI 管脚写反，以硬件手册 + 实测为准。
+**CAN 管脚**：底板 CAN 收发器接 PL 管脚 F20（TX）/ F19（RX），LVCMOS33、RX 上拉；RS485 接 L17（TX）/ N16（RX）/ N15（DE，1 = 发送；与 /RE 并联，原理图 p14）（硬件手册 p21），v16 起由 PL `des_485` 驱动。官方 demo 块设计没开 PS CAN（`CAN0_Available=0`，收发脚未约束）→ 把 PS 硬核 `can0_tx_out` / `can0_rx_in` 经块设计引到 `system_top`，再到 F20 / F19。J11 接 PC USB-CAN 双节点实测通过（240/240，见 [测试与验证](测试与验证.md)）。注意：① `ipms_canfd` 驱动的错误帧把 ACK 位置码 0x19 写进 data[2]，candump 显示成 bit-error，别被误导；② 驱动只支持 FD 模式，`ip link … fd off` 直接 EINVAL，收发经典帧不受影响（`can_up.sh` 照用）；③ 底板 B2B 管脚表把 CAN / HDMI 管脚写反，以硬件手册 + 实测为准。
 
 ### 官方源码可复用性（`soc_prj/src/` 清点）
 
-- **明文可改（在用）**：`ui_isp/` 整套 ISP、`write_fdma/`（帧写 DDR，含明文的 `wfifo.v`）、`MIPI_V2/`、`hdmi_tx/`、厂家 AXI `pwm.v`（3 个实例，输出只当 lock 状态位）、AXI4-Lite 寄存器桥模板 `fvdma_ctrl`。以上明文 RTL 在 2026-10-24 做过两轮零行为重构（[厂家域](log/2026-10-24-PL厂家RTL重构.md) · [第三轮](log/2026-10-24-PL第三轮重构.md) · [第五轮](log/2026-10-28-PL第五轮精简.md)），改它们须跑 `pl/sim/equiv/` 逐拍等价回归。
+- **明文可改（在用）**：`ui_isp/` 整套 ISP、`write_fdma/`（帧写 DDR，含明文的 `wfifo.v`）、`MIPI_V2/`、`hdmi_tx/`、厂家 AXI `pwm.v`（3 个实例，输出只当 lock 状态位）、AXI4-Lite 寄存器桥模板 `fvdma_ctrl`。以上明文 RTL 已做多轮零行为重构（见 [log/2026-10-24-PL厂家RTL重构](log/2026-10-24-PL厂家RTL重构.md) 等），改它们须跑 `pl/sim/equiv/` 逐拍等价回归。
 - **加密（改不了）**：12 个 `pragma protect` 文件（NPU 软核、VDMA、部分视频时序发生器、AXI 互连、HDMI 控制器、MIPI D-PHY），清单见 [pl/soc_base/README](../pl/soc_base/README.md)。
-- **已删（未例化的厂家源码）**：厂商图像算子 7 个、RAW8 老解包与第二套 AWB 7 个、白平衡流水线除法器 1.3MB；理由与验证见 [log/2026-10-17](log/2026-10-17-清理未用的厂家PL源码.md)。2026-10-24 再删 8 个未用的 gamma LUT（单配置特化到 2.2 曲线，见 [log](log/2026-10-24-PL厂家RTL重构.md)）。
+- **已删（未例化的厂家源码）**：厂商图像算子 7 个、RAW8 老解包与第二套 AWB 7 个、白平衡流水线除法器、8 个未用 gamma LUT（单配置特化到 2.2 曲线）；理由与验证见 [log/2026-10-17](log/2026-10-17-清理未用的厂家PL源码.md) · [log/2026-10-24](log/2026-10-24-PL厂家RTL重构.md)。
 - **我们的贡献点**：运动控制（步进脉冲 + 加减速、舵机总线主机、QEI、帧锁存、IO 同步）、图像处理（二值 / 形态学 / CCL / 投影测量 / ROI 缩放 / 张量打包）、AXI 寄存器堆、同步 / 去抖公共原语（`pl/soc_base/src/des/des_common.vh`，被 `des_regs` / `des_io` 纯 `include` 引用，不占寄存器地址）。
 
 ## 模块清单
@@ -28,11 +24,11 @@ v15（已被 v16 取代）= 第三轮重构源码（`9e01d8f`，自研 + 厂家�
 | `mipi_rx` + `isp` + `vdma` + `hdmitx` | 采集与显示 | 官方 | P0 | ✅ 官方基线 |
 | `des_regs`（含 `enc_frame_latch`） | 寄存器窗口 + 自由计数器 + 帧计数 + 拍摄锁存带位置 | 官方模板 + 自研 | P0 | ✅ 上板 |
 | `stepper_ctrl` | 步进脉冲 + 梯形加减速（线性斜率）+ 速度 / 位置模式 + 已发脉冲计数 | 自研 | P0 | ✅ 上板；TB6600 + 57 步进走带、定位准确 |
-| `servo_bus` | 半双工 UART 115200 + 德晟 v4.01 帧 + SYNC WRITE / REG WRITE + ACTION + 位置 / 状态轮询（舵机不提供电流 / 温度，10-26） | 自研 | P0 | ✅ 上板；6 个舵机全部应答 |
-| `des_io` | 急停去抖 + 锁存（锁存期间步进停住）、对射 / 限位去抖 + 边沿捕获、编码器 4 倍频 + 滤波 + Z 相 + 测速 | 自研 | P0 / P1 | ✅ 上板；编码器已接、手滚 4000 计数/圈；急停实按 PL 停步进已测（[log/2026-10-17](log/2026-10-17-相机安装与标定试跑.md)），界面复位流程待测；对射待接 |
+| `servo_bus` | 半双工 UART 115200 + 德晟 v4.01 帧 + SYNC WRITE / REG WRITE + ACTION + 位置 / 状态轮询 | 自研 | P0 | ✅ 上板；6 个舵机全部应答 |
+| `des_io` | 急停去抖 + 锁存（锁存期间步进停住）、对射 / 限位去抖 + 边沿捕获、编码器 4 倍频 + 滤波 + Z 相 + 测速 | 自研 | P0 / P1 | ✅ 上板；编码器已接、手滚 4000 计数/圈；急停实按停步进已测（[log/2026-10-17](log/2026-10-17-相机安装与标定试跑.md)）；界面复位流程待测；对射待接 |
 | `des_pwm` | 两个侧边导流挡板的舵机 PWM，按带位置触发 | 自研 | P1 | ✅ 上板（读回 / 50Hz）；挡板舵机未接 |
 | `des_vision` | 边缘 / 二值显示 + ROI 投影测尺寸 | 自研 | P1 | ✅ 上板，6 种模式实画面验证、统计读回正确 |
-| `des_485` | RS485 Modbus-RTU 收发：硬件 DE、CRC16 生成 / 校验、3.5 字符判帧、应答超时、校验位、监听帧（寄存器窗口 `0x6xx`） | 自研 | P1 | ✅ v16 上板，帧时序板上实测（数字见 [测试与验证](测试与验证.md)）；无从站时超时 / 计数正确、空闲总线安静；✅ 接继电器模块实测（读 / 写线圈与三色灯，数字见 [测试与验证](测试与验证.md)）；⬜ 启动 / 暂停 / 急停 / 复位灯态与 CAN→RS485 待测 |
+| `des_485` | RS485 Modbus-RTU 收发：硬件 DE、CRC16 生成 / 校验、3.5 字符判帧、应答超时、校验位、监听帧（寄存器窗口 `0x6xx`） | 自研 | P1 | ✅ v16 上板；帧时序与继电器模块读 / 写实测见 [测试与验证](测试与验证.md)；⬜ 启动 / 暂停 / 急停 / 复位灯态与 CAN→RS485 待测 |
 | `awb_seq_div` | ISP 自动白平衡逐位除法器（替换厂家流水线除法器） | 自研 | P0 | ✅ 在用，省约 4k LUT |
 | `img_morph` / `blob_ccl` / `roi_scaler` / `tensor_pack` / `overlay` | 形态学、连通域、ROI 缩放、张量打包、叠加 | 自研 | P2 | ⬜ 未做（大块图像算法优先放 PS） |
 | `traj_interp` | 多轴时间同步插补（115200 带宽承载不了高频插补点） | 自研 | P2 | ⬜ 未做 |
@@ -47,22 +43,16 @@ v15（已被 v16 取代）= 第三轮重构源码（`9e01d8f`，自研 + 厂家�
 - 寄存器读多路选择须为组合逻辑：`fvdma_ctrl` 桥按 1 拍取数，打 1 拍则 `0x3xx` 读回全是 THR。
 - `clk_mipi` 在 `timing.sdc` 里约束到 `U_io_clk_div_1.clkdivout`（8.0ns，像素时钟 111.1MHz）；厂家原 SDC 写硬 MIPI PHY 引脚名，对本设计（LVDS IO）不生效。
 - 跨时钟域用「翻转 + 两级同步」（像素域 ↔ 75MHz 已在 `set_clock_groups -exclusive`），不直接跨域采样。
-- **构建必须单进程**（`read_design`→`bitgen`）：`timing.sdc` 的 `set_clock_groups` 只在单进程里全程有效；两段式 phy 段重放 SDC 时 PLL 引脚时钟对象尚未建立，全部 group no-op（phy 日志 12 条 `USR-6001`）——10-26 / 10-28 的 route 不收敛即由此 + 拥堵放大。见 [开发环境与构建](开发环境与构建.md)「PL：构建与打包」与 [log/2026-10-28-PL第六轮构建收敛](log/2026-10-28-PL第六轮构建收敛.md)。
-- **VTC pclk 与 NPU / 150M PLL 按异步声明**（`timing.sdc` 2 条 `set_clock_groups -asynchronous`）：三者是独立 PLL、无同步数据通路，25 个 place setup 违例全部是厂家 IP 的 CDC recovery / 同步器第一级（P&R 修不了）；VTC → TMDS（`PLL_3` = 5×VTC）仍按同步分析，**不要**加异步组。
+- **构建必须单进程**（`read_design`→`bitgen`）：`timing.sdc` 的 `set_clock_groups` 只在单进程里全程有效；两段式 phy 段重放 SDC 时 PLL 引脚时钟对象尚未建立，全部 group no-op（phy 日志 12 条 `USR-6001`）。见 [开发环境与构建](开发环境与构建.md)「PL：构建与打包」。
+- **VTC pclk 与 NPU / 150M PLL 按异步声明**（`timing.sdc` 2 条 `set_clock_groups -asynchronous`）：三者是独立 PLL、无同步数据通路，place setup 违例全部是厂家 IP 的 CDC recovery / 同步器第一级（P&R 修不了）；VTC → TMDS（`PLL_3` = 5×VTC）仍按同步分析，**不要**加异步组。
 
 ### 资源
 
-- 官方 demo 基线见 [pl/README](../pl/README.md) 资源预算（LUT6 79% / slice 85.8% / ERAM 92.5% / DSP 59.6%，WNS −4.12ns；NPU 软核独占 2.24 万 LUT + 156 ERAM；LUT6 与 slice 是两个口径）。
-- 现 v16：slice 84.22%（v15 83.19%）、LUT 80.15%、ERAM 93.21%（261/280，剩 19 块）、DSP 65%（[log/2026-10-24-v16](log/2026-10-24-v16-RS485与帧锁存编码器.md)）；自研 75M / 像素 / 150M / PS AXI 域时序 0 违例；自研 `des_vision` 约 1k LUT + 2 ERAM + 13 DSP，`servo_bus` / `stepper_ctrl` 各数百 LUT，`des_485` 约 640 slice。单个新模块控制在几百 LUT 以内，不再加大模块；仍不够时 `des_vision` 用 `LANES=2`（滤波逻辑减半）。
-- 二次重构（`c1b94b5`，零行为精简，源文件净减 372 行）：TD 6.2.1 综合 LUT 58,100→58,122、FF 39,305→39,244、自研模块 LUT 1,851→1,774 / FF 3,685→3,624（持平）；源码已全量重编并上板（v14，`pl_check.sh` 21 项 0 失败）：P&R slice 83.26%（43,694）、ERAM 261/280、DSP 156/240，自研 75M / 像素 / 150M / PS AXI 域 0 违例，只剩 HDMI 串行域 1 个 −0.164ns（TMDS 视觉待复核 ⚠）与 NPU 域内 −0.399ns/152 端点（均厂家 IP 内部；v13 为 +0.055 / −0.340/60）；板端 v14（[log/2026-10-23-PL二次重构](log/2026-10-23-PL二次重构.md) · [后全量重编与上板](log/2026-10-23-PL二次重构后全量重编.md)）；第三轮重构源码再全量重编并上板（v15）：P&R slice 83.19%（43,658）、线长 −3.8%，自研各域 0 违例，v14 的 HDMI 串行 / PS HP0→NPU 端点消失、NPU 域内 −0.093ns/42（[log/2026-10-24-PL第三轮重编上板v15](log/2026-10-24-PL第三轮重编上板v15.md)）。
-- ISP 白平衡两个「每时钟出一个商」的流水线除法器改为背靠背逐位除（`pl/soc_base/src/des/awb_seq_div.v`，改 `ui_isp/awb_1_1/awb.v`）：每 49 时钟一个新增益、增益差 ≤1 步、不再每帧开头复位；对照仿真 `run_sim.sh awb` 逐拍一致，省约 4k LUT + 2k 加法链 + 5k FF。
+- 官方 demo 基线见 [pl/README](../pl/README.md)（LUT6 79% / slice 85.8% / ERAM 92.5% / DSP 59.6%，WNS −4.12ns；NPU 软核独占 2.24 万 LUT + 156 ERAM；LUT6 与 slice 是两个口径）。
+- 现 v16：slice 84.22%、LUT 80.15%、ERAM 93.21%（261/280，剩 19 块）、DSP 65%（[log/2026-10-24 v16](log/2026-10-24-v16-RS485与帧锁存编码器.md)）；自研各域时序 0 违例；自研 `des_vision` 约 1k LUT + 2 ERAM + 13 DSP，`servo_bus` / `stepper_ctrl` 各数百 LUT，`des_485` 约 640 slice。单个新模块控制在几百 LUT 以内，不再加大模块；仍不够时 `des_vision` 用 `LANES=2`（滤波逻辑减半）。
+- 自研与厂家明文 RTL 已做多轮零行为精简：**寄存器偏移、位域与复位值始终未变**，与 `ps/src/hw/des_regs.h` 同一次提交；逐轮行数与综合资源 A/B 数字见 [log](log/README.md)「PL 自研模块与逐版上板」。当前结论：自研域已到局部最优，后续只在实物联调反馈后再议；最近一次全流程重编 59m16s 收敛、Routed 0 违例但余量很薄 ⚠（见 [测试与验证](测试与验证.md)「阶段验证」）。
+- ISP 白平衡两个「每时钟出一个商」的流水线除法器改为背靠背逐位除（`pl/soc_base/src/des/awb_seq_div.v`，改 `ui_isp/awb_1_1/awb.v`）：每 49 时钟一个新增益、增益差 ≤1 步、不再每帧开头复位；对照仿真 `run_sim.sh awb` 逐拍一致，省约 4k LUT + 5k FF。
 - NPU 软核里的 YOLO 后处理 / 缩放单元理论上可省（我们是 ROI 分类 + PS 预处理），但 ArmNN Alnpu 后端依赖不确定，不动。
-- 重构（自研 RTL 已做多轮零行为精简；逐轮见 [log](log/README.md)「PL 自研模块与逐版上板」）：行数 / 字节与综合资源前后对比见各 log；**寄存器偏移、位域与复位值未变**，与 `ps/src/hw/des_regs.h` 同一次提交。
-- 厂家明文 RTL 重构（2026-10-24，零行为，未重编比特流）：非 des 明文 41 文件（33 改 + 8 删）净 **−5,351 行 / −198,191 B（−55.7% / −53.6%）**，其中 `bilinear_interpolation` 911→278 行、`wfifo` 887→516 行；TD 6.2.1 综合（Optimize-Gate，非 P&R）LUT **58,122→57,794（−0.56%）**、FF **39,244→39,043（−0.51%）**、ERAM 261/280 与 DSP 156/240 不变，0 error；36 项逐拍等价回归（golden = `9a905cc`）全 PASS，8 项功能仿真日志与基线逐字节一致。明细见 [log/2026-10-24-PL厂家RTL重构](log/2026-10-24-PL厂家RTL重构.md)。
-- 第三轮 PL 重构（2026-10-24，零外部行为变化，未重编比特流）：自研 `des/` + 顶层 + 厂家明文 RTL 共 40 个文件改动（**零增删 / 零合并**）净 **−1,164 行 / −28,985 B（−22.6% / −13.3%）**；自研域 9 文件 1,088→1,043 行、厂家域 42 文件范围 4,771→3,652 行，`pl/sim` 框架同步精简与提速；TD 6.2.1 综合（Optimize-Gate，非 P&R）**LUT 57,794→57,845（+0.09%）、FF 39,043→38,947（−0.25%）**、slice 43,756→43,842、ERAM 261/280 / DSP 156/240 / dram 544 不变，0 error；自研模块小计 LUT 1,759→1,783、FF 3,624→3,528；36 项逐拍等价 + 8 项功能仿真逐字节一致。明细见 [log/2026-10-24-PL第三轮重构](log/2026-10-24-PL第三轮重构.md)。
-- 第四轮 PL 精简（2026-10-26，零外部行为变化，未重编比特流）：自研域两处——servo_bus 删 rx_buf 写入的 `idx<32` 死守卫（LEN∈[2,30] 已在 idx==1 限幅，写索引恒 ≤31；TB 先补 LEN=1/40 非法应答用例）、des_vision 两段手写 3FF 翻转同步收敛到 `des_togsync` 公共原语；其余候选（计数器 32→16、CRC 网络合一、TX/RX 引擎合一、厂家 RTL 三删、des_pwm 钳位收窄）逐项评估后被 TB 断言 / wrap 语义 / 收益核算否决。9 项功能仿真 + 36 项逐拍等价全过；TD 综合（Optimize-Gate）`#luts` 46,747→46,745、`#registers` / slice 估 / ERAM / DSP 持平（资源零代价）。**结论：自研域已到局部最优，后续只在实物联调反馈后再议。**明细见 [log/2026-10-26-PL第四轮精简](log/2026-10-26-PL第四轮精简.md)。
-- 第五轮 PL 精简（2026-10-28，零外部行为，**未重编比特流**）：自研 `des/` + `system_top.v` + 厂家明文 RTL 共 39 个 RTL 文件修改（**文件集合零增删**），可编辑明文 52 文件净 **4,945→4,140 行（−805，−16.3%）/ 221,872→190,634 B（−31,238，−14.1%）**；逐域：des 966→820 / system_top 327→253 / ui_isp 2,278→1,964 / write_fdma 937→706 / MIPI_V2 明文 259→241 / hdmi_tx 151→130 / pwm 27→26；逻辑改动只剩 `des_485` 删一处不可达项（CRC 常量特化经 syn A/B 发现 +272 LUT / +512 FF 资源回归后回退）。TD 综合 A/B（Optimize-Gate，非 P&R）：`#luts` 46,745→46,643（−102）、`#registers` 40,172→40,163（−9）、slice 估 44,817→44,811、ERAM 261/280 / DSP 156/240 持平——**源码量下降不等于 P&R 改善**；9 项功能仿真日志逐字节相同 + 36 项逐拍等价全过 + 独立对照 0 mismatch；寄存器接口零变，板端仍 v16；另 medium 档 scratch 全流程重编 40m04s 收敛（候选比特流 / `BOOT.bin` 未上板，默认 high 构造未改，最终时序不如 v16）。明细见 [log/2026-10-28-PL第五轮精简](log/2026-10-28-PL第五轮精简.md)。
-- 第六轮 PL 减资源（2026-10-28，零外部行为，**未上板**）：自研 `des/` 5 文件 +44/−24、厂家明文 ISP 11 文件 +120/−81、平台 3 文件 +47/−46，合计 19 个 RTL 文件 +211/−151 行（另 `timing.sdc` +22 行）；结构估算 des −512 FF / −127~162 adder、ISP ~−197 FF / ~−30 adder、平台 −24 FF / −28~47 LUT4，**实测 A/B（最终构建 B 综合段相对候选 A）：−283 LUT / −579 FF / −16 ERAM、综合 slice 估 −506；place slice 44,659→43,980（85.10%→83.80%）**（见 [测试与验证](测试与验证.md)），不要用 RTL 行数或结构估算推断 P&R 收益。三路均以 9 项功能仿真日志逐字节相同 + 36 项逐拍等价全过兜底，端口 / 参数 / 流水级数 / 寄存器接口零变。明细见 [log/2026-10-28-PL第六轮构建收敛](log/2026-10-28-PL第六轮构建收敛.md)。
 
 ## 寄存器通道（已实现）
 
@@ -73,7 +63,7 @@ v15（已被 v16 取代）= 第三轮重构源码（`9e01d8f`，自研 + 厂家�
 | 偏移 | R/W | 名称 | 说明 |
 |---|---|---|---|
 | 0x000 | R | `DES_ID` | 固定 `0x44455301`（"DES" + 版本 01） |
-| 0x004 | R | `DES_VERSION` | v15 板上 12；v16 = 16（编码见下） |
+| 0x004 | R | `DES_VERSION` | v16 板上 16（编码见下） |
 | 0x008 | R/W | `SCRATCH` | 读写测试 |
 | 0x00C | R | `FREE_CNT` | 75MHz 自由计数器（硬件时间戳 / 延迟测量） |
 | 0x010 | R/W | `LED_CTRL` | b0 = 接管 LED1，b1 = LED1 亮灭 |
@@ -87,7 +77,7 @@ v15（已被 v16 取代）= 第三轮重构源码（`9e01d8f`，自研 + 厂家�
 | 0x038 / 0x03C | R | `CAP_ENC0` / `CAP_ENC1` | 同一时钟沿的计米轮编码器计数（v16）：图像、步进、编码器三路同刻锁存 |
 | 其余 | R | — | 读回 `0xDEADBEEF` |
 
-`DES_VERSION` 编码：12 = v12~v15（v13~v15 是重构 / 重编，寄存器接口未变）；16 = v16（`CAP_ENC0/1` + `des_485`）；v8~v10 未改寄存器接口（v10 只去光源输出、未单独上板），PS 只需判断 5 / 6 / 7 / 11 / 16（拍摄锁存 / `des_vision` / `des_pwm` / `des_io` / `des_485` 与 `CAP_ENC`）。
+`DES_VERSION` 编码：16 = v16（`CAP_ENC0/1` + `des_485`）；12 = v12~v15（重构 / 重编未改寄存器接口）；v8~v10 未改寄存器接口（v10 只去光源输出、未单独上板）。PS 只需判断 5 / 6 / 7 / 11 / 16（拍摄锁存 / `des_vision` / `des_pwm` / `des_io` / `des_485` 与 `CAP_ENC`）。
 
 **拍摄锁存**：厂家帧写模块 `uidbuf_write` 开始写一帧、完成中断 `f2p_irq` 上升沿各翻转一次，经两级同步进 75MHz 域；开始时锁暂存、完成时整组更新 `CAP_*`，PS 在 `WaitFinish` 返回后有整帧时间读。PS 用 `CAP_POS0/1` 按件所在图像行插值，得该行读出时刻的带位置（卷帘快门）。
 
@@ -205,7 +195,7 @@ v15（已被 v16 取代）= 第三轮重构源码（`9e01d8f`，自研 + 厂家�
 - 发前等总线静默 t3.5（`T35_US`，PS 按波特率设：3.5 × 11 bit，>19200 时固定 1750µs）；DE 提前 1 bit 拉高，PDU 后补 CRC16（初值 0xFFFF、反射多项式 0xA001、低字节在前），最后一个停止位结束即放 DE。
 - 要应答时从发完起计 `TIMEOUT_US` 等第一个起始位；收到的帧以 t3.5 静默判结束，CRC 对全部字节（含 CRC）求余为 0 才算对；8 位数据、校验位 无 / 偶 / 奇、1 停止位；校验位或停止位错、超过 64 字节都单独标出。
 - 空闲时总线上出现的帧（PC 当主站）存为监听帧，PS 读后应答清标志；`CTRL` 的 go / 长度和 `TX_BUF` 在传输进行中写入被忽略（不会像 `servo_bus` 那样改到正在发的帧）；`CTRL` b4 中止：A/B 接反或终端无偏置时总线可能一直不静默，PS 驱动超期后中止并报错。
-- 仿真 [pl/sim/tb_des_485.v](../pl/sim/tb_des_485.v)（`run_sim.sh rs485`）60 项：行为级从站逐位核对线上字节、CRC 金标准（01 05 00 00 FF 00 → 8C 3A；01 03 00 00 00 0A → C5 CD）、校验位、DE 提前 1 bit / 停止位结束释放，以及应答正确、CRC 错、短帧、校验位错、超时（误差 <1%）、溢出、广播、监听帧、t3.5 间隔、忙时写保护、总线卡低中止。
+- 仿真 [pl/sim/tb_des_485.v](../pl/sim/tb_des_485.v)（`run_sim.sh rs485`）60 项：CRC 金标准（01 05 00 00 FF 00 → 8C 3A；01 03 00 00 00 0A → C5 CD）、校验位、DE 提前 1 bit / 停止位结束释放，以及应答、超时（误差 <1%）、溢出、广播、监听帧、t3.5 间隔、忙时写保护、总线卡低中止，全过。
 
 | 偏移 | R/W | 说明 |
 |---|---|---|
@@ -227,9 +217,4 @@ PS：`des_hw` 的 `des_485_config / des_485_xfer / des_485_listen`（`DES_VERSIO
 
 ## 分段与扩展登记
 
-分段固定：`0x0xx` des_regs / `0x1xx` servo_bus / `0x2xx` stepper_ctrl / `0x3xx` des_vision / `0x4xx` des_pwm / `0x5xx` des_io / `0x6xx` des_485；窗口 `0x8030_1000~0x8030_1FFF`（4KB）。新模块从 `0x7xx` 起，**实现前先在此登记偏移**，并与 `ps/src/hw/` 头文件同一次提交更新。
-
-| 偏移 | 模块 | 说明 |
-|---|---|---|
-| `0x5xx` | `des_io` | 见上表；PS 侧 `ps/src/hw/des_regs.h` 的 `DES_IO_*` |
-| `0x6xx` | `des_485`（v16） | 见上表；PS 侧 `DES_485_*` |
+分段固定：`0x0xx` des_regs / `0x1xx` servo_bus / `0x2xx` stepper_ctrl / `0x3xx` des_vision / `0x4xx` des_pwm / `0x5xx` des_io / `0x6xx` des_485；窗口 `0x8030_1000~0x8030_1FFF`（4KB）。新模块从 `0x7xx` 起，**实现前先在此登记偏移**，并与 `ps/src/hw/` 头文件同一次提交更新。已登记扩展：`0x5xx` `des_io`（PS 侧 `DES_IO_*`）、`0x6xx` `des_485`（`DES_485_*`），见 `ps/src/hw/des_regs.h`。

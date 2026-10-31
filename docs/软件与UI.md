@@ -1,73 +1,49 @@
 # 软件与 UI
 
-> PS 软件职责、界面、总线协议、存储与埋点；构建与部署见 [开发环境与构建](开发环境与构建.md)，实测数字见 [测试与验证](测试与验证.md)。
-> PS 产物分四层（`des_app` / `des_tool` / `test_*` / `desreg`、`canplc`，划分与命令见 [ps/README](../ps/README.md)）；`des_app`、`des_tool` 运行期间 `desreg` 只用 `r` 只读。
+> PS 职责、界面、总线协议、存储与埋点；构建与部署见 [开发环境与构建](开发环境与构建.md)，实测数字见 [测试与验证](测试与验证.md)。
+> PS 产物分四层（`des_app` / `des_tool` / `test_*` / `desreg`、`canplc`，见 [ps/README](../ps/README.md)）；`des_app`、`des_tool` 运行期间 `desreg` 只用 `r` 只读。
 
 ## PS 职责边界
 
-PS（双核 A35 + Linux）做：NPU 推理调度、视觉定位 (x, y, θ)、跟踪表与抓取调度、机械臂 IK、CAN / Modbus、UI、存储、网络。**不搬整帧像素**；时序关键的脉冲、总线帧、IO 采样在 PL。
-
-- PL 寄存器经 `/dev/mem` mmap 访问，偏移头文件在 `ps/src/hw/`，与 [PL设计](PL设计.md) 同源。
-- 板上已有 ArmNN + Alnpu、OpenCV 4.7、FFmpeg、FreeType；无 SQLite 库（存储为 CSV，列设计对齐将来可能的 SQLite 表）。
-- 交叉编译用 FD 自带的 aarch64 工具链（glibc 2.25，与板上一致）；依赖路径走 `.env` 变量，见 [环境与上手](环境与上手.md)。
+PS（双核 A35 + Linux）做：NPU 推理调度、视觉定位 (x, y, θ)、跟踪表与抓取调度、机械臂 IK、CAN / Modbus、UI、存储、网络；**不搬整帧像素**，时序关键的脉冲、总线帧、IO 采样在 PL。PL 寄存器经 `/dev/mem` mmap 访问（头文件 `ps/src/hw/`，与 [PL设计](PL设计.md) 同源）；板上已有 ArmNN + Alnpu、OpenCV 4.7、FFmpeg、FreeType（无 SQLite）；交叉编译见 [环境与上手](环境与上手.md)。
 
 ## 本地 HDMI 界面（OpenCV 自绘 + FreeType 中文，`app/hmi`）
 
-**为什么不用 Qt**：官方 Qt 资料是独立系统镜像（自带 BOOT.bin / 内核 / vdmafb 设备树 / 460MB rootfs），换掉就丢现有 NPU 镜像、自编比特流与 60fps 直写显示，板上也没有交叉编译头文件；界面因此用 OpenCV 自绘。
+界面用 OpenCV 自绘：官方 Qt 资料是独立系统镜像，换用会丢 NPU 镜像与自编比特流，板上无交叉编译头文件。
 
-**布局**：相机画面等比缩到 **1440×780**（源图上下各裁 20 行 ≈ 4mm 皮带边缘），**不被任何界面遮挡**；右侧 **480×780 状态栏**（帧率、PL 帧号、定位 / 测量 / NPU 耗时、跟踪数、抓取 / 挡板 / 复检、运行状态）；底部 **1920×300 操作条**。
+**布局**：相机画面等比缩到 **1440×780**，**不被任何界面遮挡**；右侧 **480×780 状态栏**（帧率、PL 帧号、耗时、跟踪数、抓取 / 挡板 / 复检、运行状态）；底部 **1920×300 操作条**。
 
-**显示循环**：1080p60 要求每帧挤进 16.7ms。瓶颈是 A35 的 NEON 运算（64 位宽，128 位指令拆两拍），相机 / 显示缓冲换 writecombine / nocached 映射只会更慢。做法：
-- 缩放用 `ui/display`（`scale34_bgra_to_bgr`）：横向每 4 像素出 3 个（`vld4` 按整像素分组，查表拼 BGR），纵向每 4 行出 3 行（中间行先平均）；与逐像素参考实现 0 字节差。
-- 状态栏 / 操作条由核 1 工作线程渲染（约 8~10Hz），核 0 只贴图 + 画光标；两块显示缓冲各自记着上次贴的那份图，内容变了才重贴，光标画过处单独补贴（无残影）。
-- 大块内容先在普通内存画好再按行 `memcpy` 进缓冲（宽写）；`putText` 线宽 2 很贵，状态文字 10Hz 重画、其余帧只贴图，框上标签用线宽 1。
-- `display`（3/4 缩放）的目标必须是普通内存（CmaBuf 默认即是），对 nocached（设备型）映射会因非对齐 16 字节存储报 Bus error。
-- 每帧耗时与丢帧见 [测试与验证](测试与验证.md)。
+**显示**：1080p60 每帧须进 16.7ms；缩放用 `ui/display` 的 `scale34_bgra_to_bgr`（横 4 出 3、纵 4 出 3，中间行先平均），目标必须是普通内存；状态栏 / 操作条由核 1 渲染（约 8~10Hz），核 0 只贴图 + 画光标。`/dev/fb0` 是厂家 `vdmafb`，本比特流真正扫描输出的是 **`vdma@0x8020_0000`**（`V_SIZE` 1080、行跨度 5760、**24bpp BGR**、`START_1` 指向 fb0 显存）；相机 BGRA → 每帧 CPU 转 BGR 进两块 CMA 显示缓冲再切帧存，翻页用**停驻指针**（`PARK_PTR`）帧边界切换，开机写好帧存地址与 `V_SIZE`（退出还原）。中文标注用 `TextFT::draw_solid`（只写不读）；核 0 = SCHED_FIFO 取帧 + 显示，核 1 = 定位 / 跟踪 / 界面渲染（OpenCV 单线程）。每帧耗时与丢帧见 [测试与验证](测试与验证.md)。
 
-**显示通路**：`/dev/fb0` 是厂家 `vdmafb`，但本比特流真正扫描输出的是 **`vdma@0x8020_0000`**：`V_SIZE` 1080、行跨度 5760（**24bpp BGR**）、`START_1` 指向 fb0 显存，1920×1080 @ 60.6Hz。相机是 32bpp BGRA，不能直接翻页 → 每帧由 CPU 转一次 BGRA→BGR 进两块 CMA 显示缓冲之一，再切 VDMA 帧存。
+**界面风格**：白底浅色主题（`ui_text.hpp` 颜色按用途命名），全中文，只保留 DragonEyeSorter 与 NPU / PLC / Modbus / RS485 / PL。
 
-- 翻页用**停驻指针**（`PARK_PTR` 的 `RdFrmPtrRef`），VDMA 在下一帧边界切换；开机时一次写好三个帧存地址与 `V_SIZE`，此后不再每帧提交寄存器，退出时还原。两块显示缓冲开机清零。
-- 检测框 / 文字直接画进 BGR 显示缓冲；画面上的中文标注（件号 + 状态 + 测量、判定线 / 抓取线 / 光束）用 `TextFT::draw_solid`：只写不读（显示缓冲不走缓存，读一次像素就要毫秒级），边缘是硬的；OpenCV 用单线程（`cv::setNumThreads(1)`），两个核由程序自己分：核 0 = SCHED_FIFO 取帧 + 显示，核 1 = 定位 / 跟踪 / 界面渲染。
+**六页**（鼠标点左侧标签，或 F1~F6 / Tab / ←→）：
 
-**界面风格**（2026-10-30 用户）：白底浅色主题（`ui_text.hpp` 的颜色按用途命名：TEXT / VALUE / INFO / ON_TEXT…），界面和画面右侧状态栏全部中文，只保留作品名 DragonEyeSorter 和 NPU / PLC / Modbus / RS485 / PL 这类专业缩写。
+| 页 | 内容 |
+|---|---|
+| 总览 | 总数 / 良品 / 不良 / 复检 / 良率 / 产量，各类计数条（7 类 + 未分类），最近 7 件（件号、类别、去向、出口、尺寸、置信度），右上角运行状态 + 带速（编码器加「实测」） |
+| 曲线 | 齿轮外径 / 孔径趋势（最近 80 件，公差线 = 参数页，均值 / σ / **Cpk**）；近 60s 工作线程耗时、NPU 耗时、带速（白 = 命令，绿 = 编码器实测） |
+| 参数 | **配方**（−/+ 轮换 `recipes.json`）：规格 / 外径 / 孔径 / 偏心一并切换，名义 / 公差重置（⚠ 开机时 `ui_params.json` 的外径 / 孔径优先于配方，改配方尺寸要同步改它或切走再切回）；运行中不可换型（`Runner::select_recipe`）。带速、外径 / 孔径名义与公差、尺寸判废开关、置信度门限、存图模式、PL 显示模式 / 二值阈值**立即生效**，并存 `ui_params.json`（启动时载入，覆盖 des_app.json）。**运行控制**：启动 / 停止 / 暂停 / 恢复 / 复位报警（同 CAN 命令规则 `Runner::command`） |
+| 记录 | 内存留最近 **500 件**（`Hmi::kRecords` 环形缓冲；已逐行写 SD 卡 CSV），一屏 9 行，按钮 / 滚轮 / PgUp / PgDn 翻页，新件不停页；点行看裁切图 + 测量值；裁切图只留最近 **40 件**（224² BGR，约 6MB），更早「无图」；原因 / 去向为中文 |
+| 机械臂 | （第 5 页，`app/arm_io`，命令行 `des_tool.sh arm`）手动调试 6 舵机，**只在产线不在运行、无急停、臂未在抓取时可用**，先「解锁」，离页自动上锁。关节表每行：位置计数、`arm.joints` 换算角度、目标、初始姿态、状态位（过载 / 过热 / 电压；无电流 / 温度）；±按步长 1° / 5° / 15°、动作 0.5 / 1 / 2 s，软限位内单舵机 SYNC WRITE；4Hz 轮询；`ArmExec` 独立线程与抓取共用总线（`des_sb_xfer` 互斥）。「记录当前姿态」追加到 `data/arm_teach.csv`；「设为初始姿态」写 6 计数进 `arm_home.json`（板上生成，启动覆盖 `arm.home_deg` / 夹爪计数）；「复位」= 6 关节回初始姿态（单帧 SYNC WRITE，≥2 s）；微调自上次目标累加（死区 ≤1°），与读回差 >3° 或刚解锁 / 关扭矩改从读回算 |
+| 挡板 | （第 6 页，`app/flap_manual`）挡板舵机 ×2（PIN18 报废 / PIN20 返修，`des_pwm`，接线见 [硬件与接线](硬件与接线.md)）调试找开 / 合脉宽；**只在产线停止时可用**，先「解锁」，解锁期间 Runner 不写 PWM（`Runner::set_flap_manual`），上锁 / 离开交还。每路：开 / 关（脉宽无效先置 1500µs）、脉宽 / 约角度（0.5~2.5ms = 0~180°）、−50 / −10 / +10 / +50、中位 1500、试转（+150µs ≈13° 再回）；显示 `flaps.gates` 配置的开 / 合脉宽。速度：慢 100µs/s / 中 300µs / 快直接跳，每步 ≥10µs（死区 5µs），每周期一步；不动时每 0.5s 读回 PWM（重启后两路都关）。无位置反馈：只颤不转 = 供电或卡住 |
 
-**六页**（鼠标点左侧标签，或键盘 F1~F6 / Tab / ←→）：
-
-- **总览**：总数 / 良品 / 不良 / 复检 / 良率 / 产量（件/分），各类计数条（7 类 + 未分类），最近 7 件（件号、类别、去向、出口、尺寸、置信度），右上角运行状态 + 带速（接了计米轮编码器时加「实测」）。
-- **曲线**：齿轮外径、齿轮孔径趋势（最近 80 件，公差线 = 参数页，绿 OK 红 NG，均值 / σ / **Cpk**）；近 60s 工作线程耗时、NPU 耗时、带速（白 = 命令，绿 = 编码器实测）。
-- **参数**：
-  - **配方**（−/+ 轮换 `recipes.json` 里的配方）：规格齿数 / 外径 / 孔径 / 偏心一并切换，外径与孔径的名义 / 公差随之重置（⚠ 开机时板上 `ui_params.json` 存的外径 / 孔径优先于配方：改了 `recipes.json` 的尺寸，要先停服务同步改 `ui_params.json`，或在这里把配方切走再切回来）；运行中不可换型，与 PLC 的 RECIPE 同一套规则（`Runner::select_recipe`）。
-  - 带速、齿轮外径名义 / 公差、齿轮孔径名义 / 公差、尺寸判废开关、置信度门限、存图模式（−/+ 按钮）、PL 显示模式 / 二值阈值；**立即生效**（工作线程改跟踪表规则 / 存储 / Runner 带速）并存 `ui_params.json`（启动时载入，覆盖 des_app.json）。
-  - **运行控制**：启动 / 停止 / 暂停 / 恢复 / 复位报警（run 模式，与 PLC 的 CAN 命令同一套规则 `Runner::command`）。
-- **记录**：内存里保留最近 **500 件**（`Hmi::kRecords`，固定容量环形缓冲，不随件数分配内存；所有零件本来就逐行写进 SD 卡 CSV），一屏 9 行，「上一页 / 下一页 / 最新」按钮、滚轮或 PgUp / PgDn 翻；有新件进来时停在原来那一件上不跳。点一行看该件裁切图 + 全部测量值；裁切图只留最近 **40 件**（224² BGR 每张约 150KB，共约 6MB），更早的显示「无图」。原因 / 去向显示中文。（原来只留 9 件是早期保守取值，与性能无关。）
-- **机械臂**（第 5 页，`app/arm_io`；命令行对应 `des_tool.sh arm`）：手动调试 6 个舵机，**只在产线不在运行、急停未按、机械臂没在抓取时可用**，且要先点「解锁」，离开页面自动上锁。
-  - 关节表：每行一个关节（位置计数、按 `arm.joints` 零位 / 每度计数换算的角度、目标、初始姿态、状态位（过载 / 过热 / 电压）；这批舵机不提供电流 / 温度，10-26）；`-` / `+` 按步长（1° / 5° / 15°）和动作时间（0.5 / 1 / 2 s）微调，夹在**软限位**内，用单舵机 SYNC WRITE 发（不等应答）。
-  - 页面显示时约 4Hz 轮询位置（不读电流 / 温度：这批舵机不提供，10-26 实测；界面只显示状态位），离开即停；单独线程、单独 `ArmExec`，与生产抓取线程共用总线（`hw/des_hw` 的 `des_sb_xfer` 有互斥锁）。
-  - 姿态管理：解锁 / 上锁、扭矩开 / 关（关之前托住机械臂）；「记录当前姿态」追加到 `data/arm_teach.csv`；「设为初始姿态」把当前 6 个计数写进 `arm_home.json`（板上生成，启动时覆盖 `arm.home_deg` 与夹爪计数）；「复位」= 6 个关节一起回初始姿态（单帧 SYNC WRITE，≥2 s）。
-  - 微调从上次目标累加（舵机死区 ≤1°）；目标与读回相差 >3° 或刚解锁 / 关过扭矩时改从读回位置算；表格「目标」「初始」列都以角度显示。
-- **挡板**（第 6 页，`app/flap_manual`，2026-10-30）：两路挡板舵机（MG996R，J12 PIN18 = 挡板 1 报废、PIN20 = 挡板 2 返修，PL `des_pwm`）手动调试，用来自查舵机能不能动、找开 / 合脉宽。**只在产线停止时可用**，要先「解锁」；解锁期间 Runner 不写挡板 PWM（`Runner::set_flap_manual`），上锁 / 离开后交还（Runner 重写一次自己的脉宽）。
-  - 每路：输出开 / 关（只开关这一路；脉宽无效时先置 1500µs 再开）、当前脉宽 µs 与约角度（MG996R 0.5~2.5ms = 0~180°，≈0.09°/µs）、−50 / −10 / +10 / +50、中位（1500）、试转（加 150µs ≈13° 再回来）；显示 `flaps.gates` 里配置的开 / 合脉宽。
-  - 速度：慢 100µs/s（≈9°/s）/ 中 300µs/s / 快 = 直接跳。慢动每步 ≥10µs（舵机死区 5µs：之前 2µs 一步只会颤），工作线程每周期走一步；不在动时每 0.5s 读回 PWM 寄存器（板子重启后两路都是关的）。
-  - 只有指令、没有位置反馈：转没转看实物；只颤不转 = 供电或机械卡住，量舵机自己插头上的红–棕电压。
-
-**输入**：evdev（`app/ui_input`），USB 鼠标 / 键盘 / 触摸屏热插拔（每 2s 扫描 `/dev/input`；⚠ 真鼠标热插拔待实测）。**脚本输入**：往 `/tmp/des_ui` 写 `click X Y` / `move X Y` / `wheel N` / `key CODE` / `snap`（存下一帧到 `/tmp/des_snap_N.png`）——远程测试、演示脚本用（板上没有 uinput）。
-
-**中文**：板上自带文泉驿正黑（`/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttc`）+ `libfreetype.so.6`（`app/ui_text`，字形缓存）。交叉编译依赖 `FREETYPE_INC` / `BOARD_LIBS` / `ARMNN_LIB` / `OPENCV_LIB`（见 [环境与上手](环境与上手.md)）。
+**输入**：evdev（`app/ui_input`）：USB 鼠标 / 键盘 / 触摸屏热插拔（2s 扫描 `/dev/input`；⚠ 真鼠标热插拔待实测）；**脚本输入**往 `/tmp/des_ui` 写 `click X Y` / `move X Y` / `wheel N` / `key CODE` / `snap`（存下一帧到 `/tmp/des_snap_N.png`，板上无 uinput）。**中文**：板上自带文泉驿正黑（`/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttc`）+ `libfreetype.so.6`（`app/ui_text`）；交叉编译依赖 `FREETYPE_INC` / `BOARD_LIBS` / `ARMNN_LIB` / `OPENCV_LIB`（见 [环境与上手](环境与上手.md)）。
 
 ## 工业总线
 
-- **CAN（P0）**：PC 上的 USB-CAN 当「产线 PLC」，下发启停 / 调速 / 换型 / 对时，板子回报状态与逐件结果；走 PS 的 SocketCAN（内核已有 `can0` / `can1`），协议见下。
-- **Modbus-TCP 从站（领域 3 高级「网口对接 PLC」，✅ 板上实测）**：同一套命令 / 状态走 PS 网口，PLC 或组态软件当客户端，规则与 CAN 完全相同。CAN 与 Modbus 可同时在线。
-- **RS485 Modbus-RTU（第二条工业总线，10-24 起做）**：赛题基础项 5「工业总线通信（CAN/RS485）……双总线并行协议解析」+ 拓展 3「双总线协议转换」；从站 = 4 路 Modbus-RTU 继电器模块（地址 1，9600 8N1），带 24V 三色灯（绿 运行 / 黄 暂停，或运行中 PLC 掉线 / 红 急停，故障红灯常亮 fault_s 秒（默认 10）后熄灭 / 空闲不亮（`rs485.idle`：off 默认 / green / blink） / 报警开始时蜂鸣 `buzzer_s` 秒）。
-  - 硬件（SP3485EN、端子 J11 第 5 / 6 位、BANK33 引脚 TX L17 / RX N16 / DE N15）见 [硬件与接线](硬件与接线.md)。
+- **CAN（P0）**：PC 的 USB-CAN 当「产线 PLC」下发启停 / 调速 / 换型 / 对时，板子回报状态与逐件结果；走 SocketCAN（`can0` / `can1`），协议见下。
+- **Modbus-TCP 从站（领域 3 高级「网口对接 PLC」，✅ 板上实测）**：同一套命令 / 状态走 PS 网口，规则与 CAN 完全相同，可同时在线。
+- **RS485 Modbus-RTU（第二条工业总线）**：从站 = 4 路 Modbus-RTU 继电器（地址 1，9600 8N1）+ 24V 三色灯：绿 运行 / 黄 暂停 / 红 急停或 PLC 掉线；故障红灯亮 `fault_s` 秒（默认 10）后熄灭，空闲按 `rs485.idle`（off / green / blink）不亮，报警蜂鸣 `buzzer_s` 秒。
+  - 硬件（SP3485EN、J11 第 5 / 6 位、BANK33：TX L17 / RX N16 / DE N15）见 [硬件与接线](硬件与接线.md)。
   - **PL `des_485`（v16 已上板；寄存器与行为见 [PL设计](PL设计.md)）**：寄存器窗口 `0x6xx`，硬件 DE、CRC16 自动补 / 校验、3.5 字符判帧、应答超时；PS 接口 `des_485_config` / `des_485_xfer`（请求 = [地址, 功能码, 数据]，不含 CRC）/ `des_485_listen`，调试命令 `desreg 485`。
-  - **PS（`src/hw/modbus_rtu` + `src/app/rs485_io`）**：Modbus 主站 PDU 编解码（01 / 02 / 03 / 04 / 05 / 06 / 0F，应答逐项核对、异常码）；独立线程每 50ms 按线体状态算灯，**逐路 FC 05** 只写跟模块现状不同的那几路灯继电器（10-26 实物 bestep 板不认 FC 0F 开灯、FC 01 只应答 8 路 → `rs485.coils` 8；怪癖与实测见[到货联调清单](到货联调清单.md) §7b），每 `poll_ms` 读回线圈（FC 01，可选读输入 FC 02），读回不符（模块断电重启 / 继电器没吸合）下一周期补写；统计成功 / 超时 / CRC 错 / 帧错 / 异常 / 读回不符 + 应答时间 → 报告「总线稳定性」。`des_app.json` 的 `rs485`（10-27 起打开；比特流 < v16 时打印原因、只少一个灯）。des_hw 没有 `DES_VERSION_485` 时 RS485 代码照常编译、运行时报「无驱动」。
-  - **协议转换**：PLC 经 CAN `0x105 LAMP` 或 Modbus-TCP `HR7` 接管灯 → 板子在 RS485 上写继电器（CAN / 以太网 → RS485）；RS485 链路状态进 CAN STATUS 标志 b5 和 Modbus `IR24~29`。
-  - PC：`pc/rs485/rs485_tool.py`（USB-RS485：`ports` / `scan` / `coils` / `set` / `lamp` / `demo` / `sniff` / `slave`，见 `--help`）；`pc/modbus/mb_client.py lamp red buzzer`。测试：`ps/tests/test_rs485`（模拟继电器模块，68 项）。
+  - **PS（`src/hw/modbus_rtu` + `src/app/rs485_io`）**：主站 PDU 编解码（01~06 / 0F，应答逐项核对、异常码）；独立线程每 50ms 按线体状态算灯，**逐路 FC 05** 只写与现状不同的路灯（实物 bestep 板不认 FC 0F、FC 01 只应答 8 路 → `rs485.coils` 8，怪癖见 [到货联调清单](到货联调清单.md) §7b），每 `poll_ms` 读回线圈（FC 01，可选 FC 02），不符下周期补写；统计成功 / 超时 / CRC 错 → 报告「总线稳定性」。`rs485` 已打开；比特流 < v16 时只少一个灯；无 `DES_VERSION_485` 时报「无驱动」。
+  - **协议转换**：PLC 经 CAN `0x105 LAMP` 或 Modbus-TCP `HR7` 接管灯 → 板子在 RS485 写继电器；RS485 链路状态进 CAN STATUS b5 与 Modbus `IR24~29`。
+  - PC 工具见 [pc/README](../pc/README.md)（`rs485_tool.py` / `mb_client.py`）；测试 `ps/tests/test_rs485`（模拟继电器，68 项）。
 
 ### CAN 协议 v1.2（v1.1 板上自测通过，PC 端按此写）
 
-经典 CAN 2.0A（11 位 ID），500kbit/s（板载收发器 SN65HVD232 只支持经典 CAN），多字节**小端**。定义在 [ps/src/hw/can_proto.h](../ps/src/hw/can_proto.h)（编解码函数同在此文件）。
+经典 CAN 2.0A（11 位 ID），500kbit/s（收发器 SN65HVD232 只支持经典 CAN），多字节**小端**。定义在 [ps/src/hw/can_proto.h](../ps/src/hw/can_proto.h)（编解码函数同在此文件）。
 
 | 方向 | ID | 长度 | 内容 |
 |---|---|---|---|
@@ -83,13 +59,12 @@ PS（双核 A35 + Linux）做：NPU 推理调度、视觉定位 (x, y, θ)、跟
 | 本机→PLC | 0x183 PART | 8 | [件号 u16, 类别（0xFF 未知）, 去向 0 抓取 1 `Flap`（现为侧边导流挡板）2 复检, 料盒 / 出口, 置信度 %, 主尺寸 ×100 (u16, 0.01mm；几何测量值，0 = 没测到)] |
 | 本机→PLC | 0x184 ALARM | 4 | [报警码, 级别, 细节 u16] |
 
-- **起接口**：`scripts/deploy/out/can_up.sh can0 normal`（接 PC 的 USB-CAN）或 `can_up.sh can0 loopback`（自测；控制器只有 FD 模式能回环，经典帧照样收发）。
-- **联动与自测**：`des_app run --can can0` + `canplc` 扮 PLC 回环；`ps/tests/test_can.c` 两个 socket 扮 PLC 与本机。流程（启动 / 改带速 / 非法值 / 联锁暂停 / 恢复 / 停止）与往返耗时、连续发帧丢失情况见 [测试与验证](测试与验证.md)。
-- PC 端 PLC 模拟器见 [pc/plc_sim](../pc/plc_sim/README.md)。
+- **起接口 / 自测**：`scripts/deploy/out/can_up.sh can0 normal`（接 PC 的 USB-CAN）或 `can_up.sh can0 loopback`（自测；FD 模式才能回环，经典帧照常收发）；`des_app run --can can0` + `canplc` 扮 PLC 回环。
+- 流程与往返耗时、丢帧见 [测试与验证](测试与验证.md)；PC 端 PLC 模拟器见 [pc/plc_sim](../pc/plc_sim/README.md)。
 
 ### Modbus-TCP（板子 = 从站，端口 502）
 
-`des_app run` 起一个 Modbus-TCP 从站（`des_app.json` 的 `plc.modbus_port`，0 = 关），最多 4 个客户端同时连。实现：[ps/src/hw/modbus_tcp.cpp](../ps/src/hw/modbus_tcp.cpp)（自写，poll 线程，MBAP 分帧，支持 FC 03 / 04 / 06 / 16，异常码 01 功能不支持 / 02 地址越界 / 03 数量或长度不对）；寄存器表 [ps/src/hw/modbus_tcp.hpp](../ps/src/hw/modbus_tcp.hpp)。写入只排队，由控制循环（每帧一次，≤17ms）按 CAN 的同一套规则执行，结果写回 RESULT、SEQ 加 1。地址从 0 起（按 1 起算的组态软件显示 40001.. / 30001..），32 位值高字在前。
+`des_app run` 起 Modbus-TCP 从站（`des_app.json` 的 `plc.modbus_port`，0 = 关），最多 4 客户端。实现：[ps/src/hw/modbus_tcp.cpp](../ps/src/hw/modbus_tcp.cpp)（poll 线程，MBAP 分帧，FC 03 / 04 / 06 / 16，异常码 01 / 02 / 03）；寄存器表 [ps/src/hw/modbus_tcp.hpp](../ps/src/hw/modbus_tcp.hpp)。写入只排队，由控制循环（每帧 ≤17ms）按 CAN 同一规则执行，结果写回 RESULT、SEQ +1。地址从 0 起（按 1 起算的组态软件显示 40001.. / 30001..），32 位值高字在前。
 
 | 保持寄存器（FC 03 读 / 06、16 写） | 含义 |
 |---|---|
@@ -110,22 +85,21 @@ PS（双核 A35 + Linux）做：NPU 推理调度、视觉定位 (x, y, θ)、跟
 | IR17 实际带速 ×10、IR18 心跳（每周期 +1）、IR19 运行秒数、IR20 报警码、IR21 当前配方、IR22 映射版本 0x0101 | |
 | IR24~29 RS485（v1.1） | 标志（b0 在跑 b1 在线 b2 PLC 接管）、继电器读回的灯、模块输入、成功次数、失败次数、最近应答时间 ×100（0.01ms）；共 32 个输入寄存器（旧版 24 个） |
 
-- **PC 端客户端**：[pc/modbus/mb_client.py](../pc/modbus/mb_client.py)（只用标准库）：`status` / `watch` / `cmd start|stop|pause|resume|reset` / `speed 45.5` / `recipe 2` / `time` / `bench`。电脑是客户端、主动连板子，不用动电脑防火墙。
+- **PC 端客户端**：[pc/modbus/mb_client.py](../pc/modbus/mb_client.py)（只用标准库；电脑主动连，不动防火墙）。
 - 本地 / 板上测试与经网线读寄存器的往返耗时、实物启停结果见 [测试与验证](测试与验证.md)。
 
 ## P2 草案
 
-- **Web UI**：主线只做 HDMI 界面；若做，复用上一届 Vue SPA（历史记录 + 远程 + 报表），MJPEG 推流走板载 JPU 硬件编码。
-- **语音 + LLM 助手**：链路 麦克风 → ASR → LLM（function calling）→ 结构化指令 → PS 校验 → AXI → PL；LLM 不直接碰硬件，断网退回本地固定命令词表，不挤占 P0/P1 时间。
+- **Web UI**：主线只做 HDMI；若做，复用上一届 Vue SPA（历史 / 远程 / 报表），MJPEG 走板载 JPU 硬编码。
+- **语音 + LLM 助手**：麦克风 → ASR → LLM（function calling）→ 结构化指令 → PS 校验 → AXI → PL；LLM 不碰硬件，断网退回本地命令词表。
 
 ## 存储
 
-**已实现（`src/app/part_log`）**：每件判定后一行 CSV（`/root/des/data/log/<日期>/parts_<会话>.csv`，44 列）+ 零件裁切图（`img/<会话>_<件号>_<类别>.jpg`，与 NPU 输入同一个裁切函数 `roi_crop`，默认只存挡板 / 复检件）。关键列：时间、件号、帧号、类别 / 置信度、去向 / 出口 / 原因、测量值、带坐标 / 姿态、PL 粗测、图片名、NPU 投票次数 / 推理耗时 / 帧完成→结果延迟、配方号、零件颜色（色调 / 饱和度 / 颜色类）；完整列定义见 `src/app/part_log`。后台线程写盘，工作线程不等 SD 卡，队列满就丢弃并计数。列与将来 SQLite 表一致。
-**无 RTC**：记录时间 = 本机时钟 + PC 端「PLC」经 CAN TIME 帧（0x104）下发的偏移，不改系统时间。
+**已实现（`src/app/part_log`）**：每件判定后一行 CSV（`/root/des/data/log/<日期>/parts_<会话>.csv`，44 列）+ 裁切图（`img/<会话>_<件号>_<类别>.jpg`，与 NPU 输入同一裁切函数 `roi_crop`，默认只存挡板 / 复检件）。关键列：时间、判定、测量、带坐标 / 姿态、PL 粗测、NPU 耗时 / 延迟、配方、颜色（完整定义见 `src/app/part_log`）。后台线程写盘、不等 SD 卡，队列满丢弃并计数；列与将来 SQLite 表一致；记录时间 = 本机时钟 + TIME 偏移（见上 CAN 0x104）。
 
-**网口实时上传**（拓展 5「千兆网数据上传」，`src/app/part_log` 的 `NetFeed`）：`storage.feed_port`（默认 9500）> 0 时板子监听该端口，电脑端 `python pc/feed/des_feed.py [--host <板子 IP>]` 连上后实时收到每件记录（与 SD 卡 CSV 同一行）和存下的零件图，存到 `received/<会话>/parts.csv + img/`，断线自动重连。板子是服务端 → 电脑不用开入站防火墙。每个客户端队列有上限，慢或断开的客户端只丢帧计数，**永不阻塞存储和产线**；帧格式见 `part_log.hpp` 文件头。
+**网口实时上传**（拓展 5，`part_log` 的 `NetFeed`）：`storage.feed_port`（默认 9500）> 0 时板子监听，电脑端 `python pc/feed/des_feed.py [--host <板子 IP>]` 实时收到每件记录（与 CSV 同一行）和零件图，存 `received/<会话>/parts.csv + img/`，断线自动重连。板子是服务端，电脑不用开入站防火墙；客户端队列有上限，慢或断开的只丢帧计数，**永不阻塞存储和产线**（帧格式见 `part_log.hpp` 文件头）。
 
-**出数**：`pc/report/part_stats.py` 读这些 CSV → 节拍、处置 / 去向、NPU 耗时与延迟分布、已知类别时的准确率 / 混淆矩阵、尺寸统计 + Cpk、同一件重复性与卡尺误差、PL 粗测对比（Markdown + JSON，直接贴进测试报告）。采集整帧训练图前在 SD 卡上新建数据分区（见 [开发环境与构建](开发环境与构建.md)）。
+**出数**：`pc/report/part_stats.py` 读这些 CSV 出报告数据（见 [pc/report](../pc/report/README.md)）。采集整帧训练图前在 SD 卡新建数据分区（见 [开发环境与构建](开发环境与构建.md)）。
 
 ## 测试埋点（写代码时就埋）
 

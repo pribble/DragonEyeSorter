@@ -1,10 +1,8 @@
 # pl/soc_base/ — PL 工程（soc_prj，TD 6.2.1）
 
-厂家 NPU demo `soc_prj` 底板 + 我们的全部改动；**仓库里这一份即可直接编译**：TD 6.2.1 打开 `soc_prj.al` → 综合 / 布局布线 → `soc_prj.bit`。**板端当前 v16（最新）**：v16 = `des_485`（RS485 Modbus-RTU）+ 帧起始锁存编码器（`CAP_ENC0/1`），10-24 全量重编 / 10-25 上板（`BOOT.bin` `71f41a20…`，比特流 `f0f63c91…`；`pl_check.sh` 0 失败；寄存器 `VERSION` 16；回退点 tag `v15-board-20261024`）。v15 = 第三轮重构源码（`9e01d8f`，自研 + 厂家明文 RTL + `pl/sim` 框架）全量重编 + 上板（`BOOT.bin` `b0aef232…`，比特流 `e14fbb65…`；`pl_check.sh` 21 项回归通过、2min soak 0 error；寄存器 `VERSION` 仍 12）。自研各域 0 违例；v14 的 HDMI 串行 −0.164ns 与 PS HP0→NPU −0.133ns 厂家路径端点已消失，NPU 软核域内 −0.093ns / 42 端点仍属厂家加密 IP；TMDS 视觉待复核 ⚠；版本与上板证据见下「板端版本台账」。明细见 [log/2026-10-23-PL二次重构](../../docs/log/2026-10-23-PL二次重构.md) · [后全量重编与上板](../../docs/log/2026-10-23-PL二次重构后全量重编.md)；各模块上板状态与验证记录见 [docs/PL设计.md](../../docs/PL设计.md)。2026-10-24 又对**厂家明文 RTL（非 des）**做了一轮零行为重构（源码净减 55.7%、TD 综合 0 error），随后**第三轮 PL 重构**把自研 `des/` 与顶层、厂家明文 RTL、`pl/sim` 仿真框架一起再精简（零外部行为变化）；这两轮重构当时均未重编比特流，其源码由 v15 全量重编 + 上板转正，明细见 [log/2026-10-24-PL厂家RTL重构](../../docs/log/2026-10-24-PL厂家RTL重构.md) · [第三轮重构](../../docs/log/2026-10-24-PL第三轮重构.md) · [第三轮重编与上板](../../docs/log/2026-10-24-PL第三轮重编上板v15.md)。2026-10-26 **第四轮 PL 精简**只动自研 `des/`（servo_bus 删死守卫、des_vision CDC 收敛公共原语；零外部行为，36 项等价全过），厂家域未动，见 [log/2026-10-26-PL第四轮精简](../../docs/log/2026-10-26-PL第四轮精简.md)。2026-10-28 **第五轮 PL 精简**（自研 + 顶层 + 厂家明文 RTL，39 文件零增删，净 −805 行 / −31,238 B；逻辑改动仅 `des_485` 一处不可达项；TD 综合资源基本持平；**仓库默认 high 构造未重编（源码级），另做 scratch medium 档全流程重编（40m04s 收敛，候选产物未上板），板端仍 v16**），见 [log/2026-10-28-PL第五轮精简](../../docs/log/2026-10-28-PL第五轮精简.md)。
+厂家 NPU demo `soc_prj` 底板 + 我们的全部改动；**仓库里这一份即可直接编译**：TD 6.2.1 打开 `soc_prj.al` → 综合 / 布局布线 → `soc_prj.bit`。来源：米联客 / 安路 NPU 演示套件 `demo.zip → demo/soc_prj/`（2025-12 版）；TD 统一 6.2.1（与厂家比特流同版本，原样重编逐位一致已验证），其他版本打开会提示格式升级。
 
-来源：米联客 / 安路 NPU 演示套件 `demo.zip → demo/soc_prj/`（2025-12 版）。TD 统一 6.2.1（与厂家比特流同版本，原样重编逐位一致已验证）；其他版本打开会提示格式升级。
-
-**2026-10-28 第六轮（源码级 + 构建方式修正，未上板）**：10-28 全量重编 route 2h36m 不收敛的根因是两段式 CLI 构建在 phy 段丢失 `timing.sdc` 的全部 clock group（12 条 `USR-6001`）+ `timing.sdc` 缺 VTC ↔ NPU / 150M 异步组；修复为**单进程构建**（`read_design`→`bitgen`）+ 追加 2 条 `set_clock_groups -asynchronous` + 19 个 RTL 文件零行为减资源。板端仍 v16、寄存器 `VERSION` 16 不变；默认 `opt_timing=high` 单进程全流程 **59m16s 收敛、Routed 0 违例**（结果见 [测试与验证](../../docs/测试与验证.md)「阶段验证」），明细见 [log/2026-10-28-PL第六轮构建收敛](../../docs/log/2026-10-28-PL第六轮构建收敛.md)。
+**板端当前 v16（最新）**：`des_485`（RS485 Modbus-RTU）+ 帧起始锁存编码器（`CAP_ENC0/1`），全量重编上板（`BOOT.bin` `71f41a20…`，比特流 `f0f63c91…`；`pl_check.sh` 0 失败；寄存器 `VERSION` 16；回退点 tag `v15-board-20261024`）。自研各域时序 0 违例，TMDS 视觉待复核 ⚠。逐版改动、候选构建与验证明细见下「板端版本台账」与 [docs/log/](../../docs/log/README.md)；各模块上板状态见 [docs/PL设计.md](../../docs/PL设计.md)。当前构建方式为**单进程**（`read_design`→`bitgen`）+ `timing.sdc` 2 条 `set_clock_groups -asynchronous`，最近一次全流程 59m16s 收敛、Routed 0 违例（余量很薄 ⚠，见 [测试与验证](../../docs/测试与验证.md)「阶段验证」；根因与修复明细见 [log/2026-10-28-PL第六轮构建收敛](../../docs/log/2026-10-28-PL第六轮构建收敛.md)）。
 
 ## 板端版本台账
 
@@ -18,21 +16,11 @@
 | v13 | 10-23 | `48c6bc7b…`（比特流 `6afcb26f…`）；`BOOT.bin.prev` = v12 `a026ead4…` | 75MHz +0.292ns / 像素 +0.116ns / HDMI +0.055ns；自研 0 违例（NPU 软核域内 −0.340 新增，见 log） | 0 失败 |
 | v14 | 10-23 | `a72e00f7…`（比特流 `a8a29533…`）；`BOOT.bin.prev` = v13 `48c6bc7b…` | 75MHz +0.341ns / 像素 +0.129ns / 150M +0.140ns；HDMI 串行 −0.164ns（1 端点，厂家路径 ⚠，TMDS 视觉待复核） | 0 失败（21 项） |
 | v15 | 10-24 | `b0aef232…`（比特流 `e14fbb65…`）；`BOOT.bin.prev` = v14 `a72e00f7…` | 75MHz +0.112ns / 像素 +0.106ns / 150M +0.187ns；自研 0 违例（v14 的 HDMI 串行与 PS HP0→NPU 端点消失；NPU 软核域内 −0.093ns / 42 端点仍属厂家 IP，见 log） | 0 失败（21 项） |
-| v16 | 10-24 编 / **10-25 上板** | `71f41a20…`（比特流 `f0f63c91…`）；`BOOT.bin.prev` = v15 `b0aef232…`、`BOOT.bin.v14` = v14 `a72e00f7…`（本机 `work/v15_archive/` 另有一份） | 75MHz +0.126ns / 像素 +0.117ns / HDMI +0.006ns / NPU 域内 +0.054ns；违例只剩厂家 VTC ↔ NPU / 150M 跨时钟（保持 −2.594 与原版同） | **0 失败**（原 21 项 + v16 三项：CAP_ENC 映射、des_485 ID、RS485 一帧线上 8.334ms） |
-| 第五轮精简（源码级，未记版号）+ scratch medium 档全流程重编 | —（**未上板**；板端仍 v16。scratch 40m04s 收敛：place 133 个 >100% tile / route 25m28s） | 候选 scratch `AD6AEB6A…`（比特流 `2B1FEBF7…`）；**未上板**，板端仍 v16 `71f41a20…` | scratch 路由后 75M +0.105ns / 像素 +0.122ns 正余量；NPU 域内 −0.368ns / 89 EP ⚠（不如 v16，采用前须上板复核） | —（未上板） |
-| 第六轮（源码级 + 单进程构建 recipe，未记版号） | —（**未上板**；板端仍 v16。默认 high 单进程：全流程 **59m16s 收敛**（syn 6m44s / place 14m56s / route 33m32s（flow）或 35m34s（log `finish command`）/ fix_hold 66.6s / phys_opt 56.1s / bitgen ≈25s）；综合 `#luts` 46,360 / `#registers` 39,584 / slice 估 84.42%（−0.97pt）/ ERAM 245/280（87.50%，−16）；place S-EP 25→0 / WNS −954→+346ps / >100% tile 232→202 / slice 83.80%（43,980，−573，首次低于基线）） | 比特流 `bcfb34fe64be99e7da724eea3c99231e`（4,052,202 B）；`BOOT.bin` 候选 `bf9826f0…`（5,179,264 B）；**未上板**，板端仍 v16 `71f41a20…` | **Routed 0 违例（余量很薄 ⚠）**：Setup WNS **+0.007ns** / S-EP 0、Hold WNS **+0.022ns** / H-EP 0；clk0 +0.025 / clk1 +0.100 / 像素 +0.031 / clk3 +0.129 / clk4 +0.363 / clk10 +0.007（TMDS 周期 1,346ps，余量约 0.5%）；STA coverage 99.60% | —（未上板） |
+| v16 | 10-24 编 / **10-25 上板** | `71f41a20…`（比特流 `f0f63c91…`）；`BOOT.bin.prev` = v15 `b0aef232…`、`BOOT.bin.v14` = v14 `a72e00f7…` | 75MHz +0.126ns / 像素 +0.117ns / HDMI +0.006ns / NPU 域内 +0.054ns；违例只剩厂家 VTC ↔ NPU / 150M 跨时钟（保持 −2.594 与原版同） | **0 失败**（原 21 项 + v16 三项：CAP_ENC 映射、des_485 ID、RS485 一帧线上 8.334ms） |
+| 第五轮精简（源码级，未记版号） | —（**未上板**，板端仍 v16） | scratch medium 档全流程重编 40m04s 收敛：候选 BOOT `AD6AEB6A…`（比特流 `2B1FEBF7…`）；最终时序不如 v16（NPU 域内 −0.368ns / 89 EP），采用前须上板复核 | —（未上板） | —（未上板） |
+| 第六轮构建收敛（源码级 + 单进程 recipe，未记版号） | —（**未上板**，板端仍 v16；默认 high 单进程全流程 **59m16s 收敛**） | 比特流 `bcfb34fe64be99e7da724eea3c99231e`（4,052,202 B）；`BOOT.bin` 候选 `bf9826f0…`（5,179,264 B） | **Routed 0 违例（余量很薄 ⚠）**：Setup WNS **+0.007ns** / S-EP 0、Hold WNS **+0.022ns** / H-EP 0；place slice 83.80%（43,980）/ ERAM 245/280 | —（未上板） |
 
-v13 为本次 PL 重构后全量重编版；PL 寄存器 `VERSION` 仍读 12（重构未改寄存器接口）。
-
-v14 为二次重构源码全量重编 + 上板版（`pl_check.sh` 21 项 0 失败、2min soak 0 error；HDMI 串行域 1 个 −0.164ns 厂家路径端点 ⚠，TMDS 视觉待复核）；重编资源 / 时序与审计见 [log/2026-10-23-PL二次重构后全量重编](../../docs/log/2026-10-23-PL二次重构后全量重编.md)。
-
-v15 为第三轮重构源码（自研 + 厂家明文 RTL + `pl/sim` 框架，`9e01d8f`）全量重编 + 上板版（56m25s、0 error；P&R slice 83.19%、线长 −3.8%；自研各域 0 违例，v14 的 HDMI 串行 / PS HP0→NPU 厂家路径端点消失；`pl_check.sh` 21 项 0 失败、2min soak 0 error）；见 [log/2026-10-24-PL第三轮重编上板v15](../../docs/log/2026-10-24-PL第三轮重编上板v15.md)。
-
-第五轮为**源码级零行为精简**（2026-10-28，可编辑明文 52 文件 −805 行 / −31,238 B，39 RTL 文件修改、文件集合零增删；9 项功能仿真逐项日志 sha256 与基线全等 + 36 项逐拍等价全过；TD 综合 A/B `#luts` 46,745→46,643、`#registers` 40,172→40,163、slice 估 / ERAM / DSP 持平）；**仓库默认 high 构造未重编、未上板**，另做 **scratch medium 档全流程重编**（40m04s 收敛：place 13m08s / 133 个 >100% tile、route 25m28s；候选比特流 `2B1FEBF7…` / `BOOT.bin` `AD6AEB6A…`，**未上板**；最终时序不如 v16，NPU 域内 89 EP），上表按「源码 + 候选构建」登记、非板端正式版本；见 [log/2026-10-28-PL第五轮精简](../../docs/log/2026-10-28-PL第五轮精简.md)。
-
-第六轮为**源码级 + 构建方式修正**（2026-10-28，未上板）：根因是两段式 CLI 构建在 phy 段丢失 `timing.sdc` 的全部 clock group（phy 日志 12 条 `USR-6001`）+ `timing.sdc` 缺 VTC ↔ NPU / 150M 异步组；修复为单进程构建（`read_design`→`bitgen`）、`timing.sdc` 追加 2 条 `set_clock_groups -asynchronous`、19 个 RTL 文件零行为减资源（+211/−151 行）。综合实测 A/B（相对 HEAD+SDC 候选 A 综合段）：`#luts` 46,643→46,360（−283）、`#registers` 40,163→39,584（−579）、slice 估 44,811→44,305（84.42%，−0.97pt）、ERAM 261/280→245/280（87.50%，**−16，额外收益**）、DSP 156→157；最终构建 B 的 place 检查点（默认 high 单进程）：**14m56s**（基线 18m29s，−3m33s）、Setup **S-EP 25→0 / WNS +346ps**、**>100% tile 232→202**、**slice 83.80%（#slices 43,980，−573，首次低于基线）**、线长 10,579,229、窗口 `[13 15]-[54 39]`、`#RAMs` 245 / `#DSPs` 157、FMAX 1000MHz（TMDS 742M 转正）、初始 `read_sdc` 段 0 条 `USR-6001`（place/route 各重放 8 条不影响已生效约束）；route 33m32s（flow；log `finish command` 35m34s），全流程 **59m16s 收敛**（flow total 57m14s；各 Phase R&R 全清零），**Routed 0 违例但余量很薄**（Setup WNS +0.007ns / Hold +0.022ns，TMDS 742.94MHz 域约 0.5% 余量），各域 SWNS 全正（NPU +0.025 / 75M +0.100 / 像素 +0.031 / 150M +0.129 / VTC +0.363 / TMDS +0.007），VTC→PLL_3 保留（routed +0.106ns）；route 后 slice 43,980（83.80%）/ RAMs 245 / DSPs 157 / 线长 18,565,248；比特流 `bcfb34fe…`（4,052,202 B）、`BOOT.bin` 候选 `bf9826f0…`（5,179,264 B）。见 [log/2026-10-28-PL第六轮构建收敛](../../docs/log/2026-10-28-PL第六轮构建收敛.md)。
-
-v12 上板记录原在 PL设计「基线」段，10-20 文档收敛移入本表；逐次明细见 [docs/log](../../docs/log/README.md)。
+上表哈希的完整 md5、各版 `pl_check` 项与逐日上板记录见 [docs/log](../../docs/log/README.md)；源码级精简轮（未记版号、未上板）的逐轮 A/B 数字同理。
 
 ## 目录内容
 
@@ -40,11 +28,11 @@ v12 上板记录原在 PL设计「基线」段，10-20 文档收敛移入本表�
 - `design_0/` — 图形化 SoC 设计：PS + MIPI RX + ISP + VDMA + HDMI 时序 + **NPU 软核 IP**；`design_0.address.xml` 是 GP 口地址分配（vdmafb 0x80100000 / VDMA 0x80200000 / mipicam 0x80300000 / soft_npu GP1 0x1F0000000）——**我们的 AXI-Lite 从机（PL_BASE）从这里分配，避开上述段**
 - `design_0/ip/` — 例化 IP 的包装与 RTL（多数为安路闭源加密文件）
 - `al_ip/` — 安路 IP 参数（PLL、NPU_SOFT 等）
-- `src/` — 明文 RTL：`system_top.v`、`hdmi_tx/`、`MIPI_V2/`（`mipi_rx/` + `src/` 只剩 `csi_unpacket.v` 与 `design_top_wrapper.v`）、`write_fdma/`、`ui_isp/`、`pwm.v`（2026-10 多轮零行为重构，见 [log/2026-10-24-PL厂家RTL重构](../../docs/log/2026-10-24-PL厂家RTL重构.md) · [log/2026-10-24-PL第三轮重构](../../docs/log/2026-10-24-PL第三轮重构.md) · [log/2026-10-28-PL第五轮精简](../../docs/log/2026-10-28-PL第五轮精简.md)）
+- `src/` — 明文 RTL：`system_top.v`、`hdmi_tx/`、`MIPI_V2/`（`mipi_rx/` + `src/` 只剩 `csi_unpacket.v` 与 `design_top_wrapper.v`）、`write_fdma/`、`ui_isp/`、`pwm.v`（已做多轮零行为重构，见 [log/2026-10-24-PL厂家RTL重构](../../docs/log/2026-10-24-PL厂家RTL重构.md)）
 - `src/ui_isp/` — ISP 链路**平铺一层**：`isp_top.v`、`raw10_unpacket_4lane.v` 与 8 个单文件模块（`BLC.v`、`image_cut.v`、`contrast_adj.v`、`Brightness_adjustment.v`、`Saturation_adj.v`、`image_correction.v`、`data96_128.v`、`data128_96.v`）直接放根目录；`gamma/`（2 个 `.v`：`gamma.v` + 唯一在用的 `lut_2_2.v`）、`demosaic_4x_2_0/`（6 个 `.v` + 2 个厂家 `blk_mem_gen` IP）、`awb_1_1/`（2 个 `.v` + 1 个 IP）因多文件 / IP 保留子目录
 - `src/des/` — **自研模块**：des_regs、servo_bus、stepper_ctrl、des_vision、des_pwm、des_io、des_485（v16）、awb_seq_div（已登记进 `soc_prj.al`）；`des_common.vh`（同步 / 去抖公共模块，被 des_regs / des_io 引用，纯 `include` 无需单独登记）
 - `src/constraint/` — 管脚 `io.adc`（CEP = BANK11 3.3V）、时序 `timing.sdc`
-- `soc_prj_Runs/syn_1/soc_prj.prj` 与 `soc_prj_Runs/phy_1/soc_prj.prj` — 综合 / 布局布线工程文件（`*_Runs/` 被 ignore，改动要 `git add -f`）
+- `soc_prj_Runs/syn_1/soc_prj.prj` 与 `soc_prj_Runs/phy_1/soc_prj.prj` — 综合 / 布局布线工程文件（`*_Runs/` 被 ignore，改动要 `git add -f`；单进程构建后 `syn_1` / `phy_1` 降级为历史件与只读探针，run 目录用 `phy_1/soc_prj.prj` + 一份 `settings.cfg`）
 
 ## 加密 IP
 
@@ -56,17 +44,11 @@ v12 上板记录原在 PL设计「基线」段，10-20 文档收敛移入本表�
 | `src/hdmi_tx/hdmi_tx_controller_wrapper.enc.v` | 1 | HDMI 控制器（TMDS） |
 | `src/MIPI_V2/mipi_rx/` | 2 | D-PHY 数据通道接收、通道对齐 |
 
-`src/write_fdma/wfifo.v` 文件名不带 `.enc`，内容里的 `` `pragma protect begin `` **是注释掉的** →
-实为明文的 TD IP Generator 生成件（可仿真、可重构）；2026-10 厂家 RTL 重构已把它一并零行为重构
-（见 [log/2026-10-24-PL厂家RTL重构](../../docs/log/2026-10-24-PL厂家RTL重构.md)），因此不在加密清单内。
+`src/write_fdma/wfifo.v` 文件名不带 `.enc`，内容里的 `` `pragma protect begin `` **是注释掉的** → 实为明文的 TD IP Generator 生成件（可仿真、可重构），不在加密清单内。
 
 ## 删掉的厂家未用源码
 
-2026-10-17 对 140 个明文 `.v/.sv/.vh` 做引用链扫描（从 `system_top` 出发逐级看例化），删掉 **15 个没有任何例化的厂家文件**（`src/isp/` 图像算子 7 个、`MIPI_V2/src/` 的 RAW8 老解包路径 7 个、厂家除法器 IP 1 个），并删 `soc_prj.al` 与两份 `soc_prj.prj` 里的对应登记（73 → 58 条）。`design_0/ip/**`、0 字节的 `define.v` 与厂家 `pwm.v` 保留（被加密 IP 内部或块设计引用）。理由与验证见 [log/2026-10-17-清理未用的厂家PL源码](../../docs/log/2026-10-17-清理未用的厂家PL源码.md)。
-
-二次重构（[log/2026-10-23-PL二次重构](../../docs/log/2026-10-23-PL二次重构.md)）又删除 **13 个不可达的厂家文件**：`design_0/ip/DR1_ARM_Processor_System_0/` 7 个、`design_0/ip/proc_sys_reset_75M/` 5 个、过期块设计生成脚本 `design_0/design_0.tcl` 1 个。判据：从 `system_top` BFS 不可达；TD v13 综合 build log 的 109 条 analyze 文件列表里没有这些 `.v`；syn / phy 的 area 层次报告里没有对应 module；`soc_prj.al`、两份 `soc_prj.prj` 与 `design_0.xml` 的 fileSets 均 0 登记（工程文件零改）；该 `.tcl` 引用了被删的 IP。加密 IP 数量不变（这 13 个都不含 `pragma protect`）。
-
-2026-10-24 厂家 RTL 重构（[log/2026-10-24](../../docs/log/2026-10-24-PL厂家RTL重构.md)）再删除 **8 个未用的 gamma LUT**（`src/ui_isp/gamma/lut_{0_8,1_2,1_4,1_6,1_8,2_0,2_4,2_6}.v`，共 2,227 行 / 103,062 B）：`isp_top` 写死 `GAMMA_10x=22`，其余 8 套曲线无任何例化，属「只有一种配置被使用」的参数分支特化；`soc_prj.al` 与两份 `soc_prj.prj` 同批删 8 条登记（59 → 51 条）。
+对厂家明文源码做过三轮引用链清理：2026-10-17 删 15 个无例化文件（`src/isp/` 图像算子 7 个、`MIPI_V2/src/` RAW8 老解包路径 7 个、厂家除法器 IP 1 个，`soc_prj.al` 与两份 `soc_prj.prj` 登记 73 → 58 条）；二次重构删 13 个不可达厂家文件（`DR1_ARM_Processor_System_0/` 7 个、`proc_sys_reset_75M/` 5 个、过期块设计脚本 `design_0.tcl` 1 个，工程文件零改）；厂家 RTL 重构再删 8 个未用 gamma LUT（单配置特化到 2.2 曲线，59 → 51 条）。判据：从 `system_top` BFS 不可达 / 只有单配置被使用；`design_0/ip/**`、0 字节的 `define.v` 与厂家 `pwm.v` 保留（被加密 IP 内部或块设计引用）。理由与验证见 [log/2026-10-17](../../docs/log/2026-10-17-清理未用的厂家PL源码.md) · [log/2026-10-23-PL二次重构](../../docs/log/2026-10-23-PL二次重构.md) · [log/2026-10-24-PL厂家RTL重构](../../docs/log/2026-10-24-PL厂家RTL重构.md)。
 
 ## 寄存器总线
 
@@ -90,24 +72,17 @@ v12 上板记录原在 PL设计「基线」段，10-20 文档收敛移入本表�
 | `des_vision`（0x3xx） | 插在 ISP 输出与帧写模块之间（`ud_*` 改走 `vis_*`） | PL 硬件灰度 / 滤波 / 边缘 / 粗测 |
 | `awb_seq_div`（改 `src/ui_isp/awb_1_1/awb.v`） | 两个 50 级流水线除法器 IP 换成背靠背逐位除法器（每 49 时钟一个增益，增益不随帧复位）；对照仿真 `run_sim.sh awb` | 省约 4k LUT + 5k FF，布线 5h 不通 → 23 分钟通过 |
 | `des_pwm`（0x4xx） | `FLAP1_PWM` = PIN18 Y6、`FLAP2_PWM` = PIN20 Y8；`stepper_ctrl` 启动预置相位（首脉冲 1.94ms → 10.6µs）；光源输出已去掉（`CTRL` b8、`lamp` 端口、`LAMP_EN` = PIN17 Y7 释放） | 导流挡板两级 PWM；光源改人工开关 / 调光 |
-| `des_io`（0x5xx） | 急停去抖 + 锁存（锁存期间步进停住）、对射 / 限位去抖 + 边沿捕获（时间戳 / 带位置 / 编码器计数）、编码器 4 倍频 + 滤波 + Z 相 + 测速；取代未接入的 `io_sync`（`src/des/io_sync.v` 已删除，无例化） | 现场输入采样放 PL |
-| `timing.sdc` | `clk_mipi` 挂到实际字节时钟 `…/U_io_clk_div_1.clkdivout`（8.0ns） | 厂家原约束挂在不存在的硬核 MIPI 引脚上（虚拟时钟），像素时钟域从未做过时序分析，`tuser` 边沿检测漏帧 |
+| `des_io`（0x5xx） | 急停去抖 + 锁存（锁存期间步进停住）、对射 / 限位去抖 + 边沿捕获（时间戳 / 带位置 / 编码器计数）、编码器 4 倍频 + 滤波 + Z 相 + 测速；取代未接入的 `io_sync`（已删除，无例化） | 现场输入采样放 PL |
+| `timing.sdc`（`clk_mipi`） | `clk_mipi` 挂到实际字节时钟 `…/U_io_clk_div_1.clkdivout`（8.0ns）；另追加 2 条 `set_clock_groups -asynchronous`（VTC pclk ↔ NPU / 150M PLL），现有 2 条 `-exclusive` 不动，**不加** VTC↔TMDS | 厂家原约束挂在不存在的硬核 MIPI 引脚上（虚拟时钟），像素时钟域从未做过时序分析；VTC 与 NPU / 150M 是独立 PLL、无同步数据通路，place setup 违例全是厂家 IP 的 CDC recovery（P&R 物理不可修） |
 | `des_vision` / `des_pwm` 读数据 | 改组合逻辑读（桥接逻辑在同一时钟取数，打拍的会读回上一个地址） | 寄存器读回正确 |
 | `stepper_ctrl` | 运动中把 `TARGET` 改成恰好等于 `POS` 时就地停；目标在身后仍减速停 | 皮带「停在此处」写法不再卡死 |
 | CAN0 管脚 | PS 硬核 `can0_tx_out` / `can0_rx_in` 经 `ARM_Processor_System_*` → `design_0.v` → `system_top` 引到 F20（TX）/ F19（RX），LVCMOS33、RX 上拉 | 官方块设计没开 PS CAN，原 `can0` 只能回环，接不了 USB-CAN / PLC |
-| 自研 RTL 二次精简（`src/des/*.v`、`src/des/des_common.vh`、`src/system_top.v`） | 零行为精简：收紧数据类型、合并重复逻辑、清理死代码与注释；另删 13 个不可达厂家 IP 包装与过期块设计脚本（见上节） | 减少代码量、提升综合资源效率；寄存器零变，**未重编比特流**（[log/2026-10-23-PL二次重构](../../docs/log/2026-10-23-PL二次重构.md)） |
-| 厂家明文 RTL 零行为重构（`src/{ui_isp,MIPI_V2,hdmi_tx,write_fdma}/`、`src/system_top.v`、`src/pwm.v`） | 逐拍等价前提下精简：合并重复通道 / 重复 always、收紧位宽、删死码与无效 `//synthesis keep`、GB18030 → UTF-8；gamma 单配置特化（9 套曲线 → 2.2，删 8 个 LUT 文件）；MIPI/HDMI `DEVICE` 只留 DR1；`wfifo.v` 确认为明文生成件并一并重构 | 减少代码量（41 文件净 −5,351 行 / −55.7%，−198,191 B）、提升综合效率（LUT −328 / FF −201）；36 项逐拍等价回归 + 8 项功能仿真逐字节一致 + 综合 0 error（[log/2026-10-24-PL厂家RTL重构](../../docs/log/2026-10-24-PL厂家RTL重构.md)） |
-| 第三轮 PL 重构（`src/des/*.v`、`src/des/des_common.vh`、`src/system_top.v`、`src/{ui_isp,MIPI_V2,hdmi_tx,write_fdma}/`） | 自研与厂家明文 RTL 再精简：位宽 / 数据类型收紧、重复 always 与重复通道合并、死码与未用参数清理、LUT 表紧凑排版；**零新增 / 零删除 / 零合并**，三份 TD 工程文件零改；`pl/sim` 仿真框架同轮精简与提速（PC 侧，不落板） | 减少代码量（40 文件净 −1,164 行 / −22.6%，−28,985 B）；综合资源基本持平（LUT +51 / FF −96，ERAM / DSP 不变）；36 项逐拍等价 + 8 项功能仿真逐字节一致（[log/2026-10-24-PL第三轮重构](../../docs/log/2026-10-24-PL第三轮重构.md)） |
-| 第五轮 PL 精简（`src/des/*`、`src/des/des_common.vh`、`src/system_top.v`、`src/{ui_isp,MIPI_V2,hdmi_tx,write_fdma}/`、`src/pwm.v`） | 39 个 RTL 文件零行为精简（文件集合零增删）：注释 / 排版 / 空行压缩 + 等价重写（合并同复位同时钟 always、12 通道同构折叠、多分支常量表折叠、控制移位打包）；逻辑改动只剩 `des_485` 删一处不可达项；`pl/sim`、三份工程文件、`.enc` 零改 | 减少代码量（可编辑明文 52 文件净 −805 行 / −31,238 B，−16.3% / −14.1%）；综合资源基本持平（LUT −102 / FF −9，ERAM / DSP 不变）——源码量下降不等于 P&R 改善，收敛边界以全流程重编实测为准；9 项功能仿真日志逐字节相同 + 36 项逐拍等价全过；另 scratch medium 档全流程重编 40m04s 收敛（place 133 个 >100% tile / route 25m28s），候选产物未上板、默认 high 构造未改（[log/2026-10-28-PL第五轮精简](../../docs/log/2026-10-28-PL第五轮精简.md)） |
-| 第六轮：构建方式（单进程 `read_design`→`bitgen`） | CLI 构建由「`syn_1` 综合 + `phy_1` 布局布线」两段式改为**单进程**：run 目录用 `phy_1/soc_prj.prj` + 一份 `settings.cfg`（以 `phy_1/settings.cfg` 为底，`start_step` 改 `read_design`、`end_step` 保持 `bitgen`）；`syn_1` / `phy_1` 降级为历史件与只读探针 | 两段式 phy 段从 `soc_prj_gate.db` 重放 SDC 时 PLL 引脚时钟对象尚未建立，`timing.sdc` 的全部 `set_clock_groups` no-op（12 条 `USR-6001`）——10-26 / 10-28 的 route 2h+ 不收敛的根因（[log/2026-10-28-PL第六轮构建收敛](../../docs/log/2026-10-28-PL第六轮构建收敛.md)） |
-| 第六轮：`src/constraint/timing.sdc` | 追加 2 条 `set_clock_groups -asynchronous`（VTC pclk ↔ NPU PLL、VTC pclk ↔ 150M PLL），现有 2 条 `-exclusive` 不动；**不加** VTC↔TMDS | VTC 与 NPU / 150M 是独立 PLL、无同步数据通路，25 个 place setup 违例全是厂家 IP 的 CDC recovery / 同步器第一级（P&R 物理不可修）；同源码 syn A/B：setup 违例端点 467→429、`#luts` / `#registers` / ERAM / DSP 零影响 |
-| 第六轮：自研 `des/` 减资源（`des_485` / `stepper_ctrl` / `des_io` / `des_pwm` / `des_vision`，5 文件 +44/−24） | `des_485` 的 RX_BUF 64×8 由触发器改 4 个 16×8 单写口 lane RAM（−512 FF）；`stepper_ctrl` 的 pos±1 / accel±1 / vmax 逼近合并为单增量器；`des_io` 编码器 ±1 合一；`des_pwm` 复用 `us+1`；`des_vision` 流水直接携带 `row−1` | 减 FF 与加法链、给 P&R 留余量；零外部行为（9 项功能仿真日志逐字节相同 + 36 项逐拍等价全过 + 独立新旧逐拍对照 0 mismatch） |
-| 第六轮：厂家明文 ISP 减资源（11 文件 +120/−81） | 位宽收窄 / 常量寄存器传播 / 删重复寄存器：`raw10_unpacket` 输出重排移到写端、`Saturation_adj` 参数常量寄存器改常量 wire、`contrast` / `Brightness` 钳位前移、`image_correction` 计数越界饱和、demosaic 行列计数收窄、`bilinear` 角色和 160→144bit | 同上前提；结构估算约 −197 FF / −30 adder，实测以单进程全流程构建的综合 A/B 为准 |
-| 第六轮：平台明文减资源（`pwm.v` / `write_fdma/uidbuf_write.v` / `MIPI_V2/src/csi_unpacket.v`，3 文件 +47/−46） | `pwm.v` 复位比较 `< PERIOD` → `== PERIOD`（归纳不变式等价）；`uidbuf_write` 的 `W_addr` 由 `W_bcnt` 派生 + 删不可达中断分支；`csi_unpacket` 删 16 位 gated mux | 同上前提；结构估算 −24 FF / −28~47 LUT4 / −7 adder，实测以构建为准 |
+| 构建方式（第六轮） | CLI 构建由「`syn_1` 综合 + `phy_1` 布局布线」两段式改为**单进程**（`read_design`→`bitgen`） | 两段式 phy 段重放 SDC 时 PLL 引脚时钟对象尚未建立，`timing.sdc` 的全部 `set_clock_groups` no-op（12 条 `USR-6001`），是 route 不收敛的根因（[log/2026-10-28-PL第六轮构建收敛](../../docs/log/2026-10-28-PL第六轮构建收敛.md)） |
+| 自研与厂家明文 RTL 多轮零行为精简（`src/des/*`、`src/des/des_common.vh`、`src/system_top.v`、`src/{ui_isp,MIPI_V2,hdmi_tx,write_fdma}/`、`src/pwm.v`） | 逐拍等价前提下收紧位宽 / 合并重复逻辑与通道 / 删死码、gamma 单配置特化、`des_485` RX_BUF 改 lane RAM 等减资源、编码统一 UTF-8；文件集合零增删、寄存器接口零变；`pl/sim` 仿真框架同轮精简与提速（PC 侧，不落板） | 减少代码量、给 P&R 留余量；逐轮行数 / 综合资源 A/B 数字与等价回归记录见 [docs/log](../../docs/log/README.md)「PL 自研模块与逐版上板」 |
 
 ## 已知问题（编译前先看）
 
-- 厂家最后一次 P&R：WNS **-4.120ns**，违例集中在 vtg 148.5M ↔ NPU 150M 跨时钟域（`timing.sdc` 只做了部分 clock-group 约束）。这两对已在第六轮补 `set_clock_groups -asynchronous`（同源码 syn A/B 的 setup 违例端点 467→429），但**只有单进程构建才生效**——两段式 phy 段会全部 no-op（12 条 `USR-6001`），见 [log/2026-10-28-PL第六轮构建收敛](../../docs/log/2026-10-28-PL第六轮构建收敛.md)。
+- 厂家最后一次 P&R：WNS **-4.120ns**，违例集中在 vtg 148.5M ↔ NPU 150M 跨时钟域（`timing.sdc` 只做了部分 clock-group 约束）。这两对已补 `set_clock_groups -asynchronous`，但**只有单进程构建才生效**——两段式 phy 段会全部 no-op（12 条 `USR-6001`），见 [log/2026-10-28-PL第六轮构建收敛](../../docs/log/2026-10-28-PL第六轮构建收敛.md)。
 - 资源基线：85.81% slice / 92.50% ERAM，加模块前先评估余量。
 - 首次编译先确认能原样复现，再动增量。
 
