@@ -19,8 +19,8 @@
 #   4 重启服务    yes = des_app 跑着时改完要 des_service.sh restart 才生效
 #   5 说明        给人和脚本看的备注（可以含空格）
 #
-# 规矩：**板端脚本、des.env 与 label_list.json 的唯一源就是 scripts/deploy/out/（它们就住在暂存目录里，不另存副本）**，
-#       其余配置的唯一源是 ps/src/、导出的模型在 models/——本文件只登记"哪份上到哪"，不复制内容。
+# 规矩：**板端脚本、des.env 与全部配置（des_app.json / recipes.json / label_list.json）的唯一源就是
+#       scripts/deploy/out/（它们就住在暂存目录里，不另存副本）**、导出的模型在 models/——本文件只登记"哪份上到哪"，不复制内容。
 #       编译产物（ps/build/）与模型（models/*.onnx）不入库，所以这里只写路径，仓库里可能没有。
 #       新加文件前先问一句"项目跑通后还需要它吗"：是产品件才加一行，加完跑 deploy.sh --dry-run 验证。
 
@@ -34,9 +34,9 @@ scripts/deploy/out/shutdown.sh	/root/des/shutdown.sh	script	no	关机：停 des_
 # ---------- ① 主程序（源：ps/build/，交叉编译产物，不入库） ----------
 ps/build/des_app	/root/des/des_app	bin	yes	主程序：调度 / 视觉 / 跟踪抓取 / 测量 / UI / CAN / 存储；编 make -C ps all
 
-# ---------- ② 配置与类别表（源：ps/src/；label_list.json 就地住在 out/） ----------
-ps/src/des_app.json	/root/des/des_app.json	config	yes	主配置（相机 / 定位 / 跟踪 / 抓取 / 测量 / 机械臂 / 存储 / 配方文件）
-ps/src/recipes.json	/root/des/recipes.json	config	yes	产品配方（换型；界面或 CAN RECIPE 切换）
+# ---------- ② 配置与类别表（源：scripts/deploy/out/，就地维护） ----------
+scripts/deploy/out/des_app.json	/root/des/des_app.json	config	yes	主配置（相机 / 定位 / 跟踪 / 抓取 / 测量 / 机械臂 / 存储 / 配方文件）
+scripts/deploy/out/recipes.json	/root/des/recipes.json	config	yes	产品配方（换型；界面或 CAN RECIPE 切换）
 scripts/deploy/out/label_list.json	/root/des/label_list.json	data	yes	类别表唯一源（训练 / NPU JSON / 分拣映射 / UI / 数据库同源），住在 out/ 就地维护
 models/part_cls.json	/root/des/part_cls.json	model	yes	NPU 网络描述，由 train/export_npu.py 导出、不入库；缺了 des_app 会**关掉 NPU 分类**（日志 npu: cannot open …）
 models/part_cls_uint8.onnx	/root/des/part_cls_uint8.onnx	model	yes	上面 json 里 model 字段指向它（按 json 所在目录解析）——两个文件必须同批导出，名字也不能改（见 ps/src/app/config.hpp）

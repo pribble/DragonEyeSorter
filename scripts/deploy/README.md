@@ -10,13 +10,13 @@
 |---|---|---|
 | 路径源 | `des.env` —— 板端路径唯一来源，`.sh` 与 `des_app` 都从它取 | [`out/`](out/)（**就地维护**） |
 | 主程序 | `des_app` | `ps/build/`（交叉编译，不入库） |
-| 配置 | `des_app.json`、`recipes.json` | `ps/src/` |
+| 配置 | `des_app.json`、`recipes.json` | [`out/`](out/)（**就地维护**） |
 | 类别表 | `label_list.json` —— 类别表唯一源（训练 / 分拣映射 / UI / 数据库同源） | [`out/`](out/)（**就地维护**） |
 | NPU 模型 | `part_cls.json`、`part_cls_uint8.onnx` | `models/`（`train/export_npu.py` 导出，不入库） |
 | 自启链脚本 | `des_service.sh` → `can_up.sh` + `des_app.sh`；`shutdown.sh` | [`out/`](out/)（**就地维护**） |
 | 板端目录 | 全部落 `/root/des/` | — |
 
-**板端脚本、`des.env` 与类别表 `label_list.json` 的唯一源就是 `out/`**：它们住在要上板的目录里，直接改、直接提交，不再有「源 + 副本」两份。主程序与其余配置仍是「别处是源、`out/` 是刷进来的那一份」：改配置改 `ps/src/`，改完刷新。
+**板端脚本、`des.env` 与全部配置（`des_app.json` / `recipes.json` / `label_list.json`）的唯一源就是 `out/`**：它们住在要上板的目录里，直接改、直接提交，不再有「源 + 副本」两份。主程序与模型仍是「别处是源、`out/` 是刷进来的那一份」。
 
 **不住在清单里、但要跟产品脚本一起上板**（住在 `out/`，部署器不传，手动 `scp`）：
 
@@ -50,7 +50,7 @@ bash scripts/deploy/deploy.sh --dry-run
 | 改完代码要上板 | `make -C ps all` 后跑部署；`--with-service` 可让脚本自己停 / 起自启服务 |
 | **先在板上试新版，不动现在跑的这份** | `--dest /root/des/test`（见下节） |
 | 板子没网、要给队友一份、或要拷 U 盘 | `--stage`（**不联网**，板子不在线也能攒；产物在 `out/`，文本件入库、二进制不入库） |
-| 板端脚本 / `des.env` 改了 | 直接改 `out/` 里那一份并提交（它就是产品的源），再按上面任一条上板 |
+| 板端脚本 / `des.env` / 配置改了 | 直接改 `out/` 里那一份并提交（它就是产品的源），再按上面任一条上板 |
 
 ### 先试再上：`--dest <目录>`
 
@@ -67,10 +67,10 @@ ssh $BOARD_HOST /root/des/test/des_service.sh start      # 测试目录自己的
 
 ## `out/` 是什么
 
-`out/` 就是要上板的那一份，**文件平铺**，同时是**板端脚本与 `des.env` 的唯一源**：
+`out/` 就是要上板的那一份，**文件平铺**，同时是**板端脚本、`des.env` 与配置的唯一源**：
 
-- **刷新是「刷 + 清」，不是重建**：`--stage` / 部署 / `make -C ps all` 会把源在 `out/` 之外的条目拷进来（`ps/build/des_app`、`ps/src` 的配置、`models/` 导出的模型），把不属于清单与手动清单的文件清掉（打印清掉了什么），**手写的脚本、`des.env` 与 `label_list.json` 就地不动**。
-- 同一份 `out/` 里三类文件要分清：**手写源**（`des.env`、`label_list.json`、自启链 4 个脚本、手动上板的 3 个测试脚本与 `des_tool.sh`）、**刷进来的**（别在这里改，改了下次刷新就没了）、**生成的**（`MD5SUMS.txt`）。
+- **刷新是「刷 + 清」，不是重建**：`--stage` / 部署 / `make -C ps all` 会把源在 `out/` 之外的条目拷进来（`ps/build/des_app`、`models/` 导出的模型），把不属于清单与手动清单的文件清掉（打印清掉了什么），**手写的脚本、`des.env` 与配置就地不动**。
+- 同一份 `out/` 里三类文件要分清：**手写源**（`des.env`、`des_app.json`、`recipes.json`、`label_list.json`、自启链 4 个脚本、手动上板的 3 个测试脚本与 `des_tool.sh`）、**刷进来的**（`des_app` 与模型，别在这里改，改了下次刷新就没了）、**生成的**（`MD5SUMS.txt`）。
 - 哪个文件该去哪看 `MD5SUMS.txt`：左列哈希（文本类去掉 CR 后算），右列板端路径；最后一节是手动 `scp` 的测试脚本与 `des_tool.sh`。要落位就跑部署器（按 `manifest.tsv` 放，不依赖目录结构）；清单里的文件本地没有（`des_app` 没编、模型没导出）会明确提示：模型缺了板上 NPU 分类就是关的。
 
 ## `manifest.tsv`（TAB 分隔，5 列）

@@ -37,7 +37,6 @@ ps/
 │                   #   measure_tool + calib（仅 des_tool）
 ├── src/ui/         # 界面：hmi / ui_input / ui_text（FreeType 中文）/ display（HDMI + 3/4 缩放）
 ├── src/vision/     # 厂家 face_detection demo 的 4 个改造件（见下）
-├── src/des_app.json# 配置模板（板上与二进制同目录）
 ├── tools/          # desreg、canplc
 ├── tests/          # test_scheduler / test_modbus / test_rs485 / test_calib / test_measure / test_belt_hil /
 │                   #   test_can / test_npu / test_servo_gap
@@ -46,7 +45,7 @@ ps/
 ```
 
 **读产品逻辑从 `src/app/{main,live,runner}.cpp` 开始，运维命令从 `src/app/tool_main.cpp` 开始。**
-上板脚本（`des.env`、`des_app.sh` / `des_tool.sh` / `can_up.sh` / `des_service.sh` / `shutdown.sh`、回归 `pl_check.sh` / `soak.sh` / `display_check.sh`）不在 `ps/`：唯一源 [scripts/deploy/out](../scripts/deploy/README.md)。
+上板脚本与配置（`des.env`、`des_app.json`、`recipes.json`、`des_app.sh` / `des_tool.sh` / `can_up.sh` / `des_service.sh` / `shutdown.sh`、回归 `pl_check.sh` / `soak.sh` / `display_check.sh`）不在 `ps/`：唯一源 [scripts/deploy/out](../scripts/deploy/README.md)。
 
 ## `des_app`（产品运行时：`run` / `live`）
 
@@ -123,7 +122,7 @@ ps/
 - 坐标约定见 `src/sched/geom.hpp`：图像 px → 台面 mm（`px_to_table` 单应）；件在带上 `s = x − B`。停带 = 写「停在 B = 抓取线 − s」，PL 梯形减速；目标太晚时 PL 停在其后，调度器按刹车距离转复检、不倒车。
 - 取帧：厂家帧 DMA「提交一块写一帧」，完成即重提（4 块环形缓冲）；每帧带锁存带位置（`CAP_*`），旧比特流退回「完成后读」。帧率与丢帧见 [测试与验证](../docs/测试与验证.md)。
 - 定位与几何测量接入 live / run（`track_measure` 取离光轴最近帧，结果进跟踪表与 CAN；`measure.rule` 尺寸判定默认开），方法见 [视觉与检测](../docs/视觉与检测.md)「几何测量」。
-- 网口与配置：`des_app run` 起 Modbus-TCP 从站（`plc.modbus_port`，0 = 关，表 `ps/src/hw/modbus_tcp.hpp`，协议见 [软件与UI](../docs/软件与UI.md)「Modbus-TCP」），NetFeed 上传并入 `part_log`；配置 = `src/des_app.json`（标定值，TODO 待实物）、`src/recipes.json`（配方，换型停机切换）、类别表 `scripts/deploy/out/label_list.json`。
+- 网口与配置：`des_app run` 起 Modbus-TCP 从站（`plc.modbus_port`，0 = 关，表 `ps/src/hw/modbus_tcp.hpp`，协议见 [软件与UI](../docs/软件与UI.md)「Modbus-TCP」），NetFeed 上传并入 `part_log`；配置 = `scripts/deploy/out/des_app.json`（标定值，TODO 待实物）、`scripts/deploy/out/recipes.json`（配方，换型停机切换）、类别表 `scripts/deploy/out/label_list.json`。
 
 ## src/vision/ 的定位与改造边界
 

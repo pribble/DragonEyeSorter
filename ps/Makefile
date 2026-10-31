@@ -17,7 +17,7 @@
 #       tools/ 底层命令行（desreg / canplc）、tests/ 自动断言测试、kernel/ 驱动、vendor/ 非我们写的。
 #       两个入口：src/app/main.cpp -> des_app（产品运行时 run / live），
 #                 src/app/tool_main.cpp -> des_tool（人工运维 14 个模式）。
-#       上板脚本不在这里：唯一源是 ../scripts/deploy/out/（与部署清单同一份，见那里的 README）。
+#       上板脚本与配置不在这里：唯一源是 ../scripts/deploy/out/（与部署清单同一份，见那里的 README）。
 #       **头文件平铺**（全仓库无跨目录 include），靠下面的 INC 解析 —— 各目录 basename 必须唯一。
 #
 # 源文件用 wildcard 自动收集：**增删 .cpp / 改名不用改本文件**。三个例外是入口、des_tool 专用件和 tools/ +
@@ -29,7 +29,7 @@
 #          test_belt_hil (board, PL v5+), test_can / canplc (SocketCAN), test_modbus (loopback TCP), des_app / des_tool (C++, need SDK), all, clean.
 #          注意：test_npu / test_servo_gap 不在 all 里（要显式点名，见 ps/README.md）。
 # Deploy:  ../scripts/deploy/ 里是上板清单与部署器（对比 / 部署 / 暂存）：make -C ps all 结束会顺手刷一份
-#          ../scripts/deploy/out/（要上板的那一份：主程序与配置刷进去，脚本与 des.env 就地不动；
+#          ../scripts/deploy/out/（要上板的那一份：主程序与模型刷进去，脚本、des.env 与配置就地不动；
 #          Linux/WSL 上这行会提示找不到 powershell，可忽略）。des_tool 与 desreg / canplc / test_* 一样不进清单，手动 scp。
 
 # 从 .env 文件读取配置（如果存在）

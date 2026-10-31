@@ -14,7 +14,7 @@
 # 依赖：ssh / scp 免密（.env 的 BOARD_HOST）、awk、md5sum、sort、uniq。宿主机侧运行（Git Bash / WSL）。
 # --stage 完全不联网（板子不在线也能攒），部署与 dry-run 才需要板子。
 # 本脚本**不编译、不提交二进制**：主程序来自 ps/build/；`out/` 里平铺的脚本、des.env 与配置**就是发给板子
-# 的那一份**（板端脚本与 des.env 的唯一源就在那儿：改那一份、提交那一份），只有编出来的二进制被 .gitignore
+# 的那一份**（板端脚本、des.env 与配置的唯一源就在那儿：改那一份、提交那一份），只有编出来的二进制被 .gitignore
 # 挡住（见 manifest.tsv 与同目录 README.md）。
 set -eu
 
@@ -23,7 +23,7 @@ repo=$(cd "$here/../.." && pwd)
 manifest="$here/manifest.tsv"
 out="$here/out"
 stage="$out"      # 要上板的那一份：清单条目（产品运行时）平铺在这里；文本件入库，编出来的二进制不入库
-                  # 板端脚本与 des.env 的**唯一源**也在这里 —— 刷新只拷"源在别处"的文件，不重建目录
+                  # 板端脚本、des.env 与配置的**唯一源**也在这里 —— 刷新只拷"源在别处"的文件，不重建目录
 TAB=$(printf '\t')
 
 MODE=deploy
@@ -36,7 +36,7 @@ usage() {
 用法（在仓库根目录）：
   bash scripts/deploy/deploy.sh --dry-run       只列差异，不传文件
   bash scripts/deploy/deploy.sh                 部署（差异 → 传输 → 校验）
-  bash scripts/deploy/deploy.sh --stage         刷 out/（主程序与配置从仓库别处拷进来；脚本与 des.env 就地不动）
+  bash scripts/deploy/deploy.sh --stage         刷 out/（主程序与模型从仓库别处拷进来；脚本、des.env 与配置就地不动）
   bash scripts/deploy/deploy.sh --only <子串>   只处理匹配的条目（如 des_app）
   bash scripts/deploy/deploy.sh --with-service  传 des_app 前停自启服务，校验完再起
   bash scripts/deploy/deploy.sh --dest <目录>   整份落到该目录（文件名不变），试新版而不覆盖生产件
@@ -155,9 +155,9 @@ REMOTE
 }
 
 # ---------- 攒"要上板的那一份"（out/，文件平铺；脚本与配置入库，编出来的二进制不入库） ----------
-# out/ **既是暂存也是源**：板端脚本与 des.env 就住在这里（改这里、提交这里，不另存副本）。所以这里**不再
+# out/ **既是暂存也是源**：板端脚本、des.env 与配置就住在这里（改这里、提交这里，不另存副本）。所以这里**不再
 # rm -rf 重建**（那会把源删掉），改成"刷 + 清"：
-#   刷：清单里源在 out/ 之外的那些 —— ps/build/des_app、ps/src 的配置、models/ 导出的模型；
+#   刷：清单里源在 out/ 之外的那些 —— ps/build/des_app、models/ 导出的模型；
 #   清：不属于清单、也不在手动清单里的文件（旧版本留下的垃圾），以及本地已缺的旧产物，
 #       免得 U 盘 / 打包里混进"上一次的那一份"。
 # 手动清单：住在 out/、但不进清单、部署器不传的板端测试脚本（要用时 scp，见 manifest.tsv 末尾）。
@@ -177,8 +177,8 @@ stage_payload() {
     for b in $manual_files; do keep="$keep $b"; done
     {
         echo "# 要上板的那一份 = 板端产品运行时（scripts/deploy/out/，文件平铺；脚本与配置入库，只有编出来的二进制不入库）"
-        echo "# 板端脚本与 des.env 的**唯一源就在这里**（直接改这一份并提交）；其余文件由 deploy.sh 从仓库别处刷进来："
-        echo "#   主程序 ps/build/des_app、配置 ps/src/*.json、模型 models/part_cls*（label_list.json 就住在本目录）"
+        echo "# 板端脚本、des.env 与配置的**唯一源就在这里**（直接改这一份并提交）；其余文件由 deploy.sh 从仓库别处刷进来："
+        echo "#   主程序 ps/build/des_app、模型 models/part_cls*"
         echo "# 左列 = 哈希（脚本/配置/数据类去掉 CR 后算），右列 = 这个文件该去的板端路径"
         echo "# 清单指纹：scripts/deploy/manifest.tsv 的 MD5 = $(hash_file "$manifest")"
     } > "$stage/MD5SUMS.txt"
@@ -226,7 +226,7 @@ stage_payload() {
             rm -f "$f"; removed=$((removed + 1)) ;;
         esac
     done
-    echo "== 已刷新 out：从仓库别处刷入 $n 个文件，板端脚本与 des.env 就地不动，清掉 $removed 个"
+    echo "== 已刷新 out：从仓库别处刷入 $n 个文件，板端脚本、des.env 与配置就地不动，清掉 $removed 个"
 }
 
 # --stage：只攒本地这一份，不连板子（板子不在线、WSL 里也能跑）

@@ -29,7 +29,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 LABELS = os.path.join(HERE, '..', '..', 'scripts', 'deploy', 'out', 'label_list.json')
-RECIPES = os.path.join(HERE, '..', '..', 'ps', 'src', 'recipes.json')
+RECIPES = os.path.join(HERE, '..', '..', 'scripts', 'deploy', 'out', 'recipes.json')
 DEFAULT_SPEC = {'g': (32.0, 0.15), 'r': (50.0, 0.5)}   # recipe 1, used when a record has no recipe column / id
 
 

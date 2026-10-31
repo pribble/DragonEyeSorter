@@ -34,7 +34,7 @@ class VirtualBoard:
         self.n_classes = n_classes
         self.last_plc_hb = 0.0
         self.clock_offset_ms = None
-        self.recipes, self.recipe = (1, 2, 3), 1   # ids in ps/src/recipes.json
+        self.recipes, self.recipe = (1, 2, 3), 1   # ids in scripts/deploy/out/recipes.json
         self.quit = False
         self.th = threading.Thread(target=self._loop, daemon=True)
         self.th.start()

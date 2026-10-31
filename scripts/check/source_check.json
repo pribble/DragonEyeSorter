@@ -30,8 +30,6 @@
       { "glob": "models/**", "reason": "训练权重 / NPU 模型产物按入库边界不入库，manifest 登记板上路径即可" }
     ],
     "outAllowlist": [
-      { "file": "des_app.json", "reason": "部署暂存副本；唯一源 ps/src/des_app.json" },
-      { "file": "recipes.json", "reason": "部署暂存副本；唯一源 ps/src/recipes.json" },
       { "file": "des_tool.sh", "reason": "运维工具，手动上板，不登记进产品运行时清单" },
       { "file": "pl_check.sh", "reason": "换比特流回归脚本，手动上板" },
       { "file": "soak.sh", "reason": "长跑测试脚本，手动上板" },
