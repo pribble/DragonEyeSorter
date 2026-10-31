@@ -213,7 +213,7 @@ CalibResult calibrate_table(const cv::Mat &gray, const BoardSpec &board, Travel 
 std::string save_calib(const std::string &path, const CalibResult &r, const BoardSpec &board, Travel travel)
 {
     if (!r.ok) return "no calibration to save";
-    nlohmann::ordered_json j; j["comment"] = "des_tool calib-cam 生成，勿手改（重新标定会覆盖）。load_config 读完 des_app.json 后合并本文件。";
+    nlohmann::ordered_json j;
     j["date"] = stamp(); j["board"] = {{"cols", board.cols}, {"rows", board.rows}, {"square_mm", board.square_mm}};
     j["travel"] = to_str(travel); j["rms_mm"] = r.rms_mm; j["max_mm"] = r.max_mm; j["mm_per_px"] = r.mm_per_px;
     nlohmann::json h = nlohmann::json::array();

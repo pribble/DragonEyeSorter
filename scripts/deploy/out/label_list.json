@@ -1,5 +1,4 @@
 {
-  "comment": "实物 7 类（2026-10-29 第三版模型上板：板上 NPU 测试集 92.54%、OK/NG 96.74%、逐件投票 73/78；以后换类别必须与模型一起换）。缺陷分轻 / 重两级（领域 3 高级「缺陷分级 AI ≥92%」），去向按 10_项目文档/物料与缺陷样本.md §5：轻脏污用户 10-24 定为返修（保守）；轻飞边按文档本可放行，照轻脏污的做法先定为返修，要放行只改这一行（verdict OK / arm_pick / gear_box）。前 5 类编号与 5 类模型相同。",
   "labels": [
     { "id": 0, "label": "gear_ok",      "cn": "齿轮-良品",      "kind": "gear", "verdict": "OK", "action": "arm_pick", "dest": "gear_box" },
     { "id": 1, "label": "gear_short_l", "cn": "齿轮-缺料·轻",   "kind": "gear", "verdict": "NG", "action": "flap",     "dest": "scrap" },

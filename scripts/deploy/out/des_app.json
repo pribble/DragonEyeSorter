@@ -1,45 +1,32 @@
 {
-  "comment": "des_app 配置。所有带 TODO 的值必须在实物上标定（camera homography / belt mm_per_step / arm 几何与零位 / 料盒姿态）。label_list 相对本文件所在目录；部署时随清单把 scripts/deploy/out/label_list.json 一起拷到 /root/des/。",
 
-  "camera_comment": "exposure_us：驱动默认几乎整帧（约 16.6ms），50mm/s 时拖影约 0.8mm、白色零件过曝 → 10-18 定 3000；10-20 实测 3000 时白齿轮顶面 86% 像素饱和（255）、外径被光晕撑大 → 改 800（顶面约 190~200 不饱和、皮带约 30，50mm/s 拖影 0.04mm；同灯光档位下 700µs 无频闪横纹）。画面暗就把光源调亮，不加长曝光；灯若是 PWM 调光，调暗后短曝光会出横纹。gain_db10 单位 0.1dB，0 = 驱动默认。命令行 --exp / --gain 优先",
   "camera": { "vmax": 2276, "buffers": 4, "realtime": true, "exposure_us": 800, "gain_db10": 0 },
 
-  "locate_comment": "rel_thresh：像素亮度超过「该位置白纸亮度（flat.json）× rel_thresh」才算零件（下限 rel_floor）；零件顶面约为白纸的 0.97~1.02，2026-10-24 新灯位下皮带约 0.3、皮带接缝反光最多 0.52 → 0.65 两边都有余量。round_fit：零件中心 / 大小取包住亮区的最小圆、框画正方形（齿条已取消；重脏污压边时 minAreaRect 是长条、中心偏到 5mm）。没有 flat.json 或 rel_thresh 0 时退回 Otsu + min_thresh（旧灯光下用，接缝反光 72~83 会越过 60）。换灯 / 重采平场后复核",
   "locate": { "scale": 4, "thresh": 0, "min_thresh": 60, "open_iter": 1, "border_px": 2,
               "min_area_mm2": 40, "max_area_mm2": 3000, "rel_thresh": 0.65, "rel_floor": 25, "round_fit": true },
 
-  "px_to_table_comment": "未标定时的占位：视野宽 300mm / 1920px，x 沿图像向右（皮带前进方向），y 沿图像向上（右手系，z 朝上），原点 = 左边缘中点。用 des_tool calib-cam 标定后由 calib.json 覆盖",
   "px_to_table": [0.15625, 0, 0,  0, -0.15625, 84.375,  0, 0, 1],
   "calib_file": "calib.json",
-  "flat_file_comment": "视野白电平（des_tool calib-flat 生成，与 calib.json 同目录）：零件裁切图乘 ref / white（NPU 输入、存图、训练集同一路径）；文件不在 = 裁切图不校正，置空 = 关",
   "flat_file": "flat.json",
 
-  "belt_comment": "mm_per_step = 10-16 尺量：主动轴 4 圈（12800 步）皮带走约 265mm → 0.0207（有效辊径约 21mm）；dir = -1（前进 = 步进位置递减，10-16 实测）。des_tool calib-belt 用相机实测后写进 calib.json 覆盖这里",
-  "belt_adapt_comment": "adapt：机械臂还在忙、下一个良品又快到抓取线时，先把带速降到「零件到线时臂刚好空出来」（不低于 min_mm_s），减少整停整起（赛题领域 3 高级「流水线速度自适应」）；停在抓取线仍由调度器的定点停带保证",
-  "belt_release_comment": "release_idle：皮带停稳超过 release_after_ms 就关步进驱动器使能（无保持电流）；2026-10-26 实测 TB6600 通电斩波会打坏 2~8% 的舵机总线帧（驱动器关 0），机械臂多在停带时动作，这样那段时间总线干净；下次起步前先使能、等 enable_settle_ms 再发脉冲。皮带靠摩擦不会自己走",
   "belt": { "mm_per_step": 0.0207, "dir": -1, "run_speed": 50, "accel": 400,
             "release_idle": true, "release_after_ms": 300, "enable_settle_ms": 50,
             "adapt": { "enabled": true, "min_mm_s": 15, "change_frac": 0.05 } },
 
-  "tracker_comment": "decide_x：零件中心过这条线时定去向（挡板 1 要在零件进入摆杆扫过区之前合好 → 中线零件 50mm/s 下最晚约 x 208、60mm/s 约 x 203（画面中心约 x 187 测完后即可判），启动日志「[run] gate」行给出各带速下的最晚判定位置）；tail_x：带尾（10-26 用户实测底座中心 → 带尾辊最外缘 277mm，底座台面 x 437.8 → 715；原 813 偏大约 10cm；复检箱）",
   "tracker": { "fov_x0": 0, "fov_x1": 300, "edge_margin": 10, "decide_x": 195, "tail_x": 715,
                "gate_s": 12, "gate_y": 12, "min_hits": 3, "max_miss_new": 2, "max_miss": 8,
                "min_conf": 0.5, "pick_unclassified": false, "unclassified_bin": 0 },
 
-  "picker_comment": "pick_after_fov_mm > 0 时抓取线 = 标定出的视野下游边 fov_x1 + 该值（10-11 先定 80，10-22 手眼标定后改 65 = 机械臂底座正前方），pick_x 被覆盖。keep_wrist（10-26 用户提）：圆形件按初始姿态的腕部朝向合拢（两指横跨皮带），抓取全程 #5 不转；两侧有别的零件挡着才每 15° 换一个方向；false = 旧做法（先试切向，腕部要转约 90°）",
   "picker": { "pick_after_fov_mm": 65, "pick_x": 380, "pick_tol": 3, "reach_y0": -80, "reach_y1": 80, "brake_margin": 5,
               "finger_w": 12, "finger_t": 6, "grip_clear": 4, "max_open": 60, "round_ratio": 1.3,
               "neighbor_gap": 2, "keep_wrist": true,
-              "flying_comment": "拦截式不停带夹取（docs/运动控制与分拣.md）：竖直可达区（离底座轴 r0~r1）的圆形良品，夹爪提前下探到抓取线、两指横跨皮带（axis_deg 90）张到最大，零件从两指间穿入，带位置到「到线 − 带速 × close_lead_s」时合爪，皮带不停；ready_s = 从初始姿态到下探就位的时间（按当前带速提前派活），gap_mm 内有别的零件就不拦截。不符合 / 来不及 / 臂忙的仍停带抓取。⚠ 停带抓取跑通、底座装好后再开，r0 / r1 按实测可达范围改",
               "flying": { "enabled": false, "r0": 50, "r1": 150, "axis_deg": 90, "ready_s": 1.6, "window_mm": 40,
                           "gap_mm": 60, "close_lead_s": 0.12 } },
 
-  "measure_comment": "【gear_ratio 0 = 一律按齿轮测（齿条已取消 2026-10-18，代码支路同日删；低于该比值的亮团不再测量、走尺寸判定的未测路径。重脏污样品的亮区宽 / 长最低 0.63，>0 的阈值会漏测它们）】【2026-10-24 灯改为尽量高、朝下 → 齿轮侧壁变暗：walls_visible false（视差按顶面整体缩放），judge_max_dist_mm 40（10-24 晚由 50 收紧：实测一件良品离光轴 48mm 外径读 32.22 被判超差报废）= 只在离光轴 40mm 内判齿形 / 当真尺寸（扫描：离光轴 ≤47mm 外径误差 ≤0.08、缺陷判对；60~75mm 外径 +0.13~+0.35；≥90mm 乱报），尺寸 = size_gain × 拟合值 + 偏置：10-28 起 size_gain 1.0285 / od_offset 0.02 / bore_offset 0.15，由同日画面正中 4 件最小二乘定（20 齿卡尺 21.87 / 孔 5.80、28 齿 29.90 / 5.79、30 齿孔 8 31.95 / 7.70，均为 5 件均值；30 齿标准件 31.93 / 5.95 两面各测一次取平均）：20 / 28 齿外径 ±0.01、30 齿两件 −0.08 / +0.07（标准件两面 +0.13 / +0.02）→ 外径实际精度约 ±0.1（同件翻面差 0.11、件间差 ±0.08）；孔 30 齿两件 +0.01 / +0.02（20 / 28 齿 +0.13 / −0.22，卡尺量小孔本身不准）；原来只用偏置（0.96 / 0.29，只按 30 齿定）时 20 齿外径偏大 0.33、28 齿 0.11。三种的厚度都是 10.11，与 gear_h_mm 10.05 差 0.06，不用分规格；下面 10-21 / 10-24 早先的数字是旧灯位的】几何测量（docs/视觉与检测.md「几何测量」）：每件在离光轴最近的那帧测一次（per_frame = 每帧最多测几件，4~5ms/件）。camera_h_mm = 相机高度（0 = 不做视差校正）：2026-10-21 相机定版后填 295（用户量镜头表面离带面约 290mm + 投影中心在镜头内；三齿轮扫描时外径随位置最平的是 290~310）。它同时打开测量的逐点视差校正和定位的位置校正（px_to_part，docs/视觉与检测.md「视差」）；gear_h_mm 卡尺量（30 齿 10.05mm，10-21）；walls_visible：侧壁可见（800µs 下灰度 80~100），10-21 扫描质心视差放大 1.020（侧壁暗模型远处外径 +1.5~3.3mm）→ true。od_offset_mm / bore_offset_mm = 标准件偏置（只加在报告值上）：10-21 标准件卡尺外径 31.94 / 31.93 / 32.01（均 31.96），在画面正中测 20 次外径 31.434（σ 0.006）→ +0.53（窄齿尖模糊）；10-24 光源挪过两次后 5 次实测全低 0.24~0.34（正常件卡尺 31.95、画面正中读 31.684）→ 改 +0.80（正中复测：缺全齿件 31.986 对卡尺 31.95）。max_smear_mm = 视差拖影超过它就不判齿形：10-24 实测拖影 0.23~0.57 判定全对，0.78 时 40 帧有 4 帧齿距数错一个、报缺齿 / 飞边 11~12 → 由 0.8 改 0.6（导向条把零件收在中线 ±10mm 时拖影 ≤0.36，不影响生产）；齿根 27.36（理论 27.5）。孔径按 3 个齿轮 4 组定（标准件孔复量 5.5、1 号 / 2 号 5.98）：未加偏置读 5.29 / 5.85 / 5.80（1 号翻面）/ 5.80 → +0.18（亮顶面往孔里扩），残差 ±0.05；交叉验证外径 1 号 −0.02（翻面 +0.12：两面轮廓不同，脱模斜度）、2 号 +0.003。孔径离中心远时偏大（远侧内壁被对面灯照亮）：bore_near_arc = 只用靠光轴一侧的孔口圆弧拟合，扫描图上同一齿轮孔径离散 0.67→0.14，但离中心 >160mm 会错、偏置要重标 → 实测验证前保持 false。换曝光 / 灯光 / 相机后重做。rule = 尺寸超差 / 规格混料 → ng_outlet（只改判 NPU 判 OK 的件），标定实测后再开 enabled",
   "measure": { "enabled": true, "per_frame": 1, "gear_ratio": 0, "margin_mm": 3, "improve": 0.75,
                "camera_h_mm": 295, "gear_h_mm": 10.05, "walls_visible": false, "max_smear_mm": 0.6,
                "judge_max_dist_mm": 40,
                "short_tooth_mm": 0.4, "flash_mm": 0.5, "size_gain": 1.0285, "od_offset_mm": 0.02, "bore_offset_mm": 0.15, "bore_near_arc": false,
-               "colors_comment": "零件颜色（每张裁切图统计亮区平均色调 hue° / 饱和度 sat 0~255，按顺序第一个符合的类）：白 / 本色件饱和度低；⚠ 阈值是估计值，新齿轮到货后按实测 CSV 的 hue_deg / sat 列改",
                "colors": [ { "name": "white",  "sat_hi": 45 },
                            { "name": "yellow", "hue_lo": 35,  "hue_hi": 75,  "sat_lo": 60 },
                            { "name": "orange", "hue_lo": 10,  "hue_hi": 35,  "sat_lo": 60 },
@@ -50,7 +37,6 @@
                          "ng_outlet": "scrap",
                          "defect_recheck": true, "unjudged_recheck": true, "require": false } },
 
-  "arm_comment": "机械臂（10-22 实装与标定，过程见 docs/log/2026-10-22-机械臂零位标定.md）：零位 #1~#5 2012 / 3085 / 1977 / 1986 / 1985、计数/度 +12.47 / −12.14 / −12.33 / −12.13 / −12.6（扭矩关手摆 + 水平仪；规格书约 13.0，旧值 13.65 错）；q1 = 0 时手臂垂直指向皮带，机械臂在台面 +y 侧 → base_yaw_deg −90；#5 = 1985 时两指切向合拢、6 号舵机朝底座 → grip_axis_at_zero_deg 90、servo_side_deg 90。尺寸：base_h 106 = 底板底面 → 肩轴；l_tool 111 = #4 转轴（小臂末端下沿）→ 指尖末端 190 − l_wrist 79.05（10-20 的 106 是从夹爪座量的，作废）；tool_offset_mm 9 = 指尖中心偏 #5 轴。安装：底座垫 165mm 纸箱、底板比带面高 53；base_xy / base_yaw_deg / belt_z 是安装前估计，calib-arm（5 点，残差 rms 3.15mm）写进 calib.json 覆盖：底座台面 (437.8, 142.4)、arm +x 朝 −86.8°、belt_z −54.1。z_safe 30（工具长后安全高度处竖直最远约 150）。夹爪 grip_table：全合 2919 / 夹 32mm 2318 / 全开 61mm 1195（连杆非线性，分段线性）。初始姿态 = 姿势 B（大臂竖直、小臂水平朝皮带、夹爪竖直朝下），板上 arm_home.json 优先于 home_deg；规划拒绝夹爪不朝下（q2+q3+q4 > −40）的当前 / 初始 / 料盒姿态。max_tilt_deg 40：竖直够不着时圆形件夹爪朝外倾、两指切向合拢，按 tilt_step_deg 一档档试。joints 的 min/max_deg 先放宽到舵机行程（1~5 号 ±145°、夹爪 ±88°），#2 min −70；实测机械极限后再收紧。料盒 bins_deg（10-26 手摆示教，夹爪朝下）：gear_box = 良品盒，桌面上底座下游 13.5cm、带边外 5cm，夹爪尖在盒口上方 1~2cm（比带面低 57mm）；比抓取行程高度 z_safe 低的料盒，规划自动加「over bin」（同底座转角 / 腕旋、抬到 z_safe）→ 竖直放下 → 松开 → 「rise」回到上方再回初始姿态。z_grasp −2（10-26 真抓：抓取线处指尖实际比模型高约 7mm，按 3 只夹到 10mm 齿轮的上沿，−2 夹在厚度中间、两次都稳）。⚠ 倾斜下探在这台臂上用不上：要 #5 转到 ±180°（6 号舵机朝上），超出 ±145° 行程 → 抓取只用竖直。待做：纸箱换硬平台后重做 calib-arm",
   "arm": {
     "base_h": 106, "l_upper": 82.85, "l_fore": 82.85, "l_wrist": 79.05, "l_tool": 111,
     "tool_offset_mm": 9, "servo_side_deg": 90,
@@ -72,25 +58,20 @@
     "bins_deg": [[113.2, 9.0, -38.0, -62.7, 89.8]]
   },
 
-  "flaps_comment": "侧边导流挡板（平摆，des_pwm 通道 = 挡板序号，MG996R；10_项目文档/侧边导流挡板方案.md §2c）：pivot_xy = 转轴台面坐标（对侧带边 y≈-150）、len_mm = 摆杆长、closed_deg / open_deg = 合上 / 打开角度（从上游方向朝皮带中线量）、hold_mm = 零件碰到摆杆后保持合上的带行程（0 = 按摆杆斜面滑出估算，装好后看零件实际滑出再填）；move_ms = 开合渐变时间（软起停）、stagger_ms = 两块错开起步、margin_mm = 各项判断留的余量。零件在进入扫过区前合好、来不及 / 够不着 / 有别的件（含去抓取线的良品）会进扫过区则这件改走复检；合上后后面来了件则提前打开。TODO 装好后：量转轴位置 / 摆杆长 / 角度填进来，desreg pwm 实测开 / 合脉宽，点动皮带核对碰件点，再开 enabled",
   "flaps": { "enabled": false, "move_ms": 300, "stagger_ms": 120, "margin_mm": 10,
              "gates": [ { "outlet": "scrap",  "pivot_xy": [438, -150], "len_mm": 230, "closed_deg": 55, "open_deg": -20,
                           "hold_mm": 0, "open_us": 1000, "closed_us": 1900 },
                         { "outlet": "rework", "pivot_xy": [613, -150], "len_mm": 210, "closed_deg": 65, "open_deg": 25,
                           "hold_mm": 0, "open_us": 1000, "closed_us": 1900 } ] },
 
-  "storage_comment": "本地存储（赛题硬性项②）：每件判定后一行 CSV（<dir>/<日期>/parts_<会话>.csv）+ 零件裁切图（images: none / ng = 翻板和复检件 / all）。dir 不写就是 data/log、按本文件所在目录解析（生产配置 → /root/des/data/log；把这份配置连同程序拷到别的目录部署时，数据就落在那个目录，不污染生产数据），写绝对路径则原样用。板子没有 RTC，日期目录按系统时钟，测试前先对时",
-  "plc_comment": "Modbus-TCP 从站（产线 PLC / 组态软件经网口读状态、下命令；寄存器表 hw/modbus_tcp.hpp，规则同 CAN）。0 = 关",
   "plc": { "modbus_port": 502 },
   "beam": { "enabled": true, "match_mm": 12, "expire_mm": 120, "miss_mm": 25 },
-  "rs485_comment": "RS485 继电器模块 + 三色灯（Modbus-RTU，PL des_485，v16）：addr = 模块地址；coils = FC 01 读回的线圈数（10-26 的 bestep 4 路板只应答 8，填 4 会一直超时）；lamp_coils = 绿 / 黄 / 红 / 蜂鸣器接的继电器号（-1 = 没接），只逐路 FC 05 写这几路；buzzer_s = 报警开始后蜂鸣器响多久（0 = 不响）；idle = 空闲（等启动）时亮什么：off 不亮（10-28 用户定：原来绿灯每秒闪一次，继电器一直咔哒响太吵；绿灯常亮又和运行分不出）/ green 绿灯常亮 / blink 绿灯闪。其余状态：运行 = 绿灯常亮（PLC 连上过又断了再加黄灯）、暂停 = 黄灯、急停 = 红灯常亮（一直亮到复位）、故障 = 红灯常亮 fault_s 秒后熄灭（10-28 用户定：不闪；< 0 = 一直亮到复位，0 = 不亮），报警开始时蜂鸣器响 buzzer_s 秒",
   "rs485": { "enabled": true, "baud": 9600, "parity": "N", "timeout_ms": 100, "addr": 1, "coils": 8,
              "lamp_coils": [0, 1, 2, 3], "poll_ms": 200, "buzzer_s": 1, "inputs": 0, "idle": "off", "fault_s": 10 },
   "storage": { "enabled": true, "images": "ng", "jpeg_quality": 92, "max_queue": 256, "feed_port": 9500 },
 
   "bins": ["gear_box"],
   "outlets": ["recheck", "scrap", "rework"],
-  "recipe_comment": "启动配方号（recipes.json 里的 id；界面上次选的优先）。recipes.json 缺失时只有配方 1 = 上面 measure.rule 的规格",
   "recipe": 1,
   "recipes_file": "recipes.json",
   "label_list": "label_list.json"

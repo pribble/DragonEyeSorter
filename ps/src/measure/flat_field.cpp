@@ -49,8 +49,6 @@ std::string load_flat(const std::string &path, FlatField &f)
 std::string save_flat(const std::string &path, const FlatField &f, const std::string &note)
 {
     nlohmann::ordered_json j;
-    j["comment"] = "des_tool calib-flat 生成（白纸随皮带走过视野）：视野白电平网格，零件裁切图乘 ref / white。"
-                   "换相机 / 灯光 / 曝光后重做。";
     if (!note.empty()) j["note"] = note;
     j["grid_w"] = f.gw; j["grid_h"] = f.gh;
     j["width"] = f.width; j["height"] = f.height;
