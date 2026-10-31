@@ -14,11 +14,6 @@ static const char *state_name(uint8_t s)
     static const char *n[] = {"IDLE", "RUN", "PAUSED", "ESTOP", "FAULT"};
     return s <= 4 ? n[s] : "?";
 }
-static const char *state_cn(uint8_t s)   // the operator panel (status_line); the log keeps the English names
-{
-    static const char *n[] = {"停止", "运行", "暂停", "急停", "故障"};
-    return s <= 4 ? n[s] : "?";
-}
 Runner::Runner(des_hw_t *hw, const AppConfig &cfg, const RunOptions &opt)
     : hw_(hw), cfg_(cfg), opt_(opt), belt_(hw, cfg.belt), arm_(hw, cfg.arm), arm_cfg_(cfg.arm), ir_(MB_N_IR, 0),
       flaps_(cfg.flaps, cfg.picker.gates)
@@ -417,14 +412,18 @@ std::string Runner::status_line() const
 {
     char q[48] = "";
     if (txq_.size() > 4 || tx_dropped_)
-        snprintf(q, sizeof q, "CAN 发送排队 %zu 丢弃 %llu  ", txq_.size(), (unsigned long long)tx_dropped_);
+        snprintf(q, sizeof q, "CAN 发送排队 %zu 丢弃 %llu", txq_.size(), (unsigned long long)tx_dropped_);
     const double t = mono_s();
-    // operator panel: Chinese, words separated by spaces (the panel wraps there)
-    return fmt("%s  带速 %.1f mm/s  机械臂 %s  总数 %u 良品 %u 不良 %u 复检 %u  %s%s%s%s%s", state_cn(state_),
-               belt_.speed_mm_s(), arm_busy_ ? "忙" : "空闲", cnt_.total, cnt_.ok, cnt_.ng, cnt_.recheck,
-               can_fd_ >= 0 ? (t - last_plc_hb_ < 1.0 ? "PLC 在线  " : "PLC 未连  ") : "",
-               mb_ ? (t - last_mb_ < 1.0 ? "Modbus 在线  " : "Modbus 未连  ") : "",
-               rs485_ ? (rs485_->link_ok() ? "RS485 在线  " : "RS485 断开  ") : "", q, last_event_.c_str());
+    // operator panel line (2026-10-31): connections / arm / last event only — state and belt speed live on the
+    // panel's run-control chip, the counts on the panel and 总览; the rest was duplicated there word for word.
+    // Items joined with " · " (absent subsystems leave no gap), so the panel wrap lands between items.
+    std::string r = fmt("机械臂 %s", arm_busy_ ? "忙" : "空闲");
+    if (can_fd_ >= 0) r += t - last_plc_hb_ < 1.0 ? " · PLC 在线" : " · PLC 未连";
+    if (mb_) r += t - last_mb_ < 1.0 ? " · Modbus 在线" : " · Modbus 未连";
+    if (rs485_) r += rs485_->link_ok() ? " · RS485 在线" : " · RS485 断开";
+    if (q[0]) r += std::string(" · ") + q;
+    if (!last_event_.empty()) r += " · " + last_event_;
+    return r;
 }
 void Runner::set_flap_manual(bool on)
 {

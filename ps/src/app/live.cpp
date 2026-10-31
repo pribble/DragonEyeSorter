@@ -91,13 +91,18 @@ const char *dest_fallback(int dest)
 constexpr int kVidW = 1440, kVidH = Hmi::Y0;
 constexpr double kVidScale = 0.75;
 constexpr int kSrcH = kVidH * 4 / 3, kCropY = (1080 - kSrcH) / 2;   // source rows shown, first row shown
-constexpr int kPanelX = kVidW, kPanelW = 1920 - kVidW, kPanelH = Hmi::Y0;
+static_assert(kVidW == Hmi::kPanelX, "status panel must start where the picture ends");
+constexpr int kPanelX = Hmi::kPanelX, kPanelW = Hmi::kPanelW, kPanelH = Hmi::kPanelH;
 const char *plan_cn(BeltPlan::Kind k)
 {
-    return k == BeltPlan::Run ? "一直走" : k == BeltPlan::StopAt ? "停到抓取线" : "停住（机械臂在带上）";
+    return k == BeltPlan::Run ? "连续运行（无待抓件）" : k == BeltPlan::StopAt ? "停到抓取线" : "停带（机械臂作业中）";
 }
 // Status panel right of the picture: Chinese (FreeType) on the light theme of the HMI band (2026-10-30, user). Rendered
-// here on core 1 (~10 Hz), never on the capture core, which only blits it.
+// here on core 1 (~10 Hz), never on the capture core, which only blits it. Rows 0..Hmi::kStripBottom are reserved for
+// the run-control strip (Hmi::render_panel_strip draws it right after this, same thread). Below it, status is a
+// label/value grid on one rhythm (2026-10-31 user: the run-on lines read as clumps) — DIM labels on the left, values
+// aligned in one column, thin rules between the display / processing / production groups; the runner line (connections,
+// arm, last command) closes it, wrapped, in DIM.
 cv::Mat render_panel(const Snapshot &s, const Shared &sh, uint32_t pl_frame, uint64_t lag, double belt_mm,
                      const std::string &run_line, TextFT &txt)
 {
@@ -105,30 +110,40 @@ cv::Mat render_panel(const Snapshot &s, const Shared &sh, uint32_t pl_frame, uin
     cv::Mat panel(kPanelH, kPanelW, CV_8UC3, BG);
     cv::line(panel, {0, 0}, {0, kPanelH - 1}, LINE, 2);
     int y = 16;
-    auto line = [&](const std::string &t, const cv::Scalar &c, int px = 20, int gap = 34) {
-        txt.draw(panel, t, 18, y, px, c);
-        y += gap;
+    txt.draw(panel, std::string("DragonEyeSorter  ") + (run_line.empty() ? "演示模式" : "产线模式"), 18, y, 26, ACCENT);
+    y = Hmi::kStripBottom + 6;   // the run-control strip (state + start/stop/... buttons) lives here
+    const int vx = 162;          // value column: labels stay left, values align here
+    auto row = [&](const char *k, const std::string &v, const cv::Scalar &vc = TEXT) {
+        txt.draw(panel, k, 18, y + 1, 16, DIM);
+        txt.draw(panel, v, vx, y, 18, vc);
+        y += 30;
     };
-    line(std::string("DragonEyeSorter  ") + (run_line.empty() ? "演示模式" : "产线模式"), ACCENT, 26, 50);
-    line(fmt("显示 %.1f 帧/秒", double(sh.disp_fps.load())) +
-             fmt("   跳帧 %llu", (unsigned long long)sh.disp_skipped.load()), TEXT);
-    line(fmt("PL 帧号 %u", pl_frame) + fmt("   处理落后 %llu 帧", (unsigned long long)lag), DIM, 20, 46);
-    line(fmt("定位 %.1f ms", (s.tm.gray_us + s.tm.thresh_us + s.tm.contour_us) * 1e-3) +
-             fmt("   单帧处理 %.1f ms", s.work_ms), TEXT);
-    line(fmt("测量 %.1f ms", s.meas_ms) + fmt("（成功 %llu", (unsigned long long)s.measured) +
-             fmt(" / 共 %llu）", (unsigned long long)(s.measured + s.meas_failed)), TEXT);
-    line(s.npu ? fmt("NPU 推理 %.1f ms", s.npu_ms) + fmt("（已推理 %llu 次）", (unsigned long long)s.npu_runs)
-               : std::string("NPU 未加载"), TEXT);
-    line(fmt("跟踪中 %zu 件", s.tracks.size()) + fmt("   皮带走过 %.1f mm", belt_mm), TEXT, 20, 46);
-    line(fmt("抓取 %llu", (unsigned long long)s.st.decided_pick) + fmt("   挡板 %llu", (unsigned long long)s.st.decided_flap) +
-             fmt("   复检 %llu", (unsigned long long)s.st.decided_recheck), TEXT);
-    line(fmt("噪点 %llu", (unsigned long long)s.st.noise) + "   皮带计划：" + (s.plan_on ? plan_cn(s.plan.kind) : "—"), TEXT);
-    line(fmt("已记录 %llu 件", (unsigned long long)s.logged) + fmt("（存图 %llu 张）", (unsigned long long)s.log_images),
-         TEXT, 20, 46);
-    // the runner's status line, wrapped at its spaces (Chinese words have none inside)
+    auto rule = [&] { cv::line(panel, {18, y - 8}, {kPanelW - 18, y - 8}, LINE, 1); };
+    row("显示帧率", fmt("%.1f 帧/秒 · 跳帧 %llu", double(sh.disp_fps.load()),
+                       (unsigned long long)sh.disp_skipped.load()));
+    row("PL 帧号", fmt("%u · 处理落后 %llu 帧", pl_frame, (unsigned long long)lag), DIM);
+    rule();
+    row("定位", fmt("%.1f ms", (s.tm.gray_us + s.tm.thresh_us + s.tm.contour_us) * 1e-3));
+    row("单帧处理", fmt("%.1f ms", s.work_ms));
+    row("测量", fmt("%.1f ms · 成功 %llu / 共 %llu", s.meas_ms, (unsigned long long)s.measured,
+                   (unsigned long long)(s.measured + s.meas_failed)));
+    row("NPU", s.npu ? fmt("%.1f ms · 已推理 %llu 次", s.npu_ms, (unsigned long long)s.npu_runs)
+                     : std::string("未加载"), s.npu ? TEXT : DIM);
+    rule();
+    row("跟踪中", fmt("%zu 件", s.tracks.size()));
+    row("皮带走过", fmt("%.1f mm", belt_mm));
+    row("抓取/挡板/复检", fmt("%llu / %llu / %llu", (unsigned long long)s.st.decided_pick,
+                             (unsigned long long)s.st.decided_flap, (unsigned long long)s.st.decided_recheck));
+    row("噪点", fmt("%llu", (unsigned long long)s.st.noise));
+    row("皮带计划", s.plan_on ? std::string(plan_cn(s.plan.kind)) : std::string("—"));
+    row("已记录", fmt("%llu 件 · 存图 %llu 张", (unsigned long long)s.logged, (unsigned long long)s.log_images));
+    // the runner's line, wrapped at its spaces (Chinese words have none inside); DIM so it reads as one quiet block
     const int wrap_px = kPanelW - 2 * 18;
     std::string word, cur;
-    auto flush = [&] { if (!cur.empty()) line(cur, VALUE, 18, 28); cur.clear(); };
+    auto flush = [&] {
+        if (!cur.empty()) { txt.draw(panel, cur, 18, y, 18, DIM); y += 28; }
+        cur.clear();
+    };
     for (size_t i = 0; i <= run_line.size(); i++) {
         const char ch = i < run_line.size() ? run_line[i] : ' ';
         if (ch != ' ') { word += ch; continue; }
@@ -492,6 +507,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
             else if (col) run_line = col->status();
             else run_line.clear();
             panel = render_panel(*s, sh, f.pl_frame, sh.cap_seq.load() - seq, obs.belt_mm, run_line, panel_txt);
+            hmi.render_panel_strip(panel);   // run control on top of the panel, every page, ~10 Hz
             last_panel = end;
         }
         s->panel = panel;   // reference-counted: the main thread only reads it

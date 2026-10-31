@@ -21,7 +21,7 @@ using namespace ui;
 namespace {
 enum { A_TAB = 1, A_DEC, A_INC, A_TOGGLE, A_IMAGES, A_CMD, A_SELECT, A_PLMODE, A_PLTHR, A_RECIPE, A_ARM_LOCK,
        A_ARM_TORQUE, A_ARM_JOG, A_ARM_STEP, A_ARM_MS, A_ARM_TEACH, A_ARM_SETHOME, A_ARM_RESET, A_BELT_JOG,
-       A_FLAP_LOCK, A_FLAP_OUT, A_FLAP_STEP, A_FLAP_CENTER, A_FLAP_SWEEP, A_FLAP_SPEED, A_REC_SCROLL };
+       A_FLAP_LOCK, A_FLAP_OUT, A_FLAP_STEP, A_FLAP_CENTER, A_FLAP_SWEEP, A_FLAP_SPEED, A_REC_SCROLL, A_PLTHR_EDGE };
 const char *kPages[] = {"总览", "曲线", "参数", "记录", "机械臂", "挡板"};
 constexpr int kNPages = 6;
 const double kArmStepDeg[] = {1, 5, 15};
@@ -229,9 +229,13 @@ std::vector<HmiAction> Hmi::handle(const std::vector<UiEvent> &ev)
             if (page_ == 3) scroll_records(-3 * e.value);
             continue;
         }
-        const cv::Point pt(e.x, e.y - Y0);
-        if (pt.y < 0) continue;   // a click on the video
-        for (const Hit &h : hits_) {
+        // clicks land either on the status panel's run-control strip (top right of the screen, panel-local hits) or
+        // on the operator band below the picture (band-local hits); clicks on the video itself do nothing
+        const bool panel_click = e.x >= kPanelX && e.y < Y0;
+        if (!panel_click && e.y < Y0) continue;   // a click on the video
+        const cv::Point pt = panel_click ? cv::Point(e.x - kPanelX, e.y) : cv::Point(e.x, e.y - Y0);
+        const std::vector<Hit> &hits = panel_click ? panel_hits_ : hits_;
+        for (const Hit &h : hits) {
             if (!h.box.contains(pt)) continue;
             bool changed = false;
             switch (h.action) {
@@ -284,8 +288,9 @@ std::vector<HmiAction> Hmi::handle(const std::vector<UiEvent> &ev)
             }
             case A_TOGGLE: p_.size_rule = !p_.size_rule; changed = true; break;
             case A_IMAGES: p_.images = uint8_t((p_.images + 1) % 3); changed = true; break;
-            case A_PLMODE: p_.pl_mode = uint8_t((p_.pl_mode + 1) % 6); changed = true; break;
+            case A_PLMODE: p_.pl_mode = uint8_t(h.arg); changed = true; break;
             case A_PLTHR: p_.pl_thr = uint8_t(std::clamp(int(p_.pl_thr) + h.arg * 5, 0, 255)); changed = true; break;
+            case A_PLTHR_EDGE: p_.pl_edge_thr = uint16_t(std::clamp(int(p_.pl_edge_thr) + h.arg * 20, 0, 2047)); changed = true; break;
             case A_RECIPE: {
                 const auto &rs = cfg_.recipes;
                 const int n = int(rs.size());
@@ -339,6 +344,41 @@ cv::Mat Hmi::render()
     }
     return img;
 }
+// Run control at the top of the status panel (always visible on every page; was buried in the params page). Called by
+// live.cpp's worker right after its render_panel(), which reserves rows 0..kStripBottom for it. Same thread as
+// handle(), so panel_hits_ needs no lock. Commands are the PLC's CAN commands (runner->command, live.cpp dispatch).
+// 复位报警 is NOT on the strip: in normal states it does nothing (nothing to reset), so it only appears as a wide
+// button while 急停/故障 — START is rejected by Runner::command until the alarm is reset, so the recovery path needs it.
+void Hmi::render_panel_strip(cv::Mat &panel)
+{
+    panel_hits_.clear();
+    Canvas c(panel, txt_, panel_hits_);
+    const bool run = st_.run_state >= 0;
+    cv::rectangle(panel, {18, 66, 444, 32}, state_color(st_.run_state), cv::FILLED);
+    if (st_.run_state == CANP_ST_ESTOP)
+        c.text("急停：先旋开急停按钮，再点下方复位报警、启动", 28, 73, 18, ON_TEXT);
+    else
+        c.text(std::string(state_name(st_.run_state)) +
+                   (st_.jog > 0 ? "（正转点动）" : st_.jog < 0 ? "（反转点动）" : "") +
+                   (st_.enc_live ? fmt("  带速 %.1f / 实测 %.1f mm/s", st_.belt_mm_s, st_.belt_enc_mm_s)
+                                 : fmt("  带速 %.1f mm/s", st_.belt_mm_s)),
+               28, 73, 18, ON_TEXT);
+    // one 4-column grid for both rows (uniform 105 px + 8 gap): the pairs sit side by side — 启动|停止, 暂停|恢复,
+    // 正转|反转 below on the same columns
+    const char *bt[] = {"启动", "停止", "暂停", "恢复"};
+    const int bc[] = {CANP_CMD_START, CANP_CMD_STOP, CANP_CMD_PAUSE, CANP_CMD_RESUME};
+    for (int k = 0; k < 4; k++)
+        c.button({18 + k * 113, 108, 105, 46}, bt[k], false, run ? A_CMD : 0, bc[k], 21);
+    // manual belt jog, only while the line is stopped; click the lit button again (or 停止) to stop
+    const bool can_jog = run && st_.run_state == CANP_ST_IDLE;
+    c.button({18, 162, 105, 46}, "正转", st_.jog > 0, can_jog ? A_BELT_JOG : 0, st_.jog > 0 ? 0 : 1, 21);
+    c.button({131, 162, 105, 46}, "反转", st_.jog < 0, can_jog ? A_BELT_JOG : 0, st_.jog < 0 ? 0 : -1, 21);
+    c.text("点动（停止态），再点停", 252, 177, 15, DIM);
+    if (st_.run_state >= CANP_ST_ESTOP)   // 急停 / 故障: the reset is required before 启动 is accepted again
+        c.button({18, 214, 444, 36}, "复位报警", true, run ? A_CMD : 0, CANP_CMD_RESET_ALARM, 20);
+    else if (!run)
+        c.text("启停按钮只在产线模式可用", 18, 218, 15, DIM);
+}
 void Hmi::scroll_records(int rows)
 {
     rec_top_ = std::clamp(rec_top_ + rows, 0, std::max(0, int(parts_.size()) - kRows));
@@ -350,14 +390,14 @@ void Hmi::page_overview(Canvas &c)
                                 fmt("%.1f%%", yield), std::to_string(part_times_.size())};
     const char *keys[] = {"总数", "良品", "不良", "复检", "良率", "产量 件/分"};
     const cv::Scalar cols[] = {TEXT, GREEN, RED, ORANGE, TEXT, TEXT};
-    for (int i = 0; i < 6; i++) {
-        const int x = 172 + (i % 2) * 200, y = 14 + (i / 2) * 92;
+    for (int i = 0; i < 6; i++) {   // 3 per row; state + belt speed live on the panel strip, last parts on 记录
+        const int x = 172 + (i % 3) * 220, y = 14 + (i / 3) * 92;
         c.text(keys[i], x, y, 18, DIM);
         c.text(vals[i], x, y + 26, 40, cols[i]);
     }
     if (const Recipe *rc = find_recipe(cfg_.recipes, p_.recipe))
         c.text("配方 " + std::to_string(rc->id) + " · " + rc->name, 172, 276, 16, DIM);
-    const int bx = 600;   // parts per class
+    const int bx = 980;   // parts per class (bars widen into the room the removed last-parts table left)
     c.text("各类数量", bx, 6, 18, DIM);
     uint64_t mx = 1;
     for (uint64_t v : per_class_) mx = std::max(mx, v);
@@ -365,30 +405,9 @@ void Hmi::page_overview(Canvas &c)
         const int y = 32 + int(i) * 29;
         const std::string &cn = cn_of(int(i));
         c.text(cn, bx, y, 17, TEXT);
-        cv::rectangle(c.img(), {bx + 175, y + 3, std::max(int(330.0 * per_class_[i] / mx), 1), 17},
+        cv::rectangle(c.img(), {bx + 175, y + 3, std::max(int(600.0 * per_class_[i] / mx), 1), 17},
                       cn.find("良品") != std::string::npos ? GREEN : i < cfg_.tracker.rules.size() ? RED : DIM, cv::FILLED);
-        c.text(std::to_string(per_class_[i]), bx + 515, y, 17, TEXT);
-    }
-    const int tx = 1180;   // last parts
-    c.text("最近零件", tx, 6, 18, DIM);
-    const int sx = W - 260;
-    cv::rectangle(c.img(), {sx, 4, 250, 30}, state_color(st_.run_state), cv::FILLED);
-    c.text(std::string(state_name(st_.run_state)) +
-               (st_.enc_live ? fmt("  带速 %.0f", st_.belt_mm_s) + fmt(" 实测 %.0f", st_.belt_enc_mm_s)
-                             : fmt("  带速 %.0f mm/s", st_.belt_mm_s)),
-           sx + 10, 8, 18, ON_TEXT);
-    const int cx[] = {tx, tx + 80, tx + 260, tx + 380, tx + 520, tx + 620};
-    const char *hd[] = {"件号", "类别", "去向", "出口 / 料盒", "尺寸", "置信度"};
-    c.header_row(hd, cx, 6, 42);
-    for (size_t i = 0; i < parts_.size() && i < 7; i++) {
-        const PartRecord &r = part(i).r;
-        const int y = 68 + int(i) * 32;
-        c.text(std::to_string(r.track_id), cx[0], y, 19, TEXT);
-        c.text(cn_of(r.cls), cx[1], y, 19, TEXT);
-        c.text(cn_disp(r.disp), cx[2], y, 19, disp_color(r.disp));
-        c.text(dest_cn(r.dest), cx[3], y, 17, TEXT);
-        c.text(r.meas.valid ? fmt("%.2f", r.meas.size) : "—", cx[4], y, 19, TEXT);
-        c.text(r.cls >= 0 ? fmt("%.2f", r.conf) : "—", cx[5], y, 19, TEXT);
+        c.text(std::to_string(per_class_[i]), bx + 790, y, 17, TEXT);
     }
 }
 void Hmi::page_curves(Canvas &c)
@@ -430,37 +449,24 @@ void Hmi::page_params(Canvas &c)
             c.stepper(y, val, A_DEC, A_INC, i, d.unit);
         }
     }
-    const int x0 = 1180;   // run control: same rules as the PLC's CAN commands
-    c.text("运行控制", x0, 8, 20, TEXT);
-    const bool run = st_.run_state >= 0;
-    const char *bt[] = {"启动", "停止", "暂停", "恢复", "复位报警"};
-    const int bc[] = {CANP_CMD_START, CANP_CMD_STOP, CANP_CMD_PAUSE, CANP_CMD_RESUME, CANP_CMD_RESET_ALARM};
-    for (int k = 0; k < 5; k++)
-        c.button({x0 + (k % 3) * 160, 42 + (k / 3) * 66, 148, 56}, bt[k], false, run ? A_CMD : 0, bc[k], 24);
-    // 6th cell: manual belt jog, only while the line is stopped; click the lit button again (or 停止) to stop
-    const bool can_jog = run && st_.run_state == CANP_ST_IDLE;
-    c.button({x0 + 320, 108, 72, 56}, "正转", st_.jog > 0, can_jog ? A_BELT_JOG : 0, st_.jog > 0 ? 0 : 1, 22);
-    c.button({x0 + 396, 108, 72, 56}, "反转", st_.jog < 0, can_jog ? A_BELT_JOG : 0, st_.jog < 0 ? 0 : -1, 22);
-    cv::rectangle(c.img(), {x0, 182, 470, 34}, state_color(st_.run_state), cv::FILLED);
-    if (st_.run_state == CANP_ST_ESTOP)
-        c.text("急停：先旋开急停按钮，再点复位报警、启动", x0 + 10, 189, 18, ON_TEXT);
-    else
-        c.text(std::string("状态 ") + state_name(st_.run_state) +
-                   (st_.jog > 0 ? "（正转点动）" : st_.jog < 0 ? "（反转点动）" : "") +
-                   (st_.enc_live ? fmt("  带速 %.1f", st_.belt_mm_s) + fmt(" / 实测 %.1f mm/s", st_.belt_enc_mm_s)
-                                 : fmt("  带速 %.1f mm/s", st_.belt_mm_s)),
-               x0 + 10, 187, 20, ON_TEXT);
-    // PL image path (des_vision): what the camera stream shows, binary threshold
-    c.text("PL 显示", x0, 232, 20, TEXT);
-    c.button({x0 + 90, 226, 200, 34}, st_.pl_vision ? kPlModes[p_.pl_mode] : "比特流无此功能", p_.pl_mode != 0,
-             st_.pl_vision ? A_PLMODE : 0, 0, 20);
-    c.text("二值阈值", x0 + 310, 232, 18, TEXT);
-    c.button({x0 + 400, 226, 40, 34}, "-", false, st_.pl_vision ? A_PLTHR : 0, -1, 24);
-    c.text(std::to_string(p_.pl_thr), x0 + 452, 230, 22, VALUE);
-    c.button({x0 + 500, 226, 40, 34}, "+", false, st_.pl_vision ? A_PLTHR : 0, 1, 24);
-    c.text(std::string(run ? "改动立即生效并保存" : "启停按钮只在产线模式可用；参数照常保存") +
-               fmt("   已记录 %.0f 件", double(st_.logged)),
-           x0, 270, 15, DIM);
+    // PL image path (des_vision): what the camera stream shows, binary / edge thresholds. Direct-select grid instead
+    // of a cycling button (easier for the demo video shot). Run control itself lives on the status panel strip.
+    const int x0 = 1180;
+    const bool vis = st_.pl_vision;
+    c.text("PL 显示", x0, 8, 20, TEXT);
+    if (!vis) c.text("比特流无此功能", x0 + 100, 13, 16, DIM);
+    for (int k = 0; k < 6; k++)
+        c.button({x0 + (k % 3) * 192, 40 + (k / 3) * 50, 180, 40}, kPlModes[k], vis && p_.pl_mode == k,
+                 vis ? A_PLMODE : 0, k, 18);
+    c.text("二值阈值", x0, 156, 18, TEXT);
+    c.button({x0 + 88, 150, 40, 32}, "-", false, vis ? A_PLTHR : 0, -1, 22);
+    c.text(std::to_string(p_.pl_thr), x0 + 140, 154, 20, VALUE);
+    c.button({x0 + 200, 150, 40, 32}, "+", false, vis ? A_PLTHR : 0, 1, 22);
+    c.text("边缘阈值", x0 + 280, 156, 18, TEXT);
+    c.button({x0 + 368, 150, 40, 32}, "-", false, vis ? A_PLTHR_EDGE : 0, -1, 22);
+    c.text(std::to_string(p_.pl_edge_thr), x0 + 420, 154, 20, VALUE);
+    c.button({x0 + 480, 150, 40, 32}, "+", false, vis ? A_PLTHR_EDGE : 0, 1, 22);
+    c.text("改动立即生效并保存", x0, 200, 15, DIM);
 }
 void Hmi::page_records(Canvas &c)
 {

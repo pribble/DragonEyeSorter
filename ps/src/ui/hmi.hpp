@@ -1,12 +1,15 @@
 // hmi.hpp — the HDMI operator interface (赛题硬性项② / 评分「HDMI 可视化曲线 / 参数配置界面」).
 //
 // A 1920 x 300 band below the 3/4-scaled camera picture, six pages, evdev mouse/keyboard (ui_input.hpp), FreeType text
-// + drawing helpers (ui_text.hpp, light theme): 总览 counts/yield/throughput/state/per class/last parts · 曲线 OD+bore
-// trends + worker/NPU time + belt speed · 参数 recipe/speed/tolerances/size rule/confidence/images/run control/PL display ·
+// + drawing helpers (ui_text.hpp, light theme): 总览 counts/yield/throughput/per class · 曲线 OD+bore
+// trends + worker/NPU time + belt speed · 参数 recipe/speed/tolerances/size rule/confidence/images/PL display ·
 // 记录 the last kRecords parts (wheel / buttons scroll) with reason/sizes/crop · 机械臂 manual jogging/torque/teach
-// (app/arm_io.hpp) · 挡板 the two flap servos by hand (app/flap_manual.hpp). Everything runs on the
-// worker thread (core 1): render() (~8 Hz) draws into a FRESH BGR image the capture thread only copies to the display
-// (a reused buffer would alias snapshots still alive in live.cpp's pool: mid-blit tearing).
+// (app/arm_io.hpp) · 挡板 the two flap servos by hand (app/flap_manual.hpp). Run control (启动/停止/暂停/恢复
+// + belt jog; 复位报警 only while 急停/故障) is top-level, so it is NOT on the params page: render_panel_strip() draws
+// it at the top of the status panel right of the picture (kPanelX.., always visible on every page); live.cpp calls it
+// right after its render_panel() (same worker thread) and handle() routes clicks there via panel_hits_.
+// Everything runs on the worker thread (core 1): render() (~8 Hz) draws into a FRESH BGR image the capture thread
+// only copies to the display (a reused buffer would alias snapshots still alive in live.cpp's pool: mid-blit tearing).
 // Types stay light: fixed-capacity rings (no per-part heap churn), frozen POD PartRecord, uint8_t ui_params enums.
 #pragma once
 
@@ -91,6 +94,8 @@ private:
 class Hmi {
 public:
     static constexpr int W = 1920, H = 300, Y0 = 1080 - 300;
+    static constexpr int kPanelX = 1440, kPanelW = 480, kPanelH = Y0;   // status panel right of the picture
+    static constexpr int kStripBottom = 252;   // render_panel_strip occupies the panel down to this y (live.cpp reserves it)
     Hmi(const AppConfig &cfg, const std::string &params_path);
     const HmiParams &params() const { return p_; }
     bool set_recipe(int id);  // known id: switch, load its sizes into the params, save; false = unknown id
@@ -98,6 +103,7 @@ public:
     void status(const HmiStatus &s, double now);
     std::vector<HmiAction> handle(const std::vector<UiEvent> &ev);   // clicks / keys -> actions for the worker
     cv::Mat render();                                               // fresh 1920 x 300 CV_8UC3 every call
+    void render_panel_strip(cv::Mat &panel);                        // run control at the top of the status panel
     bool fonts_ok() const { return txt_.ok(); }
     bool arm_page() const { return page_ == 4; }    // the manual arm page is shown (it polls the servos)
     bool flap_page() const { return page_ == 5; }   // the flap servo page is shown
@@ -135,6 +141,7 @@ private:
     int rec_top_ = 0;                 // 记录 page: first row shown (0 = newest part); kept on the same part as new ones come
     int arm_step_ = 1, arm_ms_ = 1;   // indexes into the step / move-time choices of the arm page
     std::vector<ui::Hit> hits_;
+    std::vector<ui::Hit> panel_hits_;   // buttons of the status-panel strip (rebuilt by render_panel_strip)
     Ring<Part, kRecords> parts_;
     Ring<ui::Trend, 80> od_, bore_;    // measured gear OD / bore (value, NG)
     Ring<double, 512> part_times_;     // for parts per minute (last 60 s)
