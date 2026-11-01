@@ -38,6 +38,13 @@ struct Gate {
                                // same bin; records keep each class's own outlet). 0 = just `outlet`. Last member, so
                                // positional initialisers {geom, outlet, hold_mm, ...} keep their meaning
     bool serves(int o) const { return outlets ? (o > 0 && o < 16 && ((outlets >> o) & 1u)) : o == outlet; }
+    // Slow sweep-out (11-01 user): instead of holding the paddle closed while the belt makes the part slide the whole
+    // way along it (~7 s at 50 mm/s), start opening slowly once the part is pressed on it: the paddle swinging back
+    // pushes the part across to the far edge (it drops off roughly opposite where it met the paddle, not at the
+    // pivot). 0 = off: hold for hold_mm / the slide estimate, then open in the normal move_ms.
+    int sweep_ms = 0;            // duration of that opening (flaps.gates[].sweep_ms)
+    float sweep_after_mm = 15;   // belt travel after the part meets the paddle before the sweep starts
+    float sweep_s = 0;           // planning time of the sweep: sweep_ms + stagger + one cycle + PWM period (load_config)
 };
 struct PickerConfig {
     float pick_x = 450;          // table x of the pick line (mm)
@@ -193,6 +200,10 @@ private:
     };
     const GateAns &gate_geom_at(int gi, float y, float r) const;
     mutable GateAns gans_[2] = {};
+    // sweep-out gates: the committed event that releases last — the slow opening starts at belt travel rel and lasts
+    // len mm of belt travel; a later part that needs the paddle closed inside it goes to recheck (never reverse a sweep)
+    struct Sweep { int id = -1; double rel = -1e18, len = 0; };
+    Sweep sweep_[2];
 };
 struct FlapConfig {
     bool enabled = false;          // ⚠ on once the gates are mounted and their pulse widths measured
@@ -222,7 +233,7 @@ private:
     State st_;
     bool started_ = false;
     double release_[2] = {-1e18, -1e18};   // belt travel until which the gate stays closed
-    struct Ramp { int from = 0, to = 0; double t0 = -1e18; } ramp_[2];
+    struct Ramp { int from = 0, to = 0; double t0 = -1e18, dur = 0; } ramp_[2];   // dur: s (move_ms, or sweep_ms)
     int us_at(int g, double now) const;
 };
 struct SpeedAdaptConfig {

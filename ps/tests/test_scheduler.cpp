@@ -484,6 +484,30 @@ static void test_flaps()
     st0 = f0s.update(ev0, 100, 20.1);
     CHECK(st0.us[0] == 1900 && !st0.moving[0], "move_ms 0: closed without any ramp (%d moving %d)",
           st0.us[0], int(st0.moving[0]));
+
+    // sweep-out gate (11-01): closes in move_ms as usual, but opens after the part in sweep_ms (the slow swing back
+    // that pushes the part off the belt)
+    FlapConfig fsw;   // move 300 ms, stagger 120 ms
+    std::vector<Gate> gsw(1);
+    gsw[0].outlet = 1; gsw[0].open_us = 1000; gsw[0].closed_us = 1900; gsw[0].sweep_ms = 2000;
+    FlapSequencer fss(fsw, gsw);
+    FlapEvent es; es.track_id = 9; es.outlet = 1; es.gate = 0; es.belt_mm = 200; es.close_b = 100; es.release_b = 215;
+    std::vector<FlapEvent> evs = {es};
+    FlapSequencer::State ss = fss.update(evs, 0, 30.0);
+    CHECK(ss.us[0] == 1000, "sweep gate starts open (%d)", ss.us[0]);
+    ss = fss.update(evs, 100, 31.0);
+    ss = fss.update(evs, 110, 31.15);
+    CHECK(near(ss.us[0], 1450, 1), "sweep gate closes in move_ms: half way after 150 ms (%d)", ss.us[0]);
+    ss = fss.update(evs, 150, 31.4);
+    CHECK(ss.us[0] == 1900 && !ss.moving[0], "closed (%d)", ss.us[0]);
+    ss = fss.update(evs, 215, 32.0);   // released: the slow opening starts
+    CHECK(ss.track_id[0] == -1 && ss.us[0] == 1900 && ss.moving[0], "sweep-out starts at the release (%d)", ss.us[0]);
+    ss = fss.update(evs, 230, 32.3);   // after move_ms a normal opening would be done; the sweep is at ~6 %
+    CHECK(ss.us[0] > 1800 && ss.moving[0], "sweep-out is slow: still near closed after 300 ms (%d)", ss.us[0]);
+    ss = fss.update(evs, 260, 33.0);   // half of sweep_ms: smoothstep 0.5
+    CHECK(near(ss.us[0], 1450, 1) && ss.moving[0], "sweep-out half way after 1 s (%d)", ss.us[0]);
+    ss = fss.update(evs, 300, 34.05);
+    CHECK(ss.us[0] == 1000 && !ss.moving[0], "sweep-out done after 2 s (%d)", ss.us[0]);
 }
 
 // intercept ("flying") picks: belt at 50 mm/s (1 mm per tick), arm base 150 mm beside the belt centre at the pick line
@@ -645,6 +669,38 @@ static void test_gate_events()
               !only1.serves(2), "Gate::serves");
         Gate plain{gate_geom(520, 230, 55, -20), 2, 0};
         CHECK(plain.serves(2) && !plain.serves(1), "Gate::serves without a list = its outlet");
+    }
+    // sweep-out gate (11-01): released sweep_after_mm after the part meets the paddle (no slide hold); a second NG
+    // part that would need the paddle closed while the first is still being swept out goes to recheck, one far
+    // enough behind is served too
+    {
+        Gate sw{gate_geom(520, 230, 55, -20), 1, 0};
+        sw.sweep_ms = 2000; sw.sweep_after_mm = 15;
+        sw.sweep_s = (2000 + 120) / 1000.f + 0.04f;   // what load_config computes (stagger 120 ms)
+        const std::vector<Gate> g_sw{sw};
+        GateRun r = run_gates({{-20, 0, 32, 32, 0.f, 1}}, 400, 270, &g_sw);
+        CHECK(r.ng.gate == 0 && r.final && near(r.ng.release_b - r.ng.belt_mm, 15, 0.01),
+              "sweep-out: released 15 mm after contact (gate %d, %.1f mm)", r.ng.gate, r.ng.release_b - r.ng.belt_mm);
+        // close_b of a part D mm behind = close_b of the first + D; the first sweeps from its release for
+        // 50 mm/s x sweep_s; in between the second would make the paddle reverse half way -> recheck
+        const GateGeom &g = sw.geom;
+        const double close1 = gate_sweep_range(g, 0, 26).x0 + 20 - 50 * r.pc.gate_move_s;
+        const double rel1 = gate_closed_range(g, 0, 16).x0 + 20 + 15;
+        const double d_mid = (rel1 - close1) + 0.5 * 50 * sw.sweep_s;   // second needs it closed mid-sweep
+        const double d_far = (rel1 - close1) + 50 * sw.sweep_s + 60;     // after the sweep is over
+        for (const double d : {d_mid, d_far}) {
+            const std::vector<SimPart> parts = {{-20, 0, 32, 32, 0.f, 1}, {float(-20 - d), 0, 32, 32, 0.f, 1}};
+            GateRun two = run_gates(parts, 300 + d, 270, &g_sw);
+            int on_gate = 0, conflict = 0;
+            for (const FlapEvent &e : two.out.flaps) on_gate += e.gate == 0;
+            conflict = int(two.stats.flap_conflicts);
+            if (d == d_mid)
+                CHECK(on_gate == 1 && conflict == 1, "second NG %.0f mm behind needs the paddle mid-sweep -> recheck "
+                      "(%d on the gate, %d conflicts)", d, on_gate, conflict);
+            else
+                CHECK(on_gate == 2 && conflict == 0, "second NG %.0f mm behind, after the sweep: both diverted "
+                      "(%d on the gate, %d conflicts)", d, on_gate, conflict);
+        }
     }
     // no gates: the same part rides to the belt end
     {
