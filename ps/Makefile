@@ -99,7 +99,7 @@ check-board:
 	@$(if $(wildcard $(FREETYPE_INC)),echo FREETYPE_INC ok,$(error FREETYPE_INC 未设置或目录不存在：$(FREETYPE_INC)。$(ENV_HINT)))
 	@$(if $(wildcard $(BOARD_LIBS)),echo BOARD_LIBS ok,$(error BOARD_LIBS 未设置或目录不存在：$(BOARD_LIBS)。$(ENV_HINT)))
 
-all: $(BUILD)/desreg $(BUILD)/test_scheduler $(BUILD)/test_modbus $(BUILD)/test_rs485 $(BUILD)/test_calib $(BUILD)/test_measure $(BUILD)/test_belt_hil $(BUILD)/test_can $(BUILD)/canplc $(BUILD)/des_app $(BUILD)/des_tool
+all: $(BUILD)/desreg $(BUILD)/test_scheduler $(BUILD)/test_modbus $(BUILD)/test_rs485 $(BUILD)/test_ops $(BUILD)/test_calib $(BUILD)/test_measure $(BUILD)/test_belt_hil $(BUILD)/test_can $(BUILD)/canplc $(BUILD)/des_app $(BUILD)/des_tool
 	-@powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/deploy/deploy.ps1 -Stage
 
 $(BUILD):
@@ -144,6 +144,10 @@ $(BUILD)/test_rs485: tests/test_rs485.cpp src/hw/modbus_rtu.cpp src/app/rs485_io
 # can_link.h is header-only (static inline): no can_link.c exists
 $(BUILD)/canplc: tools/canplc.c src/hw/can_link.h src/hw/can_proto.h | $(BUILD)
 	$(CC) $(CFLAGS) $(INC) -o $@ tools/canplc.c
+
+# fault detection -> work orders (app/ops): pure logic, any Linux host or the board
+$(BUILD)/test_ops: tests/test_ops.cpp src/app/ops.cpp src/app/util.cpp $(wildcard src/app/ops.hpp) | $(BUILD)
+	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_ops.cpp src/app/ops.cpp src/app/util.cpp -lpthread
 
 $(BUILD)/test_can: tests/test_can.c src/hw/can_link.h src/hw/can_proto.h | $(BUILD)
 	$(CC) $(CFLAGS) $(INC) -o $@ tests/test_can.c

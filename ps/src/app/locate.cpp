@@ -7,6 +7,13 @@
 #include "flat_field.hpp"
 #include "util.hpp"
 namespace des {
+double Locator::gray_mean() const
+{
+    if (gray_.empty()) return -1;
+    uint64_t sum = 0;
+    for (uint8_t v : gray_) sum += v;
+    return double(sum) / double(gray_.size());
+}
 std::vector<Detection> Locator::run(const uint8_t *bgra, int width, int height, int stride, const Homography &h, LocateTiming *timing)
 {
     const int s = std::max(1, cfg_.scale); const uint64_t t0 = mono_us();

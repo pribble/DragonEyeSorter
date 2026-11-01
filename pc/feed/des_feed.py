@@ -9,6 +9,7 @@ record and part image under <out>/<session>/ (parts.csv + img/), prints one line
     python pc/feed/des_feed.py --host des-board --out D:/data/received --quiet
 """
 import argparse
+import json
 import os
 import socket
 import struct
@@ -73,6 +74,10 @@ def run(a):
                 os.makedirs(os.path.dirname(p), exist_ok=True)
                 with open(p, 'wb') as fimg:
                     fimg.write(payload)
+            elif ftype == 'W' and not a.quiet:   # a work order changed (ps/src/app/ops.hpp; pc/ops/ops_station.py keeps them)
+                o = json.loads(payload.decode('utf-8'))
+                print('[工单] #%s %s %s：%s（%s）' % (o.get('id'), o.get('level_cn'), o.get('title'), o.get('detail'),
+                                                o.get('status_cn')))
             elif ftype == 'S' and not a.quiet:
                 print('[board] %s  (received %d)' % (payload.decode('utf-8', 'replace'), n))
     finally:

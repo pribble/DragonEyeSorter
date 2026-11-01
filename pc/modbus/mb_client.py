@@ -10,6 +10,7 @@ requests any PLC (Siemens MB_CLIENT, Mitsubishi / Omron Modbus-TCP, KingView / W
   python mb_client.py speed 45.5                belt speed set point, mm/s
   python mb_client.py recipe 2
   python mb_client.py time                      send this PC's clock (the board has no RTC)
+  python mb_client.py ack 12|all                acknowledge a work order of the board's fault detection (map v1.2)
   python mb_client.py lamp red buzzer           tower light on the RS485 relay module (Ethernet -> RS485), any of
                                                 green / yellow / red / buzzer / off; "lamp auto" = back to the line state
   python mb_client.py bench [-n 1000]           round-trip time of a full status read
@@ -24,17 +25,20 @@ import time
 
 # ---- register map (keep in step with ps/src/hw/modbus_tcp.hpp) ----
 HR_CMD, HR_SPEED, HR_RECIPE, HR_RESULT, HR_SEQ, HR_TIME_HI, HR_TIME_LO, HR_LAMP, N_HR = 0, 1, 2, 3, 4, 5, 6, 7, 8
+HR_WO_ACK = 8                                                                        # map v1.2 (0x0102)
 IR_STATE, IR_FLAGS, IR_TOTAL, IR_OK, IR_NG, IR_RECHECK = 0, 1, 2, 4, 6, 8
 IR_PART_SEQ, IR_PART_ID, IR_PART_CLS, IR_PART_DISP, IR_PART_DEST, IR_PART_SIZE, IR_PART_CONF = range(10, 17)
 IR_SPEED, IR_HB, IR_UPTIME, IR_ALARM, IR_RECIPE, IR_VERSION = 17, 18, 19, 20, 21, 22
 IR_485_FLAGS, IR_485_LAMPS, IR_485_INPUTS, IR_485_OK, IR_485_ERR, IR_485_RESP = range(24, 30)   # map v1.1 (0x0101)
-N_IR, N_IR_V10 = 32, 24
+IR_WO_ACTIVE, IR_WO_UNACKED, IR_WO_LEVEL, IR_WO_LAST_ID, IR_WO_LAST_CODE, IR_WO_SEQ = range(32, 38)   # map v1.2
+N_IR, N_IR_V10, N_IR_V12 = 32, 24, 40
 LAMPS = {"green": 1, "yellow": 2, "red": 4, "buzzer": 8, "off": 0}
 
 CMDS = {"start": 1, "stop": 2, "pause": 3, "resume": 4, "reset": 5}
 ACK = {0: "OK", 1: "REJECTED（当前状态不允许）", 2: "BAD_VALUE（取值不对）", 3: "UNKNOWN（未知命令）"}
 STATES = {0: "IDLE 停止", 1: "RUN 运行", 2: "PAUSED 暂停", 3: "ESTOP 急停", 4: "FAULT 故障"}
-FLAGS = [(0x01, "皮带在动"), (0x02, "机械臂忙"), (0x04, "报警"), (0x08, "PLC 在线"), (0x10, "已标定"), (0x20, "RS485 在线")]
+FLAGS = [(0x01, "皮带在动"), (0x02, "机械臂忙"), (0x04, "报警"), (0x08, "PLC 在线"), (0x10, "已标定"), (0x20, "RS485 在线"),
+         (0x40, "有运维工单")]
 DISP = {0: "抓取", 1: "挡板", 2: "复检"}
 
 
@@ -108,11 +112,13 @@ class Client:
 
 
 def read_status(cl):
-    """all input registers; a board with register map v1.0 (24 registers) is padded with zeros"""
-    try:
-        return cl.read_input(0, N_IR)
-    except ModbusError:
-        return cl.read_input(0, N_IR_V10) + [0] * (N_IR - N_IR_V10)
+    """all input registers; older boards (map v1.0: 24, v1.1: 32 registers) are padded with zeros"""
+    for n in (N_IR_V12, N_IR, N_IR_V10):
+        try:
+            return cl.read_input(0, n) + [0] * (N_IR_V12 - n)
+        except ModbusError:
+            if n == N_IR_V10:
+                raise
 
 
 def lamp_text(bits):
@@ -144,6 +150,10 @@ def decode(ir, hr):
             lamp_text(ir[IR_485_LAMPS]), ir[IR_485_OK], ir[IR_485_ERR], ir[IR_485_RESP] / 100))
     else:
         lines.append("RS485 没在跑（des_app.json rs485.enabled 关着，或比特流 < v16）")
+    if len(ir) >= N_IR_V12 and ir[IR_VERSION] >= 0x0102:   # work orders of the board's fault detection
+        lines.append("运维工单 活动 %d  待确认 %d  最高级别 %s  最新 #%d（代码 %d）  变化序号 %d" % (
+            ir[IR_WO_ACTIVE], ir[IR_WO_UNACKED], {0: "无", 1: "提示", 2: "警告", 3: "故障"}.get(ir[IR_WO_LEVEL], ir[IR_WO_LEVEL]),
+            ir[IR_WO_LAST_ID], ir[IR_WO_LAST_CODE], ir[IR_WO_SEQ]))
     return "\n".join(lines)
 
 
@@ -162,6 +172,8 @@ def main():
     r = sub.add_parser("recipe")
     r.add_argument("id", type=int)
     sub.add_parser("time")
+    ak = sub.add_parser("ack")
+    ak.add_argument("id", help="工单号，或 all")
     lp = sub.add_parser("lamp")
     lp.add_argument("what", nargs="+", choices=sorted(LAMPS) + ["auto"])
     b = sub.add_parser("bench")
@@ -199,6 +211,11 @@ def main():
             t = int(time.time())
             res = cl.write_checked(HR_TIME_HI, [t >> 16, t & 0xFFFF])
             print("time %s -> %s" % (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t)), ACK.get(res, res)))
+            return 0 if res == 0 else 1
+        elif a.op == "ack":
+            v = 0xFFFF if a.id == "all" else int(a.id)
+            res = cl.write_checked(HR_WO_ACK, [v])
+            print("ack 工单 %s -> %s" % (a.id, ACK.get(res, res)))
             return 0 if res == 0 else 1
         elif a.op == "lamp":
             v = 0 if "auto" in a.what else 0x100 | sum(LAMPS[w] for w in a.what)

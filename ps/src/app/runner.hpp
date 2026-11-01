@@ -56,6 +56,20 @@ public:
     void set_active_recipe(int id) { active_recipe_ = id; }   // for the Modbus read-back (the worker applies recipes)
     // tower light on RS485 (CAN LAMP / Modbus HR 7): mode 1 = these lamps (LAMP_*), 0 = follow the line state
     uint8_t set_lamp(uint8_t mode, uint8_t lamps, const char *who);
+    // work orders (app/ops.hpp, fault detection in the live worker): a stop-level fault holds the line like an alarm
+    // (FAULT: belt held, red lamp + buzzer, 复位报警 to leave); every new order goes to the PLC as an ALARM frame
+    void ops_fault(uint8_t code, const char *why);
+    void ops_alarm(uint8_t code, uint8_t level, uint16_t id);
+    struct OpsRegs {   // summary for Modbus IR 32..37 / STATUS flag / yellow lamp
+        uint16_t active = 0, unacked = 0, level = 0, last_id = 0, last_code = 0, seq = 0;
+        bool warn = false;   // a warning nobody acknowledged: yellow joins the line state
+    };
+    void set_ops(const OpsRegs &r) { ops_ = r; }
+    bool take_ops_ack(uint16_t &id);    // Modbus HR 8 writes (0xFFFF = all), oldest first
+    bool plc_lost() const { return plc_lost_; }   // a PLC that was there went quiet (PlcWatch)
+    int rs485_link() const { return rs485_ ? (rs485_->link_ok() ? 1 : 0) : -1; }   // -1 bus not running
+    struct PickStats { uint32_t ok = 0, failed = 0, servo = 0; std::string last_why; };
+    const PickStats &pick_stats() const { return picks_; }   // worker thread (cycle drains the arm results)
 private:
     // arm thread hand-off: the job carries the ready pose it was planned with, so the config is only ever touched
     // by the worker thread (no lock around it).
@@ -114,5 +128,9 @@ private:
     AdaptMode adapt_mode_ = AdaptMode::Base;   // which way that speed went (HMI panel)
     uint64_t adapt_changes_ = 0;
     std::array<uint16_t, 6> arm_counts_{};   // last commanded pose (arm thread only)
+    OpsRegs ops_;
+    std::deque<uint16_t> ops_acks_;
+    bool plc_lost_ = false;
+    PickStats picks_;
 };
 }  // namespace des

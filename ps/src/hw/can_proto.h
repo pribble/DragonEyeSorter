@@ -8,6 +8,10 @@
  *   0x103 PLC_HB  [counter] (>= 2 Hz)             0x183 PART    [id u16,class,disp,dest,conf_pct,size_x100 u16]
  *   0x104 TIME    [unix_s u32, ms u16] (v1.1)     0x184 ALARM   [code,severity,detail u16]
  *   0x105 LAMP    [mode, lamps, seq] (v1.2)
+ * ALARM (v1.3): one frame per new work order (app/ops.hpp): code = fault code (1 e-stop, 2 belt speed, 3 camera,
+ * 4 light, 5 beam, 6 pick, 7 servo, 8 RS485, 9 PLC, 10 NPU, 11 vision rate, 12 storage, 13 NG rate, 14 recheck rate,
+ * 15 OD drift, 16 test order), severity = 1 info / 2 warning / 3 fault, detail = work order id. STATUS flag OPS (v1.3) = a work order
+ * is active (alarm = fault code of a stop while the line is in FAULT).
  * LAMP (v1.2): the PLC takes over the tower light on the RS485 bus (mode 1 = lamps b0 green b1 yellow b2 red b3 buzzer,
  * mode 0 = back to the line state); executed as a Modbus-RTU write to the relay module (CAN -> RS485), ACK REJECTED when
  * the RS485 bus is not running. STATUS flag RS485 (v1.2) = the relay module answered within the last 2 s.
@@ -30,7 +34,7 @@ enum { CANP_ACK_OK = 0, CANP_ACK_REJECTED = 1, CANP_ACK_BAD_VALUE = 2, CANP_ACK_
 enum { CANP_ST_IDLE = 0, CANP_ST_RUN = 1, CANP_ST_PAUSED = 2, CANP_ST_ESTOP = 3, CANP_ST_FAULT = 4 };
 enum {
     CANP_FLAG_BELT_MOVING = 0x01, CANP_FLAG_ARM_BUSY = 0x02, CANP_FLAG_ALARM = 0x04,
-    CANP_FLAG_PLC_LINK = 0x08, CANP_FLAG_CALIBRATED = 0x10, CANP_FLAG_RS485 = 0x20,
+    CANP_FLAG_PLC_LINK = 0x08, CANP_FLAG_CALIBRATED = 0x10, CANP_FLAG_RS485 = 0x20, CANP_FLAG_OPS = 0x40,
 };
 enum { CANP_DISP_PICK = 0, CANP_DISP_FLAP = 1, CANP_DISP_RECHECK = 2 };
 

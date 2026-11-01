@@ -257,6 +257,14 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             if (st.images != "none" && st.images != "ng" && st.images != "all")
                 return path + ": storage.images must be none / ng / all";
         }
+        OpsConfig &op = cfg.ops;   // fault detection -> work orders (app/ops.hpp); every key optional
+        sec_gets(j, "ops", "enabled", op.enabled, "utc_offset_h", op.utc_offset_h, "belt_min_mm_s", op.belt_min_mm_s,
+                 "belt_ratio", op.belt_ratio, "belt_s", op.belt_s, "light_low", op.light_low, "light_high", op.light_high,
+                 "light_s", op.light_s, "light_learn_s", op.light_learn_s, "pick_fails", op.pick_fails, "link_s",
+                 op.link_s, "min_fps", op.min_fps, "min_free_mb", op.min_free_mb, "rate_window", op.rate_window,
+                 "rate_min", op.rate_min, "ng_rate", op.ng_rate, "recheck_rate", op.recheck_rate, "od_window",
+                 op.od_window, "od_drift", op.od_drift, "event_clear_s", op.event_clear_s);
+        if (op.rate_window < 1 || op.rate_min < 1 || op.od_window < 0) return path + ": ops windows must be >= 1";
         TrackMeasureConfig &t = cfg.measure;
         if (const json *c = sec_gets(j, "measure", "enabled", t.enabled, "per_frame", t.per_frame, "gear_ratio",
                                      t.gear_ratio, "margin_mm", t.margin_mm, "improve", t.improve)) {

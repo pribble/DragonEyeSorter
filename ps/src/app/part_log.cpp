@@ -42,6 +42,12 @@ public:
     void stop();                                    // flushes queued frames (up to ~0.5 s), closes everything
     void record(const std::string &csv_line);
     void image(const std::string &name, const std::vector<uint8_t> &jpeg);
+    void ops(const std::string &json) { push('W', "", json.data(), json.size()); }
+    void set_ops_snapshot(const std::string &json)
+    {
+        std::lock_guard<std::mutex> lk(m_);
+        ops_snap_ = json;
+    }
     int port() const { return ls_.port; }           // the bound port (start(0, ...) picks a free one)
     std::atomic<uint64_t> records{0}, images{0}, dropped{0};
     std::atomic<int> clients{0};
@@ -55,6 +61,7 @@ private:
     static std::shared_ptr<const std::string> frame(char type, const std::string &name, const char *data, size_t n);
     TcpListen ls_;                                  // listener + wake pipe (hw/tcp_listen.hpp)
     std::string session_, header_;
+    std::string ops_snap_;                         // work-order list for new clients ('w' after the hello)
     size_t max_queue_ = 64;
     std::mutex m_;
     std::vector<Client> cl_;
@@ -148,7 +155,9 @@ void NetFeed::loop()
                 int fd = accept4(ls_.lfd, nullptr, nullptr, SOCK_NONBLOCK | SOCK_CLOEXEC); if (fd < 0) break;
                 int one = 1; setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
                 Client c; c.fd = fd;
-                c.q.push_back(frame('H', session_, header_.data(), header_.size())); cl_.push_back(std::move(c));
+                c.q.push_back(frame('H', session_, header_.data(), header_.size()));
+                if (!ops_snap_.empty()) c.q.push_back(frame('w', "", ops_snap_.data(), ops_snap_.size()));
+                cl_.push_back(std::move(c));
             }
         }
         // send / detect closed clients (the client never sends: readable = closed or garbage)
@@ -218,6 +227,15 @@ std::string PartLog::open(const StorageConfig &cfg)
     th_ = std::thread(&PartLog::loop, this);
     return "";
 }
+void PartLog::push_ops(const std::string &json)
+{
+    if (feed_) feed_->ops(json);
+}
+void PartLog::set_ops_snapshot(const std::string &json_array)
+{
+    if (feed_) feed_->set_ops_snapshot(json_array);
+}
+int PartLog::feed_clients() const { return feed_ ? feed_->clients.load() : 0; }
 void PartLog::add(PartRecord r, const cv::Mat &crop)
 {
     if (!th_.joinable()) return;

@@ -7,6 +7,7 @@
 #include "live.hpp"
 #include <pthread.h>
 #include <sched.h>
+#include <sys/statvfs.h>
 #include <atomic>
 #include <cmath>
 #include <condition_variable>
@@ -29,6 +30,7 @@
 #include "hmi.hpp"
 #include "locate.hpp"
 #include "npu.hpp"
+#include "ops.hpp"
 #include "part_log.hpp"
 #include "picker.hpp"
 #include "track_measure.hpp"
@@ -78,6 +80,7 @@ struct Shared {
     std::atomic<float> disp_fps{0};             // display stats for the panel text (written by the main thread)
     std::atomic<uint64_t> disp_skipped{0};
     bool quit = false;
+    WorkOrders ops;                             // 运维工单: health rules in the worker, camera stall in the capture loop
 };
 // out-of-range dest: numeric fallbacks live in a process-lifetime pool owned by the worker (old: to_string(dest)).
 const char *dest_fallback(int dest)
@@ -106,7 +109,7 @@ const char *plan_cn(BeltPlan::Kind k)
 // aligned in one column, thin rules between the display / processing / production groups; the runner line (connections,
 // arm, last command) closes it, wrapped, in DIM.
 cv::Mat render_panel(const Snapshot &s, const Shared &sh, uint32_t pl_frame, uint64_t lag, double belt_mm,
-                     const std::string &run_line, TextFT &txt)
+                     const std::string &run_line, const WorkOrders::Summary &os, TextFT &txt)
 {
     using namespace ui;
     cv::Mat panel(kPanelH, kPanelW, CV_8UC3, BG);
@@ -142,6 +145,20 @@ cv::Mat render_panel(const Snapshot &s, const Shared &sh, uint32_t pl_frame, uin
     else if (s.plan_on && s.adapt == AdaptMode::Slow) plan += fmt(" · 减速 %.0f", double(s.adapt_v));
     row("皮带计划", plan);
     row("已记录", fmt("%llu 件 · 存图 %llu 张", (unsigned long long)s.logged, (unsigned long long)s.log_images));
+    {   // work orders (app/ops.hpp): red while a fault is active, orange while something waits for an acknowledgement
+        std::string v = os.unacked == 0 ? std::string("无待处理") : fmt("%d 条待处理", os.unacked);
+        if (!os.last_title.empty() && os.unacked > 0) v += " · " + os.last_title;
+        const int vw = kPanelW - 162 - 12;
+        if (txt.width(v, 18) > vw) {   // cut at a code point, with an ellipsis
+            while (v.size() > 3 && txt.width(v + "…", 18) > vw) {
+                size_t k = v.size() - 1;
+                while (k > 0 && (static_cast<unsigned char>(v[k]) & 0xC0) == 0x80) k--;
+                v.erase(k);
+            }
+            v += "…";
+        }
+        row("运维工单", v, os.faults ? RED : os.unacked ? ORANGE : DIM);
+    }
     // the runner's line, wrapped at its spaces (Chinese words have none inside); DIM so it reads as one quiet block
     const int wrap_px = kPanelW - 2 * 18;
     std::string word, cur;
@@ -200,8 +217,10 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
         }
     }
     AsyncClassifier npu;
+    std::string npu_err;
     if (cfg.npu.enabled) {
         e = npu.start(cfg.npu.model, cfg.npu.core);
+        npu_err = e;
         if (!e.empty()) fprintf(stderr, "npu: %s (parts get no NPU class)\n", e.c_str());
         else printf("npu: %s, %s\n", cfg.npu.model.c_str(), npu.model().describe().c_str());
     }
@@ -241,7 +260,16 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
     cv::Mat hmi_panel;
     std::string run_line;
     double last_hmi = 0, prev_work_ms = 0;
-        struct { bool live = false, have_ref = false; int32_t first = 0, ref = 0; double ref_t = 0, mm_s = 0; } enc;
+        struct { bool live = false, have_ref = false, fresh = false; int32_t first = 0, ref = 0; double ref_t = 0, mm_s = 0; } enc;
+    // 运维 (app/ops.hpp): health rules -> work orders, logged next to the part records, pushed every cycle below
+    WorkOrders &ops = sh.ops;
+    if (plog.is_open()) ops.open_log(plog.day_dir() + "/workorders_" + plog.session + ".jsonl", plog.session);
+    HealthMonitor health(cfg.ops);
+    WorkOrders::Summary ops_sum;
+    bool ops_dirty = true;
+    double last_df = -1e9, free_mb = -1;
+    int beam_nt = 0, beam_ms = 0;   // through-beam events of this cycle (no track / missed)
+    if (cfg.ops.enabled) printf("ops: fault detection on, work orders -> %s\n", plog.is_open() ? "workorders_<session>.jsonl" : "(no log)");
     std::map<int, cv::Mat> crops;   // latest part crop per track (from its best measurement frame)
     std::set<int> logged;
     Picker pk(cfg.picker);
@@ -285,11 +313,14 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
         const bool io_ok = des_io_read(&hw, &io) == DES_OK;   // < DES_VERSION_IO bitstreams: DES_E_ARG -> io_ok false
         if (beam && io_ok) {   // before the records below: a part decided this cycle carries its beam result
             beam_out.clear();
+            beam_nt = beam_ms = 0;
             beam->poll(io.ir1_cnt, accum.peek(io.ir1_pos), int32_t(io.ir1_enc), beam_out);
             beam->update(tr.tracks(), accum.peek(des_step_pos(&hw)), beam_out);
             const double ts = plog.now_s();
             for (const BeamResult &r : beam_out) {
                 plog.add_beam(r, ts);
+                if (r.kind == BeamKind::NoTrack) beam_nt++;
+                else if (r.kind == BeamKind::Missed) beam_ms++;
                 if (r.kind == BeamKind::NoTrack || r.kind == BeamKind::Missed || r.kind == BeamKind::Lost)
                     printf("[beam] %s at belt %.1f mm (track %d)\n", to_str(r.kind), r.belt_mm, r.track);
             }
@@ -376,6 +407,9 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
                 }
                 const cv::Mat &crop = it != crops.end() ? it->second : cv::Mat();
                 hmi.add_part(rec, crop, now);
+                health.on_part(rec.disp == Disposition::Pick ? 0 : rec.disp == Disposition::Flap ? 1 : 2,
+                               rec.meas.valid && rec.meas.kind == 'g', rec.meas.size, hmi.params().gear_od,
+                               hmi.params().gear_od_tol, now, rec.wall_ms, ops);
                 plog.add(std::move(rec), crop);
                 if (it != crops.end()) crops.erase(it);
             }
@@ -446,6 +480,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
                     enc.mm_s = std::abs(double(io.enc) - enc.ref) * cfg.belt.enc_scale() / (now - enc.ref_t);
                     enc.ref = io.enc;
                     enc.ref_t = now;
+                    enc.fresh = true;
                 }
                 if (std::abs(double(io.enc) - enc.first) > 20) enc.live = true;   // it has counted: wired
                 hs.enc_live = enc.live;
@@ -455,6 +490,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
             hs.npu_ms = npu.last_npu_ms; hs.npu = npu.running(); hs.pl_vision = pl_vision;
             hs.clock_synced = wall_synced();
             hs.inputs = input ? input->devices() : 0; hs.jog = runner ? runner->jog_dir() : 0; hs.logged = plog.written;
+            hs.ops = &ops;
             {   // manual arm commands only while the line is not running and no pick is being executed
                 const int st = runner ? int(runner->state()) : -1;
                 const char *why = st == CANP_ST_RUN ? "产线运行中" : st == CANP_ST_ESTOP ? "急停中"
@@ -475,6 +511,10 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
                     if (a.kind == HmiAction::Params) apply_params(hmi.params());
                     else if (a.kind == HmiAction::Arm) arm_manual.request(a.arm);
                     else if (a.kind == HmiAction::Flap) flap_manual.request(a.flap);
+                    else if (a.kind == HmiAction::Ops && a.cmd == 0) {   // 发送测试工单: raised and gone at once
+                        ops.raise(OPS_TEST, "运维页手动触发，用来验证工单推送链路", now, wall_now_ms());
+                        ops.clear(OPS_TEST, now, wall_now_ms());
+                    } else if (a.kind == HmiAction::Ops) ops.ack(uint16_t(a.cmd), "界面", wall_now_ms());
                     else if (a.kind == HmiAction::Recipe) {
                         if (runner) runner->select_recipe(a.cmd, "界面");   // applied below, same path as the PLC's
                         else if (hmi.set_recipe(a.cmd)) apply_params(hmi.params());
@@ -494,6 +534,66 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
                 runner->set_active_recipe(hmi.params().recipe);
             }
             if (now - last_hmi >= 0.12) { hmi_panel = hmi.render(); last_hmi = now; }
+        }
+        {   // 运维: health rules -> work orders -> pushers (feed 'W', CAN ALARM, FAULT stop, Modbus, tower light)
+            HealthInput hin;
+            hin.now = now;
+            hin.wall_ms = wall_now_ms();
+            hin.run_state = runner ? int(runner->state()) : -1;
+            hin.enc_live = enc.live;
+            hin.enc_new = enc.fresh;
+            enc.fresh = false;
+            hin.belt_cmd_mm_s = des_step_speed(&hw) * cfg.belt.mm_per_step;
+            hin.belt_enc_mm_s = enc.mm_s;
+            if (processed % 6 == 0) hin.gray = loc.gray_mean();   // ~10 Hz is plenty
+            hin.pl_mode = hmi.params().pl_mode;
+            hin.processed = processed;
+            hin.beam_no_track = beam_nt;
+            hin.beam_missed = beam_ms;
+            beam_nt = beam_ms = 0;
+            if (runner) {
+                const Runner::PickStats &ps = runner->pick_stats();
+                hin.picks_ok = ps.ok; hin.picks_failed = ps.failed; hin.servo_errors = ps.servo; hin.pick_why = ps.last_why;
+                hin.rs485 = runner->rs485_link();
+                hin.plc_lost = runner->plc_lost();
+            }
+            hin.npu_expected = cfg.npu.enabled;
+            hin.npu_running = npu.running();
+            hin.npu_error = npu_err;
+            if (now - last_df >= 30) {   // SD card free space
+                struct statvfs fs{};
+                if (statvfs(cfg.storage.dir.c_str(), &fs) == 0) free_mb = double(fs.f_bavail) * fs.f_frsize / 1048576.0;
+                hin.free_mb = free_mb;
+                last_df = now;
+            }
+            hin.log_errors = plog.errors;
+            hin.log_dropped = plog.dropped;
+            health.update(hin, ops);
+            for (const WorkOrders::Change &c : ops.take_changes()) {
+                const OpsCodeInfo &info = ops_code_info(c.w.code);
+                plog.push_ops(ops.json(c.w));
+                ops_dirty = true;
+                if (c.is_new || (c.raised && c.w.count > 1 && !c.w.acked) || !c.w.active)
+                    printf("[ops] #%u %s %s（%s）%s: %s\n", unsigned(c.w.id), ops_level_cn(c.w.level), info.title,
+                           info.device, c.w.status_cn(), c.w.detail.c_str());
+                if (!runner || !c.raised) continue;
+                if (c.is_new) runner->ops_alarm(c.w.code, uint8_t(c.w.level), c.w.id);
+                if (info.stop) runner->ops_fault(c.w.code, (std::string("故障停机：") + info.title).c_str());
+            }
+            uint16_t aid;
+            while (runner && runner->take_ops_ack(aid)) ops.ack(aid, "远程（Modbus）", wall_now_ms());
+            if (ops_dirty) {   // what a remote station gets when it connects
+                plog.set_ops_snapshot(ops.snapshot_json(60));
+                ops_dirty = false;
+            }
+            ops_sum = ops.summary();
+            if (runner) {
+                Runner::OpsRegs r;
+                r.active = uint16_t(ops_sum.active); r.unacked = uint16_t(ops_sum.unacked); r.level = ops_sum.top;
+                r.last_id = ops_sum.last_id; r.last_code = ops_sum.last_code; r.seq = ops_sum.seq;
+                r.warn = ops_sum.unacked_warning;
+                runner->set_ops(r);
+            }
         }
         s->blobs.clear();   // raw outlines: only upstream of the decision line (past it, tracked parts have their box and
         for (size_t i = 0; i < blobs.size() && i < obs.dets.size(); i++)   // anything new there is clutter)
@@ -515,7 +615,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
             if (runner) run_line = runner->status_line();
             else if (col) run_line = col->status();
             else run_line.clear();
-            panel = render_panel(*s, sh, f.pl_frame, sh.cap_seq.load() - seq, obs.belt_mm, run_line, panel_txt);
+            panel = render_panel(*s, sh, f.pl_frame, sh.cap_seq.load() - seq, obs.belt_mm, run_line, ops_sum, panel_txt);
             hmi.render_panel_strip(panel);   // run control on top of the panel, every page, ~10 Hz
             last_panel = end;
         }
@@ -682,6 +782,8 @@ int run_live(des_hw_t &hw, const AppConfig &cfg, CameraRig &cam, const LiveOptio
         err = cam.next(f, true);
         if (!err.empty()) {
             fprintf(stderr, "%s\n", err.c_str());
+            // the program ends here and the service restarts it: leave the work order in the log first
+            if (cfg.ops.enabled) sh.ops.raise(OPS_CAMERA, "取图超时：" + err, mono_s(), wall_now_ms());
             break;
         }
         const uint64_t seq = ++frames;

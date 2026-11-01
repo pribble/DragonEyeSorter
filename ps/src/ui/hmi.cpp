@@ -21,9 +21,10 @@ using namespace ui;
 namespace {
 enum { A_TAB = 1, A_DEC, A_INC, A_TOGGLE, A_IMAGES, A_CMD, A_SELECT, A_PLMODE, A_PLTHR, A_RECIPE, A_ARM_LOCK,
        A_ARM_TORQUE, A_ARM_JOG, A_ARM_STEP, A_ARM_MS, A_ARM_TEACH, A_ARM_SETHOME, A_ARM_RESET, A_BELT_JOG,
-       A_FLAP_LOCK, A_FLAP_OUT, A_FLAP_STEP, A_FLAP_CENTER, A_FLAP_SWEEP, A_FLAP_SPEED, A_REC_SCROLL, A_PLTHR_EDGE };
-const char *kPages[] = {"总览", "曲线", "参数", "记录", "机械臂", "挡板"};
-constexpr int kNPages = 6;
+       A_FLAP_LOCK, A_FLAP_OUT, A_FLAP_STEP, A_FLAP_CENTER, A_FLAP_SWEEP, A_FLAP_SPEED, A_REC_SCROLL, A_PLTHR_EDGE,
+       A_OPS_SEL, A_OPS_ACK, A_OPS_SCROLL };
+const char *kPages[] = {"总览", "曲线", "参数", "记录", "机械臂", "挡板", "运维"};
+constexpr int kNPages = 7;
 const double kArmStepDeg[] = {1, 5, 15};
 const int kArmMs[] = {500, 1000, 2000};
 const int kFlapStepUs[] = {-50, -10, 10, 50};
@@ -217,8 +218,8 @@ std::vector<HmiAction> Hmi::handle(const std::vector<UiEvent> &ev)
 {
     std::vector<HmiAction> out;
     for (const UiEvent &e : ev) {
-        if (e.kind == UiEvent::Key) {   // F1-F6 / Tab / <- -> switch pages; PgUp / PgDn scroll the records
-            if (e.value >= KEY_F1 && e.value <= KEY_F6) page_ = e.value - KEY_F1;
+        if (e.kind == UiEvent::Key) {   // F1-F7 / Tab / <- -> switch pages; PgUp / PgDn scroll the records
+            if (e.value >= KEY_F1 && e.value <= KEY_F7) page_ = e.value - KEY_F1;
             else if (e.value == KEY_TAB || e.value == KEY_RIGHT) page_ = (page_ + 1) % kNPages;
             else if (e.value == KEY_LEFT) page_ = (page_ + kNPages - 1) % kNPages;
             else if (page_ == 3 && e.value == KEY_PAGEDOWN) scroll_records(kRows);
@@ -227,6 +228,7 @@ std::vector<HmiAction> Hmi::handle(const std::vector<UiEvent> &ev)
         }
         if (e.kind == UiEvent::Wheel) {   // wheel up (+) = newer parts
             if (page_ == 3) scroll_records(-3 * e.value);
+            else if (page_ == 6) ops_top_ = std::max(0, ops_top_ - 3 * e.value);   // clamped at render
             continue;
         }
         // clicks land either on the status panel's run-control strip (top right of the screen, panel-local hits) or
@@ -242,6 +244,9 @@ std::vector<HmiAction> Hmi::handle(const std::vector<UiEvent> &ev)
             case A_TAB: page_ = h.arg; break;
             case A_SELECT: selected_ = h.arg; sel_pic_for_ = -1; break;
             case A_REC_SCROLL: if (h.arg == 0) rec_top_ = 0; else scroll_records(h.arg); break;
+            case A_OPS_SEL: ops_sel_ = h.arg; break;
+            case A_OPS_SCROLL: ops_top_ = h.arg == 0 ? 0 : std::max(0, ops_top_ + h.arg); break;
+            case A_OPS_ACK: out.push_back({HmiAction::Ops, h.arg, {}, {}}); break;
             case A_FLAP_LOCK:
             case A_FLAP_OUT:
             case A_FLAP_STEP:
@@ -329,10 +334,13 @@ cv::Mat Hmi::render()
     cv::line(img, {0, 0}, {W - 1, 0}, ACCENT, 2);
     Canvas c(img, txt_, hits_);
     c.text("DragonEyeSorter", 12, 6, 17, DIM);   // navigation + status (product name stays in English)
-    for (int i = 0; i < kNPages; i++) c.button({8, 28 + i * 36, 136, 32}, kPages[i], page_ == i, A_TAB, i, 20);
-    c.text(st_.npu ? "NPU 在线" : "NPU 未加载", 12, 248, 16, st_.npu ? GREEN : ORANGE);
+    const int unacked = st_.ops ? st_.ops->summary().unacked : 0;   // 运维 shows how many orders wait
+    for (int i = 0; i < kNPages; i++)
+        c.button({8, 26 + i * 33, 136, 30}, i == 6 && unacked ? fmt("运维（%d）", unacked) : std::string(kPages[i]),
+                 page_ == i, A_TAB, i, 19);
+    c.text(st_.npu ? "NPU 在线" : "NPU 未加载", 12, 260, 15, st_.npu ? GREEN : ORANGE);
     c.text(std::string("输入设备 ") + std::to_string(st_.inputs) + (st_.clock_synced ? "  已对时" : "  未对时"), 12,
-           272, 15, DIM);
+           280, 14, DIM);
     cv::line(img, {152, 10}, {152, H - 10}, LINE, 1);
     switch (page_) {
     case 0: page_overview(c); break;
@@ -340,7 +348,8 @@ cv::Mat Hmi::render()
     case 2: page_params(c); break;
     case 3: page_records(c); break;
     case 4: page_arm(c); break;
-    default: page_flap(c); break;
+    case 5: page_flap(c); break;
+    default: page_ops(c); break;
     }
     return img;
 }
@@ -378,6 +387,94 @@ void Hmi::render_panel_strip(cv::Mat &panel)
         c.button({18, 214, 444, 36}, "复位报警", true, run ? A_CMD : 0, CANP_CMD_RESET_ALARM, 20);
     else if (!run)
         c.text("启停按钮只在产线模式可用", 18, 218, 15, DIM);
+}
+// 运维: work orders of the health monitor (app/ops.hpp) — the list (newest first), the selected one with its advice,
+// acknowledge one / all (the remote station does the same over Modbus). Read from the thread-safe registry at render.
+void Hmi::page_ops(Canvas &c)
+{
+    c.text("运维工单", 175, 6, 22, TEXT);
+    if (!st_.ops) {
+        c.text("故障检测没有运行（只在 des_app live / run 里有）", 175, 50, 18, DIM);
+        return;
+    }
+    const WorkOrders::Summary s = st_.ops->summary();
+    c.text(fmt("活动 %d（故障 %d · 警告 %d）", s.active, s.faults, s.warnings) + fmt(" · 待确认 %d", s.unacked) +
+               fmt(" · 远程运维站 %d 个连接", st_.ops_clients),
+           300, 11, 16, s.faults ? RED : s.unacked ? ORANGE : DIM);
+    const std::vector<WorkOrder> v = st_.ops->list(WorkOrders::kKeep);
+    const int n = int(v.size()), rows = 8;
+    ops_top_ = std::clamp(ops_top_, 0, std::max(0, n - rows));
+    const int cx[] = {175, 232, 330, 386, 560, 1008, 1058};
+    const char *hd[] = {"编号", "时间", "级别", "设备", "内容", "次数", "状态"};
+    c.header_row(hd, cx, 7, 40);
+    const WorkOrder *sel = nullptr;
+    for (const WorkOrder &w : v)
+        if (w.id == ops_sel_) sel = &w;
+    if (!sel && n) sel = &v[0];
+    auto level_col = [](const WorkOrder &w) { return w.level == OpsLevel::Fault ? RED : w.level == OpsLevel::Warning ? ORANGE : DIM; };
+    auto status_col = [&](const WorkOrder &w) { return w.closed() ? DIM : w.acked ? INFO : w.active ? level_col(w) : VALUE; };
+    const int utc = cfg_.ops.utc_offset_h;
+    for (int k = 0; k < rows && ops_top_ + k < n; k++) {
+        const WorkOrder &w = v[size_t(ops_top_ + k)];
+        const int y = 62 + k * 29;
+        c.row({165, y - 2, 1140, 28}, sel && w.id == sel->id, A_OPS_SEL, w.id);
+        const OpsCodeInfo &i = ops_code_info(w.code);
+        const std::string t = ops_wall_str(w.wall_last, utc, false);
+        c.text(std::to_string(w.id), cx[0], y, 17, TEXT);
+        c.text(t.empty() ? fmt("+%.0f s", w.t_last) : t, cx[1], y, 17, TEXT);
+        c.text(ops_level_cn(w.level), cx[2], y, 17, level_col(w));
+        c.text(fit(c, i.device, 17, 168), cx[3], y, 17, TEXT);
+        c.text(fit(c, std::string(i.title) + "：" + w.detail, 16, 440), cx[4], y, 16, w.closed() ? DIM : TEXT);
+        c.text(std::to_string(w.count), cx[5], y, 17, TEXT);
+        c.text(w.status_cn(), cx[6], y, 16, status_col(w));
+    }
+    if (n == 0) c.text("没有工单：设备运行正常", 175, 70, 20, GREEN);
+    else if (n > rows) {
+        c.text(fmt("第 %d", ops_top_ + 1) + fmt("–%d 条", std::min(n, ops_top_ + rows)) + fmt(" / 共 %d", n), 760, 42, 15,
+               DIM);
+        c.button({1112, 36, 62, 24}, "上一页", false, ops_top_ > 0 ? A_OPS_SCROLL : 0, -rows, 15);
+        c.button({1178, 36, 62, 24}, "下一页", false, ops_top_ + rows < n ? A_OPS_SCROLL : 0, rows, 15);
+        c.button({1244, 36, 56, 24}, "最新", ops_top_ == 0, ops_top_ > 0 ? A_OPS_SCROLL : 0, 0, 15);
+    }
+    // the selected order: what happened, what to do, acknowledge
+    cv::line(c.img(), {1318, 10}, {1318, H - 10}, LINE, 1);
+    if (sel) {
+        const OpsCodeInfo &i = ops_code_info(sel->code);
+        int y = 8;
+        c.text(fit(c, fmt("#%u ", unsigned(sel->id)) + i.title, 21, 580), 1330, y, 21, level_col(*sel));
+        y += 32;
+        c.text(std::string(ops_level_cn(sel->level)) + " · " + i.device + " · " + sel->status_cn() +
+                   (sel->count > 1 ? fmt(" · 发生 %u 次", sel->count) : std::string()),
+               1330, y, 16, status_col(*sel));
+        y += 26;
+        auto para = [&](const std::string &txt, int px, const cv::Scalar &col, int max_lines) {
+            std::string cur;   // wrap at code points to 570 px
+            int lines = 0;
+            for (size_t k = 0; k < txt.size() && lines < max_lines;) {
+                size_t m = k + 1;
+                while (m < txt.size() && (static_cast<unsigned char>(txt[m]) & 0xC0) == 0x80) m++;
+                const std::string ch = txt.substr(k, m - k);
+                if (c.width(cur + ch, px) > 570) {
+                    c.text(cur, 1330, y, px, col);
+                    y += px + 7;
+                    lines++;
+                    cur.clear();
+                }
+                cur += ch;
+                k = m;
+            }
+            if (!cur.empty() && lines < max_lines) { c.text(cur, 1330, y, px, col); y += px + 7; }
+        };
+        para(sel->detail, 16, TEXT, 2);
+        para(std::string("处理建议：") + i.advice, 16, INFO, 3);
+        std::string t = ops_wall_str(sel->wall_first, utc);
+        t = t.empty() ? fmt("开机后 %.0f s 首次出现", sel->t_first) : "首次 " + t;
+        if (sel->acked) t += std::string(" · 已由") + sel->acked_by + "确认";
+        c.text(fit(c, t, 15, 570), 1330, std::max(y, 214), 15, DIM);
+        c.button({1330, 248, 210, 40}, "确认该工单", false, sel->acked ? 0 : A_OPS_ACK, sel->id, 19);
+    }
+    c.button({1550, 248, 160, 40}, "全部确认", false, s.unacked ? A_OPS_ACK : 0, 0xFFFF, 19);
+    c.button({1720, 248, 180, 40}, "发送测试工单", false, A_OPS_ACK, 0, 17);   // id 0: the worker raises OPS_TEST
 }
 void Hmi::scroll_records(int rows)
 {

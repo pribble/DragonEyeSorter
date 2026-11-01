@@ -22,7 +22,7 @@ namespace des {
 
 // register map v1: the board is the slave; same codes / rules as can_proto.h (CMD / ACK / ST / FLAG / DISP_*);
 // 0-based addresses (PLC software counting from 1 shows 40001.. / 30001..); 32-bit values high word first.
-inline constexpr uint16_t MB_MAP_VERSION = 0x0101;   // 0x0101: + HR 7 LAMP, IR 24..29 RS485
+inline constexpr uint16_t MB_MAP_VERSION = 0x0102;   // 0x0101: + HR 7 LAMP, IR 24..29 RS485; 0x0102: + HR 8, IR 32..37 work orders
 // holding registers (FC 03 read, FC 06 / 16 write): a write is executed in the next control cycle (<= 17 ms), then
 // SEQ + 1 and RESULT holds its CANP_ACK_* code
 enum : uint16_t {
@@ -35,7 +35,8 @@ enum : uint16_t {
     MB_HR_TIME_LO = 6,  // ... low word (write both in one FC 16; the low word applies it; the board has no RTC)
     MB_HR_LAMP = 7,     // v1.1: tower light on RS485 = CAN LAMP: bit 8 override, bits 0..3 green / yellow / red / buzzer
                         // (0 = back to the line state); reads the override in force
-    MB_N_HR = 8,
+    MB_HR_WO_ACK = 8,   // v1.2: acknowledge work order <id> (0xFFFF = all); reads 0
+    MB_N_HR = 9,
 };
 // input registers (FC 04), refreshed every control cycle
 enum : uint16_t {
@@ -65,7 +66,14 @@ enum : uint16_t {
     MB_IR_485_OK = 27,     // good transactions (wraps)
     MB_IR_485_ERR = 28,    // failed ones: no reply + CRC + framing + exceptions + bad replies (wraps)
     MB_IR_485_RESP = 29,   // last reply time (end of request -> first reply bit), 0.01 ms
-    MB_N_IR = 32,
+    // v1.2, work orders (app/ops.hpp): fault detection on the board, 0 while none
+    MB_IR_WO_ACTIVE = 32,  // active orders (condition present)
+    MB_IR_WO_UNACKED = 33, // orders nobody acknowledged yet
+    MB_IR_WO_LEVEL = 34,   // highest level among the active ones: 0 none, 1 info, 2 warning, 3 fault
+    MB_IR_WO_LAST_ID = 35, // newest order that is not closed (0 = none)
+    MB_IR_WO_LAST_CODE = 36, // its fault code (OPS_*, = CAN ALARM byte 0)
+    MB_IR_WO_SEQ = 37,     // + 1 per change of any order (wraps): read the list again when it moves
+    MB_N_IR = 40,
 };
 
 class ModbusTcp {

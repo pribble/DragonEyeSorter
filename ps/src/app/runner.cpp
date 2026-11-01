@@ -266,6 +266,11 @@ void Runner::handle_modbus(double now)
             case MB_HR_RECIPE: r = select_recipe(v, "Modbus"); break;
             case MB_HR_LAMP:   // Ethernet -> RS485
                 r = (v & 0xFEF0) ? uint8_t(CANP_ACK_BAD_VALUE) : set_lamp(uint8_t(v >> 8), uint8_t(v & 0x0F), "Modbus"); break;
+            case MB_HR_WO_ACK:   // acknowledge work order v (0xFFFF = all); the worker applies it (app/ops.hpp)
+                if (v == 0) { r = CANP_ACK_BAD_VALUE; break; }
+                if (ops_acks_.size() < 64) ops_acks_.push_back(v);
+                r = CANP_ACK_OK;
+                break;
             case MB_HR_TIME_HI: mb_time_hi_ = v; continue;   // no RESULT/SEQ here (documented: "一次 FC 16 写两个，写低字时生效") — one ACK per clock set, so a split hi/lo write completes only after the low word applies
             case MB_HR_TIME_LO: {
                 const int64_t unix_s = (int64_t(mb_time_hi_) << 16) | v; if (unix_s < 1700000000) { r = CANP_ACK_BAD_VALUE; break; }   // before 2023: not a clock
@@ -284,7 +289,7 @@ uint8_t Runner::status_flags(double now) const
                    (alarm_ ? CANP_FLAG_ALARM : 0) |
                    (now - last_plc_hb_ < 1.0 || now - last_mb_ < 1.0 ? CANP_FLAG_PLC_LINK : 0) |
                    (cfg_.calib_loaded.empty() ? 0 : CANP_FLAG_CALIBRATED) |
-                   (rs485_ && rs485_->link_ok() ? CANP_FLAG_RS485 : 0));
+                   (rs485_ && rs485_->link_ok() ? CANP_FLAG_RS485 : 0) | (ops_.active ? CANP_FLAG_OPS : 0));
 }
 // read-back values (holding) and status (input registers), every cycle
 void Runner::update_modbus(double now)
@@ -315,6 +320,13 @@ void Runner::update_modbus(double now)
     ir_[MB_IR_RECIPE] = uint16_t(active_recipe_);
     ir_[MB_IR_VERSION] = MB_MAP_VERSION;
     mb_->set_holding(MB_HR_LAMP, rs485_ && rs485_->override_on() ? uint16_t(0x100 | rs485_->override_lamps()) : 0);
+    mb_->set_holding(MB_HR_WO_ACK, 0);
+    ir_[MB_IR_WO_ACTIVE] = ops_.active;
+    ir_[MB_IR_WO_UNACKED] = ops_.unacked;
+    ir_[MB_IR_WO_LEVEL] = ops_.level;
+    ir_[MB_IR_WO_LAST_ID] = ops_.last_id;
+    ir_[MB_IR_WO_LAST_CODE] = ops_.last_code;
+    ir_[MB_IR_WO_SEQ] = ops_.seq;
     if (rs485_) {
         const Rs485Io::Stats s = rs485_->stats();
         ir_[MB_IR_485_FLAGS] = uint16_t(1 | (rs485_->link_ok() ? 2 : 0) | (s.override_on ? 4 : 0));
@@ -345,10 +357,12 @@ void Runner::cycle(Tracker &tr, Picker &pk)
     done_buf_.clear();   // arm results
     if (done_.drain(done_buf_))
         for (const Done &d : done_buf_) {
-            pk.job_done(tr, d.id, d.ok); if (d.ok) cnt_.ok++;
+            pk.job_done(tr, d.id, d.ok); if (d.ok) { cnt_.ok++; picks_.ok++; }
             else {   // the reason in the service log too: bus (SYNC WRITE failed) vs grasp (nothing picked)
                 cnt_.recheck++; last_event_ = "抓取失败：" + d.why;
                 fprintf(stderr, "[run] track #%d pick failed: %s\n", d.id, d.why.empty() ? "?" : d.why.c_str());
+                picks_.failed++; picks_.last_why = d.why;   // servo bus trouble, not a missed part (app/ops.hpp)
+                if (d.why.rfind("SYNC WRITE failed", 0) == 0 || d.why.rfind("gripper did not answer", 0) == 0) picks_.servo++;
             }
         }
     // Newly decided part: counts + PART frame (decision time; a later failed pick is counted as recheck)
@@ -443,9 +457,11 @@ void Runner::cycle(Tracker &tr, Picker &pk)
         const canp_counts_t c{uint16_t(cnt_.total), uint16_t(cnt_.ok), uint16_t(cnt_.ng), uint16_t(cnt_.recheck)};
         send(canp_counts(&c)); last_counts_ = now;
     }
-    if (rs485_) {   // the tower light follows the line; yellow joins green when a PLC that was there went quiet
+    {   // the tower light follows the line; yellow joins green when a PLC that was there went quiet, or while a
+        // warning work order is not acknowledged (app/ops.hpp)
         const bool link = now - last_plc_hb_ < 1.0 || now - last_mb_ < 1.0;   // (PlcWatch: >= 3 s of it = there)
-        rs485_->set_line(state_, alarm_ != 0, plc_watch_.update(now, link, state_ == CANP_ST_IDLE));
+        plc_lost_ = plc_watch_.update(now, link, state_ == CANP_ST_IDLE);
+        if (rs485_) rs485_->set_line(state_, alarm_ != 0, plc_lost_ || ops_.warn);
     }
     flush_tx();
     update_modbus(now);
@@ -466,6 +482,25 @@ std::string Runner::status_line() const
     if (q[0]) r += std::string(" · ") + q;
     if (!last_event_.empty()) r += " · " + last_event_;
     return r;
+}
+void Runner::ops_fault(uint8_t code, const char *why)
+{
+    if (state_ == CANP_ST_ESTOP || state_ == CANP_ST_FAULT) return;   // already held
+    jog_dir_ = 0;
+    alarm_ = code;
+    set_state(CANP_ST_FAULT, why);   // cycle() holds the belt in every state but RUN; 复位报警 -> IDLE
+}
+void Runner::ops_alarm(uint8_t code, uint8_t level, uint16_t id)
+{
+    if (code == OPS_ESTOP) return;   // the e-stop already sends its ALARM (protocol v1: code 1, severity 2)
+    send(canp_alarm(code, level, id));
+}
+bool Runner::take_ops_ack(uint16_t &id)
+{
+    if (ops_acks_.empty()) return false;
+    id = ops_acks_.front();
+    ops_acks_.pop_front();
+    return true;
 }
 void Runner::set_flap_manual(bool on)
 {

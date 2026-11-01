@@ -55,11 +55,14 @@ struct HmiStatus {                        // from the worker, every cycle
     uint64_t logged = 0;
     ArmManualView arm;                    // manual arm page
     FlapManualView flap;                  // flap servo page
+    const WorkOrders *ops = nullptr;      // 运维 page (app/ops.hpp; thread-safe, read at render)
+    int ops_clients = 0;                  // remote stations on the network feed
 };
 
 struct HmiAction {
-    enum Kind { Params, Command, Recipe, Arm, Jog, Flap } kind = Params;
-    int cmd = 0;              // CANP_CMD_* for Command, recipe id for Recipe, +1 / -1 / 0 for Jog (worker applies run rules)
+    enum Kind { Params, Command, Recipe, Arm, Jog, Flap, Ops } kind = Params;
+    int cmd = 0;              // CANP_CMD_* for Command, recipe id for Recipe, +1 / -1 / 0 for Jog (worker applies run rules),
+                              // work order id to acknowledge for Ops (0xFFFF = all, 0 = send a test order)
     ArmRequest arm;           // Arm: request for the manual arm thread
     FlapRequest flap;         // Flap: request for FlapManual (worker thread)
 };
@@ -107,6 +110,7 @@ public:
     bool fonts_ok() const { return txt_.ok(); }
     bool arm_page() const { return page_ == 4; }    // the manual arm page is shown (it polls the servos)
     bool flap_page() const { return page_ == 5; }   // the flap servo page is shown
+    bool ops_page() const { return page_ == 6; }    // the 运维 (work order) page is shown
     static constexpr int kRecords = 500;   // parts kept for the 记录 page (all of them are in the SD card CSV anyway)
     static constexpr int kCrops = 40;      // crops kept for the newest parts (224^2 BGR = 150 KB each, ~6 MB)
     static constexpr int kRows = 9;        // rows shown at a time
@@ -129,6 +133,7 @@ private:
     void page_records(ui::Canvas &c);
     void page_arm(ui::Canvas &c);
     void page_flap(ui::Canvas &c);
+    void page_ops(ui::Canvas &c);
     void scroll_records(int rows);   // + = towards older parts
     void refresh_pic();   // cached 260 x 260 INTER_AREA view of the selected part crop
 
@@ -140,6 +145,8 @@ private:
     int page_ = 0, selected_ = -1;
     int rec_top_ = 0;                 // 记录 page: first row shown (0 = newest part); kept on the same part as new ones come
     int arm_step_ = 1, arm_ms_ = 1;   // indexes into the step / move-time choices of the arm page
+    int ops_top_ = 0;                 // 运维 page: first row shown (0 = newest order)
+    int ops_sel_ = 0;                 // 运维 page: selected order id (0 = the newest)
     std::vector<ui::Hit> hits_;
     std::vector<ui::Hit> panel_hits_;   // buttons of the status-panel strip (rebuilt by render_panel_strip)
     Ring<Part, kRecords> parts_;

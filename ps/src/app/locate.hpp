@@ -20,6 +20,7 @@ public:
     bool dump(const char *path) const;
     // Corners (x0,y0..x3,y3) of each blob of the last run in full-resolution image px, same order as run()'s result (cached by run(): the overlay of the live loop reads it every frame).
     const std::vector<std::array<float, 8>> &rects_full() const { return rects_full_; }
+    double gray_mean() const;   // mean of the last small gray image (运维: lamp off / lens covered), -1 before run()
 private:
     LocateConfig cfg_;
     std::vector<uint8_t> gray_, bin_;

@@ -9,7 +9,9 @@
 // 上传」): the board listens on a TCP port and a PC client (pc/feed/des_feed.py) receives each record the log writes.
 // That NetFeed is an implementation detail of part_log.cpp (own thread, bounded per-client queues, dead clients just
 // close) — its wire frame is unchanged: 10-byte header, big-endian: 'D' 'F' <type> 0 <name_len:2> <payload_len:4>,
-// then name, then payload; 'H' hello (session + CSV header), 'R' record, 'I' image, 'S' status every 2 s.
+// then name, then payload; 'H' hello (session + CSV header), 'R' record, 'I' image, 'S' status every 2 s,
+// 'W' one changed work order (app/ops.hpp, JSON) and 'w' the current work-order list (JSON array) right after the
+// hello (2026-11-01: pc/ops/ops_station.py; des_feed.py skips both).
 //
 // ⚠ The board has no RTC: wall time is whatever the clock says (sync it with `date -s` before a test run, or let the
 // PLC's TIME frame / Modbus time registers set the offset); the monotonic t_s column is always right.
@@ -56,6 +58,11 @@ public:
     void close();                                 // flush everything, stop the writer
     bool is_open() const { return th_.joinable(); }
     void set_images(const std::string &mode);   // HMI: sampled per record by the writer's producer
+    // 运维工单 to the remote station: one changed order ('W'); the list every new client gets after the hello ('w')
+    void push_ops(const std::string &json);
+    void set_ops_snapshot(const std::string &json_array);
+    int feed_clients() const;                     // remote stations / feed clients connected now
+    std::string day_dir() const { return day_dir_; }
     double now_s() const;                         // for PartRecord::t_s (monotonic - open())
     std::string session;                          // YYYYMMDD-HHMMSS of open()
     std::string csv_path;
