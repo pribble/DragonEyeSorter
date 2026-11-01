@@ -182,6 +182,19 @@ std::string load_config(const std::string &path, AppConfig &cfg)
                         g.outlets = uint16_t(g.outlets | (1u << oi));
                     }
                     if (outlet_names.size() == 1) g.outlets = 0;   // single outlet: the plain form, as before
+                    // "sweep_outlets": which of them are released by the sweep-out (the rest slide off along the
+                    // closed paddle: a second drop point, a second bin). Absent = all of them (with sweep_ms > 0).
+                    if (gj.contains("sweep_outlets")) {
+                        const json &so = gj["sweep_outlets"];
+                        if (!so.is_array() || so.empty())
+                            return path + ": flaps.gates sweep_outlets: a non-empty list of this gate's outlets";
+                        for (const json &n : so) {
+                            const int oi = n.is_string() ? index_of(cfg.outlets, n.get<std::string>()) : -1;
+                            if (oi <= 0 || oi >= 16 || !g.serves(oi))
+                                return path + ": flaps.gates sweep_outlets: " + n.dump() + " is not an outlet of this gate";
+                            g.sweep_mask = uint16_t(g.sweep_mask | (1u << oi));
+                        }
+                    }
                     pk.gates.push_back(g);
                 }
                 if (pk.gates.size() > 2) return path + ": flaps.gates: at most 2 (des_pwm has 2 channels)";

@@ -49,6 +49,14 @@ struct Gate {
     // the paddle lies nearly along the edge and the belt carries the part toward the pivot, is slower: the part drops
     // off further downstream and more gently (11-01 user: drop point too far upstream, second half too fast)
     float sweep_tail = 0.5f;
+    // Which of the outlets this paddle serves use the sweep-out (bit i = outlet i; 0 = all of them). The others are
+    // held closed until the part has slid along the paddle to the pivot: two drop points along the far edge, two bins
+    // (11-01 user: scrap swept out upstream, rework slid off at the pivot)
+    uint16_t sweep_mask = 0;
+    bool sweeps(int o) const
+    {
+        return sweep_ms > 0 && (sweep_mask == 0 || (o > 0 && o < 16 && ((sweep_mask >> o) & 1u)));
+    }
 };
 struct PickerConfig {
     float pick_x = 450;          // table x of the pick line (mm)
@@ -110,6 +118,8 @@ struct FlapEvent {
     double close_b = 0;          // gate: start closing at this belt travel (closed before the part enters the sweep)
     double release_b = 0;        // gate: may start opening at this belt travel (part pushed off; or earlier when
                                  // another part would otherwise reach the closed paddle)
+    bool sweep = false;          // gate: released by the slow sweep-out (Gate::sweeps for its outlet), else the part
+                                 // slides off along the closed paddle and the gate opens in the normal move_ms
 };
 struct BeltPlan {
     enum Kind {
@@ -237,6 +247,7 @@ private:
     State st_;
     bool started_ = false;
     double release_[2] = {-1e18, -1e18};   // belt travel until which the gate stays closed
+    bool rel_sweep_[2] = {false, false};   // that release is a sweep-out (the latched event's FlapEvent::sweep)
     // dur: s (move_ms, or sweep_ms); warp: smoothstep(u^warp) — 1 = symmetric, < 1 = slower second half (sweep_tail)
     struct Ramp { int from = 0, to = 0; double t0 = -1e18, dur = 0, warp = 1; } ramp_[2];
     int us_at(int g, double now) const;

@@ -25,6 +25,25 @@ void Picker::to_recheck(Track &t, const char *why)
 
 static float part_r(const Track &t) { return 0.5f * std::max(t.len, t.wid); }
 
+// Share of a gate's sweep-out time after which the opening paddle no longer reaches a part at lateral position y
+// (disc radius r, clearance included): the tip's reach len * sin(angle) has dropped below the part's near edge.
+// The paddle swings back from the lane toward its own edge, so a part in the lane is only exposed at the start of
+// the sweep (11-01 user: an OK part 186 mm behind an NG part counted as a conflict although the paddle had long
+// left its line). 0 = never reached (closing only), 1 = reached until fully open.
+static double sweep_clear_frac(const Gate &G, float y, float r)
+{
+    const GateGeom &g = G.geom;
+    const double d = double(y - g.pivot.y) * g.into() - r;   // part's near edge, lateral distance from the pivot
+    const double a_closed = g.closed, a_open = g.open;
+    if (d >= g.len * std::sin(a_closed)) return 0;
+    if (d <= g.len * std::sin(a_open) || a_closed <= a_open) return 1;
+    const double a = std::asin(std::min(1.0, d / g.len));               // paddle angle where its tip leaves that line
+    const double k = std::clamp((a_closed - a) / (a_closed - a_open), 0.0, 1.0);   // travel done by then
+    const double u = 0.5 - std::sin(std::asin(1 - 2 * k) / 3);          // smoothstep^-1
+    const double w = std::log(0.5) / std::log(1.0 - double(G.sweep_tail));   // the sequencer's time warp u0^w
+    return std::clamp(std::pow(u, 1.0 / w), 0.0, 1.0);
+}
+
 const Picker::GateAns &Picker::gate_geom_at(int gi, float y, float r) const
 {
     GateAns &a = gans_[size_t(gi) & 1];
@@ -50,7 +69,8 @@ bool Picker::gate_event(const Track &t, int gi, double move_mm, FlapEvent &e, co
                 x_in = a.sweep.hit ? a.sweep.x0 : x_meet;
     e.belt_mm = x_meet - t.s;              // its disc meets the closed paddle
     e.close_b = (x_in - t.s) - move_mm;    // closed before the disc (+ margin) enters the swept sector
-    if (G.sweep_ms > 0)   // slow sweep-out: start opening as soon as the part is pressed on the paddle
+    e.sweep = G.sweeps(t.disp == Disposition::Flap ? t.dest : cfg_.recheck_outlet);
+    if (e.sweep)          // slow sweep-out: start opening as soon as the part is pressed on the paddle
         e.release_b = e.belt_mm + G.sweep_after_mm;
     else                  // hold while it slides along the paddle and off the belt
         e.release_b = e.belt_mm + (G.hold_mm > 0 ? G.hold_mm : gate_slide_mm(G.geom, t.y)) + cfg_.gate_margin;
@@ -275,17 +295,17 @@ const Picker::Output &Picker::tick(Tracker &tr, const Input &in)
         if (!done && B < e.close_b) continue;   // not due yet
         const Gate &G = cfg_.gates[size_t(e.gate)];
         const size_t gi = size_t(e.gate) & 1;
-        const bool sweep = G.sweep_ms > 0;
+        const bool sweep = e.sweep;   // this part's outlet is released by the sweep-out (Gate::sweeps)
         // opening = the normal move, or the slow sweep-out: the gate is busy until it is fully open again
         const double open_mm = sweep ? std::max({in.speed_mm_s, in.cruise_mm_s, 1.0}) * G.sweep_s : move_mm;
         // earliest opening: half way along the paddle (sliding off), or as soon as it is pressed on it (sweep-out)
         const double min_release = sweep ? e.release_b : e.belt_mm + 0.5 * (e.release_b - e.belt_mm);
         bool hit = false;
-        // Sweep-out: this part needs the paddle closed while it is still sweeping an earlier part out -> never
-        // reverse a sweep half way (that part would be pushed back onto the belt); this one rides on to recheck.
-        // Kept per gate, not looked up from the tracks: the swept part leaves the view and its track may be gone.
-        // Closing no later than that sweep starts is fine: one closing serves both (the sequencer holds it closed).
-        if (sweep && !done && sweep_[gi].rel < e.close_b && e.close_b < sweep_[gi].rel + sweep_[gi].len + m)
+        // This part needs the paddle closed while it is still sweeping an earlier part out -> never reverse a sweep
+        // half way (that part would be pushed back onto the belt); this one rides on to recheck. Kept per gate, not
+        // looked up from the tracks: the swept part leaves the view and its track may be gone. Closing no later than
+        // that sweep starts is fine: one closing serves both (the sequencer holds it closed).
+        if (!done && sweep_[gi].rel < e.close_b && e.close_b < sweep_[gi].rel + sweep_[gi].len + m)
             hit = true;
         for (const Track &o : tr.tracks()) {
             if (hit) break;
@@ -293,15 +313,26 @@ const Picker::Output &Picker::tick(Tracker &tr, const Input &in)
             if (o.state == TrackState::Decided && o.disp == Disposition::Flap && o.gate == e.gate) {
                 FlapEvent eo;
                 const char *w = nullptr;
-                if (gate_event(o, e.gate, move_mm, eo, w) && eo.close_b <= e.release_b && e.close_b <= eo.release_b)
-                    continue;   // one closing serves both
+                if (gate_event(o, e.gate, move_mm, eo, w) && eo.close_b <= e.release_b && e.close_b <= eo.release_b) {
+                    if (eo.sweep == e.sweep) continue;   // one closing serves both
+                    // different release (swept out vs slid off: two drop points, two bins) cannot share one
+                    // closing — the one that has to close later rides on to recheck, the earlier one is served
+                    if (done || e.close_b < eo.close_b || (e.close_b == eo.close_b && e.track_id < o.id)) continue;
+                    hit = true;
+                    break;
+                }
             }
             double b0, b1;
             if (!sweep_window(o, e.gate, b0, b1)) continue;
+            // sweep-out: o only needs the part of the sweep until the paddle has swung back past o's line
+            const double open_o = sweep ? std::max({in.speed_mm_s, in.cruise_mm_s, 1.0}) *
+                                              (sweep_clear_frac(G, o.y, part_r(o) + float(m)) * G.sweep_ms / 1000.0 +
+                                               (G.sweep_s - G.sweep_ms / 1000.0))
+                                        : open_mm;
             if (!done) {
-                if (b1 >= e.close_b - m && b0 <= min_release + open_mm + m) { hit = true; break; }
+                if (b1 >= e.close_b - m && b0 <= min_release + open_o + m) { hit = true; break; }
             } else if (b0 > B) {   // committed: open (and finish opening) before o enters the sector
-                const double latest = b0 - open_mm - m;
+                const double latest = b0 - open_o - m;
                 if (latest < e.release_b) {
                     e.release_b = std::max(latest, min_release);
                     if (latest < min_release) stats.gate_squeezed++;   // o will meet the paddle anyway
@@ -375,23 +406,26 @@ const FlapSequencer::State &FlapSequencer::update(const std::vector<FlapEvent> &
         // the gate keeps the release it had.
         double rel = -1e18;
         int tid = -1;
-        bool seen = false;
+        bool seen = false, rsw = rel_sweep_[g];   // rsw: the release that keeps it closed is a sweep-out
         for (const FlapEvent &e : events) {
             if (e.gate != g || belt_mm < e.close_b) continue;
             if (e.track_id == st_.track_id[g]) seen = true;
             if (belt_mm < e.release_b && e.release_b > rel) {
                 rel = e.release_b;
+                rsw = e.sweep;
                 if (tid < 0 || e.track_id == st_.track_id[g]) tid = e.track_id;
             }
         }
         if (st_.track_id[g] >= 0 && !seen && release_[g] > rel) {
             rel = release_[g];
+            rsw = rel_sweep_[g];
             tid = st_.track_id[g];
         }
         if (belt_mm < rel) {
             if (st_.track_id[g] < 0) served++;
             st_.track_id[g] = tid;
             release_[g] = rel;
+            rel_sweep_[g] = rsw;   // kept after the release: the opening ramp just below reads it
         } else {
             st_.track_id[g] = -1;
             release_[g] = -1e18;
@@ -400,8 +434,10 @@ const FlapSequencer::State &FlapSequencer::update(const std::vector<FlapEvent> &
         const int want = st_.track_id[g] >= 0 ? gates_[g].closed_us : gates_[g].open_us;
         if (want != ramp_[g].to) {
             const bool other_just_started = n == 2 && now - ramp_[1 - g].t0 < stagger;
-            // opening after a part on a sweep-out gate: the slow swing that pushes it off (else the normal move)
-            const bool sweep_out = want == gates_[g].open_us && ramp_[g].to == gates_[g].closed_us && gates_[g].sweep_ms > 0;
+            // opening after a part released by the sweep-out: the slow swing that pushes it off (a part that slid
+            // off along the closed paddle, or any other opening: the normal move)
+            const bool sweep_out = want == gates_[g].open_us && ramp_[g].to == gates_[g].closed_us &&
+                                   gates_[g].sweep_ms > 0 && rel_sweep_[g];
             if (!other_just_started)
                 ramp_[g] = {us_at(g, now), want, now, sweep_out ? gates_[g].sweep_ms / 1000.0 : T,
                             // the second half of the travel starts at u = 0.5^(1/warp) = 1 - sweep_tail
