@@ -47,7 +47,7 @@ python submission/figures/make_placeholders.py           # 单跑报告内占位
 | 图 10 | `ph_overview.png` | 整机实物全景 | 447.92 × 223.96 | 3200 × 1600 | A 主三脚架右前方 45° | 3.1 整体介绍 |
 | 图 11 | `ph_arm.png` | 六轴总线舵机机械臂与夹爪 | 447.92 × 298.61 | 3200 × 2133 | C 机械臂近景 | 3.2.1 机械成果 |
 | 图 12 | `ph_board.png` | 开发板与主要接口特写 | 447.92 × 298.61 | 3200 × 2133 | E 微距 / B 俯拍 | 3.2.2 电路成果 |
-| 图 13 | `ph_ui.png` | HDMI 操作界面五页 | 447.92 × 251.96 | 3200 × 1800 | S 采集卡录屏 | 3.2.3 软件成果 |
+| 图 13 | `ph_ui.png` | HDMI 操作界面七页 | 447.92 × 503.91（8:9） | 2000 × 2250（322 dpi） | S 采集卡录屏 | 3.2.3 软件成果 |
 
 逐项的机位 / 素材、光线、画面内容与制作要求在 [`placeholder_manifest.json`](placeholder_manifest.json) 的 `camera` / `light` / `scene` / `shoot` 字段；机位代号 A/B/C/D/E/S 与光线参数沿用 [演示视频脚本](../演示视频脚本.md) §3 与 §5。
 
@@ -57,7 +57,7 @@ python submission/figures/make_placeholders.py           # 单跑报告内占位
 
 正文里的 `![](figures/ph_roi.png)`、`![](figures/ph_samples.png)`、`![](figures/ph_overview.png)`、`![](figures/ph_arm.png)`、`![](figures/ph_board.png)`、`![](figures/ph_ui.png)` 与图注已按最终说明写好，替换时**只动图、不动 [技术文档](../技术文档.md)**：
 
-1. 按上表「目标像素」裁切 / 缩放（图 9 / 10 为 2:1、图 13 为 16:9、图 8 为 12:5、图 11 / 12 为 3:2；等效 514 dpi），存到本目录、覆盖同名 `ph_*.png`。
+1. 按上表「目标像素」裁切 / 缩放（图 9 / 10 为 2:1、图 13 为 8:9、图 8 为 12:5、图 11 / 12 为 3:2；等效 322 dpi 即可，交件 PDF ≤50MB），存到本目录、覆盖同名 `ph_*.png`。
 2. 打开 `placeholder_manifest.json`，把该项 `"replaced"` 从 `false` 改 `true`。**必须改**：否则下次 `make_figures.py`（`build.ps1` 第 0 步会自动跑）会用占位图把实物图盖掉。改后该项跳过不画，只按实物图实际像素更新 `fig_meta.json` 的尺寸。
 3. 重出报告：`pwsh -File submission/build/build.ps1`（其余图照常重画）。注意插图高度变化会牵动下游分页——若出现半空页，先按「按落版尺寸作图」一节调图高或图 8~10 的 manifest 比例。
 

@@ -1405,13 +1405,22 @@ def check_figures(src: dict, stats: dict) -> None:
             problems.append("%s 缺失或非 PNG" % e.get("file"))
             continue
         w_px, h_px = size
-        if w_px != meta_px:
+        if e.get("replaced"):
+            # 实物 / 截图已替换：不再要求 3200px（那是生成器的画布宽），
+            # 只要落版 ≥300 dpi（PDF 侧的等效 dpi 另有一项专门核）
+            dpi = w_px / (FIG_W_PT / 72.0)
+            if dpi < MIN_IMG_DPI - 1e-6:
+                problems.append("%s %dpx（落版 %.0f dpi < %d）"
+                                % (e.get("file"), w_px, dpi, MIN_IMG_DPI))
+        elif w_px != meta_px:
             problems.append("%s 宽 %dpx（期望 %d）" % (e.get("file"), w_px, meta_px))
-        aspect = e.get("aspect")
-        if aspect == "16:9" and abs(h_px / w_px - 9 / 16) > 0.02:
-            problems.append("%s 非 16:9" % e.get("file"))
-        if aspect == "3:2" and abs(h_px / w_px - 2 / 3) > 0.02:
-            problems.append("%s 非 3:2" % e.get("file"))
+        aspect = e.get("aspect") or ""
+        try:
+            num, den = [float(x) for x in aspect.split(":")]
+            if abs(h_px / w_px - den / num) > 0.02:
+                problems.append("%s 非 %s" % (e.get("file"), aspect))
+        except ValueError:
+            pass
 
     # fig_meta：只核对报告内插图（画布宽 = 落版宽、PNG 3200px、落版最小字号 ≥ 7pt）
     meta_bad, low_fs = [], []
@@ -1423,7 +1432,10 @@ def check_figures(src: dict, stats: dict) -> None:
         if not near(m.get("w_pt"), meta_w, 0.01):
             meta_bad.append("%s 画布 %.1fpt ≠ %.1fpt" % (stem, m.get("w_pt", 0), meta_w))
         if m.get("png_w") != meta_px:
-            meta_bad.append("%s PNG 宽 %s" % (stem, m.get("png_w")))
+            # ph_* 是替换进来的实物 / 截图，不再要求 3200px，按落版 ≥300 dpi 核
+            if not (stem.startswith("ph_")
+                    and (m.get("png_w") or 0) / (meta_w / 72.0) >= MIN_IMG_DPI - 1e-6):
+                meta_bad.append("%s PNG 宽 %s" % (stem, m.get("png_w")))
         eff = (m.get("min_fs_pt") or 0) * FIG_W_PT / (m.get("w_pt") or FIG_W_PT)
         if eff < MIN_FIG_PT - 1e-6:
             low_fs.append("%s %.1fpt" % (stem, eff))
@@ -1434,7 +1446,7 @@ def check_figures(src: dict, stats: dict) -> None:
           % (n_lines, len(in_ph), len(src_files), len(src_stems)),
           not problems_all,
           "; ".join(problems_all[:6]) if problems_all
-          else "报告内占位 %d 张（另 %d 张移出报告）；画布 15.8cm / PNG %dpx / 落版字号 ≥ %.1fpt"
+          else "报告内占位 %d 张（另 %d 张移出报告）；画布 15.8cm / 线稿 PNG %dpx / 实物图 ≥300dpi / 落版字号 ≥ %.1fpt"
                % (len(in_ph), len(out_ph), meta_px, MIN_FIG_PT))
 
     # 生成侧占位清单（md2docx 输出的 _md2docx.json 的 placeholders）应与 in_report 一致
