@@ -58,11 +58,9 @@
     "bins_deg": [[113.2, 9.0, -38.0, -62.7, 89.8]]
   },
 
-  "flaps": { "enabled": false, "move_ms": 300, "stagger_ms": 120, "margin_mm": 10,
-             "gates": [ { "outlet": "scrap",  "pivot_xy": [438, -150], "len_mm": 230, "closed_deg": 55, "open_deg": -20,
-                          "hold_mm": 0, "open_us": 1000, "closed_us": 1900 },
-                        { "outlet": "rework", "pivot_xy": [613, -150], "len_mm": 210, "closed_deg": 65, "open_deg": 25,
-                          "hold_mm": 0, "open_us": 1000, "closed_us": 1900 } ] },
+  "flaps": { "enabled": true, "move_ms": 300, "stagger_ms": 120, "margin_mm": 10,
+             "gates": [ { "outlet": ["scrap", "rework"], "pivot_xy": [557, -178], "len_mm": 321, "closed_deg": 42.3,
+                          "open_deg": 0, "hold_mm": 0, "open_us": 1500, "closed_us": 1100 } ] },
 
   "plc": { "modbus_port": 502 },
   "beam": { "enabled": true, "match_mm": 12, "expire_mm": 120, "miss_mm": 25 },
