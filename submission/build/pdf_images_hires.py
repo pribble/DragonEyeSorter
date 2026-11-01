@@ -38,6 +38,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import shutil
 import subprocess
 import sys
@@ -178,6 +179,24 @@ def replace_header_image(doc, xref: int, src: Path) -> tuple[int, int]:
     return pm.width, pm.height
 
 
+def replace_with_jpeg(doc, page_no: int, xref: int, src: Path, quality: int) -> tuple[int, int]:
+    """把指定 xref 的图像换成 JPEG —— 只给实物照片（ph_*）用。
+
+    FlateDecode 存的是 RGB 原始采样，噪点照片几乎压不动（6 张实物图让 PDF 涨到 48MB）；
+    改成 JPEG（quality 88、4:2:0）在 322 dpi 下肉眼看不出差别，PDF 能砍到十分之一。
+    线稿图不走这里——无损 FlateDecode 才不会让字边缘出伪影。
+    走 ``Page.replace_image``（而不是手写 /DCTDecode 字典）：字典 / 颜色空间 / Length
+    由 PyMuPDF 自己写，手写那版实测渲染成黑块 + 噪点。
+    """
+    from PIL import Image
+    import tempfile
+    im = Image.open(src).convert("RGB")
+    tmp = Path(tempfile.gettempdir()) / ("%s_q%d.jpg" % (src.stem, quality))
+    im.save(tmp, "JPEG", quality=quality, optimize=True, subsampling=2)
+    doc[page_no - 1].replace_image(xref, filename=str(tmp))
+    return im.width, im.height
+
+
 def report(pdf_path: Path, min_dpi: float) -> int:
     pm = load_pymupdf()
     if pm is None:
@@ -205,7 +224,7 @@ def report(pdf_path: Path, min_dpi: float) -> int:
 
 
 def hires(pdf_path: Path, order, min_dpi: float, out_path: Path, inplace: bool,
-          header_src: Path | None = None) -> int:
+          header_src: Path | None = None, photo_jpeg: int = 0) -> int:
     pm = load_pymupdf()
     if pm is None:
         return 2
@@ -250,7 +269,10 @@ def hires(pdf_path: Path, order, min_dpi: float, out_path: Path, inplace: bool,
                     print("[!] #%d 宽高比不一致：源图 %.3f vs PDF 显示框 %.3f —— 图会被拉伸"
                           % (idx, src_aspect, it["aspect"]))
             if it["xref"] not in done:      # 同一 xref 多页复用时只替换一次
-                doc[it["page"] - 1].replace_image(it["xref"], filename=str(src))
+                if photo_jpeg and src.name.startswith("ph_"):
+                    replace_with_jpeg(doc, it["page"], it["xref"], src, photo_jpeg)
+                else:
+                    doc[it["page"] - 1].replace_image(it["xref"], filename=str(src))
                 done[it["xref"]] = True
             pairs.append((idx, it, src, (px.width, px.height)))
         # 页眉图：原地改写图像对象（不能走 replace_image，会留孤儿对象），所有引用页生效
@@ -313,6 +335,9 @@ def main(argv=None) -> int:
     ap.add_argument("--min-dpi", type=float, default=MIN_DPI_DEFAULT,
                     help="等效 dpi 下限，默认 %(default)s；0 = 不判定")
     ap.add_argument("--inplace", action="store_true", help="直接写回原 PDF")
+    ap.add_argument("--photo-jpeg", type=int, default=0, metavar="Q",
+                    help="ph_*.png（实物照片）改用 JPEG 编码，Q=质量 1~100（0=关闭，默认）；"
+                         "线稿仍走 FlateDecode 无损")
     ap.add_argument("--out", default=None, help="输出 PDF（默认 <同名>.hires.pdf）")
     args = ap.parse_args(argv)
 
@@ -333,7 +358,7 @@ def main(argv=None) -> int:
         pdf_path.with_name(pdf_path.stem + ".hires.pdf")
     header = Path(args.header).resolve() if args.header else None
     return hires(pdf_path, [Path(p).resolve() for p in args.order],
-                 args.min_dpi, out_path, args.inplace, header)
+                 args.min_dpi, out_path, args.inplace, header, args.photo_jpeg)
 
 
 if __name__ == "__main__":
