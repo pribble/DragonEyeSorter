@@ -14,18 +14,16 @@
 
 版式令牌（单位 pt）：A4 21×29.7cm、页边距上下左右 2.4cm、页眉 logo 距边 1.2cm、页脚距边 1.6cm、
 单节、无封面 / 无目录；页眉为官方模板「芯辰大海」logo（6.5cm 居中，下方 0.75pt 细线，无文字）；
-正文宋体 11pt + 西文 Times New Roman、首行缩进 2 字符
-（440 twips）、单倍行距、两端对齐；标题黑体 17.5pt 居中（参照实测 17.28pt，OOXML 只能存半磅，
-取最近值 17.5）+ 标题后连续 10pt 元信息行；一级标题黑体 14.5pt（参照实测 14.35pt，同理）、
-二级 12pt、三级 11pt；
-图注 / 表注宋体加粗 10pt 居中，表注在表格上方；三线表 9pt（顶 / 底 1.5pt、表头下 0.75pt，
-无竖线 / 行线 / 底纹，整表 15.6cm 固定布局，表头跨页重复、行不跨页、单元格顶对齐、
-行高只按内容；列宽可由分隔行破折号权重控制，长 token 有硬下限）；图宽 15.8cm；
-行内代码 Consolas 10pt 无底纹；页脚居中 PAGE 域 11pt；全篇纯黑。
+正文楷体小四 12pt + 西文 Times New Roman、首行缩进 2 字符（480 twips）、1.5 倍行距、两端对齐；
+作品名黑体 17.5pt 居中（标题块维持原版式）+ 标题后连续 10pt 元信息行（标签黑体、值楷体）；
+一 / 二 / 三级章节标题一律楷体四号 14pt 加粗、2 倍行距；
+图注 / 表注楷体加粗五号 10.5pt 居中，表注在表格上方；三线表 9pt 楷体（顶 / 底 1.5pt、表头下
+0.75pt，无竖线 / 行线 / 底纹，整表 15.6cm 固定布局，表头跨页重复、行不跨页、单元格顶对齐、
+行高只按内容；列宽可由分隔行破折号权重控制，长 token 有硬下限）；图宽 15.8cm、居中；
+行内代码 Consolas 11pt 无底纹；页脚居中 PAGE 域 11pt；全篇纯黑。
 
-行距一律用倍数（lineRule=auto，单倍 = 240）：固定行距会裁字并让上下段叠在一起，见
-set_spacing。宋体单倍行高约 1.286×字号（11pt → 约 14.1pt），参照实测表明 Word 单倍
-1.286em 对参照论文 1.24em「够近，不必压到固定值」。
+行距一律用倍数（lineRule=auto，单倍 = 240、正文 360、章节标题 480）：固定行距会裁字并让
+上下段叠在一起，见 set_spacing。楷体单倍行高系数与宋体相近（≈1.29×字号），估算用。
 
 生成后自检（读回 docx 复核本节令牌：节数 / 页面 / 页边距 / 页脚 / 页眉 logo 无文字 / 无目录域 /
 字号 / 首行缩进 / 表宽与线型 / 图注加粗 / 表注加粗 / 禁项 / 固定行距 / 表列宽与分隔行
@@ -82,10 +80,10 @@ DEFAULT_OUT = SUBMISSION / "out" / "龙瞳分拣_作品报告.docx"
 C_INK = "000000"          # 黑：正文 / 标题 / 表格线 / 图注 / 页脚
 C_LINE = C_INK            # 三线表线色（旧名保留）
 
-FONT_CN = "宋体"            # 中文正文
-FONT_HEI = "黑体"           # 中文标题 / 强调
-FONT_EN = "Times New Roman"  # 西文与数字
-FONT_CODE = "Consolas"     # 行内代码
+FONT_CN = "楷体"            # 中文正文（规格：正文楷体小四；标题 / 表格 / 图注同族）
+FONT_HEI = "黑体"           # 作品名 / 元信息标签（标题块维持黑体，不随规格变）
+FONT_EN = "Times New Roman"  # 西文与数字（规格：英文全部 Times New Roman）
+FONT_CODE = "Consolas"     # 行内代码（寄存器名 / 地址，保留等宽）
 
 PAGE_W_CM, PAGE_H_CM = 21.0, 29.7            # A4
 MARGIN_CM = 2.4                              # 四边 2.4cm → 版心 16.2×24.9cm
@@ -94,23 +92,24 @@ FOOTER_DIST_CM = 1.6                         # 页脚距边 1.6cm
 TABLE_W_CM = 15.6                            # 整表上限，留 6mm 余量
 FIG_MAX_CM = 15.8                            # 插图默认宽度 15.8cm
 
-BODY_PT = 11.0                               # 正文
-TITLE_PT = 17.5                              # 标题：参照实测 17.28；OOXML 半磅粒度只有
-                                             # 17.0 / 17.5，取 17.5（离参照 17.28 更近）
-H1_PT = 14.5                                 # 一级标题：参照实测 14.35；半磅粒度取 14.5
-H2_PT = 12.0                                 # 二级标题
-H3_PT = 11.0                                 # 三级标题（官方模板 2.2.1 层，黑体与正文同号）
+BODY_PT = 12.0                               # 正文：楷体小四
+TITLE_PT = 17.5                              # 作品名（标题块维持，规格只约束章节标题）
+H1_PT = 14.0                                 # 章节标题：楷体四号（一 / 二 / 三级同号）
+H2_PT = 14.0                                 # 二级标题（楷体四号加粗）
+H3_PT = 14.0                                 # 三级标题（楷体四号加粗）
 META_PT = 10.0                               # 元信息行
-CAPTION_PT = 10.0                            # 图注 / 表注（加粗）
-TABLE_PT = 9.0                               # 表体
-TABLE_HEAD_PT = 9.0                          # 表头（宋体加粗）
-CODE_PT = 10.0                               # 行内代码
-LIST_PT = 10.0                               # 列表（仅参考文献 / 附录）
+CAPTION_PT = 10.5                            # 图注 / 表注：五号（加粗）
+TABLE_PT = 9.0                               # 表体（楷体）
+TABLE_HEAD_PT = 9.0                          # 表头（楷体加粗）
+CODE_PT = 11.0                               # 行内代码（正文升小四后等宽同步 +1pt）
+LIST_PT = 12.0                               # 列表（仅参考文献 / 附录，按正文小四）
 FOOTER_PT = 11.0                             # 页脚页码
 
-# 行距一律倍数（lineRule=auto）；单倍 = 1.0。宋体单倍行高 ≈ 1.286×字号。
-LINE_FACTOR = 1.286                          # 宋体单倍行高 / 字号（Word 实测）
-SINGLE_LINE = 1.0
+# 行距一律倍数（lineRule=auto）；单倍 = 1.0。
+SINGLE_LINE = 1.0                            # 标题块 / 元信息 / 图注表注 / 表格 / 页脚
+BODY_LINE = 1.5                              # 正文（规格：1.5 倍）
+HEAD_LINE = 2.0                              # 章节标题（规格：2 倍）
+LINE_FACTOR = 1.286                          # 单倍行高 / 字号（估算用，仅喂告警不算分）
 
 TITLE_GAP = (24.0, 10.0)                     # 标题段前 / 段后
 META_AFTER = 1.0                             # 元信息行段后
@@ -123,9 +122,9 @@ BODY_AFTER = 0.0                             # 正文段后（段落靠首行缩
 SPACER_LINE = 0.6                            # 表后细空行（144）
 
 TWIPS_PER_CM = 566.929
-CHAR_TWIPS = int(round(BODY_PT * 20 * 2))    # 首行缩进 2 字符 = 2em = 440 twips
-LIST_LEFT_TW = 300                           # 列表左缩进 1.5 字符（10pt → 300 twips）
-LIST_HANG_TW = 300                           # 悬挂 1.5 字符（标记落在左边距）
+CHAR_TWIPS = int(round(BODY_PT * 20 * 2))    # 首行缩进 2 字符 = 2em = 480 twips @12pt
+LIST_LEFT_TW = int(round(LIST_PT * 20 * 1.5))   # 列表左缩进 1.5 字符（12pt → 360 twips）
+LIST_HANG_TW = LIST_LEFT_TW                  # 悬挂 1.5 字符（标记落在左边距）
 CELL_MAR_TW = 108                            # 单元格左右内边距
 TABLE_HEAD_ROW_TW = 300                      # 表头行最小行高（15pt，给 9pt 字喘气）
 
@@ -702,32 +701,35 @@ CJK_RE = re.compile(r"[\u2e80-\u303f\u3200-\u4dbf\u4e00-\u9fff"
 
 
 def add_emphasis_runs(par, text, size_pt=BODY_PT, color=C_INK):
-    """`**强调**`：中文黑体（本身即重，不再叠字重）、西文 Times Bold，同字号。"""
+    """`**强调**`：中文楷体加粗、西文 Times Bold，同字号。"""
     pos = 0
     for m in CJK_RE.finditer(text):
         if m.start() > pos:
             write(par, text[pos:m.start()], FONT_EN, FONT_EN, size_pt, True, color)
-        write(par, m.group(0), FONT_HEI, FONT_EN, size_pt, False, color)
+        write(par, m.group(0), FONT_CN, FONT_EN, size_pt, True, color)
         pos = m.end()
     if pos < len(text):
         write(par, text[pos:], FONT_EN, FONT_EN, size_pt, True, color)
 
 
-def add_runs(par, text, size_pt=BODY_PT, heading=False, bold=False, color=C_INK):
+def add_runs(par, text, size_pt=BODY_PT, heading=False, bold=False, color=C_INK,
+             cn=None):
     """写一行带 `**强调**` 与 `` `行内代码` `` 的文本。
 
-    heading=True 用于标题段：整段（含西文、行内代码）都走黑体 / Times，标题段里不
-    出现第三、第四种字面。行内代码默认 Consolas、不加底纹、黑色；在 9pt 表格里降到
-    9pt（不撑破表格行高），正文里是 10pt。
+    heading=True 用于标题段：整段（含西文、行内代码）都走标题中文字体 / Times，标题段里
+    不出现第三、第四种字面；中文字体默认黑体（作品名），章节标题经 cn=FONT_CN 显式改楷体。
+    行内代码默认 Consolas、不加底纹、黑色；在 9pt 表格里降到 9pt（不撑破表格行高），
+    正文里是 11pt。
     """
-    cn = FONT_HEI if heading else FONT_CN
+    if cn is None:
+        cn = FONT_HEI if heading else FONT_CN
     for piece in INLINE_RE.split(text):
         if not piece:
             continue
         if piece.startswith("**") and piece.endswith("**") and len(piece) > 4:
             inner = piece[2:-2]
             if heading:
-                write(par, inner, cn, FONT_EN, size_pt, False, color)
+                write(par, inner, cn, FONT_EN, size_pt, bold, color)
             else:
                 add_emphasis_runs(par, inner, size_pt, color)
         elif piece.startswith("`") and piece.endswith("`") and len(piece) > 2:
@@ -741,7 +743,7 @@ def add_runs(par, text, size_pt=BODY_PT, heading=False, bold=False, color=C_INK)
 
 
 def add_caption_runs(par, text):
-    """图注 / 表注：宋体加粗 10pt，编号与说明同一字面，居中由段落给。"""
+    """图注 / 表注：楷体加粗五号 10.5pt，编号与说明同一字面，居中由段落给。"""
     for piece in INLINE_RE.split(text):
         if not piece:
             continue
@@ -754,7 +756,7 @@ def add_caption_runs(par, text):
 
 
 def add_meta_runs(par, label, value, char_tw=0):
-    """元信息行：`**标签**` 渲染黑体，后接全角冒号 + 10pt 值。
+    """元信息行：`**标签**` 渲染黑体，后接全角冒号 + 10pt 楷体值。
 
     一行放不下时按字符间距轻微收紧（char_tw < 0，最多 -0.4pt/字），10pt 字号不变，
     保证元信息每条各占一行（版式观感；换行会让标题块散架）。
@@ -1054,7 +1056,7 @@ def cell_align(text):
 
 def render_table(doc, payload):
     """三线表：顶 / 底 1.5pt 黑、表头下 0.75pt；无竖线 / 行线 / 底纹；
-    整表 15.6cm 固定布局；表头宋体加粗 9pt、表体宋体 9pt；行不跨页、表头跨页重复。
+    整表 15.6cm 固定布局；表头楷体加粗 9pt、表体楷体 9pt；行不跨页、表头跨页重复。
 
     列宽：分隔行有破折号权重提示时按权重归一化（长 token 下限兜底），破折号个数
     全表相同时回退自动算法；对齐：冒号提示优先，否则首列左、其余短串居中 / 长文左；
@@ -1216,7 +1218,7 @@ def build_styles(doc):
     styles = doc.styles
     setup_doc_defaults(doc)
 
-    # Normal：宋体 11pt / Times、单倍行距、无缩进（具体段落由 BodyCN 等覆盖）
+    # Normal：楷体 12pt / Times、单倍行距、无缩进（具体段落由 BodyCN 等覆盖）
     normal = styles["Normal"]
     st_el = style_el(styles, "Normal")
     _setup_para_style(st_el, before=0.0, after=0.0, multiple=SINGLE_LINE,
@@ -1227,56 +1229,57 @@ def build_styles(doc):
     normal.font.italic = False
     normal.font.color.rgb = RGBColor.from_string(C_INK)
 
-    # 标题块：黑体 17.5pt 居中，段前 24 / 段后 10，与元信息同页
+    # 标题块：黑体 17.5pt 居中，段前 24 / 段后 10，与元信息同页（不随规格变）
     _new_par_style(styles, "TitleCN")
     _setup_para_style(style_el(styles, "TitleCN"),
                       before=TITLE_GAP[0], after=TITLE_GAP[1],
                       multiple=SINGLE_LINE, align="center", keep_next=True,
                       keep_lines=True, size_pt=TITLE_PT, cn=FONT_HEI)
-    # 元信息行：10pt、单倍、段后 1pt、左对齐（标签黑体由 run 直接格式给）
+    # 元信息行：10pt、单倍、段后 1pt、左对齐（标签黑体由 run 直接格式给，值楷体）
     _new_par_style(styles, "MetaCN")
     _setup_para_style(style_el(styles, "MetaCN"), before=0.0, after=META_AFTER,
                       multiple=SINGLE_LINE, align="left", keep_lines=True,
                       size_pt=META_PT)
 
-    # 一级 / 二级 / 三级标题：黑体、左对齐、段前段后见令牌表，与下段同页；靠内置样式给大纲级别
+    # 一级 / 二级 / 三级章节标题：一律楷体四号 14pt 加粗、2 倍行距、左对齐，
+    # 段前段后见令牌表，与下段同页；靠内置样式给大纲级别
     for name, size_pt, level in (("Heading 1", H1_PT, 0), ("Heading 2", H2_PT, 1),
                                  ("Heading 3", H3_PT, 2)):
         before, after = H_GAP["h%d" % (level + 1)]
         st = styles[name]
         _setup_para_style(style_el(styles, name), before=before, after=after,
-                          multiple=SINGLE_LINE, align="left", keep_next=True,
+                          multiple=HEAD_LINE, align="left", keep_next=True,
                           keep_lines=True, widow=True, outline=level,
-                          size_pt=size_pt, cn=FONT_HEI)
+                          size_pt=size_pt, cn=FONT_CN, bold=True)
         st.font.name = FONT_EN
         st.font.size = Pt(size_pt)
-        st.font.bold = False
+        st.font.bold = True
         st.font.italic = False
         st.font.color.rgb = RGBColor.from_string(C_INK)
 
-    # 正文：宋体 11pt / Times、两端对齐、首行缩进 440 twips、单倍行距
+    # 正文：楷体小四 12pt / Times、两端对齐、首行缩进 480 twips、1.5 倍行距
     _new_par_style(styles, "BodyCN")
     _setup_para_style(style_el(styles, "BodyCN"), before=0.0, after=BODY_AFTER,
-                      multiple=SINGLE_LINE, first=CHAR_TWIPS, align="both",
+                      multiple=BODY_LINE, first=CHAR_TWIPS, align="both",
                       widow=True, size_pt=BODY_PT)
 
-    # 图注：宋体加粗 10pt、居中、段前 0 / 段后 6
+    # 图注：楷体加粗五号 10.5pt、居中、段前 0 / 段后 6
     _new_par_style(styles, "CaptionCN")
     _setup_para_style(style_el(styles, "CaptionCN"),
                       before=FIGCAP_GAP[0], after=FIGCAP_GAP[1],
                       multiple=SINGLE_LINE, align="center", keep_lines=True,
                       size_pt=CAPTION_PT, bold=True)
-    # 表注：宋体加粗 10pt、居中、段前 6 / 段后 3，在表格上方且与表同页
+    # 表注：楷体加粗五号 10.5pt、居中、段前 6 / 段后 3，在表格上方且与表同页
     _new_par_style(styles, "TableCaptionCN")
     _setup_para_style(style_el(styles, "TableCaptionCN"),
                       before=TABCAP_GAP[0], after=TABCAP_GAP[1],
                       multiple=SINGLE_LINE, align="center", keep_next=True,
                       keep_lines=True, size_pt=CAPTION_PT, bold=True)
 
-    # 列表（仅参考文献 / 附录）：10pt、悬挂缩进 1.5 字符、单倍、段后 2pt
+    # 列表（仅参考文献 / 附录）：按正文小四 12pt、悬挂缩进 1.5 字符、1.5 倍、段后 2pt
     _new_par_style(styles, "ListCN")
     _setup_para_style(style_el(styles, "ListCN"), before=0.0, after=LIST_AFTER,
-                      multiple=SINGLE_LINE, left=LIST_LEFT_TW,
+                      multiple=BODY_LINE, left=LIST_LEFT_TW,
                       hanging=LIST_HANG_TW, align="left", size_pt=LIST_PT)
 
 
@@ -1468,32 +1471,36 @@ def self_check(out_path: Path, *, title, n_h1, n_h2, n_h3=None, n_img, n_tbl, n_
         need(st.font.size is not None and near(st.font.size.pt, pt, 0.01),
              "样式 %s 字号不是 %.1fpt" % (name, pt),
              "%.2f" % (st.font.size.pt if st.font.size else float("nan")))
-    for name, cn in (("BodyCN", FONT_CN), ("Heading 1", FONT_HEI),
-                     ("Heading 2", FONT_HEI), ("Heading 3", FONT_HEI),
+    for name, cn in (("BodyCN", FONT_CN), ("Heading 1", FONT_CN),
+                     ("Heading 2", FONT_CN), ("Heading 3", FONT_CN),
                      ("TitleCN", FONT_HEI), ("CaptionCN", FONT_CN)):
         fonts = _style_fonts(back.styles, name)
         need(fonts[0] == cn, "样式 %s 中文字体不是 %s" % (name, cn), str(fonts))
         need(fonts[1] == FONT_EN, "样式 %s 西文字体不是 Times" % name, str(fonts))
     need(back.styles["CaptionCN"].font.bold, "图注样式不加粗")
     need(back.styles["TableCaptionCN"].font.bold, "表注样式不加粗")
+    for name in ("Heading 1", "Heading 2", "Heading 3"):
+        need(back.styles[name].font.bold, "样式 %s 不加粗（章节标题须加粗）" % name)
     need(not back.styles["BodyCN"].font.bold, "正文样式被加粗了")
 
-    # ---- 正文：首行缩进 440 twips / 单倍 / 两端对齐 / 11pt
+    # ---- 正文：首行缩进 2 字符 / 1.5 倍 / 两端对齐 / 小四
     body_pars = [p for p in back.paragraphs if p.style.name == "BodyCN"]
     need(bool(body_pars), "没有正文段落")
     if body_pars:
         bp = body_pars[0]
         fli = bp.paragraph_format.first_line_indent
         need(fli is not None and near(fli.pt, CHAR_TWIPS / 20.0, 0.05),
-             "正文首行缩进不是 440 twips", "%s twips" % (fli.twips if fli else None))
-        need(near(bp.paragraph_format.line_spacing, SINGLE_LINE, 0.01)
-             or bp.paragraph_format.line_spacing == 1.0, "正文行距不是单倍")
+             "正文首行缩进不是 %d twips" % CHAR_TWIPS,
+             "%s twips" % (fli.twips if fli else None))
+        need(near(bp.paragraph_format.line_spacing, BODY_LINE, 0.01),
+             "正文行距不是 %.1f 倍" % BODY_LINE,
+             str(bp.paragraph_format.line_spacing))
         need(bp.alignment == WD_ALIGN_PARAGRAPH.JUSTIFY, "正文不是两端对齐")
         sizes = {r.font.size.pt for r in bp.runs if r.text.strip()
                  and _run_fonts(r)[0] != FONT_CODE}
-        need(sizes == {BODY_PT}, "正文字号不是 11pt", str(sorted(sizes)))
+        need(sizes == {BODY_PT}, "正文字号不是 %gpt" % BODY_PT, str(sorted(sizes)))
 
-    # ---- 标题字号 / 段距
+    # ---- 章节标题：楷体四号加粗、2 倍行距、段距
     for name, size_pt, gap in (("Heading 1", H1_PT, H_GAP["h1"]),
                                ("Heading 2", H2_PT, H_GAP["h2"]),
                                ("Heading 3", H3_PT, H_GAP["h3"])):
@@ -1501,8 +1508,13 @@ def self_check(out_path: Path, *, title, n_h1, n_h2, n_h3=None, n_img, n_tbl, n_
         if not pars:
             continue
         sizes = {r.font.size.pt for r in pars[0].runs if r.text.strip()}
-        need(sizes == {size_pt}, "%s 字号不是 %.1fpt" % (name, size_pt),
+        need(sizes == {size_pt}, "%s 字号不是 %gpt" % (name, size_pt),
              str(sorted(sizes)))
+        need(all(r.font.bold for r in pars[0].runs if r.text.strip()),
+             "%s 没有整段加粗" % name)
+        ls = pars[0].paragraph_format.line_spacing
+        need(near(ls, HEAD_LINE, 0.01), "%s 行距不是 %.1f 倍" % (name, HEAD_LINE),
+             str(ls))
         need(near(pars[0].paragraph_format.space_before.pt, gap[0], 0.05),
              "%s 段前不是 %.0fpt" % (name, gap[0]))
         need(near(pars[0].paragraph_format.space_after.pt, gap[1], 0.05),
@@ -1523,7 +1535,7 @@ def self_check(out_path: Path, *, title, n_h1, n_h2, n_h3=None, n_img, n_tbl, n_
                          r.text[:20])
                     need(r.font.size is not None
                          and near(r.font.size.pt, CAPTION_PT, 0.01),
-                         "%s 字号不是 10pt" % style_name, r.text[:20])
+                         "%s 字号不是 %gpt" % (style_name, CAPTION_PT), r.text[:20])
         # 表注在表格上方：表注段落下标 < 表对象在 body 里的位置
     if n_tabcap:
         body_children = list(back.element.body.iterchildren())
@@ -1581,7 +1593,7 @@ def self_check(out_path: Path, *, title, n_h1, n_h2, n_h3=None, n_img, n_tbl, n_
                             continue
                         need(run.font.size is not None
                              and near(run.font.size.pt, TABLE_PT, 0.01),
-                             "第 %d 张表有单元格字号不是 9pt" % (ti + 1),
+                             "第 %d 张表有单元格字号不是 %gpt" % (ti + 1, TABLE_PT),
                              run.text[:16])
                         if r is table.rows[0]:
                             need(run.font.bold is True,
@@ -1655,7 +1667,7 @@ def self_check(out_path: Path, *, title, n_h1, n_h2, n_h3=None, n_img, n_tbl, n_
         need(near(shape.width.cm, fig_w, 0.05), "第 %d 张插图宽不是 %.1fcm"
              % (i + 1, fig_w), "%.2fcm" % shape.width.cm)
 
-    # ---- 全篇纯黑；无固定行距（144 的表后空行除外）
+    # ---- 全篇纯黑；无固定行距（144 的表后空行除外；240/360/480 均为合法倍数）
     colors = {c.upper() for c in re.findall(r'w:color w:val="([0-9A-Fa-f]{6})"', usedxml)}
     weird = sorted(c for c in colors if c != C_INK)
     need(not weird, "出现非黑色字色", ",".join(weird[:8]))
@@ -1666,13 +1678,21 @@ def self_check(out_path: Path, *, title, n_h1, n_h2, n_h3=None, n_img, n_tbl, n_
                                                    docxml + stylesxml + footxml)
                         if int(v) < 240 and int(v) != int(SPACER_LINE * 240)})
     need(not tiny_line, "有倍数行距 < 1.0 的 w:line 值", str(tiny_line))
+    odd_line = sorted({int(v) for v in re.findall(r'w:line="(\d+)"',
+                                                  docxml + stylesxml + footxml)
+                       if int(v) >= 240
+                       and int(v) not in (240, int(BODY_LINE * 240),
+                                          int(HEAD_LINE * 240))})
+    need(not odd_line, "出现规格外的倍数行距（只允许 240/360/480）", str(odd_line))
 
     # ---- 禁项
     need(not forbidden, "禁项命中", ",".join(forbidden))
 
     stats = {
-        "title_pt": TITLE_PT, "h1_pt": H1_PT, "h2_pt": H2_PT, "body_pt": BODY_PT,
+        "font_cn": FONT_CN, "title_pt": TITLE_PT, "h1_pt": H1_PT, "h2_pt": H2_PT,
+        "h3_pt": H3_PT, "body_pt": BODY_PT, "list_pt": LIST_PT, "code_pt": CODE_PT,
         "caption_pt": CAPTION_PT, "table_pt": TABLE_PT, "footer_pt": FOOTER_PT,
+        "body_line": BODY_LINE, "head_line": HEAD_LINE,
         "first_line_twips": CHAR_TWIPS, "margin_cm": MARGIN_CM,
         "figure_width_cm": fig_w, "table_width_cm": TABLE_W_CM,
         "placeholders": placeholder_names,
@@ -1698,6 +1718,28 @@ def _style_fonts(styles, name):
 
 
 # ---------------------------------------------------------------- 主流程
+
+def sync_effects_part(out_path: Path):
+    """stylesWithEffects.xml（模板遗留的旧式样式副本，仅 Word 2010 读取）的 docDefaults
+    与 styles.xml 同步成单倍 / 段后 0。python-docx 默认模板在这个部件里带
+    after=200 / line=276（Word 2010 默认值），setup_doc_defaults 够不到它，保存后
+    原地重写；不处理的话验收会把 276 当规格外行距扫出来。"""
+    if not out_path.is_file():
+        return
+    with zipfile.ZipFile(str(out_path)) as zin:
+        if "word/stylesWithEffects.xml" not in zin.namelist():
+            return
+        items = [(zi, zin.read(zi.filename)) for zi in zin.infolist()]
+    tmp = out_path.with_name(out_path.name + ".tmp")
+    with zipfile.ZipFile(str(tmp), "w", zipfile.ZIP_DEFLATED) as zout:
+        for zi, data in items:
+            if zi.filename == "word/stylesWithEffects.xml":
+                data = re.sub(rb'<w:spacing[^>]*w:line="276"[^>]*/>',
+                              b'<w:spacing w:after="0" w:line="240" '
+                              b'w:lineRule="auto"/>', data, count=1)
+            zout.writestr(zi, data)
+    tmp.replace(out_path)
+
 
 def build(source: Path, out_path: Path, caption_clean=True, caption_rules=None,
           fig_width_cm=None):
@@ -1752,33 +1794,36 @@ def build(source: Path, out_path: Path, caption_clean=True, caption_rules=None,
             before, after = H_GAP["h1"]
             is_appendix = payload.lstrip().startswith("附录")
             par = fmt_par(doc.add_paragraph(style="Heading 1"), before=before,
-                          after=after, multiple=SINGLE_LINE, keep_next=True,
+                          after=after, multiple=HEAD_LINE, keep_next=True,
                           keep_lines=True, align=WD_ALIGN_PARAGRAPH.LEFT,
                           page_break_before=is_appendix)
-            add_runs(par, payload, size_pt=H1_PT, heading=True)
+            add_runs(par, payload, size_pt=H1_PT, heading=True, bold=True,
+                     cn=FONT_CN)
         elif kind == "h3":
             counts["h3"] += 1
             before, after = H_GAP["h2"]
             par = fmt_par(doc.add_paragraph(style="Heading 2"), before=before,
-                          after=after, multiple=SINGLE_LINE, keep_next=True,
+                          after=after, multiple=HEAD_LINE, keep_next=True,
                           keep_lines=True, align=WD_ALIGN_PARAGRAPH.LEFT)
-            add_runs(par, payload, size_pt=H2_PT, heading=True)
+            add_runs(par, payload, size_pt=H2_PT, heading=True, bold=True,
+                     cn=FONT_CN)
         elif kind == "h4":
             counts["h4"] += 1
             before, after = H_GAP["h3"]
             par = fmt_par(doc.add_paragraph(style="Heading 3"), before=before,
-                          after=after, multiple=SINGLE_LINE, keep_next=True,
+                          after=after, multiple=HEAD_LINE, keep_next=True,
                           keep_lines=True, align=WD_ALIGN_PARAGRAPH.LEFT)
-            add_runs(par, payload, size_pt=H3_PT, heading=True)
+            add_runs(par, payload, size_pt=H3_PT, heading=True, bold=True,
+                     cn=FONT_CN)
         elif kind == "p":
             par = fmt_par(doc.add_paragraph(style="BodyCN"), before=0.0,
-                          after=BODY_AFTER, multiple=SINGLE_LINE,
+                          after=BODY_AFTER, multiple=BODY_LINE,
                           first=CHAR_TWIPS)
             add_runs(par, payload, size_pt=BODY_PT)
         elif kind == "ol":
             for num, item, _ln in payload:
                 par = fmt_par(doc.add_paragraph(style="ListCN"), before=0.0,
-                              after=LIST_AFTER, multiple=SINGLE_LINE,
+                              after=LIST_AFTER, multiple=BODY_LINE,
                               left=LIST_LEFT_TW, hanging=LIST_HANG_TW,
                               align=WD_ALIGN_PARAGRAPH.LEFT)
                 write(par, "%d." % num, size_pt=LIST_PT, color=C_INK)
@@ -1828,6 +1873,7 @@ def build(source: Path, out_path: Path, caption_clean=True, caption_rules=None,
     doc.core_properties.title = title
     out_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(out_path))
+    sync_effects_part(out_path)
 
     # ---- 自检：读回统计 + 令牌复核 + 禁项扫描 ----
     back = Document(str(out_path))

@@ -15,11 +15,12 @@ submission/out/_verify_report.txt。检查项按组编号：
     无代码块 / 引用块 / 五级标题 / 「- 」列表 / HTML
   3 DOCX 结构：段落 / 表格 / 插图计数三方对账，单节无封面无目录，标题与元信息、
     章节文字逐条等于源，图注表注数量等于源
-  4 版式令牌：正文宋体 11pt / Times 两端对齐 / 首行缩进 440 twips / 单倍行距、
-    标题 17.5pt、H1 14.5pt、H2 12pt、H3 11pt（Word 半磅粒度落版值）、图注表注加粗 10pt、
-    行内代码 Consolas 10pt、参考列表 10pt 悬挂 1.5 字符、无固定行距、全篇只有黑色
+  4 版式令牌：正文楷体小四 12pt / Times 两端对齐 / 首行缩进 480 twips / 1.5 倍行距、
+    作品名 17.5pt 黑体居中、一 / 二 / 三级章节标题一律楷体四号 14pt 加粗 2 倍行距、
+    图注表注楷体加粗五号 10.5pt、行内代码 Consolas 11pt、参考列表 12pt 悬挂 1.5 字符、
+    无固定行距（倍数只允许 240/360/480）、全篇只有黑色
   5 三线表：≤ 15.6cm 固定布局、上下 1.5pt / 表头下 0.75pt 黑线、无竖线行线底纹、
-    表头重复加粗、行不跨页、单元格内边距 108 twips、表体 9pt；
+    表头重复加粗、行不跨页、单元格内边距 108 twips、表体 9pt 楷体；
     **列宽与源分隔行提示（破折号 = 权重）偏差 ≤ 8%**、**列对齐 = 源冒号提示**，
     单元格估算行数 > 6 行只给 WARN（不判 FAIL）
   6 插图与占位：宽 15.8cm 居中、图注紧跟图下方且与图同页、等效 dpi ≥ 300、
@@ -29,7 +30,7 @@ submission/out/_verify_report.txt。检查项按组编号：
   7 页面与页码：A4、页边距 2.4cm、页脚距边 1.6cm、页眉仅官方模板 logo（1 图无文字）、
     页脚居中 PAGE 域（无 NUMPAGES / 「第 X 页」）、页码从 1 起、参考文献 1~20 篇、
     PDF 无彩色
-  8 PDF 渲染：字体全部嵌入、四族字体齐全（宋体 / 黑体 / Times / Consolas）、
+  8 PDF 渲染：字体全部嵌入、四族字体齐全（楷体 / 黑体 / Times / Consolas）、
     中文不被回退字体替换、行框无重叠
   9 逐页留白：fill% = 内容高度 / 版心 24.9cm，正文页填充 < 50% 判 FAIL（末页除外），
     无整页空白；底部空白 > 20% 的页逐页列出原因
@@ -84,7 +85,7 @@ DOCS_LOG = REPO / "docs" / "log"
 # ---------------------------------------------------------------- 版式令牌
 # 与 SPEC §2 同口径（独立复核用，不 import 生成脚本）。
 # 1cm = 28.3465pt；1pt = 20 twips。
-FONT_CN = "宋体"
+FONT_CN = "楷体"
 FONT_HEI = "黑体"
 FONT_EN = "Times New Roman"
 FONT_CODE = "Consolas"
@@ -94,24 +95,26 @@ MARGIN_CM = 2.4
 FOOTER_DIST_CM = 1.6
 TEXT_W_CM = PAGE_W_CM - 2 * MARGIN_CM            # 16.2cm 版心
 TEXT_H_CM = PAGE_H_CM - 2 * MARGIN_CM            # 24.9cm 版心
-BODY_PT = 11.0
-TITLE_PT = 17.5                                  # Word 半磅粒度（SPEC 17.28pt 落版值）
-H1_PT = 14.5                                     # Word 半磅粒度（SPEC 14.4pt 落版值）
-H2_PT = 12.0
-H3_PT = 11.0                                     # 三级标题（官方模板 2.2.1 层，与正文同号黑体）
+BODY_PT = 12.0                                   # 正文：楷体小四
+TITLE_PT = 17.5                                  # 作品名（标题块维持，规格只约束章节标题）
+H1_PT = 14.0                                     # 章节标题：楷体四号（一 / 二 / 三级同号）
+H2_PT = 14.0
+H3_PT = 14.0
 META_PT = 10.0
-CAPTION_PT = 10.0
+CAPTION_PT = 10.5                                # 图注 / 表注：五号（加粗）
 TABLE_PT = 9.0
-CODE_PT = 10.0
-LIST_PT = 10.0
+CODE_PT = 11.0
+LIST_PT = 12.0                                   # 参考文献列表按正文小四
 FOOTER_PT = 11.0
-INDENT_TW = 440                                  # 2 字符 @11pt
-LIST_HANG_TW = 300                               # 1.5 字符 @10pt
+INDENT_TW = 480                                  # 2 字符 @12pt
+LIST_HANG_TW = 360                               # 1.5 字符 @12pt
 CELL_MAR_TW = 108                                # 单元格左右内边距
 TABLE_MAX_CM = 15.6
 FIG_W_CM = 15.8
 FIG_W_PT = FIG_W_CM / 2.54 * 72.0                # 447.92pt（figkit 画布宽）
 LINE_TW = 240                                    # 单倍行距
+BODY_LINE_TW = 360                               # 正文 1.5 倍
+HEAD_LINE_TW = 480                               # 章节标题 2 倍
 MIN_IMG_DPI = 300.0
 MIN_FIG_PT = 7.0
 FILL_WARN = 20.0
@@ -952,8 +955,8 @@ def analyze_docx(doc, src: dict, stats: dict) -> dict:
             c = color(r, p)
             if c is not None and c.upper() != C_INK:
                 bad_color.append("%r 字色 %s" % (t[:10], c))
-    check("4 版式令牌", "正文：中文宋体 / 西文 Times，11pt（强调黑体 %d、代码 %d，样本 %d 段）"
-          % (n_hei, n_code, len(body_pars)),
+    check("4 版式令牌", "正文：中文楷体 / 西文 Times，12pt（代码 %d，样本 %d 段）"
+          % (n_code, len(body_pars)),
           sample_ok and not bad_font and not bad_size,
           ("样本不足 %d 段 / %d run；" % (len(body_pars), len(body_runs))
            if not sample_ok else "") + "; ".join((bad_font + bad_size)[:5]))
@@ -965,16 +968,16 @@ def analyze_docx(doc, src: dict, stats: dict) -> dict:
                     if jc(p) not in ("both", "justify"))[:80] or "合规")
     bad_ind = [(p.text[:16], ind(p, "firstLine")) for p in body_pars
                if ind(p, "firstLine") != INDENT_TW]
-    check("4 版式令牌", "正文首行缩进 440 twips（2 字符 @11pt）", not bad_ind,
+    check("4 版式令牌", "正文首行缩进 %d twips（2 字符 @12pt）" % INDENT_TW, not bad_ind,
           "; ".join("%r=%s" % b for b in bad_ind[:4]) or "%d 段全部合规" % len(body_pars))
     bad_line = []
     for p in body_pars:
         line, rule = spacing(p, "line"), spacing(p, "lineRule")
-        if line is not None and line != LINE_TW:
+        if line is not None and line != BODY_LINE_TW:
             bad_line.append("%r line=%s" % (p.text[:12], line))
         if rule is not None and rule != "auto":
             bad_line.append("%r lineRule=%s" % (p.text[:12], rule))
-    check("4 版式令牌", "正文行距单倍（line 240 / auto）", not bad_line,
+    check("4 版式令牌", "正文行距 1.5 倍（line 360 / auto）", not bad_line,
           "; ".join(bad_line[:4]) or "合规")
     emph_bad = []
     for p in body_pars:
@@ -983,11 +986,11 @@ def analyze_docx(doc, src: dict, stats: dict) -> dict:
             if not t or not bold(r, p):
                 continue
             fonts = rfonts(r, p)
-            if has_cjk(t) and fonts.get("eastAsia") != FONT_HEI:
-                emph_bad.append("%r 强调中文非黑体" % t[:10])
+            if has_cjk(t) and fonts.get("eastAsia") != FONT_CN:
+                emph_bad.append("%r 强调中文非楷体" % t[:10])
             if not has_cjk(t) and has_latin(t) and fonts.get("ascii") != FONT_EN:
                 emph_bad.append("%r 强调西文非 Times" % t[:10])
-    check("4 版式令牌", "强调：中文黑体 / 西文 Times 粗", not emph_bad,
+    check("4 版式令牌", "强调：中文楷体加粗 / 西文 Times 粗", not emph_bad,
           "; ".join(emph_bad[:4]) or "无异常")
 
     # 标题 + 元信息格式
@@ -1015,11 +1018,17 @@ def analyze_docx(doc, src: dict, stats: dict) -> dict:
         runs = [r for r in p.runs if r.text.strip()]
         ea = {rfonts(r, p).get("eastAsia") for r in runs}
         sz = {round(font_size(r, p) or 0, 2) for r in runs}
-        if ea - {FONT_HEI} or sz - {round(want, 2)} or jc(p) not in (None, "left"):
+        line, rule = spacing(p, "line"), spacing(p, "lineRule")
+        if ea - {FONT_CN} or sz - {round(want, 2)} or jc(p) not in (None, "left"):
             h_bad.append("%r 字体 %s 字号 %s 对齐 %s"
                          % (p.text[:14], ea, sz, jc(p)))
+        if runs and not all(bold(r, p) for r in runs):
+            h_bad.append("%r 未整段加粗" % p.text[:14])
+        if (line or HEAD_LINE_TW) != HEAD_LINE_TW or (rule or "auto") != "auto":
+            h_bad.append("%r 行距 line=%s rule=%s" % (p.text[:14], line, rule))
     level_bad = t_bad + h_bad
-    check("4 版式令牌", "标题层级：标题 17.5pt / H1 14.5pt / H2 12pt / H3 11pt 黑体，元信息 10pt",
+    check("4 版式令牌", "标题层级：作品名 17.5pt 黑体居中；H1/H2/H3 均 14pt 楷体加粗、"
+          "2 倍行距；元信息 10pt",
           not level_bad, "; ".join(level_bad[:6]) if level_bad else "合规")
 
     # 图注 / 表注格式与位置
@@ -1033,14 +1042,14 @@ def analyze_docx(doc, src: dict, stats: dict) -> dict:
             if any(not bold(r, p) for r in runs):
                 cap_bad.append("%s %d 未加粗" % (kind, num))
             if any(not near(font_size(r, p), CAPTION_PT, 0.01) for r in runs):
-                cap_bad.append("%s %d 字号非 10pt" % (kind, num))
+                cap_bad.append("%s %d 字号非 %g" % (kind, num, CAPTION_PT))
             if not centered(p):
                 cap_bad.append("%s %d 未居中" % (kind, num))
             if {rfonts(r, p).get("eastAsia") for r in runs} - {FONT_CN}:
-                cap_bad.append("%s %d 非宋体" % (kind, num))
+                cap_bad.append("%s %d 非楷体" % (kind, num))
             if {color(r, p) for r in runs} - {None, C_INK}:
                 cap_bad.append("%s %d 非黑色" % (kind, num))
-    check("4 版式令牌", "图注 / 表注：加粗 10pt 居中 宋体 黑色（%d 条）"
+    check("4 版式令牌", "图注 / 表注：加粗五号 10.5pt 居中 楷体 黑色（%d 条）"
           % (len(caps["图"]) + len(caps["表"])), not cap_bad,
           "; ".join(cap_bad[:5]) if cap_bad else "全部合规")
 
@@ -1075,7 +1084,7 @@ def analyze_docx(doc, src: dict, stats: dict) -> dict:
             c = color(r, p)
             if c is not None and c.upper() != C_INK:
                 code_bad.append("%r 字色 %s" % (r.text[:10], c))
-    check("4 版式令牌", "行内代码 Consolas 10pt 无底纹黑色", not code_bad,
+    check("4 版式令牌", "行内代码 Consolas %gpt 无底纹黑色" % CODE_PT, not code_bad,
           "; ".join(code_bad[:4]) if code_bad else "无异常")
 
     list_bad = []
@@ -1084,17 +1093,17 @@ def analyze_docx(doc, src: dict, stats: dict) -> dict:
         if not runs:
             continue
         if any(not near(font_size(r, p), LIST_PT, 0.01) for r in runs):
-            list_bad.append("%r 字号非 10pt" % p.text[:12])
+            list_bad.append("%r 字号非 %gpt" % (p.text[:12], LIST_PT))
         if ind(p, "hanging") != LIST_HANG_TW or ind(p, "left") != LIST_HANG_TW:
             list_bad.append("%r 缩进 left=%s hanging=%s"
                             % (p.text[:12], ind(p, "left"), ind(p, "hanging")))
-        if (spacing(p, "line") or LINE_TW) != LINE_TW:
+        if (spacing(p, "line") or BODY_LINE_TW) != BODY_LINE_TW:
             list_bad.append("%r 行距 %s" % (p.text[:12], spacing(p, "line")))
     if list_pars:
-        check("4 版式令牌", "参考文献 / 附录列表：10pt、悬挂 1.5 字符、单倍",
+        check("4 版式令牌", "参考文献 / 附录列表：12pt、悬挂 1.5 字符、1.5 倍",
               not list_bad, "; ".join(list_bad[:4]) if list_bad else "%d 条合规" % len(list_pars))
     else:
-        check("4 版式令牌", "参考文献 / 附录列表：10pt、悬挂 1.5 字符、单倍", None,
+        check("4 版式令牌", "参考文献 / 附录列表：12pt、悬挂 1.5 字符、1.5 倍", None,
               "未识别到编号列表条目（参考文献 / 附录可能为空）")
 
     # 行距 / 颜色 XML 扫描
@@ -1104,15 +1113,19 @@ def analyze_docx(doc, src: dict, stats: dict) -> dict:
                               for n in zf.namelist()
                               if n.startswith("word/") and n.endswith(".xml"))
         fixed_rules = sorted(set(re.findall(r'w:lineRule="(exact|atLeast|fixed)"', xml_all)))
+        ok_lines = {LINE_TW, BODY_LINE_TW, HEAD_LINE_TW}
         tiny = sorted({int(v) for v in re.findall(r'w:line="(\d+)"', xml_all)
                        if int(v) < LINE_TW and int(v) != 144})
-        check("4 版式令牌", "全篇无固定 / 精确 / 压缩行距（仅 auto 240）",
-              not fixed_rules and not tiny,
+        odd = sorted({int(v) for v in re.findall(r'w:line="(\d+)"', xml_all)
+                      if int(v) >= LINE_TW and int(v) not in ok_lines})
+        check("4 版式令牌", "全篇无固定 / 精确 / 压缩行距（倍数只允许 auto 240/360/480）",
+              not fixed_rules and not tiny and not odd,
               ("；".join(x for x in (
                   ("fixed/exact：%s" % ",".join(fixed_rules)) if fixed_rules else "",
-                  ("line<240：%s" % tiny) if tiny else "") if x) or "仅 auto 240"))
+                  ("line<240：%s" % tiny) if tiny else "",
+                  ("规格外倍数：%s" % odd) if odd else "") if x) or "仅 auto 240/360/480"))
     except (OSError, zipfile.BadZipFile):
-        check("4 版式令牌", "全篇无固定 / 精确 / 压缩行距（仅 auto 240）", False,
+        check("4 版式令牌", "全篇无固定 / 精确 / 压缩行距（倍数只允许 auto 240/360/480）", False,
               "docx 读取失败")
 
     try:
@@ -1293,9 +1306,12 @@ def analyze_docx(doc, src: dict, stats: dict) -> dict:
                         if not near(font_size(r, p), TABLE_PT, 0.01):
                             font_bad.append("表%d r%d 字号 %s"
                                             % (i, ri + 1, font_size(r, p)))
+                        ea = rfonts(r, p).get("eastAsia")
+                        if has_cjk(r.text) and ea != FONT_CN:
+                            font_bad.append("表%d r%d 中文 %s" % (i, ri + 1, ea))
     check("5 三线表", "三线表线条：上下 1.5pt 黑 + 表头下 0.75pt，无竖线行线",
           not border_bad, "; ".join(border_bad[:4]) if border_bad else "%d 张合规" % n_tbl)
-    check("5 三线表", "表头重复加粗、表体 / 表头 9pt 宋体",
+    check("5 三线表", "表头重复加粗、表体 / 表头 9pt 楷体",
           not header_bad and not font_bad,
           "; ".join((header_bad + font_bad)[:5]) if (header_bad or font_bad) else "全部合规")
     check("5 三线表", "行不跨页（cantSplit）", not split_bad,
@@ -1605,6 +1621,8 @@ def analyze_pdf(pdf_path: Path, src: dict, pdf_stats: dict) -> None:
 
     def fam(name: str) -> str:
         n = name.replace(" ", "").lower()
+        if "kai" in n or "楷" in name:
+            return FONT_CN
         if "simsun" in n or "song" in n or "宋" in name:
             return FONT_CN
         if "simhei" in n or "hei" in n or "黑" in name:
@@ -1643,11 +1661,11 @@ def analyze_pdf(pdf_path: Path, src: dict, pdf_stats: dict) -> None:
                         cjk_bad.append("p%d %r 用 %s" % (pno, t[:10], s["font"]))
                     if f == "符号回退" and has_cjk(t):
                         sym_bad.append("p%d %r 用 %s" % (pno, t[:10], s["font"]))
-    check("8 PDF 渲染", "中文由宋体 / 黑体渲染（非回退替换）",
+    check("8 PDF 渲染", "中文由楷体 / 黑体渲染（非回退替换）",
           not cjk_bad and not sym_bad,
           ("；".join((cjk_bad + sym_bad)[:6]) if (cjk_bad or sym_bad)
            else ("未登记字体：" + "、".join(sorted(other_fams)) if other_fams
-                 else "全部命中宋体 / 黑体；符号回退字体仅承载 ⚠ / 数学符号")))
+                 else "全部命中楷体 / 黑体；符号回退字体仅承载 ⚠ / 数学符号")))
 
     # 行框重叠
     overlaps = []
