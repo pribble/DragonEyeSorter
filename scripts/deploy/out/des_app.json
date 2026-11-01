@@ -61,7 +61,8 @@
   "flaps": { "enabled": true, "move_ms": 300, "stagger_ms": 120, "margin_mm": 10,
              "gates": [ { "outlet": ["scrap", "rework"], "pivot_xy": [557, -178], "len_mm": 321, "closed_deg": 42.3,
                           "open_deg": 0, "hold_mm": 0, "open_us": 1500, "closed_us": 1100,
-                          "sweep_ms": 2750, "sweep_after_mm": 50, "sweep_tail": 0.64 } ] },
+                          "sweep_ms": 2750, "sweep_after_mm": 50, "sweep_tail": 0.64,
+                         "by_outlet": { "rework": { "sweep_ms": 2000, "sweep_after_mm": 15, "sweep_tail": 0.5 } } } ] },
 
   "plc": { "modbus_port": 502 },
   "beam": { "enabled": true, "match_mm": 12, "expire_mm": 120, "miss_mm": 25 },

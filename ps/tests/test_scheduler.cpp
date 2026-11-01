@@ -492,7 +492,7 @@ static void test_flaps()
     gsw[0].outlet = 1; gsw[0].open_us = 1000; gsw[0].closed_us = 1900; gsw[0].sweep_ms = 2000;
     FlapSequencer fss(fsw, gsw);
     FlapEvent es; es.track_id = 9; es.outlet = 1; es.gate = 0; es.belt_mm = 200; es.close_b = 100; es.release_b = 215;
-    es.sweep = true;   // released by the sweep-out (the picker sets it per outlet, Gate::sweeps)
+    es.rel = gsw[0].release(1);   // released by the sweep-out (the picker sets it per outlet, Gate::release)
     std::vector<FlapEvent> evs = {es};
     FlapSequencer::State ss = fss.update(evs, 0, 30.0);
     CHECK(ss.us[0] == 1000, "sweep gate starts open (%d)", ss.us[0]);
@@ -515,7 +515,11 @@ static void test_flaps()
     std::vector<Gate> gtl = gsw;
     gtl[0].sweep_tail = 0.7f;
     FlapSequencer ftl(fsw, gtl);
-    std::vector<FlapEvent> evt = {es};
+    FlapEvent et = es;
+    et.rel = gtl[0].release(1);   // the event carries the release (the sequencer ramps what the event says)
+    CHECK(et.rel.ms == 2000 && near(et.rel.tail, 0.7, 1e-6), "Gate::release: the gate's own sweep (%d ms, tail %.2f)",
+          et.rel.ms, double(et.rel.tail));
+    std::vector<FlapEvent> evt = {et};
     ftl.update(evt, 0, 40.0);
     ftl.update(evt, 100, 41.0);
     FlapSequencer::State tl = ftl.update(evt, 150, 41.4);
@@ -530,9 +534,9 @@ static void test_flaps()
     CHECK(tl.us[0] > 1000 && tl.us[0] < 1100 && tl.moving[0], "sweep_tail 0.7: slow end (%d)", tl.us[0]);
     tl = ftl.update(evt, 250, 44.05);
     {
-        // same gate, a part released by sliding off (sweep false): the opening is the normal 300 ms move
+        // same gate, a part released by sliding off (release ms 0): the opening is the normal 300 ms move
         FlapSequencer fh(fsw, gsw);
-        FlapEvent eh = es; eh.sweep = false; eh.track_id = 11;
+        FlapEvent eh = es; eh.rel = GateRelease{}; eh.track_id = 11;
         std::vector<FlapEvent> evh = {eh};
         fh.update(evh, 0, 50.0);
         fh.update(evh, 100, 51.0);
@@ -545,6 +549,30 @@ static void test_flaps()
         CHECK(hs.us[0] == 1000 && !hs.moving[0], "slide-off part: open after 300 ms (%d)", hs.us[0]);
     }
     CHECK(tl.us[0] == 1000 && !tl.moving[0] && at30 > 1000, "sweep_tail 0.7: open after 2 s (%d)", tl.us[0]);
+
+    // per-outlet release on one paddle (11-01 user): the gate's own sweep 2750 ms for one class, an earlier and quicker
+    // 2000 ms one for the other — the sequencer ramps whatever the released event carries
+    {
+        std::vector<Gate> g2 = gsw;
+        g2[0].sweep_ms = 2750; g2[0].sweep_tail = 0.64f;
+        g2[0].rel_mask = uint16_t(1u << 2);
+        g2[0].rel[2] = GateRelease{2000, 15, 0.5f};
+        for (const int o : {1, 2}) {
+            FlapSequencer f2(fsw, g2);
+            FlapEvent e2 = es; e2.outlet = o; e2.rel = g2[0].release(o);
+            std::vector<FlapEvent> ev2 = {e2};
+            f2.update(ev2, 0, 60.0);
+            f2.update(ev2, 100, 61.0);
+            f2.update(ev2, 150, 61.4);
+            f2.update(ev2, 215, 62.0);   // released
+            const FlapSequencer::State a = f2.update(ev2, 260, 64.05), b = f2.update(ev2, 300, 64.8);
+            if (o == 2)
+                CHECK(a.us[0] == 1000 && !a.moving[0], "outlet 2 (own release 2000 ms): open after 2 s (%d)", a.us[0]);
+            else
+                CHECK(a.us[0] > 1000 && a.moving[0] && b.us[0] == 1000 && !b.moving[0],
+                      "outlet 1 (gate's 2750 ms): still moving after 2 s (%d), open after 2.75 s (%d)", a.us[0], b.us[0]);
+        }
+    }
 }
 
 // intercept ("flying") picks: belt at 50 mm/s (1 mm per tick), arm base 150 mm beside the belt centre at the pick line
@@ -740,18 +768,19 @@ static void test_gate_events()
                 CHECK(two.ng.gate == 0 && on_gate == 2 && conflict == 0, "second NG %.0f mm behind, after the "
                       "sweep: both diverted (%d on the gate, %d conflicts)", d, on_gate, conflict);
         }
-        // per outlet (11-01): outlet 1 swept out, outlet 2 slides off along the closed paddle (second drop point)
+        // per outlet (11-01): outlet 1 swept out, outlet 2 slides off along the closed paddle (by_outlet sweep_ms 0)
         Gate two = sw;
         two.outlets = uint16_t((1u << 1) | (1u << 2));
-        two.sweep_mask = uint16_t(1u << 1);
+        two.rel_mask = uint16_t(1u << 2);
+        two.rel[2] = GateRelease{};
         const std::vector<Gate> g_two{two};
         CHECK(two.sweeps(1) && !two.sweeps(2) && sw.sweeps(1) && sw.sweeps(2), "Gate::sweeps per outlet");
         GateRun s1 = run_gates({{-20, 0, 32, 32, 0.f, 1}}, 400, 270, &g_two);
-        CHECK(s1.ng.gate == 0 && s1.ng.sweep && near(s1.ng.release_b - s1.ng.belt_mm, 15, 0.01),
-              "outlet 1: swept out 15 mm after contact (sweep %d, %.1f)", int(s1.ng.sweep), s1.ng.release_b - s1.ng.belt_mm);
+        CHECK(s1.ng.gate == 0 && s1.ng.rel.ms == 2000 && near(s1.ng.release_b - s1.ng.belt_mm, 15, 0.01),
+              "outlet 1: swept out 15 mm after contact (%d ms, %.1f)", s1.ng.rel.ms, s1.ng.release_b - s1.ng.belt_mm);
         GateRun s2 = run_gates({{-20, 0, 32, 32, 0.f, 2}}, 400, 270, &g_two);
-        CHECK(s2.ng.gate == 0 && !s2.ng.sweep && near(s2.ng.release_b - s2.ng.belt_mm, gate_slide_mm(g, 0) + 10, 2),
-              "outlet 2: held while it slides off (sweep %d, hold %.1f)", int(s2.ng.sweep), s2.ng.release_b - s2.ng.belt_mm);
+        CHECK(s2.ng.gate == 0 && s2.ng.rel.ms == 0 && near(s2.ng.release_b - s2.ng.belt_mm, gate_slide_mm(g, 0) + 10, 2),
+              "outlet 2: held while it slides off (%d ms, hold %.1f)", s2.ng.rel.ms, s2.ng.release_b - s2.ng.belt_mm);
         // two parts 40 mm apart would share one closing — not across release modes: the later one -> recheck
         for (const int first : {1, 2}) {
             const int second = 3 - first;
@@ -761,6 +790,43 @@ static void test_gate_events()
             CHECK(on_gate == 1 && out_first == first && m.stats.flap_conflicts == 1,
                   "mixed release modes 40 mm apart (outlet %d first): only the first diverted (%d on the gate, "
                   "outlet %d, %d conflicts)", first, on_gate, out_first, int(m.stats.flap_conflicts));
+        }
+        // two sweep-outs on one paddle (11-01 user): outlet 1 the gate's own (2750 ms, 50 mm after contact), outlet 2
+        // its own earlier one (2000 ms, 15 mm) -> two drop points; each event carries its outlet's release, the gate is
+        // busy for that release's time only, and two parts close together with different releases do not share
+        Gate sw2 = sw;
+        sw2.outlets = uint16_t((1u << 1) | (1u << 2));
+        sw2.sweep_ms = 2750; sw2.sweep_after_mm = 50; sw2.sweep_tail = 0.64f;
+        sw2.sweep_s = (2750 + 120) / 1000.f + 0.04f;
+        sw2.rel_mask = uint16_t(1u << 2);
+        sw2.rel[2] = GateRelease{2000, 15, 0.5f, (2000 + 120) / 1000.f + 0.04f};
+        const std::vector<Gate> g_sw2{sw2};
+        GateRun p1 = run_gates({{-20, 0, 32, 32, 0.f, 1}}, 400, 270, &g_sw2);
+        GateRun p2 = run_gates({{-20, 0, 32, 32, 0.f, 2}}, 400, 270, &g_sw2);
+        CHECK(p1.ng.gate == 0 && p1.final && p1.ng.rel.ms == 2750 && near(p1.ng.release_b - p1.ng.belt_mm, 50, 0.01),
+              "two sweeps: outlet 1 the gate's (%d ms, %.1f mm after contact)", p1.ng.rel.ms,
+              p1.ng.release_b - p1.ng.belt_mm);
+        CHECK(p2.ng.gate == 0 && p2.final && p2.ng.rel.ms == 2000 && near(p2.ng.rel.tail, 0.5, 1e-6) &&
+              near(p2.ng.release_b - p2.ng.belt_mm, 15, 0.01), "two sweeps: outlet 2 its own (%d ms, tail %.2f, %.1f mm "
+              "after contact)", p2.ng.rel.ms, double(p2.ng.rel.tail), p2.ng.release_b - p2.ng.belt_mm);
+        CHECK(!(sw2.release(1) == sw2.release(2)) && sw2.release(2) == sw2.rel[2] && sw2.release(3).ms == 2750,
+              "GateRelease compare / outlets without an entry use the gate's");
+        for (const int first : {1, 2}) {
+            const int second = 3 - first;
+            GateRun m = run_gates({{-20, 0, 32, 32, 0.f, first}, {-60, 0, 32, 32, 0.f, second}}, 400, 200, &g_sw2);
+            int on_gate = 0, out_first = -1;
+            for (const FlapEvent &e : m.out.flaps) if (e.gate == 0) { on_gate++; out_first = e.outlet; }
+            CHECK(on_gate == 1 && out_first == first && m.stats.flap_conflicts == 1,
+                  "two sweeps 40 mm apart (outlet %d first): only the first diverted (%d on the gate, outlet %d, %d "
+                  "conflicts)", first, on_gate, out_first, int(m.stats.flap_conflicts));
+        }
+        // the same release on both parts still shares one closing
+        {
+            GateRun m = run_gates({{-20, 0, 32, 32, 0.f, 2}, {-60, 0, 32, 32, 0.f, 2}}, 400, 200, &g_sw2);
+            int on_gate = 0;
+            for (const FlapEvent &e : m.out.flaps) on_gate += e.gate == 0;
+            CHECK(on_gate == 2 && m.stats.flap_conflicts == 0, "two outlet-2 parts 40 mm apart share a closing (%d on "
+                  "the gate, %d conflicts)", on_gate, int(m.stats.flap_conflicts));
         }
         // an OK part behind an NG part on the sweep gate is only exposed until the paddle has swung back past its
         // line (11-01: 186 mm apart counted as a conflict while the paddle had long left the lane). Gate A at y 0:

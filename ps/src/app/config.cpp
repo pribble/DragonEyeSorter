@@ -162,12 +162,19 @@ std::string load_config(const std::string &path, AppConfig &cfg)
                     ji::gets(gj, "len_mm", g.geom.len, "closed_deg", closed_deg, "open_deg", open_deg, "hold_mm",
                              g.hold_mm, "open_us", g.open_us, "closed_us", g.closed_us, "sweep_ms", g.sweep_ms,
                              "sweep_after_mm", g.sweep_after_mm, "sweep_tail", g.sweep_tail);
-                    if (g.sweep_ms < 0 || g.sweep_ms > 10000 || g.sweep_after_mm < 0)
-                        return path + ": flaps.gates: sweep_ms 0..10000 (0 = off), sweep_after_mm >= 0";
-                    if (!(g.sweep_tail >= 0.5f && g.sweep_tail <= 0.95f))
-                        return path + ": flaps.gates: sweep_tail 0.5..0.95 (share of sweep_ms for the second half)";
-                    // planning time of the slow opening, like FlapConfig::move_s for the normal one
-                    g.sweep_s = g.sweep_ms > 0 ? (g.sweep_ms + fcp.stagger_ms) / 1000.f + 0.04f : 0.f;
+                    // a sweep-out release: range check, and the planning time of the slow opening (like
+                    // FlapConfig::move_s for the normal one)
+                    auto release_ok = [&](GateRelease &R) -> const char * {
+                        if (R.ms < 0 || R.ms > 10000 || R.after_mm < 0)
+                            return "sweep_ms 0..10000 (0 = off), sweep_after_mm >= 0";
+                        if (!(R.tail >= 0.5f && R.tail <= 0.95f))
+                            return "sweep_tail 0.5..0.95 (share of sweep_ms for the second half)";
+                        R.s = R.ms > 0 ? (R.ms + fcp.stagger_ms) / 1000.f + 0.04f : 0.f;
+                        return nullptr;
+                    };
+                    GateRelease def{g.sweep_ms, g.sweep_after_mm, g.sweep_tail};
+                    if (const char *bad = release_ok(def)) return path + ": flaps.gates: " + bad;
+                    g.sweep_s = def.s;
                     ji::vec2(gj, "pivot_xy", g.geom.pivot);
                     g.geom.closed = deg2rad(closed_deg);
                     g.geom.open = deg2rad(open_deg);
@@ -182,17 +189,29 @@ std::string load_config(const std::string &path, AppConfig &cfg)
                         g.outlets = uint16_t(g.outlets | (1u << oi));
                     }
                     if (outlet_names.size() == 1) g.outlets = 0;   // single outlet: the plain form, as before
-                    // "sweep_outlets": which of them are released by the sweep-out (the rest slide off along the
-                    // closed paddle: a second drop point, a second bin). Absent = all of them (with sweep_ms > 0).
-                    if (gj.contains("sweep_outlets")) {
-                        const json &so = gj["sweep_outlets"];
-                        if (!so.is_array() || so.empty())
-                            return path + ": flaps.gates sweep_outlets: a non-empty list of this gate's outlets";
-                        for (const json &n : so) {
-                            const int oi = n.is_string() ? index_of(cfg.outlets, n.get<std::string>()) : -1;
+                    // "by_outlet": a release of its own for some of these outlets, e.g. {"rework": {"sweep_after_mm":
+                    // 15, "sweep_ms": 2000, "sweep_tail": 0.5}}; fields left out are the gate's, "sweep_ms": 0 = slide
+                    // off along the closed paddle. Another release = another drop point along the far edge, so a
+                    // bin per class (11-01 user: rework swept out earlier, further upstream than scrap).
+                    if (gj.contains("sweep_outlets"))
+                        return path + ": flaps.gates sweep_outlets: replaced by by_outlet {\"<outlet>\": {\"sweep_ms\": ..}}";
+                    if (gj.contains("by_outlet")) {
+                        const json &bo = gj["by_outlet"];
+                        if (!bo.is_object() || bo.empty())
+                            return path + ": flaps.gates by_outlet: {\"<outlet>\": {\"sweep_ms\" / \"sweep_after_mm\" / "
+                                          "\"sweep_tail\"}, ...}";
+                        for (auto it = bo.begin(); it != bo.end(); ++it) {
+                            const int oi = index_of(cfg.outlets, it.key());
                             if (oi <= 0 || oi >= 16 || !g.serves(oi))
-                                return path + ": flaps.gates sweep_outlets: " + n.dump() + " is not an outlet of this gate";
-                            g.sweep_mask = uint16_t(g.sweep_mask | (1u << oi));
+                                return path + ": flaps.gates by_outlet: \"" + it.key() + "\" is not an outlet of this gate";
+                            if (!it.value().is_object())
+                                return path + ": flaps.gates by_outlet \"" + it.key() + "\": an object";
+                            GateRelease R = def;
+                            ji::gets(it.value(), "sweep_ms", R.ms, "sweep_after_mm", R.after_mm, "sweep_tail", R.tail);
+                            if (const char *bad = release_ok(R))
+                                return path + ": flaps.gates by_outlet \"" + it.key() + "\": " + bad;
+                            g.rel[size_t(oi)] = R;
+                            g.rel_mask = uint16_t(g.rel_mask | (1u << oi));
                         }
                     }
                     pk.gates.push_back(g);
