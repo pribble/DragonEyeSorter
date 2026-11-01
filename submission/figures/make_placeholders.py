@@ -1,31 +1,31 @@
 #!/usr/bin/env python3
-"""make_placeholders.py — 生成报告内 4 张「待插入实物照片」占位图（PNG 宽 3200 px）。
+"""make_placeholders.py — 生成报告内 6 张「待插入实物照片」占位图（PNG 宽 3200 px）。
 
-    python submission/figures/make_placeholders.py      # 画报告内 4 张（图 1 / 6 / 7 / 8），写 fig_meta.json
+    python submission/figures/make_placeholders.py      # 画报告内 6 张（图 8~13），写 fig_meta.json
     python submission/figures/make_placeholders.py ui   # 只画 id 里含 ui 的
-    python submission/figures/make_figures.py           # 报告生成链：6 线稿 + 4 占位 = 10 张
-    python submission/figures/make_figures.py ph        # 只画报告内 4 张占位
+    python submission/figures/make_figures.py           # 报告生成链：8 线稿 + 6 占位 = 14 张
+    python submission/figures/make_figures.py ph        # 只画报告内 6 张占位
 
 清单与拍摄要求都在同目录的 ``placeholder_manifest.json``（8 项：id / in_report / file / h_pt /
-图注 / 机位 / 光线 / 拍摄要求）。**只生成 in_report=true 的 4 张**（图 1 整机实物全景、
-图 6 HDMI 操作界面五页、图 7 整幅视野与单件 ROI 对比、图 8 零件与七类缺陷样件）——图 6 / 图 8
-分别是硬性② 人机界面与硬性④ 缺陷分类的直接证据，图 1 是作品完成度锚点（同一张照片兼作品照片
-主图），图 7 支撑按零件 ROI 分类的分辨率论证（素材为已有采集图导出，无需拍摄）；in_report=false
-的 4 项（开发板特写 / 机械臂 / 导流挡板 / 测试现场）**不进报告版面**，只作「作品照片 +
-演示视频」拍摄清单使用，本脚本不生成它们的 PNG。
+图注 / 机位 / 光线 / 拍摄要求）。**只生成 in_report=true 的 6 张**（图 8 整幅视野与单件 ROI 对比、
+图 9 零件与七类缺陷样件、图 10 整机实物全景、图 11 机械臂、图 12 开发板特写、图 13 HDMI 操作
+界面五页）——官方模板第三部分要求「图文结合，实物照片为主」，机械 / 电路 / 软件成果各配实物
+照片；图 10 同一张照片兼作品照片主图，图 8 素材为已有采集图导出（无需拍摄）。in_report=false
+的 2 项（导流挡板 / 测试现场）**不进报告版面**，只作「作品照片 + 演示视频」拍摄清单使用，
+本脚本不生成它们的 PNG。
 
 画布按报告落版尺寸 1:1（宽 447.92pt = 15.8cm，高 = 447.92 × 比例），观感与线稿图一致：
 白底、灰色虚线边框、极浅灰填充，居中三行字 —— 9.5pt 黑体「【待插入实物照片】」+ 8.5pt 说明
 （标题 / 机位 / 建议分辨率）+ 7.5pt 拍摄要求（图内不写「图 N」编号——图号由 PDF 里图下方的
 正式图注承担，避免重复编号）。字号取 ``figkit.FS`` 档位（head / box / sub），全图最小 7.5pt；
 ``fk.save()`` 会核对越界与字号，另打印三行字的实测宽度与左右余量。每张图的信息并入
-``fig_meta.json``（与 5 张线稿同一结构，只登记报告实际引用的 7 张，供
+``fig_meta.json``（与 8 张线稿同一结构，只登记报告实际引用的 14 张，供
 ``submission/build/verify_report.py`` 复核落版字号与 dpi）。
 
 拍了实物后：按 manifest 的 ``resolution`` 把照片存成同名 ``ph_xxx.png`` 覆盖占位图（只有
-in_report=true 的 4 张需要替换），并把该项 ``replaced`` 改为 true —— 本脚本 / ``make_figures.py`` /
+in_report=true 的 6 张需要替换），并把该项 ``replaced`` 改为 true —— 本脚本 / ``make_figures.py`` /
 ``build.ps1`` 之后就不再重画这一项，只读实际像素尺寸登记 meta；正文（``技术文档.md``）与图注
-一字不动。替换流程见 README「占位图」。报告外 4 项的拍摄要求见 README「作品照片与视频拍摄清单」。
+一字不动。替换流程见 README「占位图」。报告外 2 项的拍摄要求见 README「作品照片与视频拍摄清单」。
 """
 import json
 import os
@@ -55,8 +55,8 @@ def load_manifest():
     if len(items) != 8:
         raise ValueError('placeholder_manifest.json 应有 8 项，实际 %d 项' % len(items))
     n_in = sum(1 for it in items if it.get('in_report'))
-    if n_in != 4:
-        raise ValueError('清单里 in_report=true 的项应为 4 项（图 1 / 6 / 7 / 8），实际 %d 项' % n_in)
+    if n_in != 6:
+        raise ValueError('清单里 in_report=true 的项应为 6 项（图 8~13），实际 %d 项' % n_in)
     ids = set()
     for it in items:
         if 'in_report' not in it:

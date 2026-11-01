@@ -101,3 +101,6 @@ submission/.refactor/
 pl/sim/equiv/audit/evidence/
 # 终验脚本运行期临时 JSON（结束会 mv 到 evidence/；中途被打断时会残留，不入库）
 pl/sim/equiv/audit/last_*.json
+
+# ZCode CLI 本地工作目录（计划 / 会话缓存，工具产物不入库）
+.zcode/

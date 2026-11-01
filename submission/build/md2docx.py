@@ -5,17 +5,19 @@
 本脚本只读内容源（submission/技术文档.md，只此一份），从不改写；插图路径相对源文件
 所在目录解析。只认 build/README.md「源写法」表的写法——
   `#` 唯一标题、`**标签**：值` 元信息行（标题后连续行，上限 6 行）、`##` 一级标题、
-  `###` 二级标题、普通段落（连续行合并）、`**强调**`、`` `行内代码` ``、
+  `###` 二级标题、`####` 三级标题、普通段落（连续行合并）、`**强调**`、`` `行内代码` ``、
   `![alt](图)` + 下一行 `**图 N**　说明。`、表格上一行 `**表 N**　说明`、`| … |` 表格
   （分隔行 `|:---|:---:|---:|`：破折号个数 = 该列宽度权重、冒号 = 左 / 中 / 右对齐；
   破折号个数全表相同时回退自动列宽）、`1. ` 列表（仅参考文献 / 附录）、`---` 分隔线；
   旧 `*图 N 说明*` 斜体图注兼容。
-  超范围写法（代码块 / 引用块 / 四级标题 / 项目符号列表 / 图文混排）报错退出并指出行号。
+  超范围写法（代码块 / 引用块 / 五级标题 / 项目符号列表 / 图文混排）报错退出并指出行号。
 
-版式令牌（单位 pt）：A4 21×29.7cm、页边距上下左右 2.4cm、页脚距边 1.6cm、
-单节、无封面 / 无目录 / 无页眉；正文宋体 11pt + 西文 Times New Roman、首行缩进 2 字符
+版式令牌（单位 pt）：A4 21×29.7cm、页边距上下左右 2.4cm、页眉 logo 距边 1.2cm、页脚距边 1.6cm、
+单节、无封面 / 无目录；页眉为官方模板「芯辰大海」logo（6.5cm 居中，下方 0.75pt 细线，无文字）；
+正文宋体 11pt + 西文 Times New Roman、首行缩进 2 字符
 （440 twips）、单倍行距、两端对齐；标题黑体 17.5pt 居中（参照实测 17.28pt，OOXML 只能存半磅，
-取最近值 17.5）+ 标题后连续 10pt 元信息行；一级标题黑体 14.5pt（参照实测 14.35pt，同理）、二级 12pt；
+取最近值 17.5）+ 标题后连续 10pt 元信息行；一级标题黑体 14.5pt（参照实测 14.35pt，同理）、
+二级 12pt、三级 11pt；
 图注 / 表注宋体加粗 10pt 居中，表注在表格上方；三线表 9pt（顶 / 底 1.5pt、表头下 0.75pt，
 无竖线 / 行线 / 底纹，整表 15.6cm 固定布局，表头跨页重复、行不跨页、单元格顶对齐、
 行高只按内容；列宽可由分隔行破折号权重控制，长 token 有硬下限）；图宽 15.8cm；
@@ -25,7 +27,7 @@
 set_spacing。宋体单倍行高约 1.286×字号（11pt → 约 14.1pt），参照实测表明 Word 单倍
 1.286em 对参照论文 1.24em「够近，不必压到固定值」。
 
-生成后自检（读回 docx 复核本节令牌：节数 / 页面 / 页边距 / 页脚 / 无页眉 / 无目录域 /
+生成后自检（读回 docx 复核本节令牌：节数 / 页面 / 页边距 / 页脚 / 页眉 logo 无文字 / 无目录域 /
 字号 / 首行缩进 / 表宽与线型 / 图注加粗 / 表注加粗 / 禁项 / 固定行距 / 表列宽与分隔行
 权重偏差 ≤8% / 单格 >6 行告警），任一不过退出码 1。
 自检统计写 -Stats JSON（保留旧字段，新增 placeholders / captions / table_warnings）。
@@ -71,6 +73,7 @@ for _stream in (sys.stdout, sys.stderr):
 BUILD_DIR = Path(__file__).resolve().parent          # submission/build/
 SUBMISSION = BUILD_DIR.parent                        # submission/
 REPO = SUBMISSION.parent                             # 仓库根（按相对位置推导）
+FIGURES_DIR = SUBMISSION / "figures"                 # 插图与页眉 logo（logo 入库、其余生成）
 DEFAULT_SOURCE = SUBMISSION / "技术文档.md"
 DEFAULT_OUT = SUBMISSION / "out" / "龙瞳分拣_作品报告.docx"
 
@@ -96,6 +99,7 @@ TITLE_PT = 17.5                              # 标题：参照实测 17.28；OOX
                                              # 17.0 / 17.5，取 17.5（离参照 17.28 更近）
 H1_PT = 14.5                                 # 一级标题：参照实测 14.35；半磅粒度取 14.5
 H2_PT = 12.0                                 # 二级标题
+H3_PT = 11.0                                 # 三级标题（官方模板 2.2.1 层，黑体与正文同号）
 META_PT = 10.0                               # 元信息行
 CAPTION_PT = 10.0                            # 图注 / 表注（加粗）
 TABLE_PT = 9.0                               # 表体
@@ -110,7 +114,7 @@ SINGLE_LINE = 1.0
 
 TITLE_GAP = (24.0, 10.0)                     # 标题段前 / 段后
 META_AFTER = 1.0                             # 元信息行段后
-H_GAP = {"h1": (14.0, 8.0), "h2": (12.0, 6.0)}
+H_GAP = {"h1": (14.0, 8.0), "h2": (12.0, 6.0), "h3": (10.0, 5.0)}
 FIG_GAP = (8.0, 3.0)                         # 插图段前 / 段后
 FIGCAP_GAP = (0.0, 6.0)                      # 图注段前 / 段后
 TABCAP_GAP = (6.0, 3.0)                      # 表注段前 / 段后（表注在表格上方）
@@ -568,7 +572,9 @@ def parse_source(md_path: Path):
             i += 1
             continue
         if s.startswith("#### "):
-            raise ValueError("第 %d 行：只支持到 ### 二级标题，源里出现 4 级" % (i + 1))
+            push("h4", s[5:].strip(), i + 1)
+            i += 1
+            continue
         if s.startswith("### "):
             push("h3", s[4:].strip(), i + 1)
             i += 1
@@ -1233,8 +1239,9 @@ def build_styles(doc):
                       multiple=SINGLE_LINE, align="left", keep_lines=True,
                       size_pt=META_PT)
 
-    # 一级 / 二级标题：黑体、左对齐、段前段后见令牌表，与下段同页；靠内置样式给大纲级别
-    for name, size_pt, level in (("Heading 1", H1_PT, 0), ("Heading 2", H2_PT, 1)):
+    # 一级 / 二级 / 三级标题：黑体、左对齐、段前段后见令牌表，与下段同页；靠内置样式给大纲级别
+    for name, size_pt, level in (("Heading 1", H1_PT, 0), ("Heading 2", H2_PT, 1),
+                                 ("Heading 3", H3_PT, 2)):
         before, after = H_GAP["h%d" % (level + 1)]
         st = styles[name]
         _setup_para_style(style_el(styles, name), before=before, after=after,
@@ -1280,7 +1287,7 @@ def setup_section(section):
     section.bottom_margin = Cm(MARGIN_CM)
     section.left_margin = Cm(MARGIN_CM)
     section.right_margin = Cm(MARGIN_CM)
-    section.header_distance = Cm(1.5)          # 无页眉，值不参与版式
+    section.header_distance = Cm(1.2)          # 页眉（官方模板 logo）距边 1.2cm
     section.footer_distance = Cm(FOOTER_DIST_CM)
 
 
@@ -1298,6 +1305,33 @@ def restart_page_numbering(section):
         else:
             sectPr.append(el)
     el.set(qn("w:start"), "1")
+
+
+def setup_header(section):
+    """页眉：官方模板每页的「芯辰大海 FPGA 点亮未来」logo，居中，下方一条细横线
+    （复刻官方模板 PDF 的版式：logo 宽 184.7pt ≈ 6.5cm，线即页眉段落底框线）。
+    页眉里不能有文字（验收两处把关：md2docx 自检 + verify_report）。"""
+    header = section.header
+    header.is_linked_to_previous = False
+    hp = header.paragraphs[0]
+    clear_par(hp)
+    fmt_par(hp, before=0.0, after=0.0, multiple=SINGLE_LINE,
+            align=WD_ALIGN_PARAGRAPH.CENTER, widow=False)
+    logo = FIGURES_DIR / "logo_header.png"
+    if not logo.is_file():
+        raise SystemExit("页眉 logo 不存在：%s（提交库内应带此文件）" % logo)
+    run = hp.add_run()
+    run.add_picture(str(logo), width=Cm(6.5))
+    # 段落底框线 = 模板页眉下方那条横线（0.75pt 黑）
+    pPr = hp._p.get_or_add_pPr()
+    pbdr = OxmlElement("w:pBdr")
+    bottom = OxmlElement("w:bottom")
+    bottom.set(qn("w:val"), "single")
+    bottom.set(qn("w:sz"), "6")                # 八分之一磅：6/8 = 0.75pt
+    bottom.set(qn("w:space"), "1")
+    bottom.set(qn("w:color"), C_INK)
+    pbdr.append(bottom)
+    pPr.append(pbdr)
 
 
 def setup_footer(section):
@@ -1328,7 +1362,7 @@ def _xml_of(zf, name):
         return ""
 
 
-def self_check(out_path: Path, *, title, n_h1, n_h2, n_img, n_tbl, n_figcap,
+def self_check(out_path: Path, *, title, n_h1, n_h2, n_h3=None, n_img, n_tbl, n_figcap,
                n_tabcap, n_meta, fig_w, placeholder_names, forbidden,
                table_specs=None):
     """读回 docx 复核令牌表。返回 (issues, stats)。"""
@@ -1364,8 +1398,10 @@ def self_check(out_path: Path, *, title, n_h1, n_h2, n_img, n_tbl, n_figcap,
     need(near(sec.footer_distance.cm, FOOTER_DIST_CM, 0.02), "页脚距边不是 1.6cm",
          "%.2fcm" % sec.footer_distance.cm)
 
-    # ---- 无页眉 / 无目录域
-    need("w:headerReference" not in docxml, "文档里仍有页眉引用")
+    # ---- 页眉：官方模板 logo（只有一张图、无文字）/ 无目录域
+    need("w:headerReference" in docxml, "文档里没有页眉引用")
+    need("<a:blip" in headxml and headxml.count("<a:blip") == 1,
+         "页眉应恰好含 1 张 logo 图", "blip=%d" % headxml.count("<a:blip"))
     head_text = "".join(re.findall(r"<w:t[^>]*>([^<]*)</w:t>", headxml))
     need(not head_text.strip(), "页眉有文字", head_text[:30])
     instr_all = "".join(re.findall(r"<w:instrText[^>]*>([^<]*)</w:instrText>", docxml))
@@ -1392,8 +1428,11 @@ def self_check(out_path: Path, *, title, n_h1, n_h2, n_img, n_tbl, n_figcap,
     # ---- 结构计数（与源块一一对应）
     h1 = sum(1 for p in back.paragraphs if p.style.name == "Heading 1")
     h2 = sum(1 for p in back.paragraphs if p.style.name == "Heading 2")
+    h3 = sum(1 for p in back.paragraphs if p.style.name == "Heading 3")
     need(h1 == n_h1, "一级标题数与源块不一致", "docx %d / 源 %d" % (h1, n_h1))
     need(h2 == n_h2, "二级标题数与源块不一致", "docx %d / 源 %d" % (h2, n_h2))
+    if n_h3 is not None:
+        need(h3 == n_h3, "三级标题数与源块不一致", "docx %d / 源 %d" % (h3, n_h3))
     need(len(back.tables) == n_tbl, "表格数与源块不一致",
          "docx %d / 源 %d" % (len(back.tables), n_tbl))
     need(len(back.inline_shapes) == n_img, "插图数与源块不一致",
@@ -1421,7 +1460,7 @@ def self_check(out_path: Path, *, title, n_h1, n_h2, n_img, n_tbl, n_figcap,
 
     # ---- 样式字号 / 字体
     expect_styles = {"Normal": BODY_PT, "BodyCN": BODY_PT, "Heading 1": H1_PT,
-                     "Heading 2": H2_PT, "TitleCN": TITLE_PT,
+                     "Heading 2": H2_PT, "Heading 3": H3_PT, "TitleCN": TITLE_PT,
                      "MetaCN": META_PT, "CaptionCN": CAPTION_PT,
                      "TableCaptionCN": CAPTION_PT, "ListCN": LIST_PT}
     for name, pt in expect_styles.items():
@@ -1430,8 +1469,8 @@ def self_check(out_path: Path, *, title, n_h1, n_h2, n_img, n_tbl, n_figcap,
              "样式 %s 字号不是 %.1fpt" % (name, pt),
              "%.2f" % (st.font.size.pt if st.font.size else float("nan")))
     for name, cn in (("BodyCN", FONT_CN), ("Heading 1", FONT_HEI),
-                     ("Heading 2", FONT_HEI), ("TitleCN", FONT_HEI),
-                     ("CaptionCN", FONT_CN)):
+                     ("Heading 2", FONT_HEI), ("Heading 3", FONT_HEI),
+                     ("TitleCN", FONT_HEI), ("CaptionCN", FONT_CN)):
         fonts = _style_fonts(back.styles, name)
         need(fonts[0] == cn, "样式 %s 中文字体不是 %s" % (name, cn), str(fonts))
         need(fonts[1] == FONT_EN, "样式 %s 西文字体不是 Times" % name, str(fonts))
@@ -1456,7 +1495,8 @@ def self_check(out_path: Path, *, title, n_h1, n_h2, n_img, n_tbl, n_figcap,
 
     # ---- 标题字号 / 段距
     for name, size_pt, gap in (("Heading 1", H1_PT, H_GAP["h1"]),
-                               ("Heading 2", H2_PT, H_GAP["h2"])):
+                               ("Heading 2", H2_PT, H_GAP["h2"]),
+                               ("Heading 3", H3_PT, H_GAP["h3"])):
         pars = [p for p in back.paragraphs if p.style.name == name]
         if not pars:
             continue
@@ -1676,6 +1716,7 @@ def build(source: Path, out_path: Path, caption_clean=True, caption_rules=None,
     build_styles(doc)
     sec = doc.sections[0]
     setup_section(sec)
+    setup_header(sec)
     setup_footer(sec)
     restart_page_numbering(sec)
 
@@ -1686,7 +1727,7 @@ def build(source: Path, out_path: Path, caption_clean=True, caption_rules=None,
     tpar = doc.paragraphs[-1]
     add_runs(tpar, title, size_pt=TITLE_PT, heading=True)
 
-    counts = {"h2": 0, "h3": 0, "images": 0, "tables": 0, "figcap": 0,
+    counts = {"h2": 0, "h3": 0, "h4": 0, "images": 0, "tables": 0, "figcap": 0,
               "tabcap": 0, "meta": 0}
     figures, placeholders, captions, caption_diffs = [], [], [], []
     table_specs = []                          # 表格源块（含分隔行权重 / 对齐提示）
@@ -1722,6 +1763,13 @@ def build(source: Path, out_path: Path, caption_clean=True, caption_rules=None,
                           after=after, multiple=SINGLE_LINE, keep_next=True,
                           keep_lines=True, align=WD_ALIGN_PARAGRAPH.LEFT)
             add_runs(par, payload, size_pt=H2_PT, heading=True)
+        elif kind == "h4":
+            counts["h4"] += 1
+            before, after = H_GAP["h3"]
+            par = fmt_par(doc.add_paragraph(style="Heading 3"), before=before,
+                          after=after, multiple=SINGLE_LINE, keep_next=True,
+                          keep_lines=True, align=WD_ALIGN_PARAGRAPH.LEFT)
+            add_runs(par, payload, size_pt=H3_PT, heading=True)
         elif kind == "p":
             par = fmt_par(doc.add_paragraph(style="BodyCN"), before=0.0,
                           after=BODY_AFTER, multiple=SINGLE_LINE,
@@ -1792,11 +1840,11 @@ def build(source: Path, out_path: Path, caption_clean=True, caption_rules=None,
         text_all += "\n" + p.text
     hits = forbidden_hits(text_all)
 
-    # 页眉不建：优先按 header 部件判（访问 section.header 会凭空创建部件）
+    # 页眉只有 logo 图无文字：按 header 部件的 <w:t> 判（访问 section.header 会凭空创建部件）
     header_texts = []
     footers = [p.text for p in back.sections[0].footer.paragraphs]
     issues, token_stats = self_check(
-        out_path, title=title, n_h1=counts["h2"], n_h2=counts["h3"],
+        out_path, title=title, n_h1=counts["h2"], n_h2=counts["h3"], n_h3=counts["h4"],
         n_img=counts["images"], n_tbl=counts["tables"],
         n_figcap=counts["figcap"], n_tabcap=counts["tabcap"],
         n_meta=counts["meta"], fig_w=fig_w, placeholder_names=placeholders,
@@ -1807,8 +1855,8 @@ def build(source: Path, out_path: Path, caption_clean=True, caption_rules=None,
         "source_title": title,
         "docx": str(out_path),
         "paragraphs": len(back.paragraphs),
-        "headings": {"h1": counts["h2"], "h2": counts["h3"], "h3": 0,
-                     "total": counts["h2"] + counts["h3"]},
+        "headings": {"h1": counts["h2"], "h2": counts["h3"], "h3": counts["h4"],
+                     "total": counts["h2"] + counts["h3"] + counts["h4"]},
         "tables": counts["tables"],
         "images": counts["images"],
         "sections": len(back.sections),
@@ -1918,7 +1966,7 @@ def main(argv=None):
         for msg in stats["self_check_issues"]:
             print("[md2docx] 自检失败  : %s" % msg, file=sys.stderr)
         return 1
-    print("[md2docx] 版式自检  : 通过（A4 / 2.4cm / 单节 / 无页眉 / 字号 / 三线表 / "
+    print("[md2docx] 版式自检  : 通过（A4 / 2.4cm / 单节 / 页眉 logo / 字号 / 三线表 / "
           "图注表注加粗 / 页脚 PAGE 域）")
     if args.stats:
         Path(args.stats).write_text(json.dumps(stats, ensure_ascii=False, indent=2),

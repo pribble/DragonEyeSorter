@@ -1,8 +1,8 @@
 # figures/ — 作品报告插图（脚本生成，不手工画）
 
-本目录是报告插图的**唯一位置**：10 张图的生成脚本入库——6 张线稿图（`fig_*.py`）+ 4 张「待插入实物图」占位图（`make_placeholders.py` + `placeholder_manifest.json`）；生成物（SVG / PNG / `fig_meta.json`）由 `make_figures.py` 重画、不入库（见 `.gitignore`）。报告 10 张图按编号：图 1 整机实物全景（占位）、图 2 系统架构、图 3 时间基准、图 4 PL 寄存器与引脚、图 5 抓取 / 导流时序、图 6 HDMI 界面五页（占位）、图 7 整幅与 ROI 对比（占位）、图 8 七类缺陷样件（占位）、图 9 工位布局、图 10 七类逐类准确率。只有作品报告用这一套——[技术文档](../技术文档.md) 按 `figures/fig_*.png` 与 `figures/ph_*.png` 引用，[build.ps1](../build/build.ps1) 每次先重画再排进 PDF，[verify_report.py](../build/verify_report.py) 读本目录的 `fig_meta.json` 复核落版字号（只登记报告实际引用的 10 条）。
+本目录是报告插图的**唯一位置**：14 张图的生成脚本入库——8 张线稿图（`fig_*.py`）+ 6 张「待插入实物图」占位图（`make_placeholders.py` + `placeholder_manifest.json`）+ 页眉 logo（`logo_header.png`，从官方模板 PDF 渲染、唯一入库的图片）；生成物（SVG / PNG / `fig_meta.json`）由 `make_figures.py` 重画、不入库（见 `.gitignore`）。报告 14 张图按编号：图 1 设计流程、图 2 系统架构、图 3 时间基准、图 4 工位布局、图 5 PL 寄存器与引脚、图 6 软件单件处理流程、图 7 抓取 / 导流时序、图 8 整幅与 ROI 对比（占位）、图 9 七类缺陷样件（占位）、图 10 整机实物全景（占位）、图 11 机械臂（占位）、图 12 开发板特写（占位）、图 13 HDMI 界面五页（占位）、图 14 七类逐类准确率。只有作品报告用这一套——[技术文档](../技术文档.md) 按 `figures/fig_*.png` 与 `figures/ph_*.png` 引用，[build.ps1](../build/build.ps1) 每次先重画再排进 PDF，[verify_report.py](../build/verify_report.py) 读本目录的 `fig_meta.json` 复核落版字号（只登记报告实际引用的 14 条）。
 
-**其余 4 项实物照片**（开发板特写 / 机械臂 / 导流挡板 / 测试现场）**不进报告版面**：作品照片是单独必交材料，报告不插这 4 张；它们只作为「作品照片 + 演示视频」的拍摄清单保留在本目录（`placeholder_manifest.json` 里 `in_report: false` 的 4 项 + 本文「作品照片与视频拍摄清单」一节），**不生成 PNG、不占报告图号**。整机全景是第 5 张要拍的照片，但它已回填报告（图 1 占位）——同一张照片两用（报告图 1 + 作品照片主图）。
+**其余 2 项实物照片**（导流挡板 / 测试现场）**不进报告版面**：官方提交页已无单独的「作品照片」上传项，报告按官方模板第三部分「实物照片为主」的要求把机械臂 / 开发板 / 界面照片排进 3.2（图 11~13 占位）；这 2 项只作为「决赛展示 + 演示视频」的拍摄清单保留在本目录（`placeholder_manifest.json` 里 `in_report: false` 的 2 项 + 本文「作品照片与视频拍摄清单」一节），**不生成 PNG、不占报告图号**。整机全景同一张照片两用（报告图 10 + 决赛展示主图）。
 
 仓库工程文档用的整机接线图不在这里：它在 [docs/figures/](../../docs/figures/)（`make_system_wiring.py`，给 [硬件与接线](../../docs/硬件与接线.md) 用，不占报告版心）。
 
@@ -15,53 +15,55 @@
 - 字号只取 `figkit.FS` 的档位：框内正文 8.5pt / 次级与注释 7.5pt / 组标题 9.5pt，不在画图代码里写别的数字（占位图同理：9.5 / 8.5 / 7.5pt 三档）。
 - 标签短句化：每行 ≤ 12 个汉字当量，细节写进正文；**不画图内标题**（标题由报告图注承担）。占位图的「说明 / 拍摄要求」两行是交件前照着拍的提示、不是图内标签，按整行排（≤ 40 汉字当量），不受 12 字限制。
 - 文字一律用 `figkit.box()` / `text()` / `group()` 画：保存前核对**是否越出盒子或画布**（> 0.5pt 报错，< 2pt 提示「偏紧」），并打印每张图的最小字号与最小盒内余量。排版靠数据，不靠目测。
-- 图的**落版高度**还是版面旋钮：插图变高会把下游整块（表格 / 带标题段落）挤到下页、留下半空页，`verify_report.py` 的「无正文页被撑空」会拦——调版面先调图高（图 1 / 7 / 8 的比例在 manifest，图 10 的画布在 `fig_perclass.py` 的 `H`），不动正文。
+- 图的**落版高度**还是版面旋钮：插图变高会把下游整块（表格 / 带标题段落）挤到下页、留下半空页，`verify_report.py` 的「无正文页被撑空」会拦——调版面先调图高（图 8 / 9 / 10 的比例在 manifest，图 14 的画布在 `fig_perclass.py` 的 `H`），不动正文。
 
 ## 渲染：期刊线稿风（唯一一套）
 
-白底、方框细边、灰色虚线分组框、黑色细箭头、Times 西文 + 宋体中文；颜色不参与信息表达，只用黑 / 灰，分组靠标签与虚线框。数据表型插图（图 3 寄存器段表）用**三线表**（顶线 / 底线 + 行间极浅分隔），列不加竖线、不用行卡；图 10 逐类准确率条形图同为黑 / 灰，柱内标判对数 / 总数。交换协议 / 方向必须说明时才加 7.5pt 标签。占位图沿用同一套观感（白底 + 灰色虚线边框 + 极浅灰填充），只是框里没有图元、换成三行提示字。
+白底、方框细边、灰色虚线分组框、黑色细箭头、Times 西文 + 宋体中文；颜色不参与信息表达，只用黑 / 灰，分组靠标签与虚线框。数据表型插图（图 5 寄存器段表）用**三线表**（顶线 / 底线 + 行间极浅分隔），列不加竖线、不用行卡；图 14 逐类准确率条形图同为黑 / 灰，柱内标判对数 / 总数。交换协议 / 方向必须说明时才加 7.5pt 标签。占位图沿用同一套观感（白底 + 灰色虚线边框 + 极浅灰填充），只是框里没有图元、换成三行提示字。
 
 ## 用法
 
 ```powershell
-python submission/figures/make_figures.py                # 重画全部 10 张（6 线稿 + 4 报告内占位）
+python submission/figures/make_figures.py                # 重画全部 14 张（8 线稿 + 6 报告内占位）
 python submission/figures/make_figures.py arch time      # 只重画名字里含 arch / time 的线稿图
-python submission/figures/make_figures.py ph             # 只重画 4 张报告内占位图（图 1 / 6 / 7 / 8）
-python submission/figures/make_figures.py ui             # 只重画 id 含 ui 的占位图（图 6）
+python submission/figures/make_figures.py ph             # 只重画 6 张报告内占位图（图 8~13）
+python submission/figures/make_figures.py ui             # 只重画 id 含 ui 的占位图（图 13）
 python submission/figures/fig_perclass.py                # 单张线稿调试（跑单张 + 打印该图门禁）
-python submission/figures/make_placeholders.py           # 单跑报告内占位图（4 张 + 打印每张三行字宽度）
+python submission/figures/make_placeholders.py           # 单跑报告内占位图（6 张 + 打印每张三行字宽度）
 ```
 
-导出 SVG（矢量、文字可编辑）+ PNG 宽 3200px（报告满版心 15.8cm 时 ≈514 dpi），同时写 `fig_meta.json`（画布尺寸、`px_per_pt`、最小字号；只登记报告引用的 10 张，已移出报告的旧记录会被清掉）。**改插图后重跑一次即可**（只有一套图）；生成物不入库（重画即得），本目录只提交脚本 + README + 清单。`build.ps1` 每次出报告前会自动先跑本脚本（第 0/3 步），所以改完图脚本直接重出报告也行。
+导出 SVG（矢量、文字可编辑）+ PNG 宽 3200px（报告满版心 15.8cm 时 ≈514 dpi），同时写 `fig_meta.json`（画布尺寸、`px_per_pt`、最小字号；只登记报告引用的 14 张，已移出报告的旧记录会被清掉）。**改插图后重跑一次即可**（只有一套图）；生成物不入库（重画即得），本目录只提交脚本 + README + 清单 + 页眉 logo。`build.ps1` 每次出报告前会自动先跑本脚本（第 0/3 步），所以改完图脚本直接重出报告也行。
 
-## 报告内占位图（4 张待插入实物图）
+## 报告内占位图（6 张待插入实物图）
 
-报告保留 4 张实物图占位：**图 1** 整机实物全景（作品完成度锚点，初赛线上评审报告即全部观感时兜底；同一张照片兼「作品照片」主图）、**图 6** HDMI 界面五页（评分直接证据，对应硬性② 人机界面）、**图 7** 整幅视野与单件 ROI 对比（支撑 V-A「按零件 ROI 分类」的分辨率论证，硬性④；素材为已有采集图导出，**无需拍摄**）、**图 8** 零件与七类缺陷样件（评分直接证据，对应硬性④ 缺陷分类）。占位图白底、灰色虚线边框、极浅灰填充，居中三行字——9.5pt 黑体「【待插入实物照片】」、8.5pt 说明（标题 / 机位 / 建议分辨率）、7.5pt 拍摄要求。**图内不写「图 N」编号**（图号由 PDF 里图下方的正式图注承担，避免重复编号）；**图注写最终说明**，替换实物图时正文与图注一字不动。
+官方模板第三部分要求「图文结合，实物照片为主」，报告保留 6 张实物图占位：**图 8** 整幅视野与单件 ROI 对比（支撑 2.3.2「按零件 ROI 分类」的分辨率论证，硬性④；素材为已有采集图导出，**无需拍摄**）、**图 9** 零件与七类缺陷样件（评分直接证据，对应硬性④ 缺陷分类）、**图 10** 整机实物全景（作品完成度锚点；同一张照片兼决赛展示主图）、**图 11** 六轴机械臂与夹爪（3.2.1 机械成果）、**图 12** 开发板与主要接口特写（3.2.2 电路成果）、**图 13** HDMI 界面五页（评分直接证据，对应硬性② 人机界面）。占位图白底、灰色虚线边框、极浅灰填充，居中三行字——9.5pt 黑体「【待插入实物照片】」、8.5pt 说明（标题 / 机位 / 建议分辨率）、7.5pt 拍摄要求。**图内不写「图 N」编号**（图号由 PDF 里图下方的正式图注承担，避免重复编号）；**图注写最终说明**，替换实物图时正文与图注一字不动。
 
 | 图号 | 文件 | 内容 | 落版（宽 × 高 pt） | 目标像素 | 机位 / 素材 | 章节 |
 |---|---|---|---|---|---|---|
-| 图 1 | `ph_overview.png` | 整机实物全景 | 447.92 × 223.96 | 3200 × 1600 | A 主三脚架右前方 45° | II-A 系统组成 |
-| 图 6 | `ph_ui.png` | HDMI 操作界面五页 | 447.92 × 251.96 | 3200 × 1800 | S 采集卡录屏 | IV-F 人机界面 |
-| 图 7 | `ph_roi.png` | 整幅视野与单件 ROI 对比 | 447.92 × 186.63 | 3200 × 1333 | 已有采集图导出（无需拍摄） | V-A ROI 动机 |
-| 图 8 | `ph_samples.png` | 零件与七类缺陷样件 | 447.92 × 223.96 | 3200 × 1600 | B 俯拍 | V-C 数据集 |
+| 图 8 | `ph_roi.png` | 整幅视野与单件 ROI 对比 | 447.92 × 186.63 | 3200 × 1333 | 已有采集图导出（无需拍摄） | 2.3.2 ROI 动机 |
+| 图 9 | `ph_samples.png` | 零件与七类缺陷样件 | 447.92 × 223.96 | 3200 × 1600 | B 俯拍 | 2.3.2 数据集 |
+| 图 10 | `ph_overview.png` | 整机实物全景 | 447.92 × 223.96 | 3200 × 1600 | A 主三脚架右前方 45° | 3.1 整体介绍 |
+| 图 11 | `ph_arm.png` | 六轴总线舵机机械臂与夹爪 | 447.92 × 298.61 | 3200 × 2133 | C 机械臂近景 | 3.2.1 机械成果 |
+| 图 12 | `ph_board.png` | 开发板与主要接口特写 | 447.92 × 298.61 | 3200 × 2133 | E 微距 / B 俯拍 | 3.2.2 电路成果 |
+| 图 13 | `ph_ui.png` | HDMI 操作界面五页 | 447.92 × 251.96 | 3200 × 1800 | S 采集卡录屏 | 3.2.3 软件成果 |
 
 逐项的机位 / 素材、光线、画面内容与制作要求在 [`placeholder_manifest.json`](placeholder_manifest.json) 的 `camera` / `light` / `scene` / `shoot` 字段；机位代号 A/B/C/D/E/S 与光线参数沿用 [演示视频脚本](../演示视频脚本.md) §3 与 §5。
 
-占位图与线稿**同一条命令重建**：`python submission/figures/make_figures.py` 先画 6 张线稿、再画 4 张占位；每张 PNG 宽 3200 px，信息并入 `fig_meta.json`（与线稿同一结构，`min_fs_pt` = 7.5，供 verifier 算落版字号与 dpi）。
+占位图与线稿**同一条命令重建**：`python submission/figures/make_figures.py` 先画 8 张线稿、再画 6 张占位；每张 PNG 宽 3200 px，信息并入 `fig_meta.json`（与线稿同一结构，`min_fs_pt` = 7.5，供 verifier 算落版字号与 dpi）。
 
 ### 拍了实物 / 备好素材之后：只换这几张 PNG，不动正文
 
-正文里的 `![](figures/ph_overview.png)`、`![](figures/ph_ui.png)`、`![](figures/ph_roi.png)`、`![](figures/ph_samples.png)` 与图注已按最终说明写好，替换时**只动图、不动 [技术文档](../技术文档.md)**：
+正文里的 `![](figures/ph_roi.png)`、`![](figures/ph_samples.png)`、`![](figures/ph_overview.png)`、`![](figures/ph_arm.png)`、`![](figures/ph_board.png)`、`![](figures/ph_ui.png)` 与图注已按最终说明写好，替换时**只动图、不动 [技术文档](../技术文档.md)**：
 
-1. 按上表「目标像素」裁切 / 缩放（图 1 / 8 为 2:1、图 6 为 16:9、图 7 为 12:5；等效 514 dpi），存到本目录、覆盖同名 `ph_*.png`。
+1. 按上表「目标像素」裁切 / 缩放（图 9 / 10 为 2:1、图 13 为 16:9、图 8 为 12:5、图 11 / 12 为 3:2；等效 514 dpi），存到本目录、覆盖同名 `ph_*.png`。
 2. 打开 `placeholder_manifest.json`，把该项 `"replaced"` 从 `false` 改 `true`。**必须改**：否则下次 `make_figures.py`（`build.ps1` 第 0 步会自动跑）会用占位图把实物图盖掉。改后该项跳过不画，只按实物图实际像素更新 `fig_meta.json` 的尺寸。
-3. 重出报告：`pwsh -File submission/build/build.ps1`（其余图照常重画）。注意插图高度变化会牵动下游分页——若出现半空页，先按「按落版尺寸作图」一节调图高或图 1 / 7 / 8 的 manifest 比例。
+3. 重出报告：`pwsh -File submission/build/build.ps1`（其余图照常重画）。注意插图高度变化会牵动下游分页——若出现半空页，先按「按落版尺寸作图」一节调图高或图 8~10 的 manifest 比例。
 
-替换后的实物 PNG 建议入库留档：`.gitignore` 挡的是生成物，实物图要 `git add -f submission/figures/ph_overview.png submission/figures/ph_ui.png submission/figures/ph_roi.png submission/figures/ph_samples.png` 强制加。
+替换后的实物 PNG 建议入库留档：`.gitignore` 挡的是生成物，实物图要 `git add -f submission/figures/ph_roi.png submission/figures/ph_samples.png submission/figures/ph_overview.png submission/figures/ph_arm.png submission/figures/ph_board.png submission/figures/ph_ui.png` 强制加。
 
 ### 替换后怎么验
 
-- `python submission/build/verify_report.py --final`：报告插图等效 dpi ≥ 300、落版最小字号 ≥ 7pt；`--final` 模式下 `in_report=true` 的占位图仍有 `replaced: false` 判 FAIL（交件前必须清零；报告外 4 项不参与该门禁）。
+- `python submission/build/verify_report.py --final`：报告插图等效 dpi ≥ 300、落版最小字号 ≥ 7pt；`--final` 模式下 `in_report=true` 的占位图仍有 `replaced: false` 判 FAIL（交件前必须清零；报告外 2 项不参与该门禁）。
 - 只验占位图本身：`python submission/figures/make_placeholders.py` 打印每张的最小字号（7.5pt）与三行字的实测宽度 / 左右余量；有越界或字号不足会打 `ERR` 并以退出码 1 结束。
 - 核对 `fig_meta.json`：10 条齐全（6 线稿 + 4 张占位），每条 `px_per_pt × 72 ≈ 514 dpi`（3200 px / 15.8cm）。
 
@@ -83,14 +85,17 @@ python submission/figures/make_placeholders.py           # 单跑报告内占位
 | 文件 | 用途 |
 |---|---|
 | `figkit.py` | 公共画布 / 图元（框、组、箭头、折线）/ 线稿风渲染 / 越界与字号校验 / 导出 SVG+PNG+`fig_meta.json`（`write_meta(keep=…)` 可只保留报告引用的图） |
-| `make_figures.py` | 一键重画全部 10 张（6 线稿 + 4 报告内占位；可跟关键字只画其中几张） |
-| `make_placeholders.py` | 报告内 4 张实物图占位图（读 `placeholder_manifest.json` 的 `in_report: true`；其余 4 项不生成 PNG；`replaced` 项跳过并登记实物图尺寸） |
-| `placeholder_manifest.json` | 8 项清单：报告内 4 项（`in_report: true`，图 1 / 6 / 7 / 8）+ 报告外 4 项作品照片 / 视频拍摄清单（`in_report: false`，`figure_no: null`） |
-| `fig_architecture.py` | 图 2 系统架构（另一张新图的写法照它抄） |
+| `make_figures.py` | 一键重画全部 14 张（8 线稿 + 6 报告内占位；可跟关键字只画其中几张） |
+| `make_placeholders.py` | 报告内 6 张实物图占位图（读 `placeholder_manifest.json` 的 `in_report: true`；其余 2 项不生成 PNG；`replaced` 项跳过并登记实物图尺寸） |
+| `placeholder_manifest.json` | 8 项清单：报告内 6 项（`in_report: true`，图 8~13）+ 报告外 2 项决赛展示 / 视频拍摄清单（`in_report: false`，`figure_no: null`） |
+| `fig_design_flow.py` | 图 1 设计流程（1.6 节；蛇形八步，另一张新图的写法照它抄） |
+| `fig_architecture.py` | 图 2 系统架构 |
 | `fig_timebase.py` | 图 3 时间基准（拍摄瞬间锁存带位置） |
-| `fig_pl_regs.py` | 图 4 PL 自研模块、寄存器窗口与引脚 |
-| `fig_pick_sequence.py` | 图 5 良品抓取 / NG 导流挡板时序 |
-| `fig_layout.py` | 图 9 工位布局（俯视，按比例） |
-| `fig_perclass.py` | 图 10 七类逐类准确率（数据取 [测试与验证](../../docs/测试与验证.md) 台账，柱内标判对数 / 总数） |
-| `.gitignore` | 忽略下面的生成物：本目录只入库脚本 + README + 清单 |
-| `fig_*.svg` · `fig_*.png` · `ph_overview.*` · `ph_ui.*` · `ph_roi.*` · `ph_samples.*` · `fig_meta.json` | 生成物（**不入库**，跑 `make_figures.py` 重建）：技术文档引用 PNG，SVG 留作矢量编辑；`fig_meta.json` 只登记报告实际引用的 10 条 |
+| `fig_layout.py` | 图 4 工位布局（俯视，按比例） |
+| `fig_pl_regs.py` | 图 5 PL 自研模块、寄存器窗口与引脚 |
+| `fig_sw_flow.py` | 图 6 软件单件处理流程与关键输入输出变量（2.3.1 节） |
+| `fig_pick_sequence.py` | 图 7 良品抓取 / NG 导流挡板时序 |
+| `fig_perclass.py` | 图 14 七类逐类准确率（数据取 [测试与验证](../../docs/测试与验证.md) 台账，柱内标判对数 / 总数） |
+| `logo_header.png` | 页眉 logo（官方模板「芯辰大海」），**入库**（唯一无生成源的图片） |
+| `.gitignore` | 忽略下面的生成物：本目录只入库脚本 + README + 清单 + logo |
+| `fig_*.svg` · `fig_*.png` · `ph_*.png` · `fig_meta.json` | 生成物（**不入库**，跑 `make_figures.py` 重建）：技术文档引用 PNG，SVG 留作矢量编辑；`fig_meta.json` 只登记报告实际引用的 14 条 |

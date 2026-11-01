@@ -156,6 +156,13 @@ if ($NoPdf) {
         if ($figures.Count -eq 0) {
             throw "没从 $Stats 读到插图列表（figures）—— 先跑第 ① 步，或检查 md2docx.py"
         }
+        # 页眉 logo（官方模板「芯辰大海」）也是 PDF 里的图，但各页共用一个 xref、
+        # 不在正文插图清单里 —— pdf_images_hires.py 对它走 --header 原地换源像素
+        # （Word 导出把 logo 压到 96 dpi，不换回源像素页眉就是糊的）。
+        $logo = Join-Path $Repo 'submission/figures/logo_header.png'
+        if (-not (Test-Path -LiteralPath $logo -PathType Leaf)) {
+            throw "页眉 logo 不存在：$logo"
+        }
         $order = @($figures | ForEach-Object { Join-Path $Repo $_ })
         foreach ($f in $order) {
             if (-not (Test-Path -LiteralPath $f -PathType Leaf)) {
@@ -166,7 +173,7 @@ if ($NoPdf) {
                     (($order | ForEach-Object { Split-Path -Leaf $_ }) -join ' '))
         & $pyHi.Exe @($pyHi.Args + @((Join-Path $BuildDir 'pdf_images_hires.py'),
                                      '--pdf', $Pdf, '--order') + $order +
-                                     @('--inplace', '--min-dpi', "$MinDpi"))
+                                     @('--header', $logo, '--inplace', '--min-dpi', "$MinDpi"))
         if ($LASTEXITCODE -ne 0) {
             throw "pdf_images_hires.py 失败（退出码 $LASTEXITCODE）：插图等效 dpi 未达 $MinDpi 或数量对不上"
         }

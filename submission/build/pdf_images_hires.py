@@ -24,9 +24,12 @@
     1  有插图低于下限、或数量对不上（--order 数量 ≠ PDF 内图像数量）
     2  缺 PyMuPDF / 参数用法错误
 
-    `--order` 的图必须与 PDF 里的插图**一一对应且顺序一致**（按页、按页内自上而下）。
+    `--order` 的图必须与 PDF 里的**正文插图**一一对应且顺序一致（按页、按页内自上而下）。
     报告里插图与图注一一对应，没有图标类图片，所以顺序就是正文里 `![](...)` 的顺序。
-    数量对不上时脚本不猜、不部分替换，直接报错退出。
+    页眉里的官方模板 logo（同一图像对象出现在 ≥ 一半页面上）不参与 `--order` 对账：
+    给 `--header <png>` 时用**原地改写图像对象**的方式换回源像素（所有页同步生效，
+    对象数不变——不能走 `Page.replace_image`，它会留孤儿对象并打乱对账）；不给则
+    页眉保持 Word 导出的 96 dpi。数量对不上时脚本不猜、不部分替换，直接报错退出。
 
 依赖 PyMuPDF（`python -c "import pymupdf"` 能过即可）。本文件不写主机绝对路径：
 本机若当前解释器缺 PyMuPDF，脚本会在运行时探测 `python` / `py -3`，只把**探测结果**
@@ -126,16 +129,66 @@ def distinct(items):
     return uniq
 
 
+def header_xrefs(doc, items):
+    """页眉图的 xref 集合：同一个 xref 出现在 ≥ 一半页面上（≥3 页）即判定为页眉。
+
+    官方模板版式后，每页页眉有一张「芯辰大海」logo（Word 导出时各页共用一个
+    图像对象）。它不属于正文插图，不参与 --order 对账，也替换不得（替换会波及
+    全部页并打乱共享对象）。
+    """
+    if doc.page_count < 4:
+        return set()
+    pages = {}
+    for it in items:
+        pages.setdefault(it["xref"], set()).add(it["page"])
+    need = max(3, doc.page_count // 2)
+    return {x for x, ps in pages.items() if len(ps) >= need}
+
+
+def body_images(doc, items=None):
+    """正文插图（按文档出现顺序，排除页眉图）。"""
+    items = page_images(doc) if items is None else items
+    hdr = header_xrefs(doc, items)
+    return [it for it in items if it["xref"] not in hdr], hdr
+
+
+def replace_header_image(doc, xref: int, src: Path) -> tuple[int, int]:
+    """把页眉图（同一 xref 被多页引用）**原地**换成源图像素。
+
+    不能走 ``Page.replace_image``：它先 ``insert_image`` 再 ``xref_copy`` 覆盖，
+    会在页面资源里留下孤儿图像对象（实测替换 1 张后总对象数 15→16、后续对账错位）。
+    这里直接改写 xref 指向的图像对象（宽 / 高 / 流），所有引用页同步生效、对象数不变。
+    源图须为不带 alpha 的 RGB（logo_header.png 已白底化）。
+    """
+    import pymupdf                       # 懒加载：load_pymupdf() 已在此前验证可用
+    pm = pymupdf.Pixmap(str(src))
+    if pm.alpha:
+        pm = pymupdf.Pixmap(pymupdf.csRGB, pm)          # 丢 alpha（源已白底化）
+    if pm.colorspace and pm.colorspace.n != 3:
+        pm = pymupdf.Pixmap(pymupdf.csRGB, pm)
+    if pm.stride != pm.width * 3:
+        raise ValueError("页眉源图像素行带 padding（stride %d ≠ %d），先转存为无填充 RGB"
+                         % (pm.stride, pm.width * 3))
+    # update_stream 默认自带 Flate 压缩，字典里声明 /Filter /FlateDecode 即可；
+    # 自己先 zlib 压一遍会变成双重压缩、解码出噪声（10-31 首版踩过）。
+    d = ("<</Type/XObject/Subtype/Image/Width %d/Height %d/ColorSpace /DeviceRGB"
+         "/BitsPerComponent 8/Filter /FlateDecode>>" % (pm.width, pm.height))
+    doc.update_object(xref, d)
+    doc.update_stream(xref, pm.samples, compress=True)
+    return pm.width, pm.height
+
+
 def report(pdf_path: Path, min_dpi: float) -> int:
     pm = load_pymupdf()
     if pm is None:
         return 2
     with pm.open(str(pdf_path)) as doc:
-        items = page_images(doc)
-        uniq = distinct(items)
+        all_items = page_images(doc)
+        uniq, hdr = body_images(doc, all_items)
         print("PDF  : %s" % pdf_path)
-        print("        %d 页，%.2f MB，图片对象 %d 个（出现 %d 次）"
-              % (doc.page_count, pdf_path.stat().st_size / 1e6, len(uniq), len(items)))
+        print("        %d 页，%.2f MB，图片对象 %d 个（出现 %d 次，页眉图 %d 个）"
+              % (doc.page_count, pdf_path.stat().st_size / 1e6, len(uniq),
+                 len(all_items), len(hdr)))
         low = []
         for i, it in enumerate(uniq, 1):
             tag = "" if it["dpi"] >= min_dpi else "   [低于 %.0f dpi]" % min_dpi
@@ -151,7 +204,8 @@ def report(pdf_path: Path, min_dpi: float) -> int:
     return 0
 
 
-def hires(pdf_path: Path, order, min_dpi: float, out_path: Path, inplace: bool) -> int:
+def hires(pdf_path: Path, order, min_dpi: float, out_path: Path, inplace: bool,
+          header_src: Path | None = None) -> int:
     pm = load_pymupdf()
     if pm is None:
         return 2
@@ -159,6 +213,9 @@ def hires(pdf_path: Path, order, min_dpi: float, out_path: Path, inplace: bool) 
         if not src.is_file():
             print("[error] --order 里的图不存在：%s" % src, file=sys.stderr)
             return 1
+    if header_src is not None and not header_src.is_file():
+        print("[error] --header 指定的页眉图不存在：%s" % header_src, file=sys.stderr)
+        return 1
     target = pdf_path if inplace else out_path
     if target.resolve() == pdf_path.resolve() and not inplace:
         print("[error] 输出路径与输入相同，请加 --inplace 或换 --out", file=sys.stderr)
@@ -166,7 +223,10 @@ def hires(pdf_path: Path, order, min_dpi: float, out_path: Path, inplace: bool) 
 
     print("PDF  : %s（%.2f MB）" % (pdf_path, pdf_path.stat().st_size / 1e6))
     with pm.open(str(pdf_path)) as doc:
-        before = distinct(page_images(doc))
+        before, hdr = body_images(doc)
+        if hdr:
+            print("页眉图：xref %s（出现在 ≥ 一半页面，按 --header 原地换源像素）"
+                  % ", ".join(str(x) for x in sorted(hdr)))
         if len(before) != len(order):
             print("[error] 数量对不上：PDF 里 %d 张插图，--order 给了 %d 张"
                   % (len(before), len(order)), file=sys.stderr)
@@ -193,14 +253,22 @@ def hires(pdf_path: Path, order, min_dpi: float, out_path: Path, inplace: bool) 
                 doc[it["page"] - 1].replace_image(it["xref"], filename=str(src))
                 done[it["xref"]] = True
             pairs.append((idx, it, src, (px.width, px.height)))
+        # 页眉图：原地改写图像对象（不能走 replace_image，会留孤儿对象），所有引用页生效
+        hdr_px = {}
+        if header_src is not None:
+            for hx in sorted(hdr):
+                w, h = replace_header_image(doc, hx, header_src)
+                hdr_px[hx] = (w, h)
+                print("        页眉 xref=%d 原地替换 → %dx%d px  [%s]"
+                      % (hx, w, h, header_src.name))
         tmp = target.with_suffix(target.suffix + ".tmp")
         doc.save(str(tmp), garbage=3, deflate=True)
     shutil.move(str(tmp), str(target))
     print("写出  : %s（%.2f MB）" % (target, target.stat().st_size / 1e6))
 
     with pm.open(str(target)) as doc2:
-        after_all = distinct(page_images(doc2))
-        print("替换后：%d 张插图" % len(after_all))
+        after_all, hdr2 = body_images(doc2)
+        print("替换后：%d 张正文插图" % len(after_all))
         low, mismatch = [], []
         for (idx, old, src, px), new in zip(pairs, after_all):
             print("        " + fmt_row(idx, old, new) + "   [%s]" % src.name)
@@ -215,6 +283,16 @@ def hires(pdf_path: Path, order, min_dpi: float, out_path: Path, inplace: bool) 
             print("[FAIL] %d 张插图等效 dpi < %.0f：%s（源图分辨率不够或图框太宽）"
                   % (len(low), min_dpi, low))
             return 1
+        # 页眉复核：像素必须与源图一致（dpi 只到源图原生值，不做 300 门禁）
+        if header_src is not None:
+            src_pm = pm.Pixmap(str(header_src))
+            for hx in sorted(hdr2):
+                got = next((it for it in page_images(doc2) if it["xref"] == hx), None)
+                if got is None or (got["px_w"], got["px_h"]) != (src_pm.width, src_pm.height):
+                    print("[FAIL] 页眉图 xref=%d 替换后与源图不符" % hx)
+                    return 1
+                print("        页眉 xref=%d 复核 OK：%dx%d px @ %.0f dpi（源图原生）"
+                      % (hx, got["px_w"], got["px_h"], got["dpi"]))
         if min_dpi > 0:
             print("[ok] %d 张插图全部 ≥ %.0f dpi（最低 %.0f，替换前最低 %.0f）"
                   % (len(after_all), min_dpi, min(it["dpi"] for it in after_all),
@@ -228,6 +306,9 @@ def main(argv=None) -> int:
     ap.add_argument("--pdf", required=True, help="目标 PDF")
     ap.add_argument("--order", nargs="+", default=None,
                     help="按文档出现顺序排列的源图（与 PDF 内插图一一对应）")
+    ap.add_argument("--header", default=None,
+                    help="页眉 logo 源图（官方模板 logo_header.png）：对出现在 ≥ 一半页面的"
+                         "图像对象原地换源像素；不给则页眉图保持 Word 导出的 96 dpi")
     ap.add_argument("--report", action="store_true", help="只测量打印，不改文件")
     ap.add_argument("--min-dpi", type=float, default=MIN_DPI_DEFAULT,
                     help="等效 dpi 下限，默认 %(default)s；0 = 不判定")
@@ -250,8 +331,9 @@ def main(argv=None) -> int:
         return report(pdf_path, args.min_dpi)
     out_path = Path(args.out).resolve() if args.out else \
         pdf_path.with_name(pdf_path.stem + ".hires.pdf")
+    header = Path(args.header).resolve() if args.header else None
     return hires(pdf_path, [Path(p).resolve() for p in args.order],
-                 args.min_dpi, out_path, args.inplace)
+                 args.min_dpi, out_path, args.inplace, header)
 
 
 if __name__ == "__main__":

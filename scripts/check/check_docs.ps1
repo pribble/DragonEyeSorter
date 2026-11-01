@@ -177,8 +177,9 @@ function Read-Utf8Lines {
 }
 
 # ---------- 枚举全部 md ----------
+# .git 与 .zcode（ZCode CLI 本地工作目录，工具产物）都不是仓库文档，不入扫描
 $mdFiles = @(Get-ChildItem -LiteralPath $repoRoot -Recurse -File -Filter *.md |
-    Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' } | Sort-Object FullName)
+    Where-Object { $_.FullName -notmatch '[\\/]\.(git|zcode)[\\/]' } | Sort-Object FullName)
 $script:stats.Files = $mdFiles.Count
 
 $docs = New-Object System.Collections.ArrayList

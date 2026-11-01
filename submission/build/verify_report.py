@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""作品报告验收自检（论文式报告；独立复核用，不改任何产物）。
+"""作品报告验收自检（官方模板五部分结构；独立复核用，不改任何产物）。
 
 对 **docx + PDF + 源 Markdown** 三方对账，逐项核对报告版式与内容口径（版式令牌见
-submission/build/README.md，重构结论见 docs/log/2026-10-29-报告重构纯论文式.md），
-原始结果写进 submission/out/_verify_report.txt。检查项按组编号：
+submission/build/README.md，结构模板见 docs/模板.pdf 与本轮 log），原始结果写进
+submission/out/_verify_report.txt。检查项按组编号：
 
   1 产物与生成统计：docx / PDF / 源可读，PDF 文件头与 ≤ 50MB，生成侧自检无告警，
     页数取 Word ComputeStatistics（word_to_pdf.ps1 记录），不估算
-  2 源 Markdown：标题层级、元信息行（标题后连续 `**标签**：值`，上限 6、按实际条数）、
+  2 源 Markdown：官方模板骨架（# 标题 = 官网报名作品名、H1 = 摘要 + 五部分、
+    H2 = 1.1~4.2、H3 = 2.2.x/2.3.x/3.2.x）、模板字数上限（摘要 800 / 1.1~1.3 400 /
+    1.4~1.6 200 / 4.1 300 / 4.2 1000，Word 口径只数正文段）、
     图注表注计数与编号连续唯一、图注在图下方 / 表注在表上方、每个图/表都被正文引用、
-    无代码块 / 引用块 / 四级标题 / 「- 」列表 / HTML
+    无代码块 / 引用块 / 五级标题 / 「- 」列表 / HTML
   3 DOCX 结构：段落 / 表格 / 插图计数三方对账，单节无封面无目录，标题与元信息、
     章节文字逐条等于源，图注表注数量等于源
   4 版式令牌：正文宋体 11pt / Times 两端对齐 / 首行缩进 440 twips / 单倍行距、
-    标题 17.5pt、H1 14.5pt、H2 12pt（Word 半磅粒度落版值）、图注表注加粗 10pt、
+    标题 17.5pt、H1 14.5pt、H2 12pt、H3 11pt（Word 半磅粒度落版值）、图注表注加粗 10pt、
     行内代码 Consolas 10pt、参考列表 10pt 悬挂 1.5 字符、无固定行距、全篇只有黑色
   5 三线表：≤ 15.6cm 固定布局、上下 1.5pt / 表头下 0.75pt 黑线、无竖线行线底纹、
     表头重复加粗、行不跨页、单元格内边距 108 twips、表体 9pt；
@@ -24,8 +26,9 @@ submission/build/README.md，重构结论见 docs/log/2026-10-29-报告重构纯
     落版最小字号 ≥ 7pt；占位按 placeholder_manifest.json 的 `in_report` 计
     （图注数 = 源图数 = 报告插图数），**--final 只对 in_report=true 且
     replaced=false 的占位判残留 FAIL**（交件前门禁）
-  7 页面与页码：A4、页边距 2.4cm、页脚距边 1.6cm、无页眉、页脚居中 PAGE 域
-    （无 NUMPAGES / 「第 X 页」）、页码从 1 起、附录 A 前分页、PDF 无彩色
+  7 页面与页码：A4、页边距 2.4cm、页脚距边 1.6cm、页眉仅官方模板 logo（1 图无文字）、
+    页脚居中 PAGE 域（无 NUMPAGES / 「第 X 页」）、页码从 1 起、参考文献 1~20 篇、
+    PDF 无彩色
   8 PDF 渲染：字体全部嵌入、四族字体齐全（宋体 / 黑体 / Times / Consolas）、
     中文不被回退字体替换、行框无重叠
   9 逐页留白：fill% = 内容高度 / 版心 24.9cm，正文页填充 < 50% 判 FAIL（末页除外），
@@ -95,6 +98,7 @@ BODY_PT = 11.0
 TITLE_PT = 17.5                                  # Word 半磅粒度（SPEC 17.28pt 落版值）
 H1_PT = 14.5                                     # Word 半磅粒度（SPEC 14.4pt 落版值）
 H2_PT = 12.0
+H3_PT = 11.0                                     # 三级标题（官方模板 2.2.1 层，与正文同号黑体）
 META_PT = 10.0
 CAPTION_PT = 10.0
 TABLE_PT = 9.0
@@ -277,9 +281,10 @@ def sep_hint(cell: str):
 def parse_source(text: str) -> dict:
     """把源 Markdown 解析成结构（独立于 md2docx.py 的统计）。"""
     lines = text.splitlines()
-    src = {"title": "", "meta": [], "h1": [], "h2": [], "heading_seq": [],
+    src = {"title": "", "meta": [], "h1": [], "h2": [], "h3": [], "heading_seq": [],
            "images": [], "fig_captions": [], "tbl_captions": [],
-           "table_blocks": [], "tables": 0, "tables_data": []}
+           "table_blocks": [], "tables": 0, "tables_data": [], "ref_items": []}
+    cur_h1 = ""                         # 当前 H1 节名（用于收集参考文献条目）
     meta_open = True                    # 元信息区：标题后连续的 **标签**：值 行（上限 6）
     for i, ln in enumerate(lines):
         t = ln.strip()
@@ -293,12 +298,18 @@ def parse_source(text: str) -> dict:
                 continue
             if t:
                 meta_open = False
-        if t.startswith("### "):
+        if t.startswith("#### "):
+            src["h3"].append(t[5:].strip())
+            src.setdefault("heading_seq", []).append(("h3", t[5:].strip()))
+        elif t.startswith("### "):
             src["h2"].append(t[4:].strip())
             src.setdefault("heading_seq", []).append(("h2", t[4:].strip()))
         elif t.startswith("## "):
             src["h1"].append(t[3:].strip())
+            cur_h1 = t[3:].strip()
             src.setdefault("heading_seq", []).append(("h1", t[3:].strip()))
+        elif re.match(r"^\d+\.\s", t) and cur_h1.startswith("第五部分"):
+            src["ref_items"].append(t)
         elif IMAGE_LINE_RE.match(t):
             src["images"].append(IMAGE_LINE_RE.match(t).group(2).strip())
         elif SRC_CAP_FIG_RE.match(t):
@@ -339,8 +350,8 @@ def source_problems(text: str) -> list[str]:
             bad.append("第 %d 行：代码块" % i)
         elif t.lstrip().startswith(">"):
             bad.append("第 %d 行：引用块" % i)
-        elif t.startswith("####"):
-            bad.append("第 %d 行：四级标题" % i)
+        elif t.startswith("#####"):
+            bad.append("第 %d 行：五级标题" % i)
         elif re.match(r"^\s*-\s+", t) and not TABLE_ROW_RE.match(t.strip()):
             bad.append("第 %d 行：「- 」项目符号" % i)
         elif re.search(r"<[a-zA-Z][^>]*>", t) and "`" not in t:
@@ -348,14 +359,107 @@ def source_problems(text: str) -> list[str]:
     return bad[:13]
 
 
+def word_count_cn(s: str) -> int:
+    """Word「字数」口径：CJK 字符（含中文标点等宽区）每个计 1，连续的非 CJK 非空白串计 1。"""
+    cjk_re = r"[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef⚠µ×]"
+    n, i = 0, 0
+    while i < len(s):
+        ch = s[i]
+        if re.match(cjk_re, ch):
+            n += 1
+            i += 1
+        elif ch.isspace():
+            i += 1
+        else:
+            j = i
+            while j < len(s) and not re.match(cjk_re, s[j]) and not s[j].isspace():
+                j += 1
+            n += 1
+            i = j
+    return n
+
+
+def section_word_counts(text: str) -> dict[str, int]:
+    """官方模板各节的正文字数（Word 口径）。
+
+    只数正文段落：排除标题、表格行、插图行、图注 / 表注、列表（参考文献）、元信息。
+    """
+    lines = text.splitlines()
+    cur, secs = None, {}
+    for ln in lines:
+        t = ln.strip()
+        if t.startswith("#"):
+            cur = t.lstrip("#").strip()
+            secs.setdefault(cur, [])
+        elif cur is not None:
+            secs[cur].append(ln)
+    out = {}
+    for name, body in secs.items():
+        n = 0
+        for ln in body:
+            t = ln.strip()
+            if not t or t.startswith(("|", "![", "#")):
+                continue
+            if re.match(r"^\*\*[图表] \d+\*\*", t):
+                continue
+            if re.match(r"^\d+\.\s", t):
+                continue
+            n += word_count_cn(t)
+        out[name] = n
+    return out
+
+
+# 官方模板的字数上限（submission/build/README.md「官方模板」节）：节名前缀 → 上限字数
+TEMPLATE_WORD_LIMITS = [("摘要", 800), ("1.1", 400), ("1.2", 400), ("1.3", 400),
+                        ("1.4", 200), ("1.5", 200), ("1.6", 200),
+                        ("4.1", 300), ("4.2", 1000)]
+
+# 官方模板的章节骨架：H1 集合 + H2 编号 + H3 编号（见 docs/模板.pdf）
+TEMPLATE_H1 = ["摘要", "第一部分", "第二部分", "第三部分", "第四部分", "第五部分"]
+TEMPLATE_H2 = ["1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "2.1", "2.2", "2.3",
+               "3.1", "3.2", "3.3", "4.1", "4.2"]
+TEMPLATE_H3 = ["2.2.1", "2.2.2", "2.2.3", "2.3.1", "2.3.2", "3.2.1", "3.2.2", "3.2.3"]
+TEMPLATE_TITLE = "基于FPGA的工业智能检测系统"          # 与官网报名「作品名称」一致
+
+
 def check_source(src: dict, text: str, stats: dict) -> None:
     n_fig, n_tbl = len(src["images"]), src["tables"]
     figs = [n for n, _, _ in src["fig_captions"]]
     tbls = [n for n, _, _ in src["tbl_captions"]]
-    h1, h2 = len(src["h1"]), len(src["h2"])
-    check("2 源 Markdown", "标题层级：H1 ≥ 10 章、H2 ≥ 20 节",
-          bool(src["title"]) and h1 >= 10 and h2 >= 20,
-          "H1 %d / H2 %d；# 标题 %r" % (h1, h2, src["title"][:32]))
+    h1, h2, h3 = len(src["h1"]), len(src["h2"]), len(src["h3"])
+
+    # 官方模板骨架：首页标题 = 官网报名作品名；H1 = 摘要 + 五部分；H2/H3 = 模板编号
+    h1_prefixes = [x.split("\u3000")[0].split(" ")[0] for x in src["h1"]]
+    h2_numbers = [x.split(" ")[0].split("\u3000")[0] for x in src["h2"]]
+    h3_numbers = [x.split(" ")[0].split("\u3000")[0] for x in src["h3"]]
+    skel_bad = []
+    if src["title"] != TEMPLATE_TITLE:
+        skel_bad.append("# 标题 %r ≠ 官网报名作品名" % src["title"])
+    if h1_prefixes != TEMPLATE_H1:
+        skel_bad.append("H1 序列 %s ≠ %s" % (h1_prefixes, TEMPLATE_H1))
+    if h2_numbers != TEMPLATE_H2:
+        skel_bad.append("H2 序列 %s" % h2_numbers)
+    if h3_numbers != TEMPLATE_H3:
+        skel_bad.append("H3 序列 %s" % h3_numbers)
+    check("2 源 Markdown", "官方模板骨架：标题=报名名、H1 摘要+五部分、H2 1.1~4.2、H3 2.2.x/2.3.x/3.2.x",
+          not skel_bad and bool(src["title"]),
+          "; ".join(skel_bad[:4]) if skel_bad
+          else "标题 %r；H1 %d / H2 %d / H3 %d" % (src["title"][:24], h1, h2, h3))
+
+    # 官方模板字数上限（Word 口径，只数正文段，不含表格 / 图注）
+    wc = section_word_counts(text)
+    wc_bad = []
+    for prefix, limit in TEMPLATE_WORD_LIMITS:
+        key = next((k for k in wc if k == prefix or k.startswith(prefix + " ")), None)
+        if key is None:
+            wc_bad.append("缺节 %s" % prefix)
+        elif wc[key] > limit:
+            wc_bad.append("%s %d > %d 字" % (key, wc[key], limit))
+    wc_detail = "；".join("%s %d/%d" % (p, wc.get(next((k for k in wc if k == p or k.startswith(p + " ")), ""), 0), lim)
+                          for p, lim in TEMPLATE_WORD_LIMITS)
+    check("2 源 Markdown", "官方模板字数上限（摘要 800 / 1.1~1.3 400 / 1.4~1.6 200 / 4.1 300 / 4.2 1000）",
+          not wc_bad, "; ".join(wc_bad[:5]) if wc_bad else wc_detail)
+
     check("2 源 Markdown", "图注数 = 插图数、表注数 = 表格数",
           len(figs) == n_fig and len(tbls) == n_tbl,
           "图注 %d / 插图 %d；表注 %d / 表格 %d" % (len(figs), n_fig, len(tbls), n_tbl))
@@ -408,7 +512,7 @@ def check_source(src: dict, text: str, stats: dict) -> None:
           "; ".join(fmt_bad[:6]) if fmt_bad else "全部合规")
 
     bad_md = source_problems(text)
-    check("2 源 Markdown", "无代码块 / 引用块 / 四级标题 / 「- 」列表 / HTML",
+    check("2 源 Markdown", "无代码块 / 引用块 / 五级标题 / 「- 」列表 / HTML",
           not bad_md, "; ".join(bad_md[:6]) if bad_md else "0 处")
 
     sb = stats.get("source_blocks") or {}
@@ -774,24 +878,29 @@ def analyze_docx(doc, src: dict, stats: dict) -> dict:
     # 章节标题逐条对账（按文字顺序匹配，不依赖样式名）
     texts = [p.text.strip() for p in paras]
     cursor, problems = 0, []
-    found_h1, found_h2 = [], []
+    found_h1, found_h2, found_h3 = [], [], []
     for level, htext in src.get("heading_seq") or (
-            [("h1", x) for x in src["h1"]] + [("h2", x) for x in src["h2"]]):
+            [("h1", x) for x in src["h1"]] + [("h2", x) for x in src["h2"]]
+            + [("h3", x) for x in src.get("h3", [])]):
         hit = next((i for i in range(cursor, len(texts)) if texts[i] == htext.strip()), None)
         if hit is None:
             problems.append("缺标题 %r" % htext[:26])
         else:
             cursor = hit
-            (found_h1 if level == "h1" else found_h2).append(paras[hit])
-    h_ok = len(found_h1) == len(src["h1"]) and len(found_h2) == len(src["h2"])
+            (found_h1 if level == "h1" else found_h2 if level == "h2" else found_h3).append(paras[hit])
+    h_ok = (len(found_h1) == len(src["h1"]) and len(found_h2) == len(src["h2"])
+            and len(found_h3) == len(src.get("h3", [])))
     if s_h:
-        h_ok = h_ok and len(found_h1) == s_h.get("h1") and len(found_h2) == s_h.get("h2")
-    check("3 DOCX 结构", "章节标题文字 = 源（H1 %d / H2 %d）"
-          % (len(src["h1"]), len(src["h2"])), h_ok,
+        h_ok = (h_ok and len(found_h1) == s_h.get("h1")
+                and len(found_h2) == s_h.get("h2")
+                and len(found_h3) == s_h.get("h3", 0))
+    check("3 DOCX 结构", "章节标题文字 = 源（H1 %d / H2 %d / H3 %d）"
+          % (len(src["h1"]), len(src["h2"]), len(src.get("h3", []))), h_ok,
           "; ".join(problems[:6]) if problems
-          else "H1 %d / H2 %d 全部匹配（json %s / %s）"
-               % (len(found_h1), len(found_h2), s_h.get("h1"), s_h.get("h2")))
-    heading_ids = {id(p) for p in found_h1 + found_h2}
+          else "H1 %d / H2 %d / H3 %d 全部匹配（json %s / %s / %s）"
+               % (len(found_h1), len(found_h2), len(found_h3),
+                  s_h.get("h1"), s_h.get("h2"), s_h.get("h3", 0)))
+    heading_ids = {id(p) for p in found_h1 + found_h2 + found_h3}
 
     # 图注 / 表注段落
     caps = {"图": [], "表": []}
@@ -901,7 +1010,8 @@ def analyze_docx(doc, src: dict, stats: dict) -> dict:
                 t_bad.append("元信息 %r 字号 %s" % (r.text[:8], font_size(r, p)))
                 break
     h_bad = []
-    for p, want in [(p, H1_PT) for p in found_h1] + [(p, H2_PT) for p in found_h2]:
+    for p, want in ([(p, H1_PT) for p in found_h1] + [(p, H2_PT) for p in found_h2]
+                    + [(p, H3_PT) for p in found_h3]):
         runs = [r for r in p.runs if r.text.strip()]
         ea = {rfonts(r, p).get("eastAsia") for r in runs}
         sz = {round(font_size(r, p) or 0, 2) for r in runs}
@@ -909,7 +1019,7 @@ def analyze_docx(doc, src: dict, stats: dict) -> dict:
             h_bad.append("%r 字体 %s 字号 %s 对齐 %s"
                          % (p.text[:14], ea, sz, jc(p)))
     level_bad = t_bad + h_bad
-    check("4 版式令牌", "标题层级：标题 17.5pt / H1 14.5pt / H2 12pt 黑体，元信息 10pt",
+    check("4 版式令牌", "标题层级：标题 17.5pt / H1 14.5pt / H2 12pt / H3 11pt 黑体，元信息 10pt",
           not level_bad, "; ".join(level_bad[:6]) if level_bad else "合规")
 
     # 图注 / 表注格式与位置
@@ -1050,12 +1160,21 @@ def analyze_docx(doc, src: dict, stats: dict) -> dict:
             ftr_xml = "".join(zf.read(n).decode("utf-8", "replace")
                               for n in zf.namelist()
                               if re.match(r"word/footer\d*\.xml$", n))
+            hdr_xml = "".join(zf.read(n).decode("utf-8", "replace")
+                              for n in zf.namelist()
+                              if re.match(r"word/header\d*\.xml$", n))
     except (OSError, zipfile.BadZipFile):
-        ftr_xml = ""
+        ftr_xml = hdr_xml = ""
     footer_text = "".join(p.text for p in sec.footer.paragraphs).strip()
     foot_bad2 = []
-    if hdr_refs or hdr_text:
-        foot_bad2.append("有页眉（%d 个 headerReference）" % len(hdr_refs))
+    # 页眉：官方模板 logo（恰好 1 个引用、恰好 1 张图、无文字）
+    if len(hdr_refs) != 1:
+        foot_bad2.append("headerReference %d 个（应 1）" % len(hdr_refs))
+    n_blip = hdr_xml.count("<a:blip")
+    if n_blip != 1:
+        foot_bad2.append("页眉图片 %d 张（应 1 张 logo）" % n_blip)
+    if hdr_text:
+        foot_bad2.append("页眉文字 %r" % hdr_text[:14])
     if len(ftr_refs) != 1:
         foot_bad2.append("footerReference %d 个" % len(ftr_refs))
     if "PAGE" not in ftr_xml:
@@ -1081,27 +1200,19 @@ def analyze_docx(doc, src: dict, stats: dict) -> dict:
             c = color(r, p)
             if c is not None and c.upper() != C_INK:
                 foot_bad2.append("页脚字色 %s" % c)
-    check("7 页面与页码", "无页眉；页脚居中 PAGE 域（Times 11pt，无 NUMPAGES / 第 X 页）",
-          not foot_bad2, "; ".join(foot_bad2[:5]) if foot_bad2 else "仅居中 PAGE 域")
+    check("7 页面与页码", "页眉仅模板 logo（1 图无文字）；页脚居中 PAGE 域（Times 11pt，无 NUMPAGES / 第 X 页）",
+          not foot_bad2, "; ".join(foot_bad2[:5]) if foot_bad2 else "页眉 logo + 居中 PAGE 域")
 
     pg = sec._sectPr.find(qn("w:pgNumType"))
     check("7 页面与页码", "页码从 1 起（pgNumType start=1）",
           pg is not None and pg.get(qn("w:start")) == "1",
           "start=%s" % (None if pg is None else pg.get(qn("w:start"))))
 
-    app_par = next((p for p in paras if p.text.strip().startswith("附录 A")), None)
-    app_ok = False
-    if app_par is not None:
-        app_ok = page_break_before(app_par)
-        if not app_ok:
-            try:
-                idx = paras.index(app_par)
-                app_ok = bool(re.search(r'w:type="page"', paras[idx - 1]._p.xml))
-            except (ValueError, IndexError):
-                app_ok = False
-    check("7 页面与页码", "附录 A 前分页", app_ok,
-          "pageBreakBefore" if app_par is not None and page_break_before(app_par)
-          else ("未识别到附录 A 标题" if app_par is None else "未分页"))
+    # 官方模板：第五部分 参考文献，标准格式、限 20 篇以内
+    n_refs = len(src["ref_items"])
+    ref_ok = 1 <= n_refs <= 20
+    check("7 页面与页码", "参考文献 1~20 篇（官方模板上限 20）", ref_ok,
+          "参考文献 %d 条" % n_refs)
 
     # --- 三线表 ---
     def tbl_width_cm(t):
@@ -1561,11 +1672,12 @@ def analyze_pdf(pdf_path: Path, src: dict, pdf_stats: dict) -> None:
 
     # 插图 dpi / 数量 / 图注同页
     # 与 pdf_images_hires.py 共用同一份量法（只算实际显示的图像对象、同 xref 去重），
-    # 避免它替换像素后这里把旧/新对象重复计数。
+    # 避免它替换像素后这里把旧/新对象重复计数；页眉 logo（官方模板版式，每页共用
+    # 一个 xref）按同一规则豁免，不算正文插图。
     sys.path.insert(0, str(BUILD))
     try:
         import pdf_images_hires as hires
-        imgs = hires.distinct(hires.page_images(pdf))
+        imgs, _hdr_xrefs = hires.body_images(pdf)
     except Exception:                              # noqa: BLE001 保底：自行测量
         raw, seen = [], set()
         for pno, page in enumerate(pdf, 1):
@@ -1576,8 +1688,13 @@ def analyze_pdf(pdf_path: Path, src: dict, pdf_stats: dict) -> None:
                 disp = x1 - x0
                 dpi = w_px / (disp / 72.0) if disp > 0 else 0
                 raw.append({"page": pno, "xref": xref, "dpi": dpi, "y1": y1})
+        pages_by_xref = {}
         for it in raw:
-            if it["xref"] in seen:
+            pages_by_xref.setdefault(it["xref"], set()).add(it["page"])
+        hdr_xrefs = {x for x, ps in pages_by_xref.items()
+                     if len(ps) >= max(3, pdf.page_count // 2)}
+        for it in raw:
+            if it["xref"] in seen or it["xref"] in hdr_xrefs:
                 continue
             seen.add(it["xref"])
             imgs.append(it)
