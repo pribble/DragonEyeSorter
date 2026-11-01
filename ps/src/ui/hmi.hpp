@@ -40,6 +40,7 @@ struct HmiParams {                        // operator-editable, persisted in ui_
     uint8_t pl_thr = 128;                 // des_vision binary threshold
     uint16_t pl_edge_thr = 200;           // des_vision Sobel / edge threshold (no HMI button: ui_params.json only)
     int recipe = 1;                       // active recipe id (recipes.json); switching it also resets the four sizes
+    bool belt_pid = false;                // runtime switch for the optional PS-side belt PI (not persisted)
 };
 
 struct HmiStatus {                        // from the worker, every cycle

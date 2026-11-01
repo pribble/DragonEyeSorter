@@ -14,6 +14,22 @@ static void test_disabled()
     CHECK(p.update(50, 40, 0.2) == 0, "disabled: stays zero");
 }
 
+static void test_switch()
+{
+    SpeedPidConfig c;
+    c.enabled = false;   // config default off, like production
+    c.kp = 0.5;
+    c.ki = 0;
+    c.period_ms = 100;
+    c.trim_mm_s = 3.0;
+    SpeedPid p(c);
+    p.set_enabled(true);   // HMI toggle can turn it on at run time
+    p.update(50, 40, 0.0);
+    CHECK(p.update(50, 40, 0.1) > 0, "runtime switch on: trims");
+    p.set_enabled(false);  // and off again
+    CHECK(p.update(50, 40, 0.2) == 0, "runtime switch off: no trim");
+}
+
 static void test_p_only_and_clamp()
 {
     SpeedPidConfig c;
@@ -86,6 +102,7 @@ static void test_reset()
 int main()
 {
     test_disabled();
+    test_switch();
     test_p_only_and_clamp();
     test_tracks_a_first_order_plant();
     test_deadband();

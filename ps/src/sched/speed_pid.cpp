@@ -12,7 +12,7 @@ void SpeedPid::reset()
 }
 double SpeedPid::update(double target_mm_s, double actual_mm_s, double now_s)
 {
-    if (!cfg_.enabled || target_mm_s <= 0 || cfg_.period_ms <= 0) return 0;
+    if (!on_ || target_mm_s <= 0 || cfg_.period_ms <= 0) return 0;
     if (last_t_ < 0) {   // first sample: establish the period
         last_t_ = now_s;
         return 0;
