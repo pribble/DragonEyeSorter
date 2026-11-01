@@ -83,13 +83,24 @@ std::string load_config(const std::string &path, AppConfig &cfg)
                                      belt.run_speed, "accel", belt.accel, "enc_counts_per_rev",
                                      belt.enc_counts_per_rev, "enc_wheel_mm", belt.enc_wheel_mm, "release_idle",
                                      belt.release_idle, "release_after_ms", belt.release_after_ms, "enable_settle_ms",
-                                     belt.enable_settle_ms))
+                                     belt.enable_settle_ms)) {
             if (const json *ad = ji::sec(*c, "adapt")) {   // belt speed adaptation (picker.hpp adapt_speed)
                 ji::gets(*ad, "enabled", belt.adapt.enabled, "min_mm_s", belt.adapt.min_mm_s, "change_frac",
                          belt.adapt.change_frac, "fast_mm_s", belt.adapt.fast_mm_s);
                 if (belt.adapt.fast_mm_s < 0 || belt.adapt.fast_mm_s > 200)
                     return path + ": belt.adapt.fast_mm_s 0..200 (0 = no fast mode)";
             }
+            if (const json *p = ji::sec(*c, "pid")) {   // optional PS-side speed PI (speed_pid.hpp)
+                ji::gets(*p, "enabled", belt.pid.enabled, "kp", belt.pid.kp, "ki", belt.pid.ki,
+                         "period_ms", belt.pid.period_ms, "trim_mm_s", belt.pid.trim_mm_s,
+                         "deadband_mm_s", belt.pid.deadband_mm_s);
+                if (belt.pid.period_ms < 20 || belt.pid.period_ms > 1000)
+                    return path + ": belt.pid.period_ms 20..1000";
+                if (belt.pid.kp < 0 || belt.pid.ki < 0 || belt.pid.trim_mm_s < 0 || belt.pid.trim_mm_s > 20 ||
+                    belt.pid.deadband_mm_s < 0)
+                    return path + ": belt.pid kp/ki/trim/deadband must be >= 0 and trim <= 20 mm/s";
+            }
+        }
         TrackerConfig &trk = cfg.tracker;
         sec_gets(j, "tracker", "fov_x0", trk.fov_x0, "fov_x1", trk.fov_x1, "edge_margin", trk.edge_margin, "decide_x",
                  trk.decide_x, "tail_x", trk.tail_x, "gate_s", trk.gate_s, "gate_y", trk.gate_y, "min_hits",

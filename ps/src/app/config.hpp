@@ -9,6 +9,7 @@
 #include "ops.hpp"
 #include "picker.hpp"
 #include "rs485_io.hpp"
+#include "speed_pid.hpp"
 #include "tracker.hpp"
 namespace des {
 struct CameraConfig {
@@ -46,6 +47,7 @@ struct BeltConfig {
     double run_speed = 50;       // mm/s
     double accel = 400;          // mm/s^2
     SpeedAdaptConfig adapt;      // slow down instead of stopping while the arm is busy (sched/picker.hpp)
+    SpeedPidConfig pid;          // optional PS-side belt-speed PI trim (sched/speed_pid.hpp, default off)
     // Release the stepper driver (ENA off, no holding current) once the belt has stood still this long: an energised
     // TB6600 chops 2 A even at standstill and that noise corrupted 2..8 % of the servo-bus frames (2026-10-26); the
     // arm mostly works while the belt is stopped, so this keeps those moves on a clean bus. Before the next start the

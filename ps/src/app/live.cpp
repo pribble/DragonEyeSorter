@@ -348,6 +348,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
         AdaptMode adapt = AdaptMode::Base;
         float adapt_v = 0;
         if (runner) {
+            runner->set_encoder(io.enc, io_ok);   // optional belt PI: count window in Runner
             runner->cycle(tr, pk);   // state machine, belt, arm, CAN
             plan_on = runner->state() == CANP_ST_RUN; out.belt = runner->belt_plan();   // the plan Runner applied
             adapt = runner->adapt_mode(); adapt_v = float(runner->adapt_speed_set());
