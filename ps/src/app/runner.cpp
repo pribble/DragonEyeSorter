@@ -92,6 +92,20 @@ std::string Runner::start()
                cfg_.tracker.decide_x,
                c.hit && s.hit && latest > cfg_.tracker.decide_x ? "" : "  <- WARNING: parts reach it undecided");
     }
+    const SpeedAdaptConfig &ad = cfg_.belt.adapt;
+    if (ad.enabled) {
+        // fast mode: a part is decided at the fast speed, then the belt slows to the base speed; its gate must still
+        // be able to close ahead of it from there
+        std::string warn;
+        for (const Gate &G : cfg_.picker.gates) {
+            const XRange s = gate_sweep_range(G.geom, 0, 0.5f * cfg_.tracker.size.gear_od + cfg_.flaps.margin_mm);
+            if (ad.fast_mm_s > 0 && s.hit && s.x0 - ad.fast_mm_s * cfg_.flaps.move_s() <= cfg_.tracker.decide_x)
+                warn = "  <- WARNING: too fast for the gates (parts decided at that speed reach a gate too late)";
+        }
+        printf("[run] belt adapt: slower (>= %.0f mm/s) while the arm is busy and the next OK part is on its way; %s%s\n",
+               ad.min_mm_s, ad.fast_mm_s > 0 ? fmt("%.0f mm/s while nothing past the decision line is handled",
+                                                   ad.fast_mm_s).c_str() : "no fast mode", warn.c_str());
+    }
     prev_status_ = des_step_status(hw_);
     belt_.enable(true);
     arm_thread_ = std::thread(&Runner::arm_loop, this);
@@ -171,6 +185,7 @@ uint8_t Runner::set_speed(double mm_s, const char *who)
     if (mm_s <= 0 || mm_s > 200) return CANP_ACK_BAD_VALUE;
     belt_.set_speed(mm_s);
     speed_mm_s_ = mm_s;
+    adapt_v_ = mm_s; adapt_mode_ = AdaptMode::Base;   // the adaptation starts over from the new set speed
     last_event_ = fmt("%s 设带速 %.1f mm/s", who, mm_s);
     return CANP_ACK_OK;
 }
@@ -331,7 +346,10 @@ void Runner::cycle(Tracker &tr, Picker &pk)
     if (done_.drain(done_buf_))
         for (const Done &d : done_buf_) {
             pk.job_done(tr, d.id, d.ok); if (d.ok) cnt_.ok++;
-            else { cnt_.recheck++; last_event_ = "抓取失败：" + d.why; }
+            else {   // the reason in the service log too: bus (SYNC WRITE failed) vs grasp (nothing picked)
+                cnt_.recheck++; last_event_ = "抓取失败：" + d.why;
+                fprintf(stderr, "[run] track #%d pick failed: %s\n", d.id, d.why.empty() ? "?" : d.why.c_str());
+            }
         }
     // Newly decided part: counts + PART frame (decision time; a later failed pick is counted as recheck)
     auto report_part = [&](const Track &t) {
@@ -370,12 +388,19 @@ void Runner::cycle(Tracker &tr, Picker &pk)
             if (t.disp == Disposition::Recheck && recheck_log_.insert(t.id).second)
                 fprintf(stderr, "[run] track #%d recheck: %s (x %.0f, y %.0f)\n", t.id, t.why, double(t.x_at(in.belt_mm)), double(t.y));
         }
-        // speed adaptation while the arm is busy (fewer full stops; the StopAt still comes from the picker)
+        // speed adaptation: slower while the arm is busy (fewer full stops; the StopAt still comes from the picker),
+        // faster while nothing past the decision line is being handled (fast mode)
         if (cfg_.belt.adapt.enabled) {
             const double base = speed_mm_s_ > 0 ? speed_mm_s_ : cfg_.belt.run_speed; const double eta = arm_eta_.load();
-            const double v = adapt_speed(cfg_.belt.adapt, base, nearest_pick, arm_busy_ && eta > now ? eta - now : 0); if (std::fabs(v - adapt_v_) > cfg_.belt.adapt.change_frac * base) {
-                belt_.set_speed(v); adapt_v_ = v;
-                adapt_changes_++;  }
+            const bool quiet = cfg_.belt.adapt.fast_mm_s > 0 && !arm_busy_ && arm_clear_ &&
+                               belt_quiet(tr, out.flaps, in.belt_mm, flaps_.state());
+            AdaptMode mode = AdaptMode::Base;
+            const double v = adapt_speed(cfg_.belt.adapt, base, nearest_pick, arm_busy_ && eta > now ? eta - now : 0,
+                                         quiet, &mode);
+            if (std::fabs(v - adapt_v_) > cfg_.belt.adapt.change_frac * base) {
+                belt_.set_speed(v); adapt_v_ = v; adapt_mode_ = mode;
+                adapt_changes_++;
+            }
         }
         belt_.apply(out.belt);
         flap_events_ = out.flaps;   // the gates follow them below (capacity reused: no allocation per cycle)

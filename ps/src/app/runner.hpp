@@ -45,6 +45,9 @@ public:
     int take_recipe();                      // id accepted since the last call, -1 = none
     uint8_t state() const { return state_; }
     const BeltPlan &belt_plan() const { return plan_; }   // the picker's last belt plan (valid while RUN)
+    // speed adaptation now (worker thread, like belt_plan): mode and the cruise speed it set
+    AdaptMode adapt_mode() const { return adapt_mode_; }
+    double adapt_speed_set() const { return adapt_v_; }
     bool arm_busy() const { return arm_busy_; }   // a pick is being executed (the manual arm page waits)
     void set_home(const std::array<int, 6> &counts);   // HMI arm page: ready pose of every following pick
     // HMI flap page unlocked: the gates are driven by hand, leave the PWM alone; handing them back rewrites them
@@ -108,6 +111,7 @@ private:
     std::atomic<bool> arm_busy_{false}, arm_clear_{true};
     std::atomic<double> arm_eta_{0};   // monotonic s when the running pick will be back at the ready pose
     double adapt_v_ = 0;               // last cruise speed set by the adaptation
+    AdaptMode adapt_mode_ = AdaptMode::Base;   // which way that speed went (HMI panel)
     uint64_t adapt_changes_ = 0;
     std::array<uint16_t, 6> arm_counts_{};   // last commanded pose (arm thread only)
 };

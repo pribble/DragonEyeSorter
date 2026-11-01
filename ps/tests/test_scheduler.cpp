@@ -358,6 +358,56 @@ static void test_speed_adapt()
     CHECK(adapt_speed(c, 10, 30, 10) == 10, "base below the floor: base");
     c.enabled = false;
     CHECK(adapt_speed(c, 50, 100, 4) == 50, "disabled: base");
+    // fast mode (11-01 user: faster while parts are far apart): quiet belt -> fast_mm_s, else as before
+    c.enabled = true;
+    AdaptMode md = AdaptMode::Fast;
+    CHECK(adapt_speed(c, 50, -1, 0, true, &md) == 50 && md == AdaptMode::Base, "fast_mm_s 0: quiet changes nothing");
+    c.fast_mm_s = 80;
+    CHECK(adapt_speed(c, 50, -1, 0, true, &md) == 80 && md == AdaptMode::Fast, "quiet: fast 80");
+    CHECK(adapt_speed(c, 50, -1, 0, false, &md) == 50 && md == AdaptMode::Base, "not quiet, arm idle: base");
+    CHECK(std::fabs(adapt_speed(c, 50, 100, 4, false, &md) - 25) < 1e-9 && md == AdaptMode::Slow,
+          "arm busy, OK part on its way: slowed (mode Slow)");
+    CHECK(adapt_speed(c, 50, 100, 1, false, &md) == 50 && md == AdaptMode::Base, "not slowed: mode Base");
+    CHECK(adapt_speed(c, 90, -1, 0, true, &md) == 90 && md == AdaptMode::Base, "set speed above the fast one: base");
+    c.enabled = false;
+    CHECK(adapt_speed(c, 50, -1, 0, true, &md) == 50 && md == AdaptMode::Base, "disabled: no fast mode");
+}
+
+// fast mode condition (11-01): the belt is quiet while nothing past the decision line is being handled
+static void test_belt_quiet()
+{
+    Tracker empty(tracker_cfg());
+    const std::vector<FlapEvent> none;
+    const FlapSequencer::State gs;   // both gates open, not moving
+    CHECK(belt_quiet(empty, none, 100, gs), "empty belt: quiet");
+    FlapEvent e; e.track_id = 3; e.gate = 0; e.close_b = 80; e.release_b = 150;
+    const std::vector<FlapEvent> ev = {e};
+    CHECK(!belt_quiet(empty, ev, 100, gs), "NG part due at a gate (before its release): not quiet");
+    CHECK(belt_quiet(empty, ev, 150, gs), "past its release: quiet (the sweep itself shows in the gate state)");
+    FlapEvent tail = e; tail.gate = -1; tail.release_b = 1e9;
+    CHECK(belt_quiet(empty, {tail}, 100, gs), "a part riding to the belt end does not count");
+    FlapSequencer::State held = gs; held.track_id[0] = 3;
+    CHECK(!belt_quiet(empty, none, 100, held), "gate closed for a part: not quiet");
+    FlapSequencer::State moving = gs; moving.moving[1] = true;
+    CHECK(!belt_quiet(empty, none, 100, moving), "gate moving (sweep in progress): not quiet");
+    // an OK part decided for the arm (cls 0): not quiet; an NG part decided (cls 1) without a gate event: quiet; a part
+    // still in view and undecided: quiet
+    for (const int cls : {0, 1}) {
+        std::mt19937 rng(5);
+        Tracker tr(tracker_cfg());
+        const std::vector<SimPart> parts = {{-20, 0, 32, 32, 0.f, cls}};
+        bool undecided_quiet = false;
+        for (uint32_t f = 0; f <= 290; f++) {
+            tr.update(observe(parts, f, f, rng));
+            if (f == 150) undecided_quiet = belt_quiet(tr, none, f, gs);
+        }
+        const Track *t = tr.tracks().empty() ? nullptr : &tr.tracks().front();
+        CHECK(undecided_quiet, "class %d: a part still in view (undecided) does not count", cls);
+        CHECK(t && t->state == TrackState::Decided, "class %d: decided past decide_x (state %d)", cls,
+              t ? int(t->state) : -1);
+        if (cls == 0) CHECK(!belt_quiet(tr, none, 290, gs), "OK part decided for the arm: not quiet");
+        else CHECK(belt_quiet(tr, none, 290, gs), "NG part decided, no gate event: quiet");
+    }
 }
 
 // clutter: a blob first seen past the decision line (a hand, the gate paddle) gets no track; a part coming in from the
@@ -1767,6 +1817,7 @@ int main()
     test_gate_geometry();
     test_flaps();
     test_speed_adapt();
+    test_belt_quiet();
     test_gate_events();
     test_picker();
     test_picker_flying();

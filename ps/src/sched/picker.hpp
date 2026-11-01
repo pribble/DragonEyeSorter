@@ -275,13 +275,34 @@ struct SpeedAdaptConfig {
     bool enabled = false;
     double min_mm_s = 15;        // never slower than this while adapting (stops still come from the picker)
     double change_frac = 0.05;   // apply only changes larger than this fraction of the base speed (no hunting)
+    // Fast mode (11-01 user: speed up while the parts are far apart): this speed while the belt is quiet (belt_quiet:
+    // nothing past the decision line is being handled, the arm idle) — the belt then only brings the next parts
+    // through the camera view, where measuring / classifying does not depend on the speed. Back to the base speed as
+    // soon as a part is decided: the pick stop and the gate drop points are tuned at it. 0 = off.
+    double fast_mm_s = 0;
 };
-// base: operator / PLC speed (the maximum); dist_mm: next pickable part to the pick line (< 0 = none ahead);
-// arm_ready_s: seconds until the arm is back at its ready pose (0 = idle). Returns the cruise speed to use.
-inline double adapt_speed(const SpeedAdaptConfig &c, double base, double dist_mm, double arm_ready_s)
+enum class AdaptMode : uint8_t { Base, Fast, Slow };
+// base: operator / PLC speed; dist_mm: next pickable part to the pick line (< 0 = none ahead); arm_ready_s: seconds
+// until the arm is back at its ready pose (0 = idle); quiet: belt_quiet() and the arm idle. Returns the cruise speed
+// to use: fast_mm_s when quiet, slower than base (never below min_mm_s) so the next part arrives as the arm gets
+// ready, else base.
+inline double adapt_speed(const SpeedAdaptConfig &c, double base, double dist_mm, double arm_ready_s,
+                          bool quiet = false, AdaptMode *mode = nullptr)
 {
-    if (!c.enabled || dist_mm <= 0 || arm_ready_s <= 0) return base;
+    if (mode) *mode = AdaptMode::Base;
+    if (!c.enabled) return base;
+    if (quiet && c.fast_mm_s > base) {
+        if (mode) *mode = AdaptMode::Fast;
+        return c.fast_mm_s;
+    }
+    if (dist_mm <= 0 || arm_ready_s <= 0) return base;
     const double v = dist_mm / arm_ready_s;   // arrive when the arm is ready
-    return std::max(std::min(c.min_mm_s, base), std::min(base, v));
+    const double r = std::max(std::min(c.min_mm_s, base), std::min(base, v));
+    if (mode && r < base) *mode = AdaptMode::Slow;
+    return r;
 }
+// Nothing past the decision line needs the belt at its set speed: no OK part on its way to or at the pick line, no
+// NG part due at a gate (approaching, or held against the closed paddle), no gate closed or moving (a sweep pushing a
+// part off). Parts riding to the belt end (recheck) and parts still in the camera view do not count.
+bool belt_quiet(const Tracker &tr, const std::vector<FlapEvent> &flaps, double belt_mm, const FlapSequencer::State &gates);
 }  // namespace des

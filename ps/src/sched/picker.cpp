@@ -380,6 +380,18 @@ void Picker::job_done(Tracker &tr, int track_id, bool ok)
     }
 }
 
+bool belt_quiet(const Tracker &tr, const std::vector<FlapEvent> &flaps, double belt_mm, const FlapSequencer::State &gates)
+{
+    for (int g = 0; g < 2; g++)
+        if (gates.track_id[g] >= 0 || gates.moving[g]) return false;   // a gate holds or sweeps a part
+    for (const FlapEvent &e : flaps)
+        if (e.gate >= 0 && belt_mm < e.release_b) return false;   // an NG part due at its gate
+    for (const Track &t : tr.tracks())
+        if (t.state == TrackState::Picking || (t.state == TrackState::Decided && t.disp == Disposition::Pick))
+            return false;   // an OK part for the arm
+    return true;
+}
+
 // ---------------------------------------------------------------- side diverter gates (see picker.hpp)
 int FlapSequencer::us_at(int g, double now) const
 {

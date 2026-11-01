@@ -59,6 +59,8 @@ struct Snapshot {
     uint64_t logged = 0, log_images = 0;
     BeltPlan plan;
     bool plan_on = true;                        // run mode: false while the line is not running (no plan)
+    AdaptMode adapt = AdaptMode::Base;          // belt speed adaptation (run mode): fast / slowed / base
+    float adapt_v = 0;                          // the cruise speed it set
     Tracker::Stats st;
     uint64_t processed = 0, stale = 0;
     int8_t beam = -1;                           // through-beam: -1 off, 0 clear, 1 blocked (overlay line colour)
@@ -135,7 +137,10 @@ cv::Mat render_panel(const Snapshot &s, const Shared &sh, uint32_t pl_frame, uin
     row("抓取/挡板/复检", fmt("%llu / %llu / %llu", (unsigned long long)s.st.decided_pick,
                              (unsigned long long)s.st.decided_flap, (unsigned long long)s.st.decided_recheck));
     row("噪点", fmt("%llu", (unsigned long long)s.st.noise));
-    row("皮带计划", s.plan_on ? std::string(plan_cn(s.plan.kind)) : std::string("—"));
+    std::string plan = s.plan_on ? std::string(plan_cn(s.plan.kind)) : std::string("—");
+    if (s.plan_on && s.adapt == AdaptMode::Fast) plan += fmt(" · 快档 %.0f", double(s.adapt_v));
+    else if (s.plan_on && s.adapt == AdaptMode::Slow) plan += fmt(" · 减速 %.0f", double(s.adapt_v));
+    row("皮带计划", plan);
     row("已记录", fmt("%llu 件 · 存图 %llu 张", (unsigned long long)s.logged, (unsigned long long)s.log_images));
     // the runner's line, wrapped at its spaces (Chinese words have none inside); DIM so it reads as one quiet block
     const int wrap_px = kPanelW - 2 * 18;
@@ -309,9 +314,12 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
             }
         Picker::Output out;   // belt plan for the panel (runner branch) — the dry branch binds the picker's member directly
         bool plan_on = true;
+        AdaptMode adapt = AdaptMode::Base;
+        float adapt_v = 0;
         if (runner) {
             runner->cycle(tr, pk);   // state machine, belt, arm, CAN
             plan_on = runner->state() == CANP_ST_RUN; out.belt = runner->belt_plan();   // the plan Runner applied
+            adapt = runner->adapt_mode(); adapt_v = float(runner->adapt_speed_set());
         } else {
             Picker::Input in = picker_input(nullptr, &hw, cfg.belt);
             in.belt_mm = accum.peek(des_step_pos(&hw));   // the accumulated frame (same origin as obs.belt_mm)
@@ -495,6 +503,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
         s->measured = meas.measured; s->meas_failed = meas.failed;
         s->npu = npu.running(); s->npu_ms = npu.last_npu_ms; s->npu_runs = npu.runs;
         s->logged = plog.written; s->log_images = plog.images; s->plan = out.belt; s->plan_on = plan_on; s->st = tr.stats;
+        s->adapt = adapt; s->adapt_v = adapt_v;
         s->processed = processed; s->stale = stale;
         s->beam = !beam ? -1 : io_ok && (io.status & DES_IO_ST_IR1_BLOCKED) ? 1 : 0;
         tr.retire(accum.peek(des_step_pos(&hw)));

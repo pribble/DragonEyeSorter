@@ -84,8 +84,12 @@ std::string load_config(const std::string &path, AppConfig &cfg)
                                      belt.enc_counts_per_rev, "enc_wheel_mm", belt.enc_wheel_mm, "release_idle",
                                      belt.release_idle, "release_after_ms", belt.release_after_ms, "enable_settle_ms",
                                      belt.enable_settle_ms))
-            if (const json *ad = ji::sec(*c, "adapt"))   // belt speed adaptation (picker.hpp adapt_speed)
-                ji::gets(*ad, "enabled", belt.adapt.enabled, "min_mm_s", belt.adapt.min_mm_s, "change_frac", belt.adapt.change_frac);
+            if (const json *ad = ji::sec(*c, "adapt")) {   // belt speed adaptation (picker.hpp adapt_speed)
+                ji::gets(*ad, "enabled", belt.adapt.enabled, "min_mm_s", belt.adapt.min_mm_s, "change_frac",
+                         belt.adapt.change_frac, "fast_mm_s", belt.adapt.fast_mm_s);
+                if (belt.adapt.fast_mm_s < 0 || belt.adapt.fast_mm_s > 200)
+                    return path + ": belt.adapt.fast_mm_s 0..200 (0 = no fast mode)";
+            }
         TrackerConfig &trk = cfg.tracker;
         sec_gets(j, "tracker", "fov_x0", trk.fov_x0, "fov_x1", trk.fov_x1, "edge_margin", trk.edge_margin, "decide_x",
                  trk.decide_x, "tail_x", trk.tail_x, "gate_s", trk.gate_s, "gate_y", trk.gate_y, "min_hits",
