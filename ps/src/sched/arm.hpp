@@ -126,6 +126,7 @@ float grip_counts_per_mm(const ArmConfig &c, float mm);   // local slope (counts
 // gripper direction in the arm's vertical plane (deg): -90 = straight down, +90 = up (q2 + q3 + q4)
 inline float tool_pitch_deg(const JointAngles &j) { return j.q[1] + j.q[2] + j.q[3]; }
 constexpr float kToolDownMaxDeg = -40.f;   // a pick only starts from / passes through gripper-down poses
+constexpr float kWristTurnDeg = 30.f;      // plan_pick: a grasp wrist this far from the ready pose's turns above the part
 // joint angles (+ gripper opening mm) -> servo counts; nullptr on success, else the joint that is out of range
 const char *arm_to_counts(const ArmConfig &c, const JointAngles &j, float grip_mm, std::array<uint16_t, 6> &pos);
 // servo counts -> joint angles + gripper opening (mm), the inverse of arm_to_counts (teaching by hand)
@@ -139,9 +140,12 @@ const char *arm_raise(const ArmConfig &c, const JointAngles &j, float dz, JointA
 // last move goes down (10-26: the direct joint move dipped the held gear ~50 mm below the belt next to the side
 // frame). prev = counts the arm is at now (sizes the first move time). Vertical first; out of reach and the closing
 // axis tangential -> the smallest tilt up to max_tilt_deg that reaches (same tilt above and down).
+// q5_pref_deg (NaN = the ready pose's #5): which of the two wrist angles of the closing line to grasp with, e.g. the
+// inner picks' #5 (PickJob::wrist_deg). An asked-for wrist more than kWristTurnDeg from the ready pose's is turned
+// above the part ("above (ready wrist)" -> "turn wrist") and back after the lift ("turn back"); NaN keeps the frames.
 const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, float open_mm, float part_wid,
                       int bin, const std::array<uint16_t, 6> &prev, std::vector<ServoFrame> &out,
-                      float *tilt_deg = nullptr);
+                      float *tilt_deg = nullptr, float q5_pref_deg = NAN);
 // A manual move (HMI reset, des_tool home / goto) from the counts `prev` to the joint angles `to`, the gripper at
 // grip_mm: refused if the gripper direction changes > 60 deg (swing through horizontal); a gripper below the travel
 // height goes straight up first ("rise first"), a low target is reached from straight above ("over target"). Every

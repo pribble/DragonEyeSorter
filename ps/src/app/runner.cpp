@@ -106,6 +106,12 @@ std::string Runner::start()
                ad.min_mm_s, ad.fast_mm_s > 0 ? fmt("%.0f mm/s while nothing past the decision line is handled",
                                                    ad.fast_mm_s).c_str() : "no fast mode", warn.c_str());
     }
+    if (cfg_.picker.inner_on())
+        printf("[run] arm: round parts at y >= %.0f are picked with the wrist at %.0f deg (turned above the part), "
+               "reach up to y %.0f\n", cfg_.picker.inner_y, cfg_.picker.inner_q5, cfg_.picker.reach_y1);
+    if (cfg_.tracker.size.enabled && cfg_.tracker.size.unjudged_recheck && cfg_.tracker.size.unjudged_pick_conf > 0)
+        printf("[run] parts too far off the camera axis to judge the teeth: picked on the class alone at confidence "
+               ">= %.2f (no size / spec check there)\n", cfg_.tracker.size.unjudged_pick_conf);
     prev_status_ = des_step_status(hw_);
     belt_.enable(true);
     arm_thread_ = std::thread(&Runner::arm_loop, this);
@@ -528,7 +534,7 @@ void Runner::arm_loop()
             std::array<uint16_t, 6> now; if (arm_.read_positions(now)) arm_counts_ = now;
         }
         const char *why = plan_pick(ac, job.p.p, job.p.close_axis, job.p.open_mm, job.p.part_wid, job.p.bin, arm_counts_,
-                                    wp, &tilt);
+                                    wp, &tilt, job.p.wrist_deg);   // inner picks: the wrist the user showed
         if (why && !job.p.flying && !std::isnan(job.p.alt_axis)) {   // round part out of the vertical reach along
             const char *why2 = plan_pick(ac, job.p.p, job.p.alt_axis, job.p.open_mm, job.p.part_wid, job.p.bin,
                                          arm_counts_, wp, &tilt);   // the wrist line: tangential, tilted

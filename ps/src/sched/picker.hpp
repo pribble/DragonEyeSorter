@@ -96,6 +96,13 @@ struct PickerConfig {
     bool keep_wrist = true;      // picker.keep_wrist in des_app.json (false: the old order)
     float wrist_rel = NAN;       // q5 + grip_axis_at_zero of the ready pose (rad)
     float wrist_tau = 0;         // sideways part of the tool offset there (mm)
+    // Round parts on the arm side at y >= inner_y (11-01 user): picked with the wrist at inner_q5 (deg, arm.inner_q5_deg:
+    // the pose the user showed at the closest acceptable point, #6 servo turned outward) instead of the ready pose's,
+    // turned above the part (plan_pick). inner_rel / inner_tau: that wrist for arm_wrist_axis (load_config). NaN = off.
+    float inner_y = NAN;
+    float inner_q5 = NAN;
+    float inner_rel = NAN, inner_tau = 0;
+    bool inner_on() const { return !std::isnan(inner_rel) && !std::isnan(inner_y); }
     float neighbor_gap = 2;      // keep-out grown around other parts
     float tail_x = 600;          // belt end: parts no gate takes fall into the recheck box there
     int recheck_outlet = 0;      // outlet index for Disposition::Recheck
@@ -128,6 +135,7 @@ struct PickJob {
     int cls = -1;
     bool flying = false;         // intercept: belt keeps running, close when the belt travel reaches arrive_belt_mm
     double arrive_belt_mm = 0;   // (minus speed x flying_close_lead_s)
+    float wrist_deg = NAN;       // #5 to grasp with (inner picks: PickerConfig::inner_q5); NaN = the ready pose's
 };
 struct FlapEvent {
     int track_id = 0;

@@ -283,16 +283,20 @@ static int run_arm(des_hw_t &hw, const AppConfig &cfg, const Args &a)
         }
     } else if (s == "pick") {
         if (a.npos < 2) { usage_tool(); return 1; }
-        // no axis / keep: close along the ready pose's wrist line (a round part needs no wrist turn)
+        // no axis / keep: close along the ready pose's wrist line (a round part needs no wrist turn); a point in the
+        // inner band (picker.inner_y) uses the inner wrist like the line does (turned above the part)
         const bool keep = a.npos <= 2 || std::isnan(a.pos[2]);
-        const float axis = keep ? arm_wrist_axis(ac, {a.pos[0], a.pos[1]}, ac.home_deg[4]) : a.pos[2] * kPi / 180;
+        const bool inner = keep && cfg.picker.inner_on() && a.pos[1] >= cfg.picker.inner_y;
+        const float q5_grasp = inner ? cfg.picker.inner_q5 : ac.home_deg[4];
+        const float axis = keep ? arm_wrist_axis(ac, {a.pos[0], a.pos[1]}, q5_grasp) : a.pos[2] * kPi / 180;
         int bin = a.npos > 3 ? int(a.pos[3]) : 0;
         // opening before the grasp and the part width (closes to part - grip_squeeze): a wider opening for a first
         // pick tolerates the hand-eye error (10-26: 52 mm on a 32 mm gear = 10 mm each side)
         const float open = a.npos > 4 ? a.pos[4] : 40.f, part = a.npos > 5 ? a.pos[5] : 30.f;
         printf("pick at (%.1f, %.1f), axis %.1f deg%s, bin %d, open %.1f mm, part %.1f mm\n", a.pos[0], a.pos[1],
-               axis * 180 / kPi, keep ? " (ready pose wrist)" : "", bin, open, part);
-        if (const char *why = plan_pick(ac, {a.pos[0], a.pos[1]}, axis, open, part, bin, now, wp)) {
+               axis * 180 / kPi, inner ? " (inner wrist)" : keep ? " (ready pose wrist)" : "", bin, open, part);
+        if (const char *why = plan_pick(ac, {a.pos[0], a.pos[1]}, axis, open, part, bin, now, wp, nullptr,
+                                        inner ? cfg.picker.inner_q5 : NAN)) {
             fprintf(stderr, "plan_pick: %s\n", why);
             return 2;
         }

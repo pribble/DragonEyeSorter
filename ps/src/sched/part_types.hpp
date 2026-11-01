@@ -64,6 +64,9 @@ struct SizeRule : SizeSpec {
     bool unjudged_recheck = true;   // class says OK but the teeth could not be judged (too far off the camera axis:
                                     // the side wall fills the far gaps, good gears read 3..14 missing teeth and the
                                     // OD is off too, 2026-10-24) -> recheck, before any size check
+    // ... unless the class is this sure (11-01 user: parts on the arm side beyond the judging distance, when the model
+    // gets the class right): picked on the class alone, no tooth / size / spec check there. 0 = off
+    float unjudged_pick_conf = 0;
     bool require = false;           // no measurement by decide_x -> recheck
 };
 // Product recipe (配方): the part spec the size rule checks against; changeover = switch which spec is good, e.g.

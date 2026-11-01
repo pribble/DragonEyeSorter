@@ -72,6 +72,10 @@ void Tracker::apply_size(Track &t) const
         if (r.require) { t.disp = Disposition::Recheck; t.dest = 0; t.set_why("not measured"); }
         return;
     }
+    if (r.unjudged_recheck && !m.teeth_judged && r.unjudged_pick_conf > 0 && t.cls_conf >= r.unjudged_pick_conf) {
+        t.set_why("off-axis: model only");   // a confident class: picked on it alone (nothing else can be checked)
+        return;
+    }
     if (r.unjudged_recheck && !m.teeth_judged) {   // off-axis: neither the teeth nor the OD can be trusted
         t.disp = Disposition::Recheck;
         t.dest = 0;

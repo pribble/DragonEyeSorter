@@ -102,7 +102,7 @@ std::string load_config(const std::string &path, AppConfig &cfg)
                                      "brake_margin", pk.brake_margin, "finger_w", pk.finger_w, "finger_t",
                                      pk.finger_t, "grip_clear", pk.grip_clear, "max_open", pk.max_open,
                                      "round_ratio", pk.round_ratio, "neighbor_gap", pk.neighbor_gap, "keep_wrist",
-                                     pk.keep_wrist))
+                                     pk.keep_wrist, "inner_y", pk.inner_y))
             if (const json *fl = ji::sec(*c, "flying")) {   // intercept picks (docs/运动控制与分拣.md 拦截式不停带夹取)
                 ji::gets(*fl, "enabled", pk.flying, "r0", pk.flying_r0, "r1", pk.flying_r1, "ready_s",
                          pk.flying_ready_s, "window_mm", pk.flying_window, "gap_mm", pk.flying_gap, "close_lead_s", pk.flying_close_lead_s);
@@ -125,6 +125,7 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             }
             ji::gets(*c, "z_safe", a.z_safe, "z_grasp", a.z_grasp, "joint_speed", a.joint_speed, "yaw_speed", a.yaw_speed,
                      "min_ms", a.min_ms, "descend_ms", a.descend_ms, "close_ms", a.close_ms, "open_ms", a.open_ms);
+            ji::get(*c, "inner_q5_deg", cfg.picker.inner_q5);   // the inner picks' #5 (PickerConfig::inner_q5)
             if (c->contains("joints"))
                 for (size_t i = 0; i < (*c)["joints"].size() && i < 6; i++) {
                     JointCal &jc = a.joint[i]; int id = jc.id ? jc.id : int(i + 1); ji::get((*c)["joints"][i], "id", id); jc.id = uint8_t(id);
@@ -284,7 +285,9 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             if (const json *r = ji::sec(*c, "rule")) {
                 SizeRule &s = cfg.tracker.size; get_spec(*r, s);
                 ji::gets(*r, "enabled", s.enabled, "defect_recheck", s.defect_recheck, "unjudged_recheck", s.unjudged_recheck,
-                         "require", s.require);
+                         "unjudged_pick_conf", s.unjudged_pick_conf, "require", s.require);
+                if (s.unjudged_pick_conf < 0 || s.unjudged_pick_conf > 1)
+                    return path + ": measure.rule.unjudged_pick_conf 0..1 (0 = off)";
                 std::string outlet = "scrap"; ji::get(*r, "ng_outlet", outlet); s.ng_outlet = index_of(cfg.outlets, outlet);
                 if (s.ng_outlet < 0) return path + ": measure.rule.ng_outlet \"" + outlet + "\" is not in outlets";
             }
@@ -378,6 +381,16 @@ std::string load_config(const std::string &path, AppConfig &cfg)
     // round parts close along the ready pose's wrist line (after arm_home.json: the taught #5)
     if (cfg.picker.keep_wrist) arm_home_wrist(cfg.arm, cfg.picker.wrist_rel, cfg.picker.wrist_tau);
     else cfg.picker.wrist_rel = NAN;
+    // inner picks (picker.inner_y + arm.inner_q5_deg, 11-01 user): the wrist shown at the closest acceptable point
+    if (!std::isnan(cfg.picker.inner_y) || !std::isnan(cfg.picker.inner_q5)) {
+        const JointCal &j5 = cfg.arm.joint[4];
+        if (std::isnan(cfg.picker.inner_y) || std::isnan(cfg.picker.inner_q5))
+            return path + ": picker.inner_y and arm.inner_q5_deg go together";
+        if (!(cfg.picker.inner_q5 >= j5.min_deg && cfg.picker.inner_q5 <= j5.max_deg))
+            return path + ": arm.inner_q5_deg outside joint 5's min_deg..max_deg";
+        cfg.picker.inner_rel = deg2rad(cfg.picker.inner_q5) + cfg.arm.grip_axis_at_zero;
+        cfg.picker.inner_tau = cfg.arm.tool_offset * std::sin(cfg.picker.inner_rel + cfg.arm.servo_side);
+    }
     cfg.picker.gate_move_s = cfg.flaps.move_s(); cfg.picker.gate_margin = cfg.flaps.margin_mm;
     cfg.npu.model = resolve(dir, cfg.npu.model); return load_rules(resolve(dir, cfg.label_list), cfg);
 }

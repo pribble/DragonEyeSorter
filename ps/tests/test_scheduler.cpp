@@ -274,6 +274,20 @@ static void test_size_rule()
         {0, meas_gear(30, 32.0f, 0.05f, 0, false), Disposition::Pick, 0, "teeth not judged, unjudged_recheck off"},
         {2, meas_gear(30, 32.0f, 0.05f, 0, false), Disposition::Flap, 2, "NPU flash, teeth not judged"},
     }, "size rule (unjudged_recheck off):");
+    // 11-01: a confident class picks an off-axis part on its own (nothing else can be checked there); the test votes
+    // are 0.9
+    cfg.size.unjudged_recheck = true;
+    cfg.size.unjudged_pick_conf = 0.8f;
+    check_size_cases(cfg, {
+        {0, meas_gear(30, 32.0f, 0.05f, 0, false), Disposition::Pick, 0, "teeth not judged, class 0.9 >= 0.8"},
+        {0, meas_gear(28, 30.0f, 0.05f, 0, false), Disposition::Pick, 0, "off-axis: no spec check (model only)"},
+        {0, meas_gear(28, 30.0f, 0.05f, 0, true), Disposition::Flap, 1, "judged: spec mix-up still scrap"},
+        {2, meas_gear(30, 32.0f, 0.05f, 0, false), Disposition::Flap, 2, "NPU flash, teeth not judged"},
+    }, "size rule (unjudged_pick_conf 0.8):");
+    cfg.size.unjudged_pick_conf = 0.95f;
+    check_size_cases(cfg, {
+        {0, meas_gear(30, 32.0f, 0.05f, 0, false), Disposition::Recheck, 0, "class 0.9 < 0.95: recheck as before"},
+    }, "size rule (unjudged_pick_conf 0.95):");
 }
 
 // Recipes (recipes.json): changeover to the 28-tooth gear swaps which gears are good; the bore-8 recipe rejects bore 6
@@ -1639,6 +1653,97 @@ static void test_keep_wrist()
             w = pk.plan_grip(tr, *t, B, ax, op, &alt);
             CHECK(!w && std::fabs(wrap_axis(ax - tang)) < 1e-4f && std::isnan(alt), "keep wrist off: tangential first");
         }
+    }
+    // inner picks (11-01 user): a round part close to the arm is grasped with the wrist the user showed there (#6
+    // servo outward, q5 -149); the wrist turns above the part and back after the lift, never out of the ready pose
+    // next to the black board
+    {
+        ArmConfig ci = c;
+        ci.joint[4].min_deg = -158;
+        const float q5i = -149.2f;
+        std::array<uint16_t, 6> now{};
+        JointAngles h;
+        h.q = ci.home_deg;
+        arm_to_counts(ci, h, 32, now);
+        std::vector<ServoFrame> wp;
+        const Vec2 p{440.8f, 60};
+        const char *w = plan_pick(ci, p, arm_wrist_axis(ci, p, q5i), 40, 32, 0, now, wp, nullptr, q5i);
+        CHECK(!w, "inner pick at y 60: %s", w ? w : "ok");
+        int i_ready = -1, i_turn = -1, i_desc = -1, i_back = -1;
+        for (size_t k = 0; k < wp.size(); k++) {
+            if (!strcmp(wp[k].what, "above (ready wrist)")) i_ready = int(k);
+            if (!strcmp(wp[k].what, "turn wrist")) i_turn = int(k);
+            if (!strcmp(wp[k].what, "descend")) i_desc = int(k);
+            if (!strcmp(wp[k].what, "turn back")) i_back = int(k);
+        }
+        CHECK(i_ready >= 0 && i_turn == i_ready + 1 && i_desc == i_turn + 1 && i_back > i_desc,
+              "inner pick frames: ready-wrist above %d, turn %d, descend %d, turn back %d", i_ready, i_turn, i_desc,
+              i_back);
+        if (i_ready >= 0 && i_desc >= 0 && i_back >= 0) {
+            const int c5 = int(std::lround(ci.joint[4].zero_count + ci.joint[4].counts_per_deg * q5i));
+            CHECK(std::abs(int(wp[size_t(i_ready)].pos[4]) - int(now[4])) <= 15, "above with the ready wrist (#5 %u, "
+                  "ready %u)", wp[size_t(i_ready)].pos[4], now[4]);
+            CHECK(std::abs(int(wp[size_t(i_desc)].pos[4]) - c5) <= 40, "grasp with the shown wrist (#5 %u, want ~%d)",
+                  wp[size_t(i_desc)].pos[4], c5);
+            CHECK(std::abs(int(wp[size_t(i_back)].pos[4]) - int(now[4])) <= 15, "turned back after the lift (#5 %u)",
+                  wp[size_t(i_back)].pos[4]);
+            // the fingertips stay put while the wrist turns (the other joints follow the 9 mm tool offset)
+            float g = 0;
+            const Vec3 a = arm_fk(ci, arm_from_counts(ci, wp[size_t(i_ready)].pos, g)),
+                       b = arm_fk(ci, arm_from_counts(ci, wp[size_t(i_turn)].pos, g));
+            CHECK(norm(Vec2{a.x - b.x, a.y - b.y}) < 2.f && std::fabs(a.z - b.z) < 2.f,
+                  "the turn happens in place above the part (moved %.1f mm, dz %.1f)", norm(Vec2{a.x - b.x, a.y - b.y}),
+                  a.z - b.z);
+        }
+        w = plan_pick(ci, p, arm_wrist_axis(ci, p, ci.home_deg[4]), 40, 32, 0, now, wp);
+        bool any_turn = false;
+        for (const ServoFrame &f : wp) any_turn = any_turn || !strcmp(f.what, "turn wrist");
+        CHECK(!w && !any_turn, "ready-pose wrist on the same point: no turn frames (%s)", w ? w : "ok");
+        w = plan_pick(c, p, arm_wrist_axis(c, p, q5i), 40, 32, 0, now, wp, nullptr, q5i);
+        CHECK(w != nullptr, "joint 5 limit -145 (old config): the shown wrist is refused (%s)", w ? w : "planned");
+    }
+    // the picker: a round OK part at y >= inner_y closes along the shown wrist's line (no tilted fallback) and its
+    // job carries that wrist
+    {
+        std::mt19937 rng(11);
+        Tracker tr(tracker_cfg());
+        PickerConfig pc;
+        pc.arm_base = c.base_xy;
+        pc.tangential_first = true;
+        arm_home_wrist(c, pc.wrist_rel, pc.wrist_tau);
+        pc.inner_y = 40;
+        pc.inner_q5 = -149.2f;
+        pc.inner_rel = deg2rad(pc.inner_q5) + c.grip_axis_at_zero;
+        pc.inner_tau = c.tool_offset * std::sin(pc.inner_rel + c.servo_side);
+        Picker pk(pc);
+        for (const float y : {50.f, 20.f}) {
+            Tracker tt(tracker_cfg());
+            const std::vector<SimPart> parts = {{-30, y, 32, 32, 0.f, 0}};
+            double B = 0;
+            for (uint32_t f = 0; f < 320; f++, B += 1) tt.update(observe(parts, B, f, rng));
+            Track *t = nullptr;
+            for (Track &x : tt.tracks())
+                if (x.n_geom > 0) t = &x;
+            CHECK(t && t->state == TrackState::Decided && t->disp == Disposition::Pick, "y %.0f: OK part decided", y);
+            if (!t) continue;
+            float ax = 0, op = 0, alt = 0;
+            const char *w = pk.plan_grip(tt, *t, B, ax, op, &alt);
+            const Vec2 pt{float(t->x_at(B)), t->y};
+            const bool inner = y >= pc.inner_y;
+            const float want = inner ? arm_wrist_axis(c.base_xy, pc.inner_rel, pc.inner_tau, pt)
+                                     : arm_wrist_axis(c, pt, c.home_deg[4]);
+            CHECK(!w && std::fabs(wrap_axis(ax - want)) < 1e-4f && (inner == std::isnan(alt)),
+                  "y %.0f: closing line %.1f deg (want %.1f), tilted fallback %s", y, ax * 180 / kPi,
+                  want * 180 / kPi, std::isnan(alt) ? "none" : "kept");
+            Picker::Input in;
+            in.belt_mm = pc.pick_x - t->s;
+            in.belt_stopped = true; in.arm_idle = true; in.arm_clear = true;
+            const Picker::Output &o = pk.tick(tt, in);
+            CHECK(o.have_job && (inner ? std::fabs(o.job.wrist_deg - pc.inner_q5) < 1e-4f : std::isnan(o.job.wrist_deg)),
+                  "y %.0f: job wrist %.1f (%s)", y, o.have_job ? double(o.job.wrist_deg) : -999.0,
+                  inner ? "the shown wrist" : "the ready pose's");
+        }
+        (void)tr;
     }
 }
 

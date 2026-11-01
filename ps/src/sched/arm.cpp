@@ -266,18 +266,20 @@ const char *plan_move(const ArmConfig &c, const std::array<uint16_t, 6> &prev, c
     return add(to, what);
 }
 const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, float open_mm, float part_wid,
-                      int bin, const std::array<uint16_t, 6> &prev, std::vector<ServoFrame> &out, float *tilt_deg)
+                      int bin, const std::array<uint16_t, 6> &prev, std::vector<ServoFrame> &out, float *tilt_deg,
+                      float q5_pref_deg)
 {
     out.clear();
     const float ax = table_axis_to_arm(c, close_axis_table);
     JointAngles above, down, home, drop;
     const char *vertical_why = nullptr;
-    // of the two wrist angles for the closing line, the one nearer the ready pose's: the wrist does not half-turn
-    const float q5_home = c.home_deg[4];
+    // of the two wrist angles for the closing line, the one nearer the ready pose's (or the requested one, e.g. the
+    // inner picks' #5): the wrist does not half-turn
+    const float q5_home = c.home_deg[4], q5_pref = std::isnan(q5_pref_deg) ? q5_home : q5_pref_deg;
     for (float t = 0;; t += c.tilt_step_deg) {
         const float tr = deg2rad(t);
-        const char *why = arm_ik(c, table_to_arm(c, p_table, c.z_safe), ax, above, tr, q5_home);
-        if (!why) why = arm_ik(c, table_to_arm(c, p_table, c.z_grasp), ax, down, tr, q5_home);
+        const char *why = arm_ik(c, table_to_arm(c, p_table, c.z_safe), ax, above, tr, q5_pref);
+        if (!why) why = arm_ik(c, table_to_arm(c, p_table, c.z_grasp), ax, down, tr, q5_pref);
         if (!why) {
             if (tilt_deg) *tilt_deg = t;
             break;
@@ -309,6 +311,21 @@ const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, 
     if (use_over && arm_raise(c, drop, over_dz, over))
         return "bin pose: cannot raise it to the travel height (z_safe): teach the bin closer to the base";
     const float held = std::max(part_wid - c.grip_squeeze, 0.f);
+    // A wrist far from the ready pose's (inner picks, 11-01: #6 servo turned outward, ~240 deg of #5): turn it above
+    // the part at the travel height, not on the way out of the ready pose, whose fingers sit just under the black
+    // board at the arm's base; turn back there after the lift, before swinging to the bin.
+    JointAngles turn_from;
+    // only for an asked-for wrist (inner picks): every other pick keeps its frames (and tilted grasps, which have no
+    // vertical pose above the part with the ready wrist)
+    const bool turn = !std::isnan(q5_pref_deg) && std::fabs(above.q[4] - q5_home) > kWristTurnDeg;
+    if (turn) {
+        const float ax_home = table_axis_to_arm(c, arm_wrist_axis(c, p_table, q5_home));
+        if (const char *w = arm_ik(c, table_to_arm(c, p_table, c.z_safe), ax_home, turn_from, 0, q5_home)) {
+            (void)w;
+            return "wrist turn: no pose above the part with the ready pose's wrist";
+        }
+    }
+    const JointAngles &up = turn ? turn_from : above;   // the pose above the part on the way in / out
     ServoFrame f;
     auto add = [&](const JointAngles &j, float grip, uint16_t ms, const char *what) -> const char * {
         f = ServoFrame{};
@@ -324,20 +341,26 @@ const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, 
         float g;
         JointAngles via;
         const char *via_name = nullptr;
-        if (wide_turn(c, arm_from_counts(c, out.back().pos, g), above, via, via_name) &&
+        if (wide_turn(c, arm_from_counts(c, out.back().pos, g), up, via, via_name) &&
             (why = add(via, grip_mm(c, out.back().pos[5]), 0, via_name)))
             return why;
     }
-    if ((why = add(above, open_mm, 0, "above"))) return why;
+    if (turn) {
+        if ((why = add(turn_from, open_mm, 0, "above (ready wrist)"))) return why;
+        if ((why = add(above, open_mm, 0, "turn wrist"))) return why;
+    } else if ((why = add(above, open_mm, 0, "above"))) {
+        return why;
+    }
     if ((why = add(down, open_mm, c.descend_ms, "descend"))) return why;
     if ((why = add(down, held, c.close_ms, "close"))) return why;
     out.back().check_grasp = true;
     if ((why = add(above, held, c.descend_ms, "lift"))) return why;
     out.back().belt_clear = true;
+    if (turn && (why = add(turn_from, held, 0, "turn back"))) return why;
     JointAngles via;
     const char *via_name = nullptr;
     if (use_over) {   // the bin is ~110 deg round: out to its radius first, turn there (wide_turn)
-        if (wide_turn(c, above, over, via, via_name) && (why = add(via, held, 0, via_name))) return why;
+        if (wide_turn(c, up, over, via, via_name) && (why = add(via, held, 0, via_name))) return why;
         if ((why = add(over, held, 0, "over bin"))) return why;
     }
     if ((why = add(drop, held, 0, "to bin"))) return why;

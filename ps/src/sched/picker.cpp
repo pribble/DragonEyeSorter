@@ -123,12 +123,17 @@ const char *Picker::plan_grip(const Tracker &tr, const Track &t, double belt_mm,
                 if (fingers_clear(tr, t, belt_mm, a0 + k * kPi / 12, open)) { found = wrap_axis(a0 + k * kPi / 12); return true; }
             return false;
         };
+        // a round part close to the arm (inner band): only the line of the wrist the user showed there (#6 servo
+        // outward) — any other line puts the gripper body toward the arm's base
+        const bool inner = round && cfg_.inner_on() && t.y >= cfg_.inner_y;
         float a0 = t.axis + kPi / 2;
-        if (round)
+        if (inner)
+            a0 = arm_wrist_axis(cfg_.arm_base, cfg_.inner_rel, cfg_.inner_tau, c);
+        else if (round)
             a0 = wrist ? arm_wrist_axis(cfg_.arm_base, cfg_.wrist_rel, cfg_.wrist_tau, c)
                        : cfg_.tangential_first ? arm_tangential_axis(cfg_.arm_base, c) : t.axis;
-        why = first_clear(a0, round ? 12 : 1, axis) ? nullptr : "crowded";
-        if (!why && wrist && cfg_.tangential_first) {   // fallback for points only a tilted grasp reaches
+        why = first_clear(a0, round && !inner ? 12 : 1, axis) ? nullptr : "crowded";
+        if (!why && wrist && !inner && cfg_.tangential_first) {   // fallback for points only a tilted grasp reaches
             float a;
             if (first_clear(arm_tangential_axis(cfg_.arm_base, c), 1, a)) alt = a;
         }
@@ -158,6 +163,7 @@ bool Picker::fingers_clear(const Tracker &tr, const Track &t, double belt_mm, fl
 bool Picker::flying_ok(const Tracker &tr, const Track &t, double belt_mm, float &open_mm) const
 {
     if (!(t.wid > 0 && t.len / t.wid < cfg_.round_ratio)) return false;   // round parts only: any closing axis
+    if (cfg_.inner_on() && t.y >= cfg_.inner_y) return false;   // close to the arm: only the inner wrist, stopped
     open_mm = cfg_.max_open;                                              // widest: most lateral tolerance
     if (t.len + 2 * cfg_.grip_clear > open_mm) return false;
     const float r = norm(Vec2{cfg_.pick_x, t.y} - cfg_.arm_base);
@@ -238,6 +244,9 @@ const Picker::Output &Picker::tick(Tracker &tr, const Input &in)
                 out.job.close_axis = grip_axis; out.job.alt_axis = grip_alt; out.job.open_mm = grip_open;
                 out.job.part_wid = grip_open - 2 * cfg_.grip_clear;
                 out.job.bin = target->dest; out.job.cls = target->cls;
+                const bool round = target->wid > 0 && target->len / target->wid < cfg_.round_ratio;
+                if (round && cfg_.inner_on() && target->y >= cfg_.inner_y)   // plan_grip gave the inner wrist's line
+                    out.job.wrist_deg = cfg_.inner_q5;
                 stats.jobs++;
             }
         }
