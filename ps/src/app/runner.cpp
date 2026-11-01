@@ -75,8 +75,8 @@ std::string Runner::start()
         if (served.empty()) served = cfg_.outlets[size_t(G.outlet)];
         // release: slow sweep-out right after contact (gate busy for that long), or hold while the part slides off
         const std::string release = G.sweep_ms > 0
-            ? fmt("sweep-out %d ms from %.0f mm after contact (busy ~%.0f mm)", G.sweep_ms, double(G.sweep_after_mm),
-                  G.sweep_after_mm + v * G.sweep_s)
+            ? fmt("sweep-out %d ms (second half %.0f %%) from %.0f mm after contact (busy ~%.0f mm)", G.sweep_ms,
+                  100.0 * G.sweep_tail, double(G.sweep_after_mm), G.sweep_after_mm + v * G.sweep_s)
             : fmt("hold %.0f mm", double(G.hold_mm > 0 ? G.hold_mm : gate_slide_mm(G.geom, 0)));
         printf("[run] gate %zu (%s%s): part at y 0 meets it at x %.0f, sweep x %.0f..%.0f, %s; "
                "decide by x %.0f at %.0f mm/s (decide_x %.0f)%s\n", g + 1, served.c_str(),

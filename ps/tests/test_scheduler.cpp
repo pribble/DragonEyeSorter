@@ -508,6 +508,27 @@ static void test_flaps()
     CHECK(near(ss.us[0], 1450, 1) && ss.moving[0], "sweep-out half way after 1 s (%d)", ss.us[0]);
     ss = fss.update(evs, 300, 34.05);
     CHECK(ss.us[0] == 1000 && !ss.moving[0], "sweep-out done after 2 s (%d)", ss.us[0]);
+
+    // sweep_tail 0.7: the second half of the swing takes 70 % of sweep_ms — half the travel is done at 30 % of the
+    // time, the rest is slower (user 11-01: drop the part further downstream, gentler at the end)
+    std::vector<Gate> gtl = gsw;
+    gtl[0].sweep_tail = 0.7f;
+    FlapSequencer ftl(fsw, gtl);
+    std::vector<FlapEvent> evt = {es};
+    ftl.update(evt, 0, 40.0);
+    ftl.update(evt, 100, 41.0);
+    FlapSequencer::State tl = ftl.update(evt, 150, 41.4);
+    CHECK(tl.us[0] == 1900, "tail gate closed (%d)", tl.us[0]);
+    tl = ftl.update(evt, 215, 42.0);                    // release: the 2 s sweep starts
+    tl = ftl.update(evt, 220, 42.6);                    // 30 % of the time
+    CHECK(near(tl.us[0], 1450, 2), "sweep_tail 0.7: half the travel at 30 %% of the time (%d)", tl.us[0]);
+    const int at30 = tl.us[0];
+    tl = ftl.update(evt, 230, 43.0);                    // 50 % of the time: well past half the travel
+    CHECK(tl.us[0] < 1300 && tl.moving[0], "sweep_tail 0.7: at half the time over half way (%d)", tl.us[0]);
+    tl = ftl.update(evt, 240, 43.6);                    // 80 %: the slow end, close to open but still moving
+    CHECK(tl.us[0] > 1000 && tl.us[0] < 1100 && tl.moving[0], "sweep_tail 0.7: slow end (%d)", tl.us[0]);
+    tl = ftl.update(evt, 250, 44.05);
+    CHECK(tl.us[0] == 1000 && !tl.moving[0] && at30 > 1000, "sweep_tail 0.7: open after 2 s (%d)", tl.us[0]);
 }
 
 // intercept ("flying") picks: belt at 50 mm/s (1 mm per tick), arm base 150 mm beside the belt centre at the pick line

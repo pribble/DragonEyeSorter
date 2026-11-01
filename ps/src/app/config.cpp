@@ -161,9 +161,11 @@ std::string load_config(const std::string &path, AppConfig &cfg)
                     float closed_deg = rad2deg(g.geom.closed), open_deg = rad2deg(g.geom.open);
                     ji::gets(gj, "len_mm", g.geom.len, "closed_deg", closed_deg, "open_deg", open_deg, "hold_mm",
                              g.hold_mm, "open_us", g.open_us, "closed_us", g.closed_us, "sweep_ms", g.sweep_ms,
-                             "sweep_after_mm", g.sweep_after_mm);
+                             "sweep_after_mm", g.sweep_after_mm, "sweep_tail", g.sweep_tail);
                     if (g.sweep_ms < 0 || g.sweep_ms > 10000 || g.sweep_after_mm < 0)
                         return path + ": flaps.gates: sweep_ms 0..10000 (0 = off), sweep_after_mm >= 0";
+                    if (!(g.sweep_tail >= 0.5f && g.sweep_tail <= 0.95f))
+                        return path + ": flaps.gates: sweep_tail 0.5..0.95 (share of sweep_ms for the second half)";
                     // planning time of the slow opening, like FlapConfig::move_s for the normal one
                     g.sweep_s = g.sweep_ms > 0 ? (g.sweep_ms + fcp.stagger_ms) / 1000.f + 0.04f : 0.f;
                     ji::vec2(gj, "pivot_xy", g.geom.pivot);

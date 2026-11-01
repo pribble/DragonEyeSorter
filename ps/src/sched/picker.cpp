@@ -2,6 +2,7 @@
 #include "picker.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 #include "arm.hpp"
@@ -354,7 +355,9 @@ int FlapSequencer::us_at(int g, double now) const
     const Ramp &r = ramp_[g];
     const double T = r.dur;   // move_ms, or the gate's sweep_ms when it opens after a part
     if (T <= 0 || now >= r.t0 + T) return r.to;
-    const double u = std::max(0.0, (now - r.t0) / T), k = u * u * (3 - 2 * u);   // smoothstep: soft start and stop
+    // smoothstep: soft start and stop; warped time u^warp (warp < 1) spends longer on the second half of the travel
+    const double u0 = std::max(0.0, (now - r.t0) / T), u = r.warp == 1 ? u0 : std::pow(u0, r.warp),
+                 k = u * u * (3 - 2 * u);
     return int(std::lround(r.from + (r.to - r.from) * k));
 }
 
@@ -400,7 +403,9 @@ const FlapSequencer::State &FlapSequencer::update(const std::vector<FlapEvent> &
             // opening after a part on a sweep-out gate: the slow swing that pushes it off (else the normal move)
             const bool sweep_out = want == gates_[g].open_us && ramp_[g].to == gates_[g].closed_us && gates_[g].sweep_ms > 0;
             if (!other_just_started)
-                ramp_[g] = {us_at(g, now), want, now, sweep_out ? gates_[g].sweep_ms / 1000.0 : T};
+                ramp_[g] = {us_at(g, now), want, now, sweep_out ? gates_[g].sweep_ms / 1000.0 : T,
+                            // the second half of the travel starts at u = 0.5^(1/warp) = 1 - sweep_tail
+                            sweep_out ? std::log(0.5) / std::log(1.0 - double(gates_[g].sweep_tail)) : 1.0};
         }
         st_.us[g] = us_at(g, now);
         st_.moving[g] = st_.us[g] != ramp_[g].to || (now < ramp_[g].t0 + ramp_[g].dur && ramp_[g].from != ramp_[g].to);
