@@ -42,14 +42,16 @@ struct OpsConfig {
     int utc_offset_h = 8;           // wall clock shown on the HMI (the board runs UTC; times are synced from the PLC)
     // belt: commanded >= belt_min_mm_s but the encoder sees < belt_ratio of it for belt_s -> FAULT (stop)
     float belt_min_mm_s = 10, belt_ratio = 0.3f, belt_s = 1.5f;
-    // light: mean frame brightness against the level learned in the first light_learn_s of a PL display mode
-    float light_low = 0.55f, light_high = 1.8f, light_s = 2, light_learn_s = 8;
+    // light: mean frame brightness below light_low of the level learned in the first light_learn_s of a PL display
+    // mode (lamp out, lens covered). Brighter is never a fault: the level follows it up (lamps switched on after the
+    // start); a white sheet passing moves it a little, and it drifts back down slowly, never towards a dark lamp.
+    float light_low = 0.55f, light_s = 2, light_learn_s = 8;
     int pick_fails = 2;             // consecutive failed picks
     float link_s = 3;               // RS485 module / PLC quiet this long
     float min_fps = 45;             // processed frames per second (5 s windows)
     float min_free_mb = 200;        // SD card free space
     int rate_window = 20, rate_min = 10;     // quality rates over the last parts
-    float ng_rate = 0.6f, recheck_rate = 0.5f;
+    float ng_rate = 0.8f, recheck_rate = 0.6f;   // high: demo batches are half defects on purpose
     int od_window = 10;             // mean OD of the last good parts ...
     float od_drift = 0.5f;          // ... off the nominal by more than this share of the tolerance
     float event_clear_s = 30;       // event-type orders (beam, pick, servo) recover after this long without a repeat

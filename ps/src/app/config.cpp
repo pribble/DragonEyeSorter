@@ -259,7 +259,7 @@ std::string load_config(const std::string &path, AppConfig &cfg)
         }
         OpsConfig &op = cfg.ops;   // fault detection -> work orders (app/ops.hpp); every key optional
         sec_gets(j, "ops", "enabled", op.enabled, "utc_offset_h", op.utc_offset_h, "belt_min_mm_s", op.belt_min_mm_s,
-                 "belt_ratio", op.belt_ratio, "belt_s", op.belt_s, "light_low", op.light_low, "light_high", op.light_high,
+                 "belt_ratio", op.belt_ratio, "belt_s", op.belt_s, "light_low", op.light_low,
                  "light_s", op.light_s, "light_learn_s", op.light_learn_s, "pick_fails", op.pick_fails, "link_s",
                  op.link_s, "min_fps", op.min_fps, "min_free_mb", op.min_free_mb, "rate_window", op.rate_window,
                  "rate_min", op.rate_min, "ng_rate", op.ng_rate, "recheck_rate", op.recheck_rate, "od_window",

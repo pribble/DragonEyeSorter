@@ -167,6 +167,15 @@ void light_rule()
     // a PL display mode (binary / Sobel frames) relearns instead of alarming
     for (int k = 0; k < 50; k++) step(15, 4);
     CHECK(!wo.active(OPS_LIGHT), "mode change relearns (no order)");
+    // brighter is no fault: a white sheet for 5 s, then the belt again
+    for (int k = 0; k < 100; k++) step(15, 0);   // back to mode 0: relearn at 15 (lamps off at the start)
+    for (int k = 0; k < 600; k++) step(60);      // lamps switched on: 60 s, the level follows up
+    CHECK(!wo.active(OPS_LIGHT) && hm.light_ref() > 50, "lamps on after the start: no order, level %.1f", hm.light_ref());
+    for (int k = 0; k < 50; k++) step(150);      // white sheet 5 s
+    for (int k = 0; k < 50; k++) step(60);
+    CHECK(!wo.active(OPS_LIGHT), "white sheet passing: no order (level %.1f)", hm.light_ref());
+    for (int k = 0; k < 40; k++) step(12);       // lamp out
+    CHECK(wo.active(OPS_LIGHT), "lamp out after the level followed up: order");
 }
 void event_rules()
 {
@@ -280,8 +289,8 @@ void quality_rules()
     CHECK(!wo.active(OPS_OD_DRIFT), "centred OD: no drift");
     for (int k = 0; k < 10; k++) hm.on_part(0, true, 32.09f, 31.96f, 0.2f, 40 + k, kWall, wo);
     CHECK(wo.active(OPS_OD_DRIFT), "mean OD +0.13 of +-0.2: drift order");
-    for (int k = 0; k < 10; k++) hm.on_part(2, false, 0, 31.96f, 0.2f, 50 + k, kWall, wo);
-    CHECK(wo.active(OPS_RECHECK_RATE), "10 of 20 recheck: order");
+    for (int k = 0; k < 12; k++) hm.on_part(2, false, 0, 31.96f, 0.2f, 50 + k, kWall, wo);
+    CHECK(wo.active(OPS_RECHECK_RATE), "12 of 20 recheck (60%%): order");
     // disabled monitor does nothing
     OpsConfig off;
     off.enabled = false;

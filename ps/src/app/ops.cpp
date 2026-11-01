@@ -279,12 +279,15 @@ void HealthMonitor::update(const HealthInput &in, WorkOrders &wo)
         } else {
             light_cur_ = light_cur_ < 0 ? in.gray : light_cur_ + 0.25 * (in.gray - light_cur_);
             const double r = light_cur_ / light_ref_;
-            const int s = light_.step(r < c_.light_low || r > c_.light_high, now, c_.light_s, 2.0);
+            const int s = light_.step(r < c_.light_low, now, c_.light_s, 2.0);
             if (s > 0)
                 wo.raise(OPS_LIGHT, fmt("画面平均亮度 %.0f，基准 %.0f（%.0f%%）", light_cur_, light_ref_, 100 * r), now, wall);
             else if (s < 0)
                 wo.clear(OPS_LIGHT, now, wall);
-            if (!light_.on && r > 0.85 && r < 1.15) light_ref_ += 0.002 * (light_cur_ - light_ref_);   // slow drift
+            if (!light_.on) {   // follow a brighter level up (~25 s), drift back down slowly (~100 s) while near it
+                if (light_cur_ > light_ref_) light_ref_ += 0.004 * (light_cur_ - light_ref_);
+                else if (r > 0.7) light_ref_ += 0.001 * (light_cur_ - light_ref_);
+            }
         }
     }
     // processing rate, 5 s windows, after a 10 s warm-up
@@ -394,12 +397,12 @@ void HealthMonitor::on_part(int disp, bool od_valid, float od, float od_nom, flo
     if (n >= c_.rate_min) {
         const int ng = int(std::count(disp_.begin(), disp_.end(), 1)), rc = int(std::count(disp_.begin(), disp_.end(), 2));
         const double rng = double(ng) / n, rrc = double(rc) / n;
-        if (rng >= c_.ng_rate && !wo.active(OPS_NG_RATE))
+        if (rng + 1e-6 >= c_.ng_rate && !wo.active(OPS_NG_RATE))   // 1e-6: the float threshold 0.6f is a hair above 0.6
             wo.raise(OPS_NG_RATE, fmt("最近 %d 件中不良 %d 件（%.0f%%，门限 %.0f%%）", n, ng, 100 * rng, 100.0 * c_.ng_rate),
                      now, wall);
         else if (rng < 0.6 * c_.ng_rate && wo.active(OPS_NG_RATE))
             wo.clear(OPS_NG_RATE, now, wall);
-        if (rrc >= c_.recheck_rate && !wo.active(OPS_RECHECK_RATE))
+        if (rrc + 1e-6 >= c_.recheck_rate && !wo.active(OPS_RECHECK_RATE))
             wo.raise(OPS_RECHECK_RATE,
                      fmt("最近 %d 件中复检 %d 件（%.0f%%，门限 %.0f%%）", n, rc, 100 * rrc, 100.0 * c_.recheck_rate), now,
                      wall);
