@@ -239,6 +239,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
         tr.config().min_conf = p.min_conf;
         plog.set_images(p.images == 0 ? "none" : p.images == 2 ? "all" : "ng");
         if (runner) runner->set_speed(p.belt_speed, "界面");
+        if (runner) runner->set_pid_enabled(p.belt_pid);   // 参数页「带速 PI」开关（运行时，不持久化）
         des_vis_config(&hw, p.pl_mode, 0, p.pl_thr, p.pl_edge_thr);   // PL display mode + thresholds (no-op before v6)
     };
     struct PlMeas { uint32_t area = 0; float d = 0, w = 0, h = 0; };
@@ -348,6 +349,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
         AdaptMode adapt = AdaptMode::Base;
         float adapt_v = 0;
         if (runner) {
+            runner->set_encoder(io.enc, io_ok);   // optional belt PI: count window in Runner
             runner->cycle(tr, pk);   // state machine, belt, arm, CAN
             plan_on = runner->state() == CANP_ST_RUN; out.belt = runner->belt_plan();   // the plan Runner applied
             adapt = runner->adapt_mode(); adapt_v = float(runner->adapt_speed_set());

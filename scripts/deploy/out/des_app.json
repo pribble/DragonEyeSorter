@@ -11,7 +11,8 @@
 
   "belt": { "mm_per_step": 0.0207, "dir": -1, "run_speed": 50, "accel": 400,
             "release_idle": true, "release_after_ms": 300, "enable_settle_ms": 50,
-            "adapt": { "enabled": true, "min_mm_s": 15, "change_frac": 0.05, "fast_mm_s": 80 } },
+            "adapt": { "enabled": true, "min_mm_s": 15, "change_frac": 0.05, "fast_mm_s": 80 },
+            "pid": { "enabled": false, "kp": 0.5, "ki": 0.05, "period_ms": 100, "trim_mm_s": 3.0, "deadband_mm_s": 5.0 } },
 
   "tracker": { "fov_x0": 0, "fov_x1": 300, "edge_margin": 10, "decide_x": 195, "tail_x": 715,
                "gate_s": 12, "gate_y": 12, "min_hits": 3, "max_miss_new": 2, "max_miss": 8,

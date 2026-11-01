@@ -37,6 +37,10 @@ public:
     std::string status_line() const;      // for the HDMI overlay (only called on the 10 Hz panel tick)
     uint8_t command(uint8_t cmd, const char *who);   // operator / PLC commands (same rules; worker). CANP_ACK_*
     uint8_t set_speed(double mm_s, const char *who);
+    // live worker: encoder count this cycle (des_io ENC_CNT) for the optional belt PI
+    void set_encoder(int32_t cnt, bool ok) { enc_cnt_ = cnt; enc_ok_ = ok; }
+    // HMI parameter page: runtime belt-PI switch (default from cfg.belt.pid.enabled; not persisted)
+    void set_pid_enabled(bool on);
     // manual belt jog (HMI): +1 / -1 / 0; only while the line is stopped (IDLE) and the e-stop is not latched
     uint8_t jog(int dir, const char *who);
     int jog_dir() const { return jog_dir_; }
@@ -127,6 +131,14 @@ private:
     double adapt_v_ = 0;               // last cruise speed set by the adaptation
     AdaptMode adapt_mode_ = AdaptMode::Base;   // which way that speed went (HMI panel)
     uint64_t adapt_changes_ = 0;
+    SpeedPid pid_;                     // optional belt-speed PI (cfg.belt.pid, default off)
+    std::atomic<bool> pid_switch_{false};   // HMI sets this; the worker applies it (no cross-thread pid_ access)
+    bool pid_on_ = false;              // worker's copy of the runtime switch
+    bool pid_off_restore_ = false;     // switched off while cruising: put the commanded speed back to base
+    int32_t enc_cnt_ = 0, enc_last_ = 0;   // des_io ENC_CNT, sampled over >=100 ms for a 0.5 mm/s actual speed
+    double enc_t_ = -1, enc_actual_ = 0;   // last encoder sample time / measured actual speed (mm/s)
+    bool enc_ok_ = false;              // des_io_read succeeded this cycle
+    double pid_log_t_ = -1e9;          // 1 Hz [pid] line while the loop is enabled (tuning / demo)
     std::array<uint16_t, 6> arm_counts_{};   // last commanded pose (arm thread only)
     OpsRegs ops_;
     std::deque<uint16_t> ops_acks_;

@@ -160,6 +160,10 @@ $(BUILD)/test_servo_gap: tests/test_servo_gap.c $(OBJ)/des_hw.o | $(OBJ) $(BUILD
 $(BUILD)/test_belt_hil: tests/test_belt_hil.cpp src/app/belt_ctl.cpp src/app/belt_ctl.hpp src/app/util.cpp $(SCHED_SRC) $(OBJ)/des_hw.o | $(OBJ) $(BUILD)
 	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_belt_hil.cpp src/app/belt_ctl.cpp src/app/util.cpp $(SCHED_SRC) $(OBJ)/des_hw.o -lpthread
 
+# optional belt-speed PI (PS side, encoder feedback): pure logic, host or board
+$(BUILD)/test_belt_pid: tests/test_belt_pid.cpp src/sched/speed_pid.cpp src/sched/speed_pid.hpp $(wildcard tests/*.hpp) | $(BUILD)
+	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_belt_pid.cpp src/sched/speed_pid.cpp
+
 # check-sdk / check-board are order-only (after |): they run first but, being phony, must not force a relink
 # 产品运行时（run / live）与运维工具（14 个模式）共用同一批对象，只有入口不同；des_tool 额外链标定 / 测量报告对象。
 $(BUILD)/des_app: $(APP_MAIN_OBJ) $(APP_OBJ) | check-sdk check-board $(BUILD)

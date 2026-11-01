@@ -16,13 +16,20 @@ static const char *state_name(uint8_t s)
 }
 Runner::Runner(des_hw_t *hw, const AppConfig &cfg, const RunOptions &opt)
     : hw_(hw), cfg_(cfg), opt_(opt), belt_(hw, cfg.belt), arm_(hw, cfg.arm), arm_cfg_(cfg.arm), ir_(MB_N_IR, 0),
-      flaps_(cfg.flaps, cfg.picker.gates)
+      flaps_(cfg.flaps, cfg.picker.gates), pid_(cfg.belt.pid)
 {
+    pid_on_ = cfg.belt.pid.enabled;
+    pid_switch_.store(pid_on_);
+    pid_.set_enabled(pid_on_);
     if (opt.speed_mm_s > 0) belt_.set_speed(opt.speed_mm_s);
     JointAngles home;
     home.q = cfg.arm.home_deg;
     arm_to_counts(cfg.arm, home, cfg.arm.grip_max_open, arm_counts_);
     if (cfg.arm.home_grip_count >= 0) arm_counts_[5] = uint16_t(cfg.arm.home_grip_count);
+}
+void Runner::set_pid_enabled(bool on)
+{
+    pid_switch_.store(on, std::memory_order_relaxed);   // the worker applies it at the next cycle
 }
 Runner::~Runner()
 {
@@ -423,6 +430,58 @@ void Runner::cycle(Tracker &tr, Picker &pk)
             }
         }
         belt_.apply(out.belt);
+        const bool want_pid = pid_switch_.load(std::memory_order_relaxed);   // HMI 参数页「带速 PI」开关
+        if (want_pid != pid_on_) {
+            pid_on_ = want_pid;
+            pid_.set_enabled(want_pid);
+            if (!want_pid) pid_off_restore_ = true;
+        }
+        // Optional PS-side belt-speed PI (des_app.json belt.pid, default off): trim the cruise speed from the
+        // measuring-wheel encoder. Only while cruising: a stop-at-the-pick-line plan and the startup ramp are left
+        // to the PL profile so the stop timing does not change.
+        if (pid_on_ && state_ == CANP_ST_RUN && out.belt.kind == BeltPlan::Run && enc_ok_ &&
+            !belt_.stopped()) {
+            const double base = (cfg_.belt.adapt.enabled && adapt_v_ > 0) ? adapt_v_
+                                : (speed_mm_s_ > 0 ? speed_mm_s_ : cfg_.belt.run_speed);
+            if (belt_.speed_mm_s() < 0.95 * base) {
+                pid_.reset();   // still ramping up after a start: let the PL profile finish first
+                enc_t_ = -1;
+            } else {
+                if (enc_ok_) {   // 100 ms count window: 0.49 mm/s resolution instead of the 4.9 mm/s of ENC_SPEED
+                    if (enc_t_ < 0) {
+                        enc_last_ = enc_cnt_;
+                        enc_t_ = now;
+                    } else if (now - enc_t_ >= 0.1) {
+                        const double dt = now - enc_t_;
+                        enc_actual_ = std::fabs(double(enc_cnt_ - enc_last_)) * cfg_.belt.enc_scale() / dt;
+                        enc_last_ = enc_cnt_;
+                        enc_t_ = now;
+                    }
+                }
+                const double actual = enc_actual_;
+                const uint64_t before = pid_.updates();
+                const double trim = pid_.update(base, actual, now);
+                if (pid_.updates() != before) {
+                    if (std::fabs(trim) > 0.005) belt_.set_speed(base + trim);
+                    if (now - pid_log_t_ >= 1.0) {   // 1 Hz tuning / demo line (only when the loop is on)
+                        fprintf(stderr, "[pid] base %.1f actual %.1f trim %+.2f mm/s\n", base, actual, trim);
+                        pid_log_t_ = now;
+                    }
+                }
+            }
+        } else {
+            pid_.reset();
+            enc_t_ = -1;
+            enc_actual_ = 0;
+            if (pid_off_restore_) {   // switched off while cruising: drop the trim, back to the operator/adapt base
+                if (out.belt.kind == BeltPlan::Run && !belt_.stopped()) {
+                    const double base = (cfg_.belt.adapt.enabled && adapt_v_ > 0) ? adapt_v_
+                                        : (speed_mm_s_ > 0 ? speed_mm_s_ : cfg_.belt.run_speed);
+                    belt_.set_speed(base);
+                }
+                pid_off_restore_ = false;
+            }
+        }
         flap_events_ = out.flaps;   // the gates follow them below (capacity reused: no allocation per cycle)
         if (out.have_job) {
             ArmJob job{out.job, arm_cfg_}; arm_busy_ = true;
@@ -485,6 +544,7 @@ std::string Runner::status_line() const
     if (can_fd_ >= 0) r += t - last_plc_hb_ < 1.0 ? " · PLC 在线" : " · PLC 未连";
     if (mb_) r += t - last_mb_ < 1.0 ? " · Modbus 在线" : " · Modbus 未连";
     if (rs485_) r += rs485_->link_ok() ? " · RS485 在线" : " · RS485 断开";
+    if (pid_on_) r += fmt(" · PI %+.1f mm/s", pid_.last_trim());
     if (q[0]) r += std::string(" · ") + q;
     if (!last_event_.empty()) r += " · " + last_event_;
     return r;

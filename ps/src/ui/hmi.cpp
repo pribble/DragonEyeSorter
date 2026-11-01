@@ -19,7 +19,7 @@
 namespace des {
 using namespace ui;
 namespace {
-enum { A_TAB = 1, A_DEC, A_INC, A_TOGGLE, A_IMAGES, A_CMD, A_SELECT, A_PLMODE, A_PLTHR, A_RECIPE, A_ARM_LOCK,
+enum { A_TAB = 1, A_DEC, A_INC, A_TOGGLE, A_TOGGLE_PID, A_IMAGES, A_CMD, A_SELECT, A_PLMODE, A_PLTHR, A_RECIPE, A_ARM_LOCK,
        A_ARM_TORQUE, A_ARM_JOG, A_ARM_STEP, A_ARM_MS, A_ARM_TEACH, A_ARM_SETHOME, A_ARM_RESET, A_BELT_JOG,
        A_FLAP_LOCK, A_FLAP_OUT, A_FLAP_STEP, A_FLAP_CENTER, A_FLAP_SWEEP, A_FLAP_SPEED, A_REC_SCROLL, A_PLTHR_EDGE,
        A_OPS_SEL, A_OPS_ACK, A_OPS_SCROLL };
@@ -41,7 +41,8 @@ const ParamDef kParams[] = {
     {"带速", "mm/s（产线运行时生效）", 5, 200, 5},       {"齿轮外径 名义", "mm", 20, 60, 0.01},
     {"齿轮外径 公差 ±", "mm", 0.01, 1, 0.01},          {"齿轮孔径 名义", "mm", 2, 20, 0.05},
     {"齿轮孔径 公差 ±", "mm", 0.05, 2, 0.05},          {"尺寸判废", "超差 / 规格混料 → 报废出口", 0, 1, 1},
-    {"置信度门限", "低于它 → 复检", 0.3, 0.95, 0.05},   {"存图", "零件裁切图存 SD 卡", 0, 2, 1}};
+    {"置信度门限", "低于它 → 复检", 0.3, 0.95, 0.05},   {"存图", "零件裁切图存 SD 卡", 0, 2, 1},
+    {"带速 PI", "编码器反馈，默认关", 0, 1, 1}};
 constexpr int kNParams = sizeof kParams / sizeof kParams[0];
 const char *state_name(int s)
 {
@@ -124,6 +125,7 @@ Hmi::Hmi(const AppConfig &cfg, const std::string &params_path) : cfg_(cfg), para
     p_.min_conf = cfg.tracker.min_conf;
     p_.images = uint8_t(cfg.storage.images == "none" ? 0 : cfg.storage.images == "all" ? 2 : 1);
     p_.recipe = cfg.recipe;
+    p_.belt_pid = cfg.belt.pid.enabled;   // runtime-only switch: not loaded from ui_params.json
     load_params();   // the operator's last settings win over des_app.json
     // per-class counters: one slot per AppConfig rule + the trailing 未分类 slot. MUST exist before add_part()
     // increments it (out-of-bounds write otherwise) and before page_overview draws the bars.
@@ -292,6 +294,7 @@ std::vector<HmiAction> Hmi::handle(const std::vector<UiEvent> &ev)
                 break;
             }
             case A_TOGGLE: p_.size_rule = !p_.size_rule; changed = true; break;
+            case A_TOGGLE_PID: p_.belt_pid = !p_.belt_pid; changed = true; break;
             case A_IMAGES: p_.images = uint8_t((p_.images + 1) % 3); changed = true; break;
             case A_PLMODE: p_.pl_mode = uint8_t(h.arg); changed = true; break;
             case A_PLTHR: p_.pl_thr = uint8_t(std::clamp(int(p_.pl_thr) + h.arg * 5, 0, 255)); changed = true; break;
@@ -312,6 +315,7 @@ std::vector<HmiAction> Hmi::handle(const std::vector<UiEvent> &ev)
                 if (h.arg == 0) p_.belt_speed = step(p_.belt_speed);
                 else if (h.arg == 5) p_.size_rule = dir > 0;
                 else if (h.arg == 7) p_.images = uint8_t(std::clamp(int(p_.images) + int(dir), 0, 2));
+                else if (h.arg == 8) p_.belt_pid = dir > 0;
                 else {
                     float &f = h.arg == 1 ? p_.gear_od : h.arg == 2 ? p_.gear_od_tol
                             : h.arg == 3 ? p_.gear_bore : h.arg == 4 ? p_.gear_bore_tol : p_.min_conf;
@@ -536,11 +540,13 @@ void Hmi::page_params(Canvas &c)
         std::string val;
         if (i == 5) val = p_.size_rule ? "开" : "关";
         else if (i == 7) val = kImages[p_.images];
+        else if (i == 8) val = p_.belt_pid ? "开" : "关";
         else if (i == 0) val = fmt("%.0f", p_.belt_speed);
         else val = fmt("%.2f", i == 1 ? p_.gear_od : i == 2 ? p_.gear_od_tol : i == 3 ? p_.gear_bore
                                      : i == 4 ? p_.gear_bore_tol : p_.min_conf);
-        if (i == 5 || i == 7) {   // toggles: the hint right of the button as for the steppers (lost in 3e01d7c)
-            c.wide_button(y, val, i == 5 && p_.size_rule, i == 5 ? A_TOGGLE : A_IMAGES, 20);
+        if (i == 5 || i == 7 || i == 8) {   // toggles: the hint right of the button as for the steppers (lost in 3e01d7c)
+            c.wide_button(y, val, (i == 5 && p_.size_rule) || (i == 8 && p_.belt_pid),
+                          i == 5 ? A_TOGGLE : i == 7 ? A_IMAGES : A_TOGGLE_PID, 20);
             c.text(d.unit, 772, y + 6, 16, DIM);
         } else {
             c.stepper(y, val, A_DEC, A_INC, i, d.unit);
