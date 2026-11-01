@@ -576,7 +576,8 @@ struct GateRun {
     std::string why;
     bool final = false;                // its gate decision is final (committed or re-routed)
 };
-static GateRun run_gates(const std::vector<SimPart> &parts, double until_b, float decide_x = 270)
+static GateRun run_gates(const std::vector<SimPart> &parts, double until_b, float decide_x = 270,
+                         const std::vector<Gate> *gates = nullptr)   // nullptr = gate A (outlet 1) + gate B (outlet 2)
 {
     std::mt19937 rng(11);
     TrackerConfig tc = tracker_cfg();
@@ -586,7 +587,8 @@ static GateRun run_gates(const std::vector<SimPart> &parts, double until_b, floa
     GateRun r;
     PickerConfig &pc = r.pc;
     pc.pick_x = 470; pc.tail_x = 900;
-    pc.gates = {{gate_geom(520, 230, 55, -20), 1, 0}, {gate_geom(700, 210, 65, 25), 2, 0}};
+    if (gates) pc.gates = *gates;
+    else pc.gates = {{gate_geom(520, 230, 55, -20), 1, 0}, {gate_geom(700, 210, 65, 25), 2, 0}};
     Picker pk(pc);
     for (uint32_t f = 0; f < 3000; f++) {
         const double B = f;
@@ -619,6 +621,30 @@ static void test_gate_events()
         CHECK(near(r.ng.release_b - r.ng.belt_mm, gate_slide_mm(g, 0) + 10, 2), "hold %.1f mm",
               r.ng.release_b - r.ng.belt_mm);
         CHECK(r.final && r.stats.flap_conflicts == 0 && r.stats.gate_late == 0, "committed, no conflict");
+    }
+    // one paddle for two outlets (11-01: a single gate takes scrap + rework into one bin): a gear_short part (outlet 1)
+    // and a gear_flash part (outlet 2) both go to it, each event keeping its own outlet (records / CAN); a paddle that
+    // serves outlet 1 only lets the gear_flash part ride to the belt end
+    {
+        Gate both{gate_geom(520, 230, 55, -20), 1, 0};
+        both.outlets = uint16_t((1u << 1) | (1u << 2));
+        const std::vector<Gate> g_both{both};
+        for (int cls : {1, 2}) {
+            GateRun r = run_gates({{-20, 0, 32, 32, 0.f, cls}}, 400, 270, &g_both);
+            CHECK(r.ng.gate == 0 && r.ng.outlet == cls && r.final && r.stats.flap_conflicts == 0,
+                  "one gate for outlets 1+2: class %d -> gate %d outlet %d (%s)", cls, r.ng.gate, r.ng.outlet,
+                  r.why.c_str());
+        }
+        Gate only1 = both;
+        only1.outlets = uint16_t(1u << 1);
+        const std::vector<Gate> g_only1{only1};
+        GateRun r = run_gates({{-20, 0, 32, 32, 0.f, 2}}, 400, 270, &g_only1);
+        CHECK(r.ng.gate == -1 && r.ng.outlet == 2, "gate for outlet 1 only: outlet-2 part rides to the belt end "
+              "(gate %d outlet %d)", r.ng.gate, r.ng.outlet);
+        CHECK(both.serves(1) && both.serves(2) && !both.serves(0) && !both.serves(3) && only1.serves(1) &&
+              !only1.serves(2), "Gate::serves");
+        Gate plain{gate_geom(520, 230, 55, -20), 2, 0};
+        CHECK(plain.serves(2) && !plain.serves(1), "Gate::serves without a list = its outlet");
     }
     // no gates: the same part rides to the belt end
     {

@@ -143,18 +143,38 @@ std::string load_config(const std::string &path, AppConfig &cfg)
                 pk.gates.clear();
                 for (const json &gj : (*c)["gates"]) {
                     Gate g;
-                    std::string outlet_name = "scrap";
+                    // "outlet": one name, or a list when one paddle serves several outlets (11-01: one gate for
+                    // scrap + rework, both into the same bin)
+                    std::vector<std::string> outlet_names{"scrap"};
+                    if (gj.contains("outlet")) {
+                        const json &o = gj["outlet"];
+                        if (o.is_string()) outlet_names = {o.get<std::string>()};
+                        else if (o.is_array()) {
+                            outlet_names.clear();
+                            for (const json &n : o) {
+                                if (!n.is_string()) return path + ": flaps.gates outlet list: names only";
+                                outlet_names.push_back(n.get<std::string>());
+                            }
+                        } else return path + ": flaps.gates outlet: a name or a list of names";
+                    }
+                    if (outlet_names.empty()) return path + ": flaps.gates outlet list is empty";
                     float closed_deg = rad2deg(g.geom.closed), open_deg = rad2deg(g.geom.open);
-                    ji::gets(gj, "outlet", outlet_name, "len_mm", g.geom.len, "closed_deg", closed_deg, "open_deg",
-                             open_deg, "hold_mm", g.hold_mm, "open_us", g.open_us, "closed_us", g.closed_us);
+                    ji::gets(gj, "len_mm", g.geom.len, "closed_deg", closed_deg, "open_deg", open_deg, "hold_mm",
+                             g.hold_mm, "open_us", g.open_us, "closed_us", g.closed_us);
                     ji::vec2(gj, "pivot_xy", g.geom.pivot);
                     g.geom.closed = deg2rad(closed_deg);
                     g.geom.open = deg2rad(open_deg);
                     if (std::fabs(closed_deg - open_deg) >= 180)
                         return path + ": flaps.gates: |closed_deg - open_deg| must be < 180 (convex swept sector)";
-                    g.outlet = int8_t(index_of(cfg.outlets, outlet_name));
-                    if (g.outlet < 0) return path + ": flaps.gates outlet \"" + outlet_name + "\" is not in outlets";
-                    if (g.outlet == 0) return path + ": flaps.gates: the recheck outlet is the belt end, not a gate";
+                    for (const std::string &name : outlet_names) {
+                        const int oi = index_of(cfg.outlets, name);
+                        if (oi < 0) return path + ": flaps.gates outlet \"" + name + "\" is not in outlets";
+                        if (oi == 0) return path + ": flaps.gates: the recheck outlet is the belt end, not a gate";
+                        if (oi >= 16) return path + ": flaps.gates outlet \"" + name + "\": at most 16 outlets";
+                        if (g.outlets == 0) g.outlet = int8_t(oi);   // the first name
+                        g.outlets = uint16_t(g.outlets | (1u << oi));
+                    }
+                    if (outlet_names.size() == 1) g.outlets = 0;   // single outlet: the plain form, as before
                     pk.gates.push_back(g);
                 }
                 if (pk.gates.size() > 2) return path + ": flaps.gates: at most 2 (des_pwm has 2 channels)";

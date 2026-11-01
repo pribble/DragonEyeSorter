@@ -29,10 +29,15 @@ namespace des {
 // geometry / outlet / hold, the flap sequencer (open_us / closed_us) ramps the same entry — one table, not two.
 struct Gate {
     GateGeom geom;             // pivot_xy / len_mm / closed_deg / open_deg in des_app.json
-    int8_t outlet = 1;         // index into AppConfig::outlets (0 = recheck = the belt end, never a gate)
+    int8_t outlet = 1;         // index into AppConfig::outlets (0 = recheck = the belt end, never a gate); with several
+                               // outlets on one paddle (`outlets`) the first of them, for the startup print
     float hold_mm = 0;         // closed this much belt travel after the part meets it (0 = estimate, gate.hpp)
     int open_us = 1000;        // paddle turned away
     int closed_us = 1900;      // paddle across the lane
+    uint16_t outlets = 0;      // bit i = the paddle serves outlet i (11-01: one gate for scrap + rework, both into the
+                               // same bin; records keep each class's own outlet). 0 = just `outlet`. Last member, so
+                               // positional initialisers {geom, outlet, hold_mm, ...} keep their meaning
+    bool serves(int o) const { return outlets ? (o > 0 && o < 16 && ((outlets >> o) & 1u)) : o == outlet; }
 };
 struct PickerConfig {
     float pick_x = 450;          // table x of the pick line (mm)

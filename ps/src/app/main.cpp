@@ -39,7 +39,13 @@ int main(int argc, char **argv)
     }
     AppConfig cfg;
     std::string err = load_config(a.config, cfg);
-    if (!err.empty()) fprintf(stderr, "config: %s (using defaults)\n", err.c_str());
+    // load_config stops at the first bad value, so everything after it (calib.json included: arm base, belt
+    // direction ...) would silently be defaults — with --go the arm would move uncalibrated (11-01). Refuse.
+    if (!err.empty()) {
+        fprintf(stderr, "config: %s\ndes_app: not starting with a partial configuration - fix the file (nothing moved)\n",
+                err.c_str());
+        return 1;
+    }
     print_config_summary(cfg, true);
     des_hw_t hw;
     if (app_bootstrap(hw, cfg, a)) return 1;

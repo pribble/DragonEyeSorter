@@ -69,8 +69,12 @@ std::string Runner::start()
         const float r = 0.5f * cfg_.tracker.size.gear_od, m = cfg_.flaps.margin_mm;
         const XRange c = gate_closed_range(G.geom, 0, r), s = gate_sweep_range(G.geom, 0, r + m);
         const double latest = s.x0 - v * cfg_.flaps.move_s();
+        std::string served;   // every outlet this paddle takes ("scrap+rework" when one gate serves two)
+        for (size_t o = 1; o < cfg_.outlets.size(); o++)
+            if (G.serves(int(o))) served += (served.empty() ? "" : "+") + cfg_.outlets[o];
+        if (served.empty()) served = cfg_.outlets[size_t(G.outlet)];
         printf("[run] gate %zu (%s%s): part at y 0 meets it at x %.0f, sweep x %.0f..%.0f, hold %.0f mm; "
-               "decide by x %.0f at %.0f mm/s (decide_x %.0f)%s\n", g + 1, cfg_.outlets[size_t(G.outlet)].c_str(),
+               "decide by x %.0f at %.0f mm/s (decide_x %.0f)%s\n", g + 1, served.c_str(),
                cfg_.flaps.enabled ? "" : ", disabled", c.x0, s.x0, s.x1,
                G.hold_mm > 0 ? G.hold_mm : gate_slide_mm(G.geom, 0), latest, v, cfg_.tracker.decide_x,
                c.hit && s.hit && latest > cfg_.tracker.decide_x ? "" : "  <- WARNING: parts reach it undecided");

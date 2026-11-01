@@ -853,7 +853,19 @@ int main(int argc, char **argv)
     }
     AppConfig cfg;
     std::string err = load_config(a.config, cfg);
-    if (!err.empty()) fprintf(stderr, "config: %s (using defaults)\n", err.c_str());
+    if (!err.empty()) {
+        // Offline modes (ik; measure / calib-cam on a saved image) touch no hardware: defaults are fine there (the
+        // offline probe without a config). Every other mode would drive the camera / belt / arm on a partial
+        // configuration: load_config stops at the first bad value, so the rest (calib.json: arm base, belt
+        // direction ...) would silently be defaults (11-01). A missing calib.json is not an error.
+        const bool offline = a.mode == "ik" || (!a.image.empty() && (a.mode == "measure" || a.mode == "calib-cam"));
+        if (!offline) {
+            fprintf(stderr, "config: %s\ndes_tool: not running '%s' with a partial configuration - fix the file\n",
+                    err.c_str(), a.mode.c_str());
+            return 1;
+        }
+        fprintf(stderr, "config: %s (using defaults: offline mode)\n", err.c_str());
+    }
     print_config_summary(cfg, a.mode != "calib-cam");
     if (a.mode == "ik") return run_ik(cfg, a);
     if (a.mode == "calib-cam" && !a.image.empty()) return run_calib(nullptr, cfg, a);

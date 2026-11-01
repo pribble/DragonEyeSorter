@@ -11,7 +11,7 @@ namespace des {
 int Picker::gate_for(int outlet) const
 {
     if (!cfg_.gates_on) return -1;   // table loaded but the gates are not mounted: everything rides to the belt end
-    for (size_t g = 0; g < cfg_.gates.size(); g++) if (cfg_.gates[g].outlet == outlet) return int(g);
+    for (size_t g = 0; g < cfg_.gates.size(); g++) if (cfg_.gates[g].serves(outlet)) return int(g);
     return -1;
 }
 
