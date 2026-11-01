@@ -4,7 +4,7 @@ servo supply (300 W CV/CC buck at 6.8 V + fuse), 5 V supply, encoder, level shif
 servos, through-beam sensor, RS485 relay module + tower light, the board header J12 and the bus terminal J11.
 Solid = wired, dashed = to wire now / not installed yet. Long-distance nets (PL ground, 5 V, always-on 24 V, 24 V
 ground) are drawn as labelled tags. Source of truth for the values: docs/硬件与接线.md, docs/到货联调清单.md.
-State as of 2026-10-25 (everything bought has arrived; board on PL v16).
+State as of 2026-11-02 (board on PL v16; single tail-side flap, scrap + rework shared, since 11-01).
 
     python docs/figures/make_system_wiring.py
 """
@@ -82,7 +82,7 @@ def diode(x, y):
     ax.plot([x, x], [y - 1.2, y + 1.2], color=BEAM, lw=2.4, zorder=7)
 
 
-ax.text(2, 143.5, 'DragonEyeSorter 全系统接线图（2026-10-25）', fontsize=20, weight='bold', va='top')
+ax.text(2, 143.5, 'DragonEyeSorter 全系统接线图（2026-11-02）', fontsize=20, weight='bold', va='top')
 note(84, 143, '实线 = 已接   虚线 = 今天要接 / 还没装   线交叉处没有圆点 = 不相连   彩色小标签 = 同名的点接在一起'
      '（比如所有「PL 地」都进同一个 WAGO）', fs=11.5, color='#212121')
 
@@ -249,11 +249,10 @@ for x, lab in ((102, '地'), (104.5, 'V+'), (107, '信号')):
     ax.text(x, 18.3, lab, ha='center', va='bottom', fontsize=8, zorder=7,
             bbox=dict(boxstyle='round,pad=0.1', fc='white', ec='none'))
 
-# diverter gates (MG996R), not mounted yet
-for (y, lab, py, xs) in ((36, '挡板 1（报废）MG996R', 47, 176), (27, '挡板 2（返修）MG996R', 41, 179)):
-    box(152, y, 18, 7, lab, fc='#efebe9', ec=GATE, dashed=True, fs=9, ty=y + 6.2)
-    note(153, y + 2.9, '红 → 6.8V 母排 · 棕 → 6.8V 地', fs=7.4)
-    wire([(170, y + 3.5), (xs, y + 3.5), (xs, py), (182, py)], GATE, dashed=True)
+# diverter gate (MG996R) — 11-01 起带尾侧单挡板（报废与返修共用），信号在 PIN18（PIN20 备用未接）
+box(152, 31.5, 18, 7, '挡板（报废+返修）MG996R', fc='#efebe9', ec=GATE, fs=9, ty=37.7)
+note(153, 34.4, '红 → 6.8V 母排 · 棕 → 6.8V 地 · 橙 → PIN18', fs=7.4)
+wire([(170, 35), (176, 35), (176, 47), (182, 47)], GATE)
 
 # ---------------- level shifter BSS138 ----------------
 box(148, 50, 22, 40, 'BSS138 电平转换', fc='#e3f2fd', ec='#1565c0', fs=11)
@@ -290,8 +289,8 @@ pins = [(120, 'PIN15', 'ESTOP_IN（低 = 急停）', EST, False), (116, 'PIN2', 
         (99, 'PIN5', 'STEP_ENA', ENA, False), (93, 'PIN9', 'IR1 对射（经 1N5819）', BEAM, True),
         (84, 'PIN1', '3.3V（只给 BSS138 LV）', P33, False),
         (73, 'PIN6', 'ENC_A', ENC, False), (68, 'PIN7', 'ENC_B', ENC, False), (63, 'PIN8', 'ENC_Z', ENC, False),
-        (55, 'PIN19', 'SERVO_BUS（机械臂）', BUS, False), (47, 'PIN18', '挡板 1 PWM（FORK_PWM）', GATE, True),
-        (41, 'PIN20', '挡板 2 PWM（FLAP2_PWM）', GATE, True)]
+        (55, 'PIN19', 'SERVO_BUS（机械臂）', BUS, False), (47, 'PIN18', '挡板 PWM（FLAP1_PWM，现用）', GATE, True),
+        (41, 'PIN20', '备用 PWM（FLAP2_PWM，未接）', GATE, True)]
 for y, p, f, c, todo in pins:
     term(182, y, '', 'l')
     note(183.5, y, p, fs=10, color=c, weight='bold', va='center')
