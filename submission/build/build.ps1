@@ -173,7 +173,8 @@ if ($NoPdf) {
                     (($order | ForEach-Object { Split-Path -Leaf $_ }) -join ' '))
         & $pyHi.Exe @($pyHi.Args + @((Join-Path $BuildDir 'pdf_images_hires.py'),
                                      '--pdf', $Pdf, '--order') + $order +
-                                     @('--header', $logo, '--inplace', '--min-dpi', "$MinDpi"))
+                                     @('--header', $logo, '--inplace', '--min-dpi', "$MinDpi",
+                                       '--photo-jpeg', '88'))
         if ($LASTEXITCODE -ne 0) {
             throw "pdf_images_hires.py 失败（退出码 $LASTEXITCODE）：插图等效 dpi 未达 $MinDpi 或数量对不上"
         }
