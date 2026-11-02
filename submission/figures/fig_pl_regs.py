@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""fig_pl_regs — 图 3-1 PL 自研模块、寄存器段与管脚。
+"""fig_pl_regs — 图 5 PL 自研模块、寄存器段与管脚。
 
 画布 = 报告落版宽度 447.9pt（15.8cm）× 310pt，字面字号即纸面字号（见 figkit 顶部说明）。
 左栏：PS 驱动 → 官方 fvdma_ctrl 的 64KB 窗口（地址线 4 → 16 位）→ 自研寄存器总线

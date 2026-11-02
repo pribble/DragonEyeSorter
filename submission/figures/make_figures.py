@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""make_figures.py — 生成作品报告的 14 张插图（8 张线稿 + 6 张报告内实物图占位图），写在本目录。
+"""make_figures.py — 生成作品报告的 15 张插图（9 张线稿 + 6 张报告内实物图占位图），写在本目录。
 
-    python submission/figures/make_figures.py              # 重画全部 14 张
+    python submission/figures/make_figures.py              # 重画全部 15 张
     python submission/figures/make_figures.py arch time    # 只重画名字里含 arch / time 的线稿图
     python submission/figures/make_figures.py ph           # 只重画 6 张报告内占位图
     python submission/figures/make_figures.py ui           # 只重画 id 含 ui 的占位图（图 13）
@@ -9,7 +9,7 @@
 
 生成物（SVG / PNG / fig_meta.json）由本脚本重建、不入库（见本目录 .gitignore）；
 submission/build/build.ps1 每次出报告前会自动先跑一遍本脚本。fig_meta.json 只登记报告实际
-引用的 14 张（8 线稿 + 6 占位），已移出报告的旧记录由 figkit.write_meta(keep=...) 一并清掉。
+引用的 15 张（9 线稿 + 6 占位），已移出报告的旧记录由 figkit.write_meta(keep=...) 一并清掉。
 
 其余 2 项实物照片（导流挡板 / 测试现场）不进报告版面（作品照片是单独必交材料，报告
 不插这 2 张），只保留在 placeholder_manifest.json 的 in_report=false 项里，作为
@@ -33,7 +33,7 @@ sys.path.insert(0, HERE)
 import figkit as fk                                   # noqa: E402
 
 MODULE_NAMES = ['fig_design_flow', 'fig_architecture', 'fig_timebase', 'fig_pl_regs',
-                'fig_sw_flow', 'fig_pick_sequence', 'fig_layout', 'fig_perclass']
+                'fig_wiring', 'fig_sw_flow', 'fig_pick_sequence', 'fig_layout', 'fig_perclass']
 PLACEHOLDER_MODULE = 'make_placeholders'              # 报告内 6 张待插入实物图占位（清单见 placeholder_manifest.json）
 
 
@@ -43,7 +43,7 @@ def main(argv):
     keep = None
     print('输出目录：%s' % os.path.relpath(fk.OUT_DIR, ROOT).replace('\\', '/'))
 
-    # ---- 8 张线稿图：关键字匹配模块名（design / arch / time / pl_regs / sw / pick / layout / perclass）----
+    # ---- 9 张线稿图：关键字匹配模块名（design / arch / time / pl_regs / wiring / sw / pick / layout / perclass）----
     for name in MODULE_NAMES:
         if keys and not any(k in name for k in keys):
             continue
@@ -66,7 +66,7 @@ def main(argv):
         skipped.append(PLACEHOLDER_MODULE)
     else:
         n_ph, ph_errors = ph.run(keys)
-        keep = MODULE_NAMES + ph.report_ids()          # fig_meta 只留报告实际引用的 10 张
+        keep = MODULE_NAMES + ph.report_ids()          # fig_meta 只留报告实际引用的 15 张
 
     fk.write_meta(keep=keep)
     if skipped:

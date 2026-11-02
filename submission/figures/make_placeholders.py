@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """make_placeholders.py — 生成报告内 6 张「待插入实物照片」占位图（PNG 宽 3200 px）。
 
-    python submission/figures/make_placeholders.py      # 画报告内 6 张（图 8~13），写 fig_meta.json
+    python submission/figures/make_placeholders.py      # 画报告内 6 张（图 9~14），写 fig_meta.json
     python submission/figures/make_placeholders.py ui   # 只画 id 里含 ui 的
-    python submission/figures/make_figures.py           # 报告生成链：8 线稿 + 6 占位 = 14 张
+    python submission/figures/make_figures.py           # 报告生成链：9 线稿 + 6 占位 = 15 张
     python submission/figures/make_figures.py ph        # 只画报告内 6 张占位
 
 清单与拍摄要求都在同目录的 ``placeholder_manifest.json``（8 项：id / in_report / file / h_pt /
@@ -19,7 +19,7 @@
 （标题 / 机位 / 建议分辨率）+ 7.5pt 拍摄要求（图内不写「图 N」编号——图号由 PDF 里图下方的
 正式图注承担，避免重复编号）。字号取 ``figkit.FS`` 档位（head / box / sub），全图最小 7.5pt；
 ``fk.save()`` 会核对越界与字号，另打印三行字的实测宽度与左右余量。每张图的信息并入
-``fig_meta.json``（与 8 张线稿同一结构，只登记报告实际引用的 14 张，供
+``fig_meta.json``（与 8 张线稿同一结构，只登记报告实际引用的 15 张，供
 ``submission/build/verify_report.py`` 复核落版字号与 dpi）。
 
 拍了实物后：按 manifest 的 ``resolution`` 把照片存成同名 ``ph_xxx.png`` 覆盖占位图（只有
@@ -56,7 +56,7 @@ def load_manifest():
         raise ValueError('placeholder_manifest.json 应有 8 项，实际 %d 项' % len(items))
     n_in = sum(1 for it in items if it.get('in_report'))
     if n_in != 6:
-        raise ValueError('清单里 in_report=true 的项应为 6 项（图 8~13），实际 %d 项' % n_in)
+        raise ValueError('清单里 in_report=true 的项应为 6 项（图 9~14），实际 %d 项' % n_in)
     ids = set()
     for it in items:
         if 'in_report' not in it:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""fig_architecture — 图 3 系统架构（PL 硬实时 + PS 调度 + NPU 推理）。
+"""fig_architecture — 图 2 系统架构（PL 硬实时 + PS 调度 + NPU 推理）。
 
 画布 = 报告落版宽度 447.9pt（15.8cm）× 300pt，字面字号即纸面字号（见 figkit 顶部说明）。
 版式：四列（外设 / PL / PS / 外设）+ 行对齐；卡片只写「名称 + 极短限定」，细节写正文
