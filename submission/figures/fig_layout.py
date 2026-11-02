@@ -72,7 +72,7 @@ def draw():
            'SYNC WRITE 一帧下发 6 轴', 'ps')
     fk.arrow(ax, (PICK, 234), (PICK, BY0 + BH), color=blue, lw=1.0, ms=6.5)
     fk.text(ax, PICK - 5, 224, '良品停带抓取', fs=S, color=blue, ha='right')
-    fk.box(ax, BIN_X0, 234, BIN_W, 36, '料盒：齿轮\n按规格 · 颜色分选', 'ps')
+    fk.box(ax, BIN_X0, 234, BIN_W, 36, '良品料盒（单筐）\n规格 · 颜色只判定记录', 'ps')
 
     # ---------------- 挡板分流（带尾侧一块，报废 / 返修共用）+ 带尾复检 ----------------
     # 合位摆杆：从带边外的转轴斜伸进皮带；碰件后按去向的放行曲线摆开，把零件推出对侧带边
