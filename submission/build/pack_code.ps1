@@ -38,8 +38,8 @@ param(
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-# 不进代码包的已入库文件（git pathspec）：第三方版权资料原件
-$Exclude = @(':(exclude)docs/ref/*.pdf')
+# 不进代码包的已入库文件（git pathspec）：第三方版权资料原件、AI 协作说明
+$Exclude = @(':(exclude)docs/ref/*.pdf', ':(exclude)AGENTS.md')
 
 $BuildDir = $PSScriptRoot
 $Repo = Split-Path -Parent (Split-Path -Parent $BuildDir)
