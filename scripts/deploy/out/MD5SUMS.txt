@@ -11,7 +11,7 @@ f1593de981563ab3d28a4c26213a08f4  /root/des/des_service.sh
 55283829749627e999c66cff30071d24  /root/des/des_app
 159ac43a468229b5db0a5db9b366a84d  /root/des/des_app.json
 3b2a9d02c29195bb78fb77388c81a247  /root/des/recipes.json
-c8a345331bd876b53e37ba88c734e308  /root/des/label_list.json
+be1deeb52d5540873f27b329e996ad9c  /root/des/label_list.json
 
 # ---- 手动上板：测试 / 回归脚本（**不进清单**，部署器不传；scp 到 /root/des/，用法见 README.md）----
 522e31a58e187219ed0f666bc011fcff  /root/des/pl_check.sh

@@ -3,7 +3,7 @@
     { "id": 0, "label": "gear_ok",      "cn": "齿轮-良品",      "kind": "gear", "verdict": "OK", "action": "arm_pick", "dest": "gear_box" },
     { "id": 1, "label": "gear_short_l", "cn": "齿轮-缺料·轻",   "kind": "gear", "verdict": "NG", "action": "flap",     "dest": "scrap" },
     { "id": 2, "label": "gear_short_h", "cn": "齿轮-缺料·重",   "kind": "gear", "verdict": "NG", "action": "flap",     "dest": "scrap" },
-    { "id": 3, "label": "gear_dirty_l", "cn": "齿轮-脏污·轻",   "kind": "gear", "verdict": "NG", "action": "flap",     "dest": "rework" },
+    { "id": 3, "label": "gear_dirty_l", "cn": "齿轮-脏污·轻",   "kind": "gear", "verdict": "NG", "action": "flap",     "dest": "scrap"  },
     { "id": 4, "label": "gear_dirty_h", "cn": "齿轮-脏污·重",   "kind": "gear", "verdict": "NG", "action": "flap",     "dest": "scrap" },
     { "id": 5, "label": "gear_flash_l", "cn": "齿轮-飞边·轻",   "kind": "gear", "verdict": "NG", "action": "flap",     "dest": "rework" },
     { "id": 6, "label": "gear_flash_h", "cn": "齿轮-飞边·重",   "kind": "gear", "verdict": "NG", "action": "flap",     "dest": "rework" }
