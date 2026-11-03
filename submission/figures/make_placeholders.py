@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""make_placeholders.py — 处理报告内 13 个实物 / 截图图项（未替换项画占位框，已替换项只登记 fig_meta）。
+"""make_placeholders.py — 处理报告内 17 个实物 / 截图图项（未替换项画占位框，已替换项只登记 fig_meta）。
 
     python submission/figures/make_placeholders.py       # 处理报告内全部 13 项
     python submission/figures/make_placeholders.py ui    # 只处理 id 里含 ui 的
-    python submission/figures/make_figures.py            # 报告生成链：9 线稿 + 13 图项 = 22 张
-    python submission/figures/make_figures.py ph         # 只处理报告内 13 项
+    python submission/figures/make_figures.py            # 报告生成链：9 线稿 + 17 图项 = 26 张
+    python submission/figures/make_figures.py ph         # 只处理报告内 17 项
 
-清单与拍摄要求都在同目录的 placeholder_manifest.json（15 项：id / in_report / file / h_pt /
-图注 / 机位 / 光线 / 拍摄要求）。报告内 13 项（in_report=true）：图 2 系统实景、图 7 电控盘、
-图 11 整幅 vs ROI、图 12 七类样件、图 13 整机、图 14 机械臂、图 15 电控盘接线、图 16~19 界面四组、
-图 20 产线 PLC 模拟器、图 21 远程运维站；11-03 起全部 replaced: true，本脚本只按实际像素登记 meta，
-不再画占位框。in_report=false 的 2 项（导流挡板 / 测试现场）不进报告版面，只作「作品照片 + 演示视频」
+清单与拍摄要求都在同目录的 placeholder_manifest.json（19 项：id / in_report / file / h_pt /
+图注 / 机位 / 光线 / 拍摄要求）。报告内 17 项（in_report=true）：图 1 三种去向、图 3 系统实景、图 6 开发板与子卡、图 9 电控盘、
+图 12 棋盘格标定、图 14 整幅 vs ROI、图 15 七类样件、图 16 总线外设、图 17 整机、图 18 机械臂、
+图 19 电控盘接线、图 20~23 界面四组、图 24 产线 PLC 模拟器、图 25 远程运维站；13 项 11-03 起 replaced: true，
+图 1 / 6 / 12 / 16 为 11-04 新增、待作者补图。in_report=false 的 2 项（导流挡板 / 测试现场）不进报告版面，只作「作品照片 + 演示视频」
 拍摄清单，本脚本不生成 PNG。
 
 未替换（replaced=false）的图项才画占位框：画布按报告落版尺寸 1:1（宽 447.92pt = 15.8cm，
@@ -43,11 +43,11 @@ def load_manifest():
     with open(MANIFEST_PATH, encoding='utf-8') as f:
         man = json.load(f)
     items = man.get('placeholders', [])
-    if len(items) != 15:
-        raise ValueError('placeholder_manifest.json 应有 15 项（报告内 13 + 报告外 2），实际 %d 项' % len(items))
+    if len(items) != 19:
+        raise ValueError('placeholder_manifest.json 应有 19 项（报告内 17 + 报告外 2），实际 %d 项' % len(items))
     n_in = sum(1 for it in items if it.get('in_report'))
-    if n_in != 13:
-        raise ValueError('清单里 in_report=true 的项应为 13 项（图 2 / 7 / 11~21），实际 %d 项' % n_in)
+    if n_in != 17:
+        raise ValueError('清单里 in_report=true 的项应为 17 项（图 1 / 3 / 6 / 9 / 12 / 14~25），实际 %d 项' % n_in)
     ids = set()
     for it in items:
         if 'in_report' not in it:

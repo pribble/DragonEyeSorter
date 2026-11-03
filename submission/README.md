@@ -7,9 +7,9 @@
 | 路径 | 内容 | 入库 |
 |---|---|---|
 | [提交材料清单.md](提交材料清单.md) | 官方要求 → 要交什么 → 现状 → 倒排 → 打包命名 → 上传前检查 → 决赛准备；唯一核对入口 | ✅ |
-| [技术文档.md](技术文档.md) | 技术文档正文（**官方模板五部分**：作品名称 + 摘要 + 第一~五部分，首页标题 = 官网报名作品名，各节有字数上限）；`build/` 的 md2docx 只读它，改内容改这里；当前 **40 页 / 22 图 / 14 表 / PDF 19.76 MB**（11-02 起按作者规格用楷体版式，见 [build/README](build/README.md)）。13 张报告内实物 / 截图已全部就位：前半新增图 2 系统实景与图 7 电控盘；图 13（正面 + 斜 45°）与图 15 带编号；操作界面七页拆成图 16~19 四组大图（每页按 1920×1080 落版）；图 20 产线 PLC 模拟器与图 21 远程运维站为 PC 端工具整窗截图；逐类准确率图 22 已按作者意见加高；正文以加粗 / 下划线标出关键结论与数字 | ✅ |
+| [技术文档.md](技术文档.md) | 技术文档正文（**官方模板五部分**：作品名称 + 摘要 + 第一~五部分，首页标题 = 官网报名作品名，各节有字数上限）；`build/` 的 md2docx 只读它，改内容改这里；当前 **45 页 / 26 图 / 14 表 / PDF 20.72 MB**（11-02 起按作者规格用楷体版式，表格 11-04 起按作者手调 11pt，见 [build/README](build/README.md)）。26 张图 = 9 张线稿 + 17 张报告内实物 / 截图图项，其中 13 张已就位；图 1 三种去向、图 6 开发板与子卡、图 12 棋盘格标定、图 16 总线外设为 11-04 新增图注、**待作者补图**（报告内为占位框）；操作界面七页拆成图 20~23 四组大图（每页按 1920×1080 落版）；图 24 产线 PLC 模拟器与图 25 远程运维站为 PC 端工具整窗截图；逐类准确率图 26；表 14 已按选题四评分标准重构（基础 6 项 + 创新拓展 6 项 + 示例方向等级要求，带完成情况与出处）；正文不再用下划线，加粗只留摘要关键指标与段落小标题 | ✅ |
 | [演示视频脚本.md](演示视频脚本.md) | 演示视频分镜 / 解说 / 拍摄 / 交付唯一源（未拍 ⬜） | ✅ |
-| [figures/](figures/) | 报告插图：9 张线稿图 + 13 张报告内实物 / 截图的生成脚本（`figkit.py` / `make_figures.py` / `make_placeholders.py` / 9 个 `fig_*.py` / `placeholder_manifest.json`；清单 15 项 = 报告内 13 + 报告外 2）与页眉 logo（`logo_header.png`，取自官方模板，入库）入库；生成物（SVG / PNG / `fig_meta.json`）本地重画、不入库，不手工画；用法见 [figures/README.md](figures/README.md) | ✅ 脚本 + logo |
+| [figures/](figures/) | 报告插图：9 张线稿图 + 17 张报告内实物 / 截图图项的生成脚本（`figkit.py` / `make_figures.py` / `make_placeholders.py` / 9 个 `fig_*.py` / `placeholder_manifest.json`；清单 19 项 = 报告内 17 + 报告外 2，图 1 / 6 / 12 / 16 待补图）与页眉 logo（`logo_header.png`，取自官方模板，入库）入库；生成物（SVG / PNG / `fig_meta.json`）本地重画、不入库，不手工画；用法见 [figures/README.md](figures/README.md) | ✅ 脚本 + logo |
 | `build/` | 生成链脚本：报告 Markdown → DOCX → PDF → 插图高清化、报告验收自检、代码打包；版式令牌与用法见 [build/README.md](build/README.md) | ✅ 脚本 |
 | `out/` | 生成物（`.docx` / `.pdf` / 预览 PNG / 代码 zip），可随时重建 | ❌ gitignore |
 
@@ -38,7 +38,7 @@ pwsh -File submission/build/pack_code.ps1               # 代码包：git archiv
 
 ## 交件前必做
 
-1. **报告内 13 张图项已全部就位**（`placeholder_manifest.json` 里 `replaced: true`）：图 2 系统实景、图 7 电控盘（联调实拍裁 3:2）、图 11 整幅 vs ROI、图 12 七类样件、图 13 整机正面 + 斜 45°、图 14 机械臂、图 15 电控盘（11-02 重接后重拍）、图 16~19 界面四组（板端 `/tmp/des_ui` FIFO 的 `snap` 逐页重截，1920×1080 原分辨率，两页竖排）、图 20 产线 PLC 模拟器与图 21 远程运维站（PC 端工具整窗截图，2557×1597 原图直出）。`build.ps1` 重跑不会覆盖照片，正文与图注一字不动；换图流程见 [figures/README](figures/README.md)。其余 2 项报告外实物照片（导流挡板、测试现场）按 `placeholder_manifest.json` 里 `in_report=false` 的条目拍摄，供决赛展示；整机全景一张两用（报告图 13 + 作品照片主图）。
+1. **报告内 17 张图项中 13 张已就位**（`placeholder_manifest.json` 里 `replaced: true`）：图 3 系统实景、图 9 电控盘（联调实拍裁 3:2）、图 14 整幅 vs ROI、图 15 七类样件、图 17 整机正面 + 斜 45°、图 18 机械臂、图 19 电控盘（11-02 重接后重拍）、图 20~23 界面四组（板端 `/tmp/des_ui` FIFO 的 `snap` 逐页重截，1920×1080 原分辨率，两页竖排）、图 24 产线 PLC 模拟器与图 25 远程运维站（PC 端工具整窗截图，2557×1597 原图直出）。**图 1 三种去向、图 6 开发板与子卡、图 12 棋盘格标定、图 16 总线外设待补**（11-04 新增，报告内为占位框；拍好存同名 `ph_*.png` 并把 manifest 的 `replaced` 置 `true`）。`build.ps1` 重跑不会覆盖照片，正文与图注一字不动；换图流程见 [figures/README](figures/README.md)。其余 2 项报告外实物照片（导流挡板、测试现场）按 `placeholder_manifest.json` 里 `in_report=false` 的条目拍摄，供决赛展示；整机全景一张两用（报告图 17 + 作品照片主图）。
 2. `python submission/build/verify_report.py --final` 全 PASS（报告内占位图清零 + 模板骨架 / 字数 / 版式 / 数字 / 禁项 / dpi 各项过关）。
 3. 按 [提交材料清单](提交材料清单.md) §6 逐项打勾。
 
