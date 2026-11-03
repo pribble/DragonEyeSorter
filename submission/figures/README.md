@@ -49,7 +49,7 @@ python submission/figures/make_placeholders.py           # 单跑报告内占位
 | 图 13 | `ph_board.png` | 电控盘接线实况（带编号） | 447.92 × 298.61 | 2000 × 1333（322 dpi） | E 斜俯拍 | 3.2.2 电路成果 |
 | 图 14 | `ph_ui.png` | HDMI 操作界面七页 | 447.92 × 503.91（8:9） | 2000 × 2250（322 dpi） | S 采集卡录屏 | 3.2.3 软件成果 |
 
-逐项的机位 / 素材、光线、画面内容与制作要求在 [`placeholder_manifest.json`](placeholder_manifest.json) 的 `camera` / `light` / `scene` / `shoot` 字段；机位代号 A/B/C/D/E/S 与光线参数沿用 [演示视频脚本](../演示视频脚本.md) §3 与 §5。
+逐项的机位 / 素材、光线、画面内容与制作要求在 [`placeholder_manifest.json`](placeholder_manifest.json) 的 `camera` / `light` / `scene` / `shoot` 字段；机位代号 A/B/C/E/S 与光线参数沿用 [演示视频脚本](../演示视频脚本.md) §6（D = 屏幕 / 仪器正拍，只用于照片）。
 
 占位图与线稿**同一条命令重建**：`python submission/figures/make_figures.py` 先画 9 张线稿、再画 6 张占位；每张 PNG 宽 3200 px，信息并入 `fig_meta.json`（与线稿同一结构，`min_fs_pt` = 7.5，供 verifier 算落版字号与 dpi）。
 
