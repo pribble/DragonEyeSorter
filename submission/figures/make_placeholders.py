@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""make_placeholders.py — 处理报告内 11 个实物 / 截图图项（未替换项画占位框，已替换项只登记 fig_meta）。
+"""make_placeholders.py — 处理报告内 13 个实物 / 截图图项（未替换项画占位框，已替换项只登记 fig_meta）。
 
-    python submission/figures/make_placeholders.py       # 处理报告内全部 11 项
+    python submission/figures/make_placeholders.py       # 处理报告内全部 13 项
     python submission/figures/make_placeholders.py ui    # 只处理 id 里含 ui 的
-    python submission/figures/make_figures.py            # 报告生成链：9 线稿 + 11 图项 = 20 张
-    python submission/figures/make_figures.py ph         # 只处理报告内 11 项
+    python submission/figures/make_figures.py            # 报告生成链：9 线稿 + 13 图项 = 22 张
+    python submission/figures/make_figures.py ph         # 只处理报告内 13 项
 
-清单与拍摄要求都在同目录的 placeholder_manifest.json（13 项：id / in_report / file / h_pt /
-图注 / 机位 / 光线 / 拍摄要求）。报告内 11 项（in_report=true）：图 2 系统实景、图 7 电控盘、
-图 11 整幅 vs ROI、图 12 七类样件、图 13 整机、图 14 机械臂、图 15 电控盘接线、图 16~19 界面四组；
-11-03 起全部 replaced: true，本脚本只按实际像素登记 meta，不再画占位框。in_report=false 的
-2 项（导流挡板 / 测试现场）不进报告版面，只作「作品照片 + 演示视频」拍摄清单，本脚本不生成 PNG。
+清单与拍摄要求都在同目录的 placeholder_manifest.json（15 项：id / in_report / file / h_pt /
+图注 / 机位 / 光线 / 拍摄要求）。报告内 13 项（in_report=true）：图 2 系统实景、图 7 电控盘、
+图 11 整幅 vs ROI、图 12 七类样件、图 13 整机、图 14 机械臂、图 15 电控盘接线、图 16~19 界面四组、
+图 20 产线 PLC 模拟器、图 21 远程运维站；11-03 起全部 replaced: true，本脚本只按实际像素登记 meta，
+不再画占位框。in_report=false 的 2 项（导流挡板 / 测试现场）不进报告版面，只作「作品照片 + 演示视频」
+拍摄清单，本脚本不生成 PNG。
 
 未替换（replaced=false）的图项才画占位框：画布按报告落版尺寸 1:1（宽 447.92pt = 15.8cm，
 高 = 447.92 × 比例），白底、灰色虚线边框、极浅灰填充，居中三行字；图内不写「图 N」编号
@@ -42,11 +43,11 @@ def load_manifest():
     with open(MANIFEST_PATH, encoding='utf-8') as f:
         man = json.load(f)
     items = man.get('placeholders', [])
-    if len(items) != 13:
-        raise ValueError('placeholder_manifest.json 应有 13 项（报告内 11 + 报告外 2），实际 %d 项' % len(items))
+    if len(items) != 15:
+        raise ValueError('placeholder_manifest.json 应有 15 项（报告内 13 + 报告外 2），实际 %d 项' % len(items))
     n_in = sum(1 for it in items if it.get('in_report'))
-    if n_in != 11:
-        raise ValueError('清单里 in_report=true 的项应为 11 项（图 2 / 7 / 11~19），实际 %d 项' % n_in)
+    if n_in != 13:
+        raise ValueError('清单里 in_report=true 的项应为 13 项（图 2 / 7 / 11~21），实际 %d 项' % n_in)
     ids = set()
     for it in items:
         if 'in_report' not in it:
@@ -146,7 +147,7 @@ def _register_replaced(item):
 
 def run(keys=None):
     """画报告内占位图（只处理 in_report=true；keys 为 id 子串过滤，空 / None = 全部）。
-    返回 (处理项数, 错误清单)。报告外（in_report=false）的 5 项只作拍摄清单，不生成 PNG。"""
+    返回 (处理项数, 错误清单)。报告外（in_report=false）的 2 项只作拍摄清单，不生成 PNG。"""
     keys = [k for k in (keys or []) if k]
     todo = [it for it in report_items() if not keys or any(k in it['id'] for k in keys)]
     if todo:
@@ -172,7 +173,7 @@ def run(keys=None):
 def main(argv):
     keys = [a for a in argv[1:] if not a.startswith('--')]
     n, errors = run(keys)
-    # fig_meta 只登记报告实际引用的图（9 线稿 + 11 图项），顺带清掉已移出报告的旧记录
+    # fig_meta 只登记报告实际引用的图（9 线稿 + 13 图项），顺带清掉已移出报告的旧记录
     try:
         import make_figures
         keep = list(make_figures.MODULE_NAMES) + report_ids()
