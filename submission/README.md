@@ -31,7 +31,7 @@ pwsh -File submission/build/build.ps1                   # 报告全链：插图 
 python submission/build/verify_report.py                # 验收自检 65 项 → out/_verify_report.txt
 python submission/build/verify_report.py --final        # 交件门禁：报告内占位图未全部替换即 FAIL
 python submission/figures/make_figures.py               # 22 张插图单独重生成（9 线稿 + 13 图项；build.ps1 会自动跑）
-pwsh -File submission/build/pack_code.ps1               # 作品重要代码包（git archive；官方要求 RAR 格式，压成 .rar 后交）
+pwsh -File submission/build/pack_code.ps1               # 代码包：git archive → zip → WinRAR 转 RAR（官方要求 RAR ≤200MB），排除第三方 PDF
 ```
 
 命令参数、版式令牌、版面口径与依赖见 [build/README.md](build/README.md)。

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""des_feed.py — receive the board's live inspection records over Ethernet (ps/src/app/net_feed.hpp).
+"""des_feed.py — receive the board's live inspection records over Ethernet (NetFeed in ps/src/app/part_log.cpp).
 
 The board (des_app run, des_app.json storage.feed_port, default 9500) is the server; this script connects, saves every
 record and part image under <out>/<session>/ (parts.csv + img/), prints one line per part and the board's status every

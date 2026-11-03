@@ -13,7 +13,7 @@
 | [word_to_pdf.ps1](word_to_pdf.ps1) | DOCX → PDF（Word COM；导出前更新页脚 PAGE 页码域，回报页数） | 由 `build.ps1` 调用 |
 | [pdf_images_hires.py](pdf_images_hires.py) | 插图高清化：按出现顺序把 PDF 里的图像对象换回源图原生像素，图框 / 文字 / 页码不动；`--report` 只测量 | `build.ps1` 第 ③ 步；`python … --pdf <pdf> --report` |
 | [verify_report.py](verify_report.py) | 验收自检（官方模板五部分报告，docx + PDF + 源三方对账），结果写 `out/_verify_report.txt` | `python submission/build/verify_report.py` |
-| [pack_code.ps1](pack_code.ps1) | `git archive` 打「作品重要代码」zip | `pwsh -File submission/build/pack_code.ps1` |
+| [pack_code.ps1](pack_code.ps1) | `git archive` 打代码包 zip，再用 WinRAR 转 RAR（排除 `docs/ref` 第三方 PDF） | `pwsh -File submission/build/pack_code.ps1` |
 | [figures/](../figures/README.md) | 报告插图的生成脚本（`figkit.py` / `make_figures.py` / 每图脚本，入库）+ 生成物（PNG / SVG / `fig_meta.json`，不入库、可重建），不是 `build/` 的脚本但属报告生成链 | `python submission/figures/make_figures.py` |
 
 报告链改完内容跑 `build.ps1` → `verify_report.py`（确认全 PASS）；`build.ps1` 第 0 步会自动按当前脚本重画插图（含占位图），改了图脚本直接重出报告即可。
@@ -117,7 +117,7 @@ python submission/build/verify_report.py --fill --pdf <任意 PDF>   # 只跑逐
 
 ## 代码包（作品重要代码）
 
-`pwsh -File submission/build/pack_code.ps1` → `submission/out/DragonEyeSorter_代码_v1.0.zip`（包内前缀 `DragonEyeSorter/`）。
+`pwsh -File submission/build/pack_code.ps1` → `submission/out/基于FPGA的工业智能检测系统_代码_v1.0.rar`（同名 zip 为中间件；包内前缀 `DragonEyeSorter/`）。
 
 - 范围：`HEAD` 上的 tracked 文件（`git archive`）。数据集、模型权重、SD 镜像、`BOOT.bin`、编译产物本就被 `.gitignore` 排除，不需要另维护排除清单；**未提交的改动不进包——先提交再打包**（工作区脏时脚本警告）。
 - 上限默认 100MB，超限打印警告并以**退出码 2** 结束。参数：`-Out <zip>`、`-MaxMB <上限>`、`-Rev <git 引用>`。

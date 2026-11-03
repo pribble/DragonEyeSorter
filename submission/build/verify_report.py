@@ -1901,13 +1901,13 @@ def check_forbidden(src_text: str, docx_text: str) -> None:
           not offenders, "; ".join(offenders[:5]) if offenders
           else "0 处（检测模式串按片段拼接，不自扫）")
 
-    zip_path = OUT / "DragonEyeSorter_代码_v1.0.zip"
+    zip_path = OUT / "基于FPGA的工业智能检测系统_代码_v1.0.rar"
     if zip_path.is_file():
-        check("11 禁项与生成链", "代码包 zip 存在且 ≤ 100MB",
-              zip_path.stat().st_size <= 100 * 1024 * 1024,
+        check("11 禁项与生成链", "代码包 RAR 存在且 ≤ 200MB",
+              zip_path.stat().st_size <= 200 * 1024 * 1024,
               "%s，%.2f MB" % (zip_path.name, zip_path.stat().st_size / 1e6))
     else:
-        check("11 禁项与生成链", "代码包 zip（pack_code.ps1 产出，可选）", None,
+        check("11 禁项与生成链", "代码包 RAR（pack_code.ps1 产出，可选）", None,
               "未生成：跑 pwsh -File submission/build/pack_code.ps1")
 
 
