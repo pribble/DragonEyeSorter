@@ -19,7 +19,7 @@
    "light": "现场光",
    "scene": "抓取线与机械臂、导流挡板、带尾复检箱三处同框",
    "resolution": "≥1920×1280，可加箭头标注三个去向",
-   "replaced": false
+   "replaced": true
   },
   {
    "id": "ph_machine",
@@ -48,14 +48,14 @@
    "usage": "报告插图 2.2.1 硬件整体介绍",
    "aspect": "3:2",
    "h_pt": 298.61,
-   "caption": "图 6　MLK-F3P-DR1M90G 开发板与 VID005 相机子卡、IMX415 传感器。",
+   "caption": "图 6　MLK-F3P-DR1M90G 开发板与 VID005 相机子卡（左）、安装在龙门上的 IMX415 相机（右，已遮光固定）。",
    "desc": "F3P 开发板 + VID005 子卡 + IMX415",
    "shoot": "开发板与子卡特写",
    "camera": "板面 45° 特写，收进子卡与镜头",
    "light": "现场光或台灯补光",
    "scene": "MLK-F3P-DR1M90G 开发板、VID005 子卡、IMX415 模组",
    "resolution": "≥2400×1600",
-   "replaced": false
+   "replaced": true
   },
   {
    "id": "ph_elec",
@@ -84,14 +84,14 @@
    "usage": "报告插图 2.3.2（1）相机标定",
    "aspect": "3:2",
    "h_pt": 298.61,
-   "caption": "图 12　棋盘格标定：平放在皮带上的棋盘格，用于 calib-cam 单应标定。",
+   "caption": "图 12　棋盘格标定：棋盘格平放在皮带上，后方显示器为相机实时画面，用于 calib-cam 单应标定。",
    "desc": "棋盘格平放皮带上的标定现场",
    "shoot": "标定现场实拍（棋盘格 + 相机视角）",
    "camera": "相机视角俯拍或侧面拍棋盘格",
    "light": "现场条形光",
    "scene": "皮带面上的棋盘格标定板",
    "resolution": "≥2400×1600",
-   "replaced": false
+   "replaced": true
   },
   {
    "id": "ph_roi",
@@ -138,14 +138,14 @@
    "usage": "报告插图 2.3.2（8）工业总线通信",
    "aspect": "3:2",
    "h_pt": 298.61,
-   "caption": "图 16　总线外设：PC 端 USB-CAN 适配器、4 路 RS485 继电器模块与 24 V 三色灯。",
+   "caption": "图 16　总线外设：PC 端 USB-CAN 适配器（模拟产线 PLC）、USB-RS485 转换器（总线旁听调试）与 24 V 三色灯。",
    "desc": "CAN 适配器 / RS485 继电器 / 三色灯",
    "shoot": "总线外设实物特写",
    "camera": "电控盘局部或桌面摆拍",
    "light": "现场光",
    "scene": "USB-CAN 适配器、4 路继电器模块、三色警示灯",
    "resolution": "≥2400×1600",
-   "replaced": false
+   "replaced": true
   },
   {
    "id": "ph_overview",
