@@ -16,7 +16,8 @@ submission/out/_verify_report.txt。检查项按组编号：
   3 DOCX 结构：段落 / 表格 / 插图计数三方对账，单节无封面无目录，标题与元信息、
     章节文字逐条等于源，图注表注数量等于源
   4 版式令牌：正文楷体小四 12pt / Times 两端对齐 / 首行缩进 480 twips / 1.5 倍行距、
-    作品名 17.5pt 黑体居中、一 / 二 / 三级章节标题一律楷体四号 14pt 加粗 2 倍行距、
+    作品名 17.5pt 黑体居中、一级章节标题黑体 15pt 居中加粗 2 倍行距、
+    二级 / 三级章节标题楷体四号 14pt 加粗 2 倍行距、
     图注表注楷体加粗五号 10.5pt、行内代码 Consolas 11pt、参考列表 12pt 悬挂 1.5 字符、
     无固定行距（倍数只允许 240/360/480）、全篇只有黑色
   5 三线表：≤ 15.6cm 固定布局、上下 1.5pt / 表头下 0.75pt 黑线、无竖线行线底纹、
@@ -97,7 +98,7 @@ TEXT_W_CM = PAGE_W_CM - 2 * MARGIN_CM            # 16.2cm 版心
 TEXT_H_CM = PAGE_H_CM - 2 * MARGIN_CM            # 24.9cm 版心
 BODY_PT = 12.0                                   # 正文：楷体小四
 TITLE_PT = 17.5                                  # 作品名（标题块维持，规格只约束章节标题）
-H1_PT = 14.0                                     # 章节标题：楷体四号（一 / 二 / 三级同号）
+H1_PT = 15.0                                     # 一级标题：黑体 15pt 居中（楷体无粗体字面，改黑体才真加粗）
 H2_PT = 14.0
 H3_PT = 14.0
 META_PT = 10.0
@@ -385,7 +386,8 @@ def word_count_cn(s: str) -> int:
 def section_word_counts(text: str) -> dict[str, int]:
     """官方模板各节的正文字数（Word 口径）。
 
-    只数正文段落：排除标题、表格行、插图行、图注 / 表注、列表（参考文献）、元信息。
+    只数正文段落：排除标题、表格行、插图行、图注 / 表注、列表（参考文献）、元信息；
+    「关键词」行是摘要后的元信息行，不算摘要正文字数。
     """
     lines = text.splitlines()
     cur, secs = None, {}
@@ -403,6 +405,8 @@ def section_word_counts(text: str) -> dict[str, int]:
             t = ln.strip()
             if not t or t.startswith(("|", "![", "#")):
                 continue
+            if t.lstrip("*").startswith("关键词"):
+                continue                      # 摘要后的「关键词」行不算摘要字数
             if re.match(r"^\*\*[图表] \d+\*\*", t):
                 continue
             if re.match(r"^\d+\.\s", t):
@@ -1013,22 +1017,27 @@ def analyze_docx(doc, src: dict, stats: dict) -> dict:
                 t_bad.append("元信息 %r 字号 %s" % (r.text[:8], font_size(r, p)))
                 break
     h_bad = []
-    for p, want in ([(p, H1_PT) for p in found_h1] + [(p, H2_PT) for p in found_h2]
-                    + [(p, H3_PT) for p in found_h3]):
+    for p, want, cn, align in (
+            [(p, H1_PT, FONT_HEI, "center") for p in found_h1]
+            + [(p, H2_PT, FONT_CN, "left") for p in found_h2]
+            + [(p, H3_PT, FONT_CN, "left") for p in found_h3]):
         runs = [r for r in p.runs if r.text.strip()]
         ea = {rfonts(r, p).get("eastAsia") for r in runs}
         sz = {round(font_size(r, p) or 0, 2) for r in runs}
         line, rule = spacing(p, "line"), spacing(p, "lineRule")
-        if ea - {FONT_CN} or sz - {round(want, 2)} or jc(p) not in (None, "left"):
-            h_bad.append("%r 字体 %s 字号 %s 对齐 %s"
-                         % (p.text[:14], ea, sz, jc(p)))
+        if ea - {cn} or sz - {round(want, 2)}:
+            h_bad.append("%r 字体 %s 字号 %s（应为 %s %gpt）"
+                         % (p.text[:14], ea, sz, cn, want))
+        j = jc(p)
+        if j != align:
+            h_bad.append("%r 对齐 %s（应为 %s）" % (p.text[:14], j, align))
         if runs and not all(bold(r, p) for r in runs):
             h_bad.append("%r 未整段加粗" % p.text[:14])
         if (line or HEAD_LINE_TW) != HEAD_LINE_TW or (rule or "auto") != "auto":
             h_bad.append("%r 行距 line=%s rule=%s" % (p.text[:14], line, rule))
     level_bad = t_bad + h_bad
-    check("4 版式令牌", "标题层级：作品名 17.5pt 黑体居中；H1/H2/H3 均 14pt 楷体加粗、"
-          "2 倍行距；元信息 10pt",
+    check("4 版式令牌", "标题层级：作品名 17.5pt 黑体居中；H1 黑体 15pt 居中加粗、"
+          "H2/H3 楷体 14pt 左对齐加粗、均 2 倍行距；元信息 10pt",
           not level_bad, "; ".join(level_bad[:6]) if level_bad else "合规")
 
     # 图注 / 表注格式与位置

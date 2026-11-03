@@ -4,7 +4,8 @@
 版式令牌见本文件顶部常量与 build/README.md「报告排版必须守住的结论」；参考值取自参照论文 PDF 实测。
 本脚本只读内容源（submission/技术文档.md，只此一份），从不改写；插图路径相对源文件
 所在目录解析。只认 build/README.md「源写法」表的写法——
-  `#` 唯一标题、`**标签**：值` 元信息行（标题后连续行，上限 6 行）、`##` 一级标题、
+  `#` 唯一标题、`**标签**：值` 元信息行（**仅**标题后连续行，上限 6 行；正文里行首同形的
+  `**标签**：说明…` 按普通正文段渲染为粗体引导词）、`##` 一级标题、
   `###` 二级标题、`####` 三级标题、普通段落（连续行合并）、`**强调**`、`` `行内代码` ``、
   `![alt](图)` + 下一行 `**图 N**　说明。`、表格上一行 `**表 N**　说明`、`| … |` 表格
   （分隔行 `|:---|:---:|---:|`：破折号个数 = 该列宽度权重、冒号 = 左 / 中 / 右对齐；
@@ -16,7 +17,7 @@
 单节、无封面 / 无目录；页眉为官方模板「芯辰大海」logo（6.5cm 居中，下方 0.75pt 细线，无文字）；
 正文楷体小四 12pt + 西文 Times New Roman、首行缩进 2 字符（480 twips）、1.5 倍行距、两端对齐；
 作品名黑体 17.5pt 居中（标题块维持原版式）+ 标题后连续 10pt 元信息行（标签黑体、值楷体）；
-一 / 二 / 三级章节标题一律楷体四号 14pt 加粗、2 倍行距；
+一级章节标题（`##`）黑体 15pt 居中加粗、二 / 三级章节标题楷体四号 14pt 加粗，均 2 倍行距；
 图注 / 表注楷体加粗五号 10.5pt 居中，表注在表格上方；三线表 9pt 楷体（顶 / 底 1.5pt、表头下
 0.75pt，无竖线 / 行线 / 底纹，整表 15.6cm 固定布局，表头跨页重复、行不跨页、单元格顶对齐、
 行高只按内容；列宽可由分隔行破折号权重控制，长 token 有硬下限）；图宽 15.8cm、居中；
@@ -81,7 +82,7 @@ C_INK = "000000"          # 黑：正文 / 标题 / 表格线 / 图注 / 页脚
 C_LINE = C_INK            # 三线表线色（旧名保留）
 
 FONT_CN = "楷体"            # 中文正文（规格：正文楷体小四；标题 / 表格 / 图注同族）
-FONT_HEI = "黑体"           # 作品名 / 元信息标签（标题块维持黑体，不随规格变）
+FONT_HEI = "黑体"           # 作品名 / 元信息标签 / 一级标题（楷体无粗体字面，一级标题靠黑体真加粗）
 FONT_EN = "Times New Roman"  # 西文与数字（规格：英文全部 Times New Roman）
 FONT_CODE = "Consolas"     # 行内代码（寄存器名 / 地址，保留等宽）
 
@@ -94,9 +95,9 @@ FIG_MAX_CM = 15.8                            # 插图默认宽度 15.8cm
 
 BODY_PT = 12.0                               # 正文：楷体小四
 TITLE_PT = 17.5                              # 作品名（标题块维持，规格只约束章节标题）
-H1_PT = 14.0                                 # 章节标题：楷体四号（一 / 二 / 三级同号）
-H2_PT = 14.0                                 # 二级标题（楷体四号加粗）
-H3_PT = 14.0                                 # 三级标题（楷体四号加粗）
+H1_PT = 15.0                                 # 一级标题（源 `##`）：黑体 15pt 居中加粗
+H2_PT = 14.0                                 # 二级标题（源 `###`）：楷体四号加粗、左对齐
+H3_PT = 14.0                                 # 三级标题（源 `####`）：楷体四号加粗、左对齐
 META_PT = 10.0                               # 元信息行
 CAPTION_PT = 10.5                            # 图注 / 表注：五号（加粗）
 TABLE_PT = 9.0                               # 表体（楷体）
@@ -660,8 +661,11 @@ def parse_source(md_path: Path):
             if title is None:
                 raise ValueError("第 %d 行：元信息行不能出现在标题之前" % (i + 1))
             if not meta_open:
-                raise ValueError("第 %d 行：元信息行只允许出现在标题后、第一条正文前"
-                                 "（连续 `**标签**：值` 行，遇空行即结束）" % (i + 1))
+                # 正文里的行首粗体引导词（`**标签**：说明…`）与元信息行同形，靠位置区分：
+                # 只有「标题后、第一条正文前」的连续行才是元信息，其余按普通正文段渲染。
+                buf.append(s)
+                i += 1
+                continue
             if meta_count >= 6:
                 raise ValueError("第 %d 行：元信息行最多 6 行" % (i + 1))
             meta_count += 1
@@ -717,7 +721,8 @@ def add_runs(par, text, size_pt=BODY_PT, heading=False, bold=False, color=C_INK,
     """写一行带 `**强调**` 与 `` `行内代码` `` 的文本。
 
     heading=True 用于标题段：整段（含西文、行内代码）都走标题中文字体 / Times，标题段里
-    不出现第三、第四种字面；中文字体默认黑体（作品名），章节标题经 cn=FONT_CN 显式改楷体。
+    不出现第三、第四种字面；中文字体默认黑体（作品名 / 一级标题），二级、三级章节标题经
+    cn=FONT_CN 显式改楷体。
     行内代码默认 Consolas、不加底纹、黑色；在 9pt 表格里降到 9pt（不撑破表格行高），
     正文里是 11pt。
     """
@@ -1241,10 +1246,24 @@ def build_styles(doc):
                       multiple=SINGLE_LINE, align="left", keep_lines=True,
                       size_pt=META_PT)
 
-    # 一级 / 二级 / 三级章节标题：一律楷体四号 14pt 加粗、2 倍行距、左对齐，
-    # 段前段后见令牌表，与下段同页；靠内置样式给大纲级别
-    for name, size_pt, level in (("Heading 1", H1_PT, 0), ("Heading 2", H2_PT, 1),
-                                 ("Heading 3", H3_PT, 2)):
+    # 一级章节标题（源 `##`）：黑体 15pt 加粗、2 倍行距、居中——Windows 楷体没有粗体字面，
+    # Word 导 PDF 时 <w:b/> 对楷体 run 不生效，一级标题换黑体才真「变粗」（作者 11-03 要求）；
+    # 段前段后沿用令牌表 H_GAP["h1"]，与下段同页；靠内置样式给大纲级别
+    h1 = styles["Heading 1"]
+    _setup_para_style(style_el(styles, "Heading 1"),
+                      before=H_GAP["h1"][0], after=H_GAP["h1"][1],
+                      multiple=HEAD_LINE, align="center", keep_next=True,
+                      keep_lines=True, widow=True, outline=0,
+                      size_pt=H1_PT, cn=FONT_HEI, bold=True)
+    h1.font.name = FONT_EN
+    h1.font.size = Pt(H1_PT)
+    h1.font.bold = True
+    h1.font.italic = False
+    h1.font.color.rgb = RGBColor.from_string(C_INK)
+
+    # 二级 / 三级章节标题（源 `###` / `####`）：一律楷体四号 14pt 加粗、2 倍行距、左对齐，
+    # 段前段后见令牌表，与下段同页（这两级维持楷体系，不随一级标题变）
+    for name, size_pt, level in (("Heading 2", H2_PT, 1), ("Heading 3", H3_PT, 2)):
         before, after = H_GAP["h%d" % (level + 1)]
         st = styles[name]
         _setup_para_style(style_el(styles, name), before=before, after=after,
@@ -1471,12 +1490,19 @@ def self_check(out_path: Path, *, title, n_h1, n_h2, n_h3=None, n_img, n_tbl, n_
         need(st.font.size is not None and near(st.font.size.pt, pt, 0.01),
              "样式 %s 字号不是 %.1fpt" % (name, pt),
              "%.2f" % (st.font.size.pt if st.font.size else float("nan")))
-    for name, cn in (("BodyCN", FONT_CN), ("Heading 1", FONT_CN),
+    for name, cn in (("BodyCN", FONT_CN), ("Heading 1", FONT_HEI),
                      ("Heading 2", FONT_CN), ("Heading 3", FONT_CN),
                      ("TitleCN", FONT_HEI), ("CaptionCN", FONT_CN)):
         fonts = _style_fonts(back.styles, name)
         need(fonts[0] == cn, "样式 %s 中文字体不是 %s" % (name, cn), str(fonts))
         need(fonts[1] == FONT_EN, "样式 %s 西文字体不是 Times" % name, str(fonts))
+    # 标题层级对齐（样式级）：一级居中，二 / 三级左对齐
+    for name, align in (("Heading 1", "center"), ("Heading 2", "left"),
+                        ("Heading 3", "left")):
+        ppr = style_el(back.styles, name).find(qn("w:pPr"))
+        j = ppr.find(qn("w:jc")) if ppr is not None else None
+        need(j is not None and j.get(qn("w:val")) == align,
+             "样式 %s 对齐不是 %s" % (name, align))
     need(back.styles["CaptionCN"].font.bold, "图注样式不加粗")
     need(back.styles["TableCaptionCN"].font.bold, "表注样式不加粗")
     for name in ("Heading 1", "Heading 2", "Heading 3"):
@@ -1500,18 +1526,24 @@ def self_check(out_path: Path, *, title, n_h1, n_h2, n_h3=None, n_img, n_tbl, n_
                  and _run_fonts(r)[0] != FONT_CODE}
         need(sizes == {BODY_PT}, "正文字号不是 %gpt" % BODY_PT, str(sorted(sizes)))
 
-    # ---- 章节标题：楷体四号加粗、2 倍行距、段距
-    for name, size_pt, gap in (("Heading 1", H1_PT, H_GAP["h1"]),
-                               ("Heading 2", H2_PT, H_GAP["h2"]),
-                               ("Heading 3", H3_PT, H_GAP["h3"])):
+    # ---- 章节标题：H1 黑体 15pt 居中 / H2、H3 楷体 14pt 左对齐，均整段加粗、2 倍行距、段距
+    for name, size_pt, gap, cn, align in (
+            ("Heading 1", H1_PT, H_GAP["h1"], FONT_HEI, WD_ALIGN_PARAGRAPH.CENTER),
+            ("Heading 2", H2_PT, H_GAP["h2"], FONT_CN, WD_ALIGN_PARAGRAPH.LEFT),
+            ("Heading 3", H3_PT, H_GAP["h3"], FONT_CN, WD_ALIGN_PARAGRAPH.LEFT)):
         pars = [p for p in back.paragraphs if p.style.name == name]
         if not pars:
             continue
-        sizes = {r.font.size.pt for r in pars[0].runs if r.text.strip()}
+        runs = [r for r in pars[0].runs if r.text.strip()]
+        sizes = {r.font.size.pt for r in runs}
         need(sizes == {size_pt}, "%s 字号不是 %gpt" % (name, size_pt),
              str(sorted(sizes)))
-        need(all(r.font.bold for r in pars[0].runs if r.text.strip()),
-             "%s 没有整段加粗" % name)
+        fonts_cn = {_run_fonts(r)[0] for r in runs}
+        need(fonts_cn == {cn}, "%s 中文字体不是 %s" % (name, cn), str(fonts_cn))
+        need(pars[0].alignment == align,
+             "%s 不是%s" % (name, "居中" if align == WD_ALIGN_PARAGRAPH.CENTER
+                            else "左对齐"))
+        need(all(r.font.bold for r in runs), "%s 没有整段加粗" % name)
         ls = pars[0].paragraph_format.line_spacing
         need(near(ls, HEAD_LINE, 0.01), "%s 行距不是 %.1f 倍" % (name, HEAD_LINE),
              str(ls))
@@ -1690,7 +1722,8 @@ def self_check(out_path: Path, *, title, n_h1, n_h2, n_h3=None, n_img, n_tbl, n_
 
     stats = {
         "font_cn": FONT_CN, "title_pt": TITLE_PT, "h1_pt": H1_PT, "h2_pt": H2_PT,
-        "h3_pt": H3_PT, "body_pt": BODY_PT, "list_pt": LIST_PT, "code_pt": CODE_PT,
+        "h3_pt": H3_PT, "h1_font": FONT_HEI, "h1_align": "center",
+        "body_pt": BODY_PT, "list_pt": LIST_PT, "code_pt": CODE_PT,
         "caption_pt": CAPTION_PT, "table_pt": TABLE_PT, "footer_pt": FOOTER_PT,
         "body_line": BODY_LINE, "head_line": HEAD_LINE,
         "first_line_twips": CHAR_TWIPS, "margin_cm": MARGIN_CM,
@@ -1795,10 +1828,10 @@ def build(source: Path, out_path: Path, caption_clean=True, caption_rules=None,
             is_appendix = payload.lstrip().startswith("附录")
             par = fmt_par(doc.add_paragraph(style="Heading 1"), before=before,
                           after=after, multiple=HEAD_LINE, keep_next=True,
-                          keep_lines=True, align=WD_ALIGN_PARAGRAPH.LEFT,
+                          keep_lines=True, align=WD_ALIGN_PARAGRAPH.CENTER,
                           page_break_before=is_appendix)
             add_runs(par, payload, size_pt=H1_PT, heading=True, bold=True,
-                     cn=FONT_CN)
+                     cn=FONT_HEI)
         elif kind == "h3":
             counts["h3"] += 1
             before, after = H_GAP["h2"]
@@ -1983,6 +2016,8 @@ def main(argv=None):
           % (stats["paragraphs"], stats["sections"]))
     print("[md2docx] headings  : H1(一级)=%d H2(二级)=%d"
           % (stats["headings"]["h1"], stats["headings"]["h2"]))
+    print("[md2docx] head style: H1 %s %.1fpt 居中加粗 / H2·H3 %s %.1fpt 左对齐加粗"
+          "（均 %.1f 倍行距）" % (FONT_HEI, H1_PT, FONT_CN, H2_PT, HEAD_LINE))
     print("[md2docx] tables    : %d（三线表 9pt）   images: %d（宽 %.1fcm）"
           % (stats["tables"], stats["images"], stats["figure_width_cm"]))
     print("[md2docx] captions  : 图注 %d / 表注 %d（加粗 10pt 居中）"
