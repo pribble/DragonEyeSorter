@@ -1070,8 +1070,8 @@ def _table_est_height(rows, widths, ncol):
     return total
 
 
-def keep_table_rows(table, rows, widths, threshold_pt=280.0):
-    """表格分页控制：整表放得下就整表同页；放不下时至少表头 + 前两行同页。"""
+def keep_table_rows(table, rows, widths, threshold_pt=640.0):
+    """表格分页控制：一页放得下就整表同页（避免续页表头顶线与页眉横线重叠）；放不下时至少表头 + 前两行同页。"""
     ncol = len(rows[0])
     est = _table_est_height(rows, widths, ncol)
     last_keep = len(rows) - 2 if est <= threshold_pt else min(2, len(rows) - 1)
@@ -1343,7 +1343,7 @@ def setup_section(section):
     section.bottom_margin = Cm(MARGIN_CM)
     section.left_margin = Cm(MARGIN_CM)
     section.right_margin = Cm(MARGIN_CM)
-    section.header_distance = Cm(1.2)          # 页眉（官方模板 logo）距边 1.2cm
+    section.header_distance = Cm(1.0)          # 页眉 logo 距边 1.0cm：让页眉横线与正文之间留出约 4pt，跨页表格的顶线不再与它重叠
     section.footer_distance = Cm(FOOTER_DIST_CM)
 
 
