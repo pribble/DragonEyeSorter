@@ -411,6 +411,8 @@ def section_word_counts(text: str) -> dict[str, int]:
                 continue
             if re.match(r"^\d+\.\s", t):
                 continue
+            # 行内强调 / 下划线 / 代码标记不是纸上字符：剥掉后再按 Word 口径数（与 PDF 实际字形一致）
+            t = re.sub(r"\*\*|__|`", "", t)
             n += word_count_cn(t)
         out[name] = n
     return out

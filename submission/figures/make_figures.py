@@ -1,25 +1,26 @@
 #!/usr/bin/env python3
-"""make_figures.py — 生成作品报告的 15 张插图（9 张线稿 + 6 张报告内实物图占位图），写在本目录。
+"""make_figures.py — 生成 / 登记作品报告的 20 张插图（9 张线稿 + 11 张报告内实物 / 截图图项），写在本目录。
 
-    python submission/figures/make_figures.py              # 重画全部 15 张
+    python submission/figures/make_figures.py              # 重画 / 登记全部 20 张
     python submission/figures/make_figures.py arch time    # 只重画名字里含 arch / time 的线稿图
-    python submission/figures/make_figures.py ph           # 只重画 6 张报告内占位图
-    python submission/figures/make_figures.py ui           # 只重画 id 含 ui 的占位图（图 13）
+    python submission/figures/make_figures.py ph           # 只处理 11 张报告内图项
+    python submission/figures/make_figures.py ui           # 只处理 id 含 ui 的界面图项（图 16~19）
+    python submission/figures/make_figures.py pick         # 只重画图 10 时序
     python submission/figures/fig_timebase.py              # 单张调试（只跑这一张）
 
 生成物（SVG / PNG / fig_meta.json）由本脚本重建、不入库（见本目录 .gitignore）；
 submission/build/build.ps1 每次出报告前会自动先跑一遍本脚本。fig_meta.json 只登记报告实际
-引用的 15 张（9 线稿 + 6 占位），已移出报告的旧记录由 figkit.write_meta(keep=...) 一并清掉。
+引用的 20 张（9 线稿 + 11 图项），已移出报告的旧记录由 figkit.write_meta(keep=...) 一并清掉。
 
-其余 2 项实物照片（导流挡板 / 测试现场）不进报告版面（作品照片是单独必交材料，报告
-不插这 2 张），只保留在 placeholder_manifest.json 的 in_report=false 项里，作为
-「作品照片 + 演示视频」拍摄清单（见 README）；本脚本不为它们生成 PNG。整机全景（图 10，
-一张两用兼作品照片主图）、机械臂（图 11）与开发板特写（图 12）按官方模板第三部分
-「实物照片为主」的要求进报告版面，属 in_report=true 占位。
+报告内 11 个 ph_* 图项（清单见 placeholder_manifest.json，11-03 起全部 replaced: true）：
+图 2 系统实景、图 7 电控盘、图 11 整幅 vs ROI、图 12 七类样件、图 13 整机、图 14 机械臂、
+图 15 电控盘接线、图 16~19 界面四组。replaced 项不重画，只按实际像素登记 meta。
+其余 2 项实物照片（导流挡板 / 测试现场）不进报告版面（in_report=false），只作
+「作品照片 + 演示视频」拍摄清单；本脚本不为它们生成 PNG。
 
-约定与图元都在 figkit.py：**画布按报告落版尺寸（15.8cm 宽，单位 pt）作图，字号即纸面字号**，
-每张图保存前会核对文字越界与字号（见文件头注释）。单张线稿图的画法看 fig_architecture.py；
-占位图的清单与画法在 placeholder_manifest.json / make_placeholders.py（关键字按占位图 id 过滤）。
+约定与图元都在 figkit.py：画布按报告落版尺寸（15.8cm 宽，单位 pt）作图，字号即纸面字号，
+每张图保存前会核对文字越界与字号。单张线稿图的画法看 fig_architecture.py；图项清单与画法
+在 placeholder_manifest.json / make_placeholders.py。
 每个 fig_*.py 要暴露 draw()，并能单独 `python submission/figures/fig_xxx.py` 跑。
 """
 import importlib
@@ -34,7 +35,7 @@ import figkit as fk                                   # noqa: E402
 
 MODULE_NAMES = ['fig_design_flow', 'fig_architecture', 'fig_timebase', 'fig_pl_regs',
                 'fig_wiring', 'fig_sw_flow', 'fig_pick_sequence', 'fig_layout', 'fig_perclass']
-PLACEHOLDER_MODULE = 'make_placeholders'              # 报告内 6 张待插入实物图占位（清单见 placeholder_manifest.json）
+PLACEHOLDER_MODULE = 'make_placeholders'              # 报告内 11 张图项（清单见 placeholder_manifest.json）
 
 
 def main(argv):
@@ -58,7 +59,7 @@ def main(argv):
         fk.save(fig, name)
         n_line += 1
 
-    # ---- 报告内 6 张占位图：关键字匹配占位图 id（ph / overview / ui / roi / samples / arm / board）----
+    # ---- 报告内 11 张图项：关键字匹配 id（ph / overview / ui / roi / samples / arm / board / machine / elec）----
     try:
         ph = importlib.import_module(PLACEHOLDER_MODULE)
     except ModuleNotFoundError as e:
@@ -66,7 +67,7 @@ def main(argv):
         skipped.append(PLACEHOLDER_MODULE)
     else:
         n_ph, ph_errors = ph.run(keys)
-        keep = MODULE_NAMES + ph.report_ids()          # fig_meta 只留报告实际引用的 15 张
+        keep = MODULE_NAMES + ph.report_ids()          # fig_meta 只留报告实际引用的 20 张
 
     fk.write_meta(keep=keep)
     if skipped:

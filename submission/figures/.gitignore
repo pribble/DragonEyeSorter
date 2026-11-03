@@ -1,5 +1,5 @@
 # 本目录只入库生成脚本 + README；下列生成物由 make_figures.py 重画、不入库（见 README「文件」）
-# 报告插图：5 张线稿 PNG + 5 张线稿 SVG + 7 张占位图 PNG/SVG + fig_meta.json
+# 报告插图：线稿与图项 PNG/SVG + fig_meta.json（报告内 11 个 ph_* 图项已 replaced，脚本只登记 meta）
 # （verify_report.py 第 12 项读它复核落版字号）
 # 注意：拍了实物后覆盖的 ph_*.png 也被这里挡住，实物照片要入库请 git add -f
 fig_*.png

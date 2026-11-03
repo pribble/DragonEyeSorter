@@ -6,7 +6,7 @@
 所在目录解析。只认 build/README.md「源写法」表的写法——
   `#` 唯一标题、`**标签**：值` 元信息行（**仅**标题后连续行，上限 6 行；正文里行首同形的
   `**标签**：说明…` 按普通正文段渲染为粗体引导词）、`##` 一级标题、
-  `###` 二级标题、`####` 三级标题、普通段落（连续行合并）、`**强调**`、`` `行内代码` ``、
+  `###` 二级标题、`####` 三级标题、普通段落（连续行合并）、`**强调**`、`__下划线强调__`、`` `行内代码` ``、
   `![alt](图)` + 下一行 `**图 N**　说明。`、表格上一行 `**表 N**　说明`、`| … |` 表格
   （分隔行 `|:---|:---:|---:|`：破折号个数 = 该列宽度权重、冒号 = 左 / 中 / 右对齐；
   破折号个数全表相同时回退自动列宽）、`1. ` 列表（仅参考文献 / 附录）、`---` 分隔线；
@@ -205,7 +205,8 @@ def _set_size(rpr, size_pt):
         el.set(qn("w:val"), str(int(round(size_pt * 2))))
 
 
-def set_run_font(run, cn=FONT_CN, en=FONT_EN, size_pt=None, bold=None, color=C_INK):
+def set_run_font(run, cn=FONT_CN, en=FONT_EN, size_pt=None, bold=None, color=C_INK,
+                 underline=None):
     """显式钉死西文 / 中文 / cs 三套字体名（只设 run.font.name 管不到中文）+ 字色。"""
     rpr = run._element.get_or_add_rPr()
     rfonts = rpr.get_or_add_rFonts()
@@ -222,14 +223,17 @@ def set_run_font(run, cn=FONT_CN, en=FONT_EN, size_pt=None, bold=None, color=C_I
     if bold is not None:
         run.font.bold = bold
         run.font.italic = False
+    if underline is not None:
+        run.font.underline = underline
     if color:
         run.font.color.rgb = RGBColor.from_string(color)
     return run
 
 
-def write(par, text, cn=FONT_CN, en=FONT_EN, size_pt=BODY_PT, bold=False, color=C_INK):
+def write(par, text, cn=FONT_CN, en=FONT_EN, size_pt=BODY_PT, bold=False, color=C_INK,
+          underline=None):
     run = par.add_run(text)
-    set_run_font(run, cn, en, size_pt, bold, color)
+    set_run_font(run, cn, en, size_pt, bold, color, underline)
     return run
 
 
@@ -698,7 +702,7 @@ def parse_source(md_path: Path):
 
 # ---------------------------------------------------------------- 行内文本
 
-INLINE_RE = re.compile(r"(\*\*.+?\*\*|`[^`]+`)")
+INLINE_RE = re.compile(r"(\*\*.+?\*\*|__.+?__|`[^`]+`)")
 # CJK / 全角字符（强调的西文部分走 Times Bold）
 CJK_RE = re.compile(r"[\u2e80-\u303f\u3200-\u4dbf\u4e00-\u9fff"
                     r"\uf900-\ufaff\ufe30-\ufe4f\uff00-\uffef]+")
@@ -714,6 +718,19 @@ def add_emphasis_runs(par, text, size_pt=BODY_PT, color=C_INK):
         pos = m.end()
     if pos < len(text):
         write(par, text[pos:], FONT_EN, FONT_EN, size_pt, True, color)
+
+
+def add_underline_runs(par, text, size_pt=BODY_PT, color=C_INK):
+    """`__强调__`：中文楷体下划线、西文 Times 下划线，同字号（不加粗）。"""
+    pos = 0
+    for m in CJK_RE.finditer(text):
+        if m.start() > pos:
+            write(par, text[pos:m.start()], FONT_CN, FONT_EN, size_pt, False, color,
+                  underline=True)
+        write(par, m.group(0), FONT_CN, FONT_EN, size_pt, False, color, underline=True)
+        pos = m.end()
+    if pos < len(text):
+        write(par, text[pos:], FONT_CN, FONT_EN, size_pt, False, color, underline=True)
 
 
 def add_runs(par, text, size_pt=BODY_PT, heading=False, bold=False, color=C_INK,
@@ -737,6 +754,12 @@ def add_runs(par, text, size_pt=BODY_PT, heading=False, bold=False, color=C_INK,
                 write(par, inner, cn, FONT_EN, size_pt, bold, color)
             else:
                 add_emphasis_runs(par, inner, size_pt, color)
+        elif piece.startswith("__") and piece.endswith("__") and len(piece) > 4:
+            inner = piece[2:-2]
+            if heading:
+                write(par, inner, cn, FONT_EN, size_pt, bold, color)
+            else:
+                add_underline_runs(par, inner, size_pt, color)
         elif piece.startswith("`") and piece.endswith("`") and len(piece) > 2:
             if heading:
                 write(par, piece[1:-1], cn, FONT_EN, size_pt, bold, color)
@@ -753,6 +776,8 @@ def add_caption_runs(par, text):
         if not piece:
             continue
         if piece.startswith("**") and piece.endswith("**") and len(piece) > 4:
+            write(par, piece[2:-2], FONT_CN, FONT_EN, CAPTION_PT, True, C_INK)
+        elif piece.startswith("__") and piece.endswith("__") and len(piece) > 4:
             write(par, piece[2:-2], FONT_CN, FONT_EN, CAPTION_PT, True, C_INK)
         elif piece.startswith("`") and piece.endswith("`") and len(piece) > 2:
             write(par, piece[1:-1], FONT_CN, FONT_CODE, CAPTION_PT, True, C_INK)
@@ -820,6 +845,11 @@ def char_w(ch, size_pt):
     return size_pt if unicodedata.east_asian_width(ch) in ("W", "F") else 0.55 * size_pt
 
 
+def plain_markup(s):
+    """去掉行内强调 / 下划线 / 代码标记：排版测量按纸上实际字形算，标记本身不占宽度。"""
+    return re.sub(r"\*\*|__|`", "", s or "")
+
+
 def text_w(s, size_pt=TABLE_PT):
     return sum(char_w(c, size_pt) for c in s)
 
@@ -839,14 +869,18 @@ def wrapped_lines(s, avail_pt, size_pt=TABLE_PT):
 
 
 def column_widths(rows, total_cm=TABLE_W_CM, size_pt=TABLE_PT):
-    """列宽（twips）：每列不小于 3 个字宽，且让整表估高最小；合计 = 整表宽。"""
+    """列宽（twips）：每列不小于 3 个字宽，且让整表估高最小；合计 = 整表宽。
+
+    先剥掉 `**…**` / `__…__` / 行内代码标记再量：标记不是纸上字符，不参与列宽分配。
+    """
+    rows = [[plain_markup(c) for c in r] for r in rows]
     ncol = len(rows[0])
     usable_pt = total_cm * 28.3465          # 整表宽（含单元格内边距）→ 固定布局 15.6cm
     min_pt = []
     for c in range(ncol):
         longest = 0.0
         for r in rows:
-            cell = re.sub(r"[*`]", "", r[c] if c < len(r) else "")
+            cell = plain_markup(r[c] if c < len(r) else "")
             token = max(re.split(r"[\s、，,；;：:/|（）()]+", cell) or [""], key=len)
             longest = max(longest, text_w(cell) / max(1, wrapped_lines(cell, 1e9)),
                           text_w(token, size_pt))
@@ -895,7 +929,7 @@ def _unbreakable_token(cell, size_pt=TABLE_PT):
     CJK 可以逐字断行、全角标点与空格是断点；只有西文数字串这类不能拆的才算下限。
     （旧算法把整段中文当 token，会把「指标」列硬撑宽，反而抢走数值列的宽度。）
     """
-    cell = re.sub(r"[*`]", "", cell or "")
+    cell = plain_markup(cell)
     runs = re.split(r"[\u2e80-\u9fff\u3000-\u303f\uff00-\uffef]+"
                     r"|[\s、，,；;：:/|（）()\[\]]+", cell)
     return max(runs or [""], key=len)
