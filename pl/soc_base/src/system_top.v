@@ -9,7 +9,8 @@ module system_top (
     input        ENC_B, input        ENC_Z,
     input        IR1_IN, input        LIMIT1_IN,
     inout        SERVO_BUS, output       FLAP1_PWM,
-    output       FLAP2_PWM, output       CAN0_TXD,
+    output       FLAP2_PWM, output       TRIG_OUT,
+    output       CAN0_TXD,
     input        CAN0_RXD, output       RS485_TXD,
     input        RS485_RXD, output       RS485_DE,
     input  wire       I_clk_hs_p, input  wire [3:0] I_data_hs_p,
@@ -207,14 +208,20 @@ module system_top (
         .M_AXI_BREADY      (slave_hp0_axi_bready)
     );
     wire [31:0] regs_rdata, sb_rdata, st_rdata, vis_rdata, pwm_rdata, io_rdata, rs_rdata, des_ts, st_pos, io_enc;
-    wire        sb_drive_low, st_pul_n, st_dir_n, st_ena, des_estop;
+    wire [31:0] bpi_rdata, tg_rdata;
+    wire        sb_drive_low, st_pul_n, st_dir_n, st_ena, des_estop, st_cruise;
+    wire signed [16:0] bpi_scale;
+    wire [1:0]  tg_ld;
+    wire [23:0] tg_us;
     assign des_rdata = (des_raddr[11:8] == 4'h1) ? sb_rdata :
                        (des_raddr[11:8] == 4'h2) ? st_rdata :
                        (des_raddr[11:8] == 4'h3) ? vis_rdata :
                        (des_raddr[11:8] == 4'h4) ? pwm_rdata :
                        (des_raddr[11:8] == 4'h5) ? io_rdata :
-                       (des_raddr[11:8] == 4'h6) ? rs_rdata : regs_rdata;
-    des_regs #(.VERSION(32'd16)) des_regs_inst (
+                       (des_raddr[11:8] == 4'h6) ? rs_rdata :
+                       (des_raddr[11:8] == 4'h7) ? bpi_rdata :
+                       (des_raddr[11:8] == 4'h8) ? tg_rdata : regs_rdata;
+    des_regs #(.VERSION(32'd17)) des_regs_inst (
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h0), .waddr(des_waddr), .wdata(des_wdata), .raddr(des_raddr), .rdata(regs_rdata), .sof_toggle(des_sof_toggle), .ts(des_ts),
         .cap_start_toggle(cap_start_tgl), .cap_done_toggle(cap_done_tgl), .pos(st_pos), .enc(io_enc),
         .led_ovr(des_led_ovr), .led_val(des_led_val)
@@ -226,7 +233,16 @@ module system_top (
     assign SERVO_BUS = sb_drive_low ? 1'b0 : 1'bz;
     stepper_ctrl stepper_inst (
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h2), .waddr(des_waddr[7:0]), .wdata(des_wdata), .raddr(des_raddr[7:0]), .rdata(st_rdata), .estop(des_estop),
-        .pul_n(st_pul_n), .dir_n(st_dir_n), .ena_o(st_ena), .pos_o(st_pos)
+        .pul_n(st_pul_n), .dir_n(st_dir_n), .ena_o(st_ena), .pos_o(st_pos),
+        .vscale(bpi_scale), .moving_o(), .cruise_o(st_cruise)
+    );
+    des_bpi bpi_inst (   // v17: belt speed PI, off (scale 0) until the PS enables it
+        .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h7), .waddr(des_waddr[7:0]), .wdata(des_wdata), .raddr(des_raddr[7:0]), .rdata(bpi_rdata), .ts(des_ts),
+        .enc(io_enc), .st_cruise(st_cruise), .scale_o(bpi_scale)
+    );
+    des_ptrig ptrig_inst (   // v17: belt position compare trigger, nothing armed after reset
+        .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h8), .waddr(des_waddr[7:0]), .wdata(des_wdata), .raddr(des_raddr[7:0]), .rdata(tg_rdata), .ts(des_ts),
+        .pos(st_pos), .enc(io_enc), .pwm_ld(tg_ld), .pwm_us(tg_us), .servo_go(), .trig_o(TRIG_OUT)
     );
     des_vision vision_inst (
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h3), .waddr(des_waddr[7:0]), .wdata(des_wdata), .raddr(des_raddr[7:0]), .rdata(vis_rdata),
@@ -244,7 +260,7 @@ module system_top (
     );
     des_pwm pwm_inst (
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h4), .waddr(des_waddr[7:0]), .wdata(des_wdata),
-        .raddr(des_raddr[7:0]), .rdata(pwm_rdata), .pwm({FLAP2_PWM, FLAP1_PWM})
+        .raddr(des_raddr[7:0]), .rdata(pwm_rdata), .pwm({FLAP2_PWM, FLAP1_PWM}), .xld(tg_ld), .xus(tg_us)
     );
     localparam STEP_COMMON_CATHODE = 1;
     assign STEP_PUL = STEP_COMMON_CATHODE ? ~st_pul_n : st_pul_n;

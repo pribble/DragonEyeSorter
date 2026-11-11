@@ -17,5 +17,9 @@ pl/soc_base/src/write_fdma/uiFDMA.v
 pl/soc_base/src/write_fdma/uidbuf_write.v
 pl/soc_base/src/write_fdma/wfifo.v
 + -Ipl/soc_base/src/des
-@ pl/sim/equiv/audit/x_stepper_ctrl_g2012.v
+# v17：stepper_ctrl 多了 vscale / cruise 端口 -> golden 侧仍用基线里的旧副本，新版侧用按现行 RTL 重新生成的副本
+% pl/sim/equiv/audit/x_stepper_ctrl_g2012.v
+* pl/sim/equiv/audit/x_stepper_ctrl_v17_g2012.v
+* pl/soc_base/src/des/des_bpi.v
+* pl/soc_base/src/des/des_ptrig.v
 @ pl/sim/equiv/stubs/x_system_top_stubs.v

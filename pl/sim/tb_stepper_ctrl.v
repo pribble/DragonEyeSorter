@@ -14,7 +14,8 @@ module tb_stepper_ctrl;
 
     // ramp tick 1 MHz to keep the simulation short
     stepper_ctrl #(.ACC_DIV(75)) dut (.clk(clk), .wr(wr), .waddr(waddr), .wdata(wdata), .raddr(raddr), .rdata(rdata),
-                                     .estop(estop), .pul_n(pul_n), .dir_n(dir_n), .ena_o(ena_o), .pos_o(pos_o));
+                                     .estop(estop), .pul_n(pul_n), .dir_n(dir_n), .ena_o(ena_o), .pos_o(pos_o),
+                                     .vscale(17'sd0), .moving_o(), .cruise_o());   // scale 0 = the v16 behaviour
     wire [31:0] pos_o;
 
     // speed units: inc = v * 2^32 / 75e6
