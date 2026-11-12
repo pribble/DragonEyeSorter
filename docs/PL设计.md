@@ -247,6 +247,8 @@ PS：`des_hw` 的 `des_485_config / des_485_xfer / des_485_listen`（`DES_VERSIO
 | 0x740 / 0x744 | R | `DM` / `DT`：上一个窗口的计数差（有符号）与时钟数 |
 | 0x748 | R | `ID` = 0x42504931 |
 
+PS：`des_hw` 的 `des_bpi_present / des_bpi_config / des_bpi_set / des_bpi_enable / des_bpi_clear / des_bpi_read`（`DES_VERSION_V17` = 17，没有这个模块的比特流上一律返回 `DES_E_ARG`、不写寄存器）；调试 `desreg bpi [on|off|clr|set|cfg|watch]`。应用层：`des_app.json` 的 `belt.pid` 新增 `hw`（默认 true）及 `hw_kp / hw_ki / hw_limit / hw_deadband / hw_period_ms / hw_settle`——比特流带 `des_bpi` 时，界面参数页的「带速 PI」开关改为驱动 PL 环，`Runner` 只负责把目标带速写进 `SET`，原 PS 侧 PI 不再运行；v16 比特流上行为不变（仍是 PS 侧 PI）。`des_app` 退出时关闭 PL 环。
+
 ### 带位置比较触发 `des_ptrig`（`PL_BASE + 0x800`，v17 第 1 批，未上板）
 
 [pl/soc_base/src/des/des_ptrig.v](../pl/soc_base/src/des/des_ptrig.v)。4 路；上电全部未布防，任何输出都不动。布防后的一路在位置源（步进 `POS` 或编码器计数）到达阈值的那一拍触发一次：锁存 `FREE_CNT` 与位置、自动撤防，并按配置执行动作。比较用 32 位差值，计数器回绕不受影响；布防时阈值已经过了就立即触发并置 `LATE`。口径是「位置同步输出」，不是电子齿轮。
@@ -266,6 +268,8 @@ PS：`des_hw` 的 `des_485_config / des_485_xfer / des_485_listen`（`DES_VERSIO
 | 0x844 + 0x10·i | R/W | `CFG`：b0 布防（触发后自清）/ b1 方向（0 = 位置 ≥ 阈值，1 = ≤）/ b2 位置源（0 步进，1 编码器）/ [6:4] 动作 / b7 出 `TRIG_OUT` 脉冲 / [27:16] 脉宽 µs |
 | 0x848 + 0x10·i | R | `TS` 触发时的 `FREE_CNT` |
 | 0x84C + 0x10·i | R | `POS` 触发时的位置源读数 |
+
+PS：`des_hw` 的 `des_ptrig_present / des_ptrig_arm / des_ptrig_disarm / des_ptrig_out_us / des_ptrig_read` 与 `des_pwm_slew`；调试 `desreg ptrig [arm <i> <阈值> | rel <i> <相对量>] [up|down] [pos|enc] [pwm0|pwm1|go] [µs] [out] | off [i] | out <µs>`（`rel` 在同一条命令里读当前位置再加相对量）。应用层（挡板调度）还没有改用它，现阶段只用于上板验证与测触发时延。
 
 ## 分段与扩展登记
 

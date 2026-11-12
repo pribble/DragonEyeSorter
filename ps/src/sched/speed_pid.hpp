@@ -14,6 +14,16 @@ struct SpeedPidConfig {
     int period_ms = 100;      // control period
     double trim_mm_s = 3.0;   // output clamp (also the anti-windup limit)
     double deadband_mm_s = 5.0;   // encoder / belt ripple at 80 mm/s is ~4.9 mm/s per 10 ms count; do not chase it
+    // PL belt-speed PI (des_bpi, bitstream v17+). When the bitstream has it and hw is true, the same switch drives the
+    // PL loop instead of this PS one (the fields above are then unused); on older bitstreams nothing changes.
+    // The PL loop works on the relative error, so these do not depend on the belt speed.
+    bool hw = true;
+    double hw_kp = 0.5;           // output (fraction of the speed) per unit of relative error
+    double hw_ki = 0.1;           // integral gain per measuring window
+    double hw_limit = 0.08;       // output clamp, fraction of the speed (PL caps it at 0.25)
+    double hw_deadband = 0.0;     // relative error left alone
+    int hw_period_ms = 10;        // shortest measuring window
+    int hw_settle = 5;            // cruise windows skipped after the cruise speed is reached
 };
 class SpeedPid {
 public:

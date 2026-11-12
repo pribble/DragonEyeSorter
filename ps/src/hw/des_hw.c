@@ -137,6 +137,100 @@ int des_pwm_enable(des_hw_t *h, unsigned ch_mask)
     des_wr(h, DES_PWM_CTRL, ch_mask & 3u);
     return DES_OK;
 }
+/* ---- v17 ---- */
+int des_pwm_slew(des_hw_t *h, int us_per_period)
+{
+    if (h->version < DES_VERSION_V17 || us_per_period < 0 || us_per_period > 4095) return DES_E_ARG;
+    des_wr(h, DES_PWM_SLEW, (uint32_t)us_per_period);
+    return DES_OK;
+}
+int des_bpi_present(const des_hw_t *h) { return h->version >= DES_VERSION_V17 && des_rd(h, DES_BPI_ID) == DES_BPI_ID_VALUE; }
+int des_bpi_config(des_hw_t *h, const des_bpi_cfg_t *c)
+{
+    if (!des_bpi_present(h) || !c) return DES_E_ARG;
+    if (!(c->kp >= 0 && c->kp < 16.0) || !(c->ki >= 0 && c->ki < 1.0) || !(c->limit >= 0 && c->limit <= 0.25) ||
+        !(c->deadband >= 0 && c->deadband < 1.0) || c->period_ms < 1 || c->period_ms > 1000 ||
+        c->timeout_ms < c->period_ms || c->timeout_ms > 10000 || c->settle < 0 || c->settle > 255)
+        return DES_E_ARG;
+    des_wr(h, DES_BPI_KP, (uint32_t)(c->kp * 4096.0 + 0.5));            /* Q4.12 */
+    des_wr(h, DES_BPI_KI, (uint32_t)(c->ki * 65536.0 + 0.5));           /* Q0.16 */
+    des_wr(h, DES_BPI_SMAX, (uint32_t)(c->limit * 65536.0 + 0.5));
+    des_wr(h, DES_BPI_DB, (uint32_t)(c->deadband * 65536.0 + 0.5));
+    des_wr(h, DES_BPI_PERIOD, c->period_ms * (DES_FREE_CNT_HZ / 1000u));
+    des_wr(h, DES_BPI_TIMEOUT, c->timeout_ms * (DES_FREE_CNT_HZ / 1000u));
+    des_wr(h, DES_BPI_SETTLE, (uint32_t)c->settle);
+    return DES_OK;
+}
+int des_bpi_set(des_hw_t *h, double counts_per_s)
+{
+    if (!des_bpi_present(h)) return DES_E_ARG;
+    des_wr(h, DES_BPI_SET, des_enc_inc(counts_per_s));
+    return DES_OK;
+}
+int des_bpi_enable(des_hw_t *h, int on)
+{
+    if (!des_bpi_present(h)) return DES_E_ARG;
+    des_wr(h, DES_BPI_CTRL, on ? 1u : 0u);
+    return DES_OK;
+}
+int des_bpi_clear(des_hw_t *h)
+{
+    if (!des_bpi_present(h)) return DES_E_ARG;
+    des_wr(h, DES_BPI_CTRL, (des_rd(h, DES_BPI_CTRL) & 1u) | 2u);
+    return DES_OK;
+}
+int des_bpi_read(const des_hw_t *h, des_bpi_t *b)
+{
+    if (!des_bpi_present(h) || !b) return DES_E_ARG;
+    b->status = des_rd(h, DES_BPI_STATUS);
+    b->set_cps = des_enc_cps(des_rd(h, DES_BPI_SET));
+    b->meas_cps = des_enc_cps(des_rd(h, DES_BPI_MEAS));
+    b->err = (int32_t)des_rd(h, DES_BPI_ERR) / 65536.0;
+    b->scale = (int32_t)des_rd(h, DES_BPI_SCALE) / 65536.0;
+    b->integ = (int32_t)des_rd(h, DES_BPI_INTEG) / 65536.0;
+    b->meas_cnt = des_rd(h, DES_BPI_MEAS_CNT);
+    b->step_cnt = des_rd(h, DES_BPI_STEP_CNT);
+    b->dm = (int32_t)des_rd(h, DES_BPI_DM);
+    b->dt = des_rd(h, DES_BPI_DT);
+    return DES_OK;
+}
+int des_ptrig_present(const des_hw_t *h) { return h->version >= DES_VERSION_V17 && des_rd(h, DES_PTG_ID) == DES_PTG_ID_VALUE; }
+int des_ptrig_arm(des_hw_t *h, int i, int32_t thr, const des_ptrig_cfg_t *c)
+{
+    if (!des_ptrig_present(h) || !c || i < 0 || i >= DES_PTG_N || c->action < 0 || c->action > DES_PTG_ACT_SERVO_GO ||
+        c->pwm_us < 0 || c->pwm_us > 2550)
+        return DES_E_ARG;
+    des_wr(h, DES_PTG_THR(i), (uint32_t)thr);
+    des_wr(h, DES_PTG_CFG(i), des_ptrig_cfg_word(c, 1));
+    return DES_OK;
+}
+int des_ptrig_disarm(des_hw_t *h, int i)
+{
+    if (!des_ptrig_present(h) || i >= DES_PTG_N) return DES_E_ARG;
+    if (i < 0) des_wr(h, DES_PTG_CTRL, 1u);
+    else des_wr(h, DES_PTG_CFG(i), des_rd(h, DES_PTG_CFG(i)) & ~1u);
+    return DES_OK;
+}
+int des_ptrig_out_us(des_hw_t *h, unsigned us)
+{
+    if (!des_ptrig_present(h) || us < 1 || us > 200000) return DES_E_ARG;
+    des_wr(h, DES_PTG_OUT_CLK, us * (DES_FREE_CNT_HZ / 1000000u));
+    return DES_OK;
+}
+int des_ptrig_read(const des_hw_t *h, des_ptrig_t *t)
+{
+    if (!des_ptrig_present(h) || !t) return DES_E_ARG;
+    const uint32_t s = des_rd(h, DES_PTG_STATUS);
+    t->fire_cnt = des_rd(h, DES_PTG_FIRE_CNT);
+    for (int i = 0; i < DES_PTG_N; i++) {
+        t->e[i].armed = (s >> i) & 1u;
+        t->e[i].fired = (s >> (8 + i)) & 1u;
+        t->e[i].late = (s >> (16 + i)) & 1u;
+        t->e[i].ts = des_rd(h, DES_PTG_TS(i));
+        t->e[i].pos = (int32_t)des_rd(h, DES_PTG_POS(i));
+    }
+    return DES_OK;
+}
 int des_io_read(const des_hw_t *h, des_io_t *io)
 {
     if (h->version < DES_VERSION_IO) return DES_E_ARG;
