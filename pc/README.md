@@ -9,8 +9,9 @@
 | modbus/ | Modbus-TCP 主站（网口版「产线 PLC」）：读状态、启停、调速、配方、对时、灯光、往返时延 | `mb_client.py status/watch/cmd/speed/recipe/time/lamp/bench` | 标准库 |
 | rs485/ | USB-RS485 适配器调试：扫描 / 改地址、读写继电器与三色灯、旁听板子 RS485 帧、冒充从站 | `rs485_tool.py ports/scan/addr/setaddr/coils/set/lamp/sniff` | pyserial |
 | feed/ | 现场数据接收：连板上 TCP 端口（`des_app.json` 的 `storage.feed_port`，默认 9500），落盘每件记录与图像、断线重连 | `des_feed.py` | 标准库 |
+| uplink/ | 4G 远程看板：手机 / 电脑浏览器打开的单文件网页，经 MQTT over WebSocket 看板上 `des_4g` 发出的状态与工单、测往返时间；`fake_board.py` 冒充板子发模拟数据做预演（说明见 [软件与UI](../docs/软件与UI.md)「4G 远程监控与第二条链路」） | `des_4g_view.html`、`fake_board.py --prefix <前缀>` | 网页无依赖；脚本只用标准库 |
 | ops/ | 远程运维站：收板上的运维工单 / 检测记录 / 不良图，SQLite 存档，网页看板（工单、处理建议、远程确认 / 启停 / 调速、导出运维报表），连上即对时，板子离线自开工单 | `ops_station.py`（看板 `localhost:8090`） | 标准库 |
 
 运行前先按 [环境与上手](../docs/环境与上手.md) 配 `.env`（`BOARD_IP` / `BOARD_HOST` 等）；实物联调按 [到货联调清单](../docs/到货联调清单.md) §7 走。PC 侧脚本不用交叉编译，直接 `python <脚本> --help` 看参数。
 
-自检（无板）：`python report/test_part_stats.py`、`python modbus/test_mb_client.py`、`python feed/test_des_feed.py`、`python ops/test_ops_station.py`。
+自检（无板）：`python report/test_part_stats.py`、`python modbus/test_mb_client.py`、`python feed/test_des_feed.py`、`python ops/test_ops_station.py`、`python uplink/test_fake_board.py`。

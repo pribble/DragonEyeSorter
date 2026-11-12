@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="zh-CN">
+<!--
+  des_4g_view.html: phone dashboard for the line's 4G uplink (the board program is ps/tools/des_4g, see
+  docs/软件与UI.md「4G 远程监控与第二条链路」). One file, no external library: it speaks MQTT 3.1.1 over a
+  WebSocket itself, subscribes to <prefix>/# and shows what the board publishes:
+    <prefix>/state  retained JSON (or the text "offline")     <prefix>/wo     one JSON per work-order change
+    <prefix>/cmd    {"cmd":"ping","id":n} sent from here      <prefix>/reply  the board's answer (round-trip time)
+  Settings (broker WebSocket URL, topic prefix) are kept in this browser only; they can also come in the address
+  after '#':  des_4g_view.html#b=wss://broker.example:8084/mqtt&p=des/your-prefix
+  Open it from a file, or put it on any static web host. Counts are "parts decided since des_4g connected".
+-->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>分拣线 4G 远程看板</title>
+<style>
+:root {
+  color-scheme: light;
+  --plane: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,.10);
+  --accent: #2a78d6; --track: #cde2fb;
+  --good: #0ca30c; --warn: #fab219; --serious: #ec835a; --crit: #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --plane: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,.10);
+    --accent: #3987e5; --track: #0d366b;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--plane); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+       padding: 0 16px calc(24px + env(safe-area-inset-bottom)); -webkit-text-size-adjust: 100%; }
+header { display: flex; align-items: center; gap: 12px; padding: 14px 0 10px; max-width: 980px; margin: 0 auto; }
+header h1 { font-size: 18px; font-weight: 650; margin: 0; flex: 1; min-width: 0; }
+header h1 small { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }
+main { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); max-width: 980px; margin: 0 auto; }
+@media (min-width: 760px) { main { grid-template-columns: repeat(2, minmax(0, 1fr)); } .wide { grid-column: 1 / -1; } }
+.card { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 14px 16px; min-width: 0; }
+.card h2 { font-size: 13px; font-weight: 600; color: var(--ink2); margin: 0 0 10px; display: flex; gap: 8px; align-items: baseline; }
+.card h2 span { font-weight: 400; color: var(--muted); margin-left: auto; text-align: right; }
+.chip { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.chip i { font-style: normal; width: 18px; height: 18px; border-radius: 9px; display: inline-grid; place-items: center; font-size: 11px;
+          font-weight: 700; color: #fff; background: var(--muted); flex: none; }
+.chip.good i { background: var(--good); } .chip.warn i { background: var(--warn); color: #0b0b0b; }
+.chip.crit i { background: var(--crit); } .chip.info i { background: var(--accent); }
+.pill { border: 1px solid var(--ring); border-radius: 999px; padding: 4px 10px 4px 6px; font-size: 13px; background: var(--surface); }
+#banner { display: none; max-width: 980px; margin: 0 auto 12px; border-radius: 12px; padding: 10px 14px; border: 1px solid var(--ring);
+          background: var(--surface); border-left: 4px solid var(--muted); }
+#banner.crit { border-left-color: var(--crit); } #banner.warn { border-left-color: var(--warn); } #banner.info { border-left-color: var(--accent); }
+#banner b { display: block; } #banner span { color: var(--ink2); font-size: 13px; }
+.rows { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 14px; align-items: baseline; margin: 0; }
+.rows dt { color: var(--ink2); } .rows dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+.rows dd small, .sub { color: var(--muted); font-size: 12px; }
+.hero { font-size: 52px; line-height: 1.05; font-weight: 650; letter-spacing: -0.01em; }
+.herorow { display: flex; align-items: flex-end; gap: 12px; }
+.herorow > div:first-child { flex: 1; min-width: 0; }
+#spark { width: 150px; height: 44px; flex: none; position: relative; touch-action: none; }
+#spark svg { width: 100%; height: 100%; display: block; overflow: visible; }
+#tip { position: absolute; bottom: 100%; transform: translate(-50%, -4px); background: var(--ink); color: var(--surface); font-size: 12px;
+       padding: 2px 6px; border-radius: 6px; white-space: nowrap; display: none; pointer-events: none; }
+.split { display: flex; gap: 2px; height: 8px; border-radius: 4px; overflow: hidden; margin: 14px 0 10px; background: var(--grid); }
+.split div { min-width: 0; }
+.legend { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.legend div b { display: block; font-size: 22px; font-weight: 600; line-height: 1.2; }
+.legend .k { display: flex; align-items: center; gap: 6px; color: var(--ink2); font-size: 13px; }
+.legend .k i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.meter { height: 8px; border-radius: 4px; background: var(--track); overflow: hidden; margin: 6px 0 2px; }
+.meter div { height: 100%; border-radius: 4px; background: var(--accent); width: 0; }
+ul.list { list-style: none; margin: 0; padding: 0; }
+ul.list li { padding: 10px 0; border-top: 1px solid var(--grid); }
+ul.list li:first-child { border-top: 0; padding-top: 0; }
+.wo-head { display: flex; gap: 8px; align-items: baseline; }
+.wo-head b { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.wo-head span { color: var(--ink2); font-size: 13px; white-space: nowrap; }
+.ev { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; font-size: 14px; }
+.ev time { color: var(--muted); font-variant-numeric: tabular-nums; }
+.empty { color: var(--muted); font-size: 13px; }
+button { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--axis); border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+button:disabled { color: var(--muted); cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pingrow { display: flex; gap: 12px; align-items: center; margin-top: 12px; }
+.pingrow div { flex: 1; min-width: 0; }
+label { display: block; font-size: 13px; color: var(--ink2); margin: 10px 0 4px; }
+input { font: inherit; width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--axis); background: var(--plane); color: var(--ink); }
+details summary { cursor: pointer; color: var(--ink2); font-size: 13px; }
+.tag { font-size: 12px; border: 1px solid var(--axis); border-radius: 6px; padding: 1px 6px; color: var(--ink2); margin-left: 6px; font-weight: 400; }
+</style>
+</head>
+<body>
+<header>
+  <h1>分拣线远程看板<small>经 4G 模组上报 · MQTT</small></h1>
+  <span class="pill chip" id="conn"><i>…</i><span>未连接</span></span>
+</header>
+<div id="banner"><b></b><span></span></div>
+<main>
+  <section class="card">
+    <h2>线体<span id="age">还没有数据</span></h2>
+    <dl class="rows">
+      <dt>板子</dt><dd><span class="chip" id="s-board"><i>?</i><span>未知</span></span></dd>
+      <dt>主程序</dt><dd><span class="chip" id="s-app"><i>?</i><span>未知</span></span></dd>
+      <dt>有线网</dt><dd><span class="chip" id="s-eth"><i>?</i><span>未知</span></span></dd>
+      <dt>运维工单</dt><dd><span class="chip" id="s-wo"><i>?</i><span>未知</span></span><br><small id="s-wo-title"></small></dd>
+      <dt>上报程序已运行</dt><dd id="s-up">—</dd>
+    </dl>
+  </section>
+
+  <section class="card">
+    <h2>产量<span>4G 程序连上后判定的件数</span></h2>
+    <div class="herorow">
+      <div><div class="hero" id="k-total">—</div><div class="sub">件<span id="k-sim"></span></div></div>
+      <div id="spark" aria-label="每分钟件数"><svg viewBox="0 0 150 44" preserveAspectRatio="none"></svg><div id="tip"></div></div>
+    </div>
+    <div class="split" id="split" role="img" aria-label="良品、复检、不良占比"></div>
+    <div class="legend">
+      <div><span class="k"><i style="background:var(--good)"></i>良品</span><b id="k-ok">—</b><span class="sub" id="p-ok"></span></div>
+      <div><span class="k"><i style="background:var(--warn)"></i>复检</span><b id="k-re">—</b><span class="sub" id="p-re"></span></div>
+      <div><span class="k"><i style="background:var(--crit)"></i>不良</span><b id="k-ng">—</b><span class="sub" id="p-ng"></span></div>
+    </div>
+    <dl class="rows" style="margin-top:14px">
+      <dt>最近一件</dt><dd id="k-last">—</dd>
+    </dl>
+  </section>
+
+  <section class="card">
+    <h2>4G 链路<span id="n-oper"></span></h2>
+    <dl class="rows">
+      <dt>信号</dt><dd><span id="n-sig">—</span><div class="meter" role="img" aria-label="信号强度"><div id="n-bar"></div></div><small id="n-dbm"></small></dd>
+      <dt>上报</dt><dd id="n-tx">—</dd>
+    </dl>
+    <div class="pingrow">
+      <button id="ping" disabled>测往返时间</button>
+      <div><span id="ping-out" class="sub">从本页发一条命令到板子再回来</span></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>工单<span id="wo-sum"></span></h2>
+    <ul class="list" id="wo-list"><li class="empty">打开本页之后还没有工单变化。当前活动工单数看「线体」一栏。</li></ul>
+  </section>
+
+  <section class="card wide">
+    <h2>事件</h2>
+    <ul class="list" id="ev-list"><li class="empty">还没有事件。</li></ul>
+  </section>
+
+  <section class="card wide">
+    <details id="setup">
+      <summary>连接设置</summary>
+      <label for="f-b">MQTT 服务器的 WebSocket 地址</label>
+      <input id="f-b" inputmode="url" autocomplete="off" spellcheck="false" placeholder="wss://broker.emqx.io:8084/mqtt">
+      <label for="f-p">主题前缀（与板上 des_4g.json 的 topic_prefix 相同）</label>
+      <input id="f-p" autocomplete="off" spellcheck="false" placeholder="des/xxxxxxxx">
+      <div style="margin-top:12px"><button class="primary" id="f-save">保存并连接</button></div>
+      <p class="sub">设置只存在这个浏览器里。数据经 MQTT 服务器中转，知道前缀的人都能看到。</p>
+    </details>
+  </section>
+</main>
+
+<script>
+'use strict';
+// ---------------------------------------------------------------- MQTT 3.1.1 over WebSocket (QoS 0 only)
+const enc = new TextEncoder(), dec = new TextDecoder('utf-8');
+function mqStr(s) { const b = enc.encode(s); return [b.length >> 8, b.length & 255, ...b]; }
+function mqPacket(head, body) {          // fixed header: type/flags byte + remaining length (7 bits per byte)
+  const len = []; let n = body.length;
+  do { let d = n % 128; n = Math.floor(n / 128); if (n) d |= 128; len.push(d); } while (n);
+  return new Uint8Array([head, ...len, ...body]);
+}
+const mqConnect = (id, keep) => mqPacket(0x10, [...mqStr('MQTT'), 4, 0x02, keep >> 8, keep & 255, ...mqStr(id)]);
+const mqSubscribe = (pid, topic) => mqPacket(0x82, [pid >> 8, pid & 255, ...mqStr(topic), 0]);
+const mqPublish = (topic, text) => mqPacket(0x30, [...mqStr(topic), ...enc.encode(text)]);
+// one packet out of buf, or null while incomplete: {type, flags, body, size}
+function mqParse(buf) {
+  if (buf.length < 2) return null;
+  let len = 0, mul = 1, i = 1;
+  for (;; i++) {
+    if (i >= buf.length) return null;
+    if (i > 4) throw new Error('bad length');
+    len += (buf[i] & 127) * mul; mul *= 128;
+    if (!(buf[i] & 128)) break;
+  }
+  const start = i + 1;
+  if (buf.length < start + len) return null;
+  return { type: buf[0] >> 4, flags: buf[0] & 15, body: buf.subarray(start, start + len), size: start + len };
+}
+
+class MqttWs {
+  constructor(url, topic, onMessage, onLink) {
+    this.url = url; this.topic = topic; this.onMessage = onMessage; this.onLink = onLink;
+    this.keep = 30; this.retry = 2; this.closed = false; this.up = false;
+    this.open();
+  }
+  open() {
+    if (this.closed) return;
+    this.onLink('connecting');
+    this.buf = new Uint8Array(0);
+    let ws;
+    try { ws = new WebSocket(this.url, 'mqtt'); } catch (e) { this.onLink('bad', '地址无效'); return; }
+    this.ws = ws; ws.binaryType = 'arraybuffer';
+    ws.onopen = () => ws.send(mqConnect('des-view-' + Math.random().toString(36).slice(2, 10), this.keep));
+    ws.onmessage = e => { try { this.feed(new Uint8Array(e.data)); } catch (err) { ws.close(); } };
+    ws.onclose = () => {
+      clearInterval(this.timer); this.up = false;
+      if (this.closed) return;
+      this.onLink('closed', this.retry);
+      this.again = setTimeout(() => this.open(), this.retry * 1000);
+      this.retry = Math.min(this.retry * 2, 30);
+    };
+  }
+  feed(chunk) {
+    const b = new Uint8Array(this.buf.length + chunk.length); b.set(this.buf); b.set(chunk, this.buf.length); this.buf = b;
+    for (let p; (p = mqParse(this.buf)); this.buf = this.buf.subarray(p.size)) this.handle(p);
+  }
+  handle(p) {
+    if (p.type === 2) {                    // CONNACK
+      if (p.body[1] !== 0) { this.onLink('refused', p.body[1]); this.ws.close(); return; }
+      this.up = true; this.retry = 2; this.pong = Date.now();
+      this.ws.send(mqSubscribe(1, this.topic));
+      this.timer = setInterval(() => {
+        if (Date.now() - this.pong > this.keep * 2000) { this.ws.close(); return; }   // the broker went quiet
+        this.ws.send(new Uint8Array([0xC0, 0]));
+      }, this.keep * 500);
+      this.onLink('open');
+    } else if (p.type === 3) {             // PUBLISH
+      const tl = p.body[0] << 8 | p.body[1], qos = p.flags >> 1 & 3;
+      const topic = dec.decode(p.body.subarray(2, 2 + tl));
+      let off = 2 + tl;
+      if (qos) { this.ws.send(new Uint8Array([0x40, 2, p.body[off], p.body[off + 1]])); off += 2; }
+      this.onMessage(topic, dec.decode(p.body.subarray(off)), !!(p.flags & 1));
+    } else if (p.type === 13) this.pong = Date.now();
+  }
+  publish(topic, text) { if (this.up) this.ws.send(mqPublish(topic, text)); return this.up; }
+  close() { this.closed = true; clearTimeout(this.again); clearInterval(this.timer); try { this.ws.close(); } catch (e) {} }
+}
+
+// ---------------------------------------------------------------- view
+const $ = id => document.getElementById(id);
+const LABELS = { gear_ok: '良品', gear_short_l: '缺料·轻', gear_short_h: '缺料·重', gear_dirty_l: '脏污·轻', gear_dirty_h: '脏污·重',
+                 gear_flash_l: '飞边·轻', gear_flash_h: '飞边·重', unclassified: '未分类' };
+const DISP = { pick: '抓取', flap: '挡板', recheck: '复检' };
+const DEST = { gear_box: '齿轮盒', scrap: '报废', rework: '返修', recheck: '复检', tail: '带尾' };
+const LEVEL = { 1: ['info', 'i', '提示'], 2: ['warn', '!', '警告'], 3: ['crit', '×', '故障'] };
+const nf = new Intl.NumberFormat('zh-CN');
+const hhmmss = t => new Date(t).toLocaleTimeString('zh-CN', { hour12: false });
+function chip(el, kind, glyph, text) { el.className = (el.classList.contains('pill') ? 'pill ' : '') + 'chip ' + kind; el.children[0].textContent = glyph; el.children[1].textContent = text; }
+function span(n) { n = Math.max(0, Math.round(n)); const h = Math.floor(n / 3600), m = Math.floor(n % 3600 / 60), s = n % 60;
+  return h ? h + ' 小时 ' + m + ' 分' : m ? m + ' 分 ' + s + ' 秒' : s + ' 秒'; }
+
+let cfg = { b: '', p: '' }, mq = null, state = null, stateAt = 0, live = false, online = null;
+let lastTotal = null, lastSession = null;
+const minutes = [];                        // [{m: minute index, n: parts}] newest last, at most 12
+const orders = new Map(), events = [], pings = new Map(), rtts = [];
+let pingId = Math.floor(Math.random() * 1e6);
+
+function event(text) {
+  events.unshift({ t: Date.now(), text });
+  if (events.length > 60) events.pop();
+  const ul = $('ev-list'); ul.textContent = '';
+  for (const e of events) {
+    const li = document.createElement('li'); li.className = 'ev';
+    const t = document.createElement('time'); t.textContent = hhmmss(e.t);
+    const s = document.createElement('span'); s.textContent = e.text;
+    li.append(t, s); ul.append(li);
+  }
+}
+
+function onState(text, retained) {
+  if (text === 'offline') {
+    if (online !== false) event(retained && online === null ? '板子处于离线状态（服务器上保留的最后一条消息）' : '板子离线：4G 模组掉线或上报程序已退出');
+    online = false; render(); return;
+  }
+  let j; try { j = JSON.parse(text); } catch (e) { return; }
+  if (!j || typeof j !== 'object') return;
+  const prev = state;
+  if (online !== true && !retained) event('板子上线');
+  if (!retained) { online = true; live = true; }
+  else if (online === null) online = true;   // a retained state, not "offline": the board was up when it was sent
+  if (prev && !retained) {
+    if (prev.eth === 1 && j.eth === 0) event('网线断开：现在只有 4G 这一条链路在上报');
+    if (prev.eth === 0 && j.eth === 1) event('网线恢复');
+    if (prev.app && !j.app) event('主程序没有响应');
+    if (!prev.app && j.app) event('主程序恢复');
+  }
+  if (!retained) {                           // parts per minute, from the growth of the total
+    if (j.session !== lastSession || lastTotal === null || j.total < lastTotal) { lastSession = j.session; lastTotal = j.total; }
+    const m = Math.floor(Date.now() / 60000);
+    if (!minutes.length || minutes[minutes.length - 1].m !== m) { minutes.push({ m, n: 0 }); if (minutes.length > 12) minutes.shift(); }
+    minutes[minutes.length - 1].n += j.total - lastTotal;
+    lastTotal = j.total;
+  }
+  state = j; stateAt = Date.now();
+  render();
+}
+
+function onOrder(text) {
+  let j; try { j = JSON.parse(text); } catch (e) { return; }
+  if (!j || typeof j.id !== 'number') return;
+  const had = orders.get(j.id);
+  orders.set(j.id, Object.assign({ at: Date.now() }, j));
+  const lv = LEVEL[j.level] || LEVEL[1];
+  if (!had) event('新工单 #' + j.id + '（' + lv[2] + '）：' + (j.title || ''));
+  else if (had.status !== j.status) event('工单 #' + j.id + ' ' + (j.status_cn || j.status || '有变化'));
+  renderOrders();
+}
+
+function onReply(text) {
+  let j; try { j = JSON.parse(text); } catch (e) { return; }
+  const t0 = pings.get(j && j.id);
+  if (!t0) return;
+  pings.delete(j.id);
+  const ms = Math.round(performance.now() - t0);
+  rtts.push(ms); if (rtts.length > 20) rtts.shift();
+  const min = Math.min(...rtts), avg = Math.round(rtts.reduce((a, b) => a + b, 0) / rtts.length);
+  $('ping-out').textContent = '往返 ' + ms + ' ms（共 ' + rtts.length + ' 次，最快 ' + min + '，平均 ' + avg + '）';
+  $('ping').disabled = false;
+}
+
+function renderOrders() {
+  const ul = $('wo-list'); ul.textContent = '';
+  const list = [...orders.values()].sort((a, b) => b.at - a.at).slice(0, 20);
+  for (const o of list) {
+    const lv = LEVEL[o.level] || LEVEL[1];
+    const li = document.createElement('li');
+    const head = document.createElement('div'); head.className = 'wo-head';
+    const c = document.createElement('span'); c.className = 'chip ' + lv[0];
+    const ci = document.createElement('i'); ci.textContent = lv[1]; const ct = document.createElement('span'); ct.textContent = lv[2]; c.append(ci, ct);
+    const b = document.createElement('b'); b.textContent = '#' + o.id + ' ' + (o.title || '');
+    const st = document.createElement('span'); st.textContent = o.status_cn || o.status || '';
+    head.append(c, b, st);
+    const d = document.createElement('div'); d.className = 'sub';
+    d.textContent = [o.detail, o.count > 1 ? '已发生 ' + o.count + ' 次' : '', hhmmss(o.at)].filter(Boolean).join(' · ');
+    li.append(head, d);
+    if (o.advice) { const a = document.createElement('div'); a.className = 'sub'; a.textContent = '建议：' + o.advice; li.append(a); }
+    ul.append(li);
+  }
+}
+
+function renderSpark() {
+  const svg = $('spark').firstElementChild;
+  const pts = minutes.slice(-12);
+  if (pts.length < 2) { svg.innerHTML = ''; $('spark').dataset.n = 0; return; }
+  const max = Math.max(1, ...pts.map(p => p.n)), w = 150, h = 44, pad = 5;
+  const x = i => pad + i * (w - 2 * pad) / (pts.length - 1), y = n => h - pad - n / max * (h - 2 * pad);
+  const d = pts.map((p, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(p.n).toFixed(1)).join(' ');
+  const lx = x(pts.length - 1), ly = y(pts[pts.length - 1].n);
+  svg.innerHTML = '<path d="' + d + '" fill="none" stroke="var(--axis)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>' +
+                  '<circle cx="' + lx + '" cy="' + ly + '" r="4" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>';
+  $('spark').dataset.n = pts.length;
+}
+function sparkTip(ev) {
+  const pts = minutes.slice(-12), box = $('spark').getBoundingClientRect(), tip = $('tip');
+  if (pts.length < 2) return;
+  const i = Math.max(0, Math.min(pts.length - 1, Math.round((ev.clientX - box.left - 5) / (box.width - 10) * (pts.length - 1))));
+  const t = new Date(pts[i].m * 60000);
+  tip.textContent = String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0') + '　' + pts[i].n + ' 件/分' + (i === pts.length - 1 ? '（本分钟）' : '');
+  tip.style.left = (5 + i * (box.width - 10) / (pts.length - 1)) + 'px';
+  tip.style.display = 'block';
+}
+
+function render() {
+  const s = state, banner = $('banner');
+  const age = stateAt ? Math.round((Date.now() - stateAt) / 1000) : null;
+  $('age').textContent = age === null ? '还没有数据' : !live ? '服务器保留的上一条状态' : age < 2 ? '刚刚更新' : age + ' 秒前更新';
+  const stale = live && online && age > 150;
+  if (online === false) chip($('s-board'), 'crit', '×', '离线');
+  else if (online === null) chip($('s-board'), '', '?', '未知');
+  else if (!live) chip($('s-board'), '', '?', '等待新数据');
+  else if (stale) chip($('s-board'), 'warn', '!', '超过 2 分钟没有数据');
+  else chip($('s-board'), 'good', '✓', '在线');
+  const show = s && online !== false;
+  if (show) {
+    chip($('s-app'), s.app ? 'good' : 'crit', s.app ? '✓' : '×', s.app ? '运行中' : '没有响应');
+    if (s.eth === 1) chip($('s-eth'), 'good', '✓', '已连接');
+    else if (s.eth === 0) chip($('s-eth'), 'warn', '!', '已断开，由 4G 上报');
+    else chip($('s-eth'), '', '?', '未知');
+    const w = s.wo || {};
+    if (!w.active) chip($('s-wo'), 'good', '✓', w.unacked ? '无活动工单，' + w.unacked + ' 张待确认' : '无');
+    else { const lv = LEVEL[w.level] || LEVEL[1]; chip($('s-wo'), lv[0], lv[1], w.active + ' 张活动（最高：' + lv[2] + '）' + (w.unacked ? '，' + w.unacked + ' 张待确认' : '')); }
+    $('s-wo-title').textContent = w.active && w.title ? '#' + w.id + ' ' + w.title : '';
+    $('s-up').textContent = span(s.up_s + (live ? age : 0));
+  } else {
+    for (const id of ['s-app', 's-eth', 's-wo']) chip($(id), '', '?', '未知');
+    $('s-wo-title').textContent = ''; $('s-up').textContent = '—';
+  }
+  // banner: the one thing to look at first
+  let b = null;
+  if (!cfg.b || !cfg.p) b = ['info', '还没有设置', '在页面最下面的「连接设置」里填服务器地址和主题前缀。'];
+  else if (online === false) b = ['crit', '板子离线', '4G 模组掉线，或板上的上报程序已退出。' + (s ? '产量和链路两栏是离线前最后收到的数据。' : '本页还没有收到过数据。')];
+  else if (stale) b = ['warn', '数据停止更新', '已经 ' + age + ' 秒没有收到状态，板子可能断电或 4G 信号中断。'];
+  else if (show && !s.app) b = ['crit', '主程序没有响应', '4G 上报还在，但线体主程序没有数据出来。'];
+  else if (show && s.wo && s.wo.active && s.wo.level >= 2) b = [s.wo.level >= 3 ? 'crit' : 'warn', (s.wo.level >= 3 ? '故障' : '警告') + '工单 #' + s.wo.id + '：' + (s.wo.title || ''), '共 ' + s.wo.active + ' 张活动工单' + (s.wo.unacked ? '，' + s.wo.unacked + ' 张待确认' : '')];
+  else if (show && s.eth === 0) b = ['warn', '网线已断开', '有线链路中断，状态和工单正经 4G 上报。'];
+  banner.style.display = b ? 'block' : 'none';
+  if (b) { banner.className = b[0]; banner.children[0].textContent = b[1]; banner.children[1].textContent = b[2]; }
+  // production
+  if (s) {
+    const tot = s.total || 0, pct = n => tot ? (n / tot * 100).toFixed(1) + '%' : '';
+    $('k-total').textContent = nf.format(tot);
+    $('k-sim').innerHTML = s.sim ? '<span class="tag">模拟数据</span>' : '';
+    $('k-ok').textContent = nf.format(s.ok || 0); $('k-re').textContent = nf.format(s.recheck || 0); $('k-ng').textContent = nf.format(s.ng || 0);
+    $('p-ok').textContent = pct(s.ok || 0); $('p-re').textContent = pct(s.recheck || 0); $('p-ng').textContent = pct(s.ng || 0);
+    const split = $('split'); split.textContent = '';
+    for (const [n, c] of [[s.ok, '--good'], [s.recheck, '--warn'], [s.ng, '--crit']]) {
+      if (!n) continue;
+      const d = document.createElement('div'); d.style.flex = n + ' 0 0'; d.style.background = 'var(' + c + ')'; split.append(d);
+    }
+    split.setAttribute('aria-label', '良品 ' + (s.ok || 0) + ' 件，复检 ' + (s.recheck || 0) + ' 件，不良 ' + (s.ng || 0) + ' 件');
+    const l = s.last;
+    $('k-last').textContent = l ? (LABELS[l.label] || l.label || '?') + ' → ' + (DISP[l.disp] || l.disp || '?') + (l.dest ? '（' + (DEST[l.dest] || l.dest) + '）' : '') +
+        ' · 置信度 ' + Math.round((l.conf || 0) * 100) + '%' + (l.size_mm ? ' · 外径 ' + l.size_mm.toFixed(2) + ' mm' : '') : '还没有';
+    // 4G link
+    const n = s.net || {}, known = n.csq >= 0 && n.csq <= 31;
+    $('n-oper').textContent = [n.oper, n.act].filter(Boolean).join(' · ');
+    $('n-sig').textContent = known ? (n.csq >= 20 ? '强' : n.csq >= 10 ? '中' : '弱') + '（' + n.csq + ' / 31）' : '未知';
+    $('n-bar').style.width = known ? Math.max(3, n.csq / 31 * 100) + '%' : '0';
+    $('n-bar').style.background = !known || n.csq >= 20 ? 'var(--accent)' : n.csq >= 10 ? 'var(--warn)' : 'var(--crit)';
+    $('n-dbm').textContent = known ? n.dbm + ' dBm' : '';
+    const t = s.tx || {};
+    $('n-tx').innerHTML = '';
+    $('n-tx').append('成功 ' + nf.format(t.ok || 0) + ' 条' + (t.fail ? '，失败 ' + nf.format(t.fail) + ' 条' : '') + (t.conn > 1 ? '，重连过 ' + (t.conn - 1) + ' 次' : ''));
+    $('wo-sum').textContent = s.wo ? '活动 ' + (s.wo.active || 0) + ' · 待确认 ' + (s.wo.unacked || 0) : '';
+  }
+  renderSpark();
+  $('ping').disabled = !(mq && mq.up && online && live) || pings.size > 0;
+}
+
+function onLink(what, arg) {
+  const el = $('conn');
+  if (what === 'open') { chip(el, 'good', '✓', '已连服务器'); event('本页已连上 MQTT 服务器'); }
+  else if (what === 'connecting') chip(el, '', '…', '连接中');
+  else if (what === 'closed') { chip(el, 'crit', '×', '断开，' + arg + ' 秒后重连'); if (live) event('本页与 MQTT 服务器的连接断开'); }
+  else if (what === 'refused') chip(el, 'crit', '×', '服务器拒绝（' + arg + '）');
+  else chip(el, 'crit', '×', arg || '无法连接');
+  render();
+}
+function onMessage(topic, text, retained) {
+  const sub = topic.slice(cfg.p.length + 1);
+  if (sub === 'state') onState(text, retained);
+  else if (sub === 'wo') onOrder(text);
+  else if (sub === 'reply') onReply(text);
+}
+
+function start() {
+  if (mq) mq.close();
+  mq = null; state = null; stateAt = 0; live = false; online = null; lastTotal = null; orders.clear(); minutes.length = 0;
+  renderOrders();
+  if (cfg.b && cfg.p) mq = new MqttWs(cfg.b, cfg.p + '/#', onMessage, onLink);
+  else { chip($('conn'), '', '?', '未设置'); $('setup').open = true; }
+  render();
+}
+function loadCfg() {
+  try { Object.assign(cfg, JSON.parse(localStorage.getItem('des_4g_view') || '{}')); } catch (e) {}
+  const h = new URLSearchParams(location.hash.slice(1));     // #b=...&p=...  (never sent to the web server)
+  if (h.get('b')) cfg.b = h.get('b');
+  if (h.get('p')) cfg.p = h.get('p');
+  cfg.p = (cfg.p || '').replace(/\/+$/, '');
+  $('f-b').value = cfg.b || 'wss://broker.emqx.io:8084/mqtt'; $('f-p').value = cfg.p;
+  if (!cfg.b && cfg.p) cfg.b = $('f-b').value;
+}
+$('f-save').onclick = () => {
+  cfg.b = $('f-b').value.trim(); cfg.p = $('f-p').value.trim().replace(/\/+$/, '');
+  try { localStorage.setItem('des_4g_view', JSON.stringify(cfg)); } catch (e) {}
+  $('setup').open = !(cfg.b && cfg.p);
+  start();
+};
+$('ping').onclick = () => {
+  const id = ++pingId;
+  if (!mq || !mq.publish(cfg.p + '/cmd', JSON.stringify({ cmd: 'ping', id }))) return;
+  pings.set(id, performance.now());
+  $('ping').disabled = true; $('ping-out').textContent = '已发出，等板子回答…';
+  setTimeout(() => { if (pings.delete(id)) { $('ping-out').textContent = '10 秒内没有回答'; render(); } }, 10000);
+};
+$('spark').addEventListener('pointermove', sparkTip);
+$('spark').addEventListener('pointerdown', sparkTip);
+$('spark').addEventListener('pointerleave', () => { $('tip').style.display = 'none'; });
+setInterval(render, 1000);
+loadCfg();
+start();
+</script>
+</body>
+</html>
