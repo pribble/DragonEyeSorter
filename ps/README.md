@@ -10,8 +10,9 @@
 |---|---|---|---|---|---|
 | ① 产品运行时 | **`des_app`**（只有 `run` / `live`） | 开机自启、无人值守；演示 | 服务重启 / 停线 | `build/des_app` | 进部署清单 [manifest.tsv](../scripts/deploy/manifest.tsv) → `/root/des/` |
 | ② 人工运维 / 现场工具 | **`des_tool`**（14 个模式，见下表） | 人看输出、有交互；标定 / 排障 / 采图 | 人读打印 | `build/des_tool` | **不进清单**，手动 `scp` 到 `/root/bin/`（启动器 `des_tool.sh` → `/root/des/`） |
-| ③ 自动断言测试 | **`test_*`**（9 个，名单见代码地图） | 回归 / 硬件在环 | 退出码 = 失败项数 | `build/test_*` | 手动 `scp` 到 `/root/bin/` |
+| ③ 自动断言测试 | **`test_*`**（12 个，名单见代码地图） | 回归 / 硬件在环 | 退出码 = 失败项数 | `build/test_*` | 手动 `scp` 到 `/root/bin/` |
 | ④ 底层调试与协议模拟 | **`desreg`** / **`canplc`** | 裸读写寄存器 / 总线帧；扮 PLC | 看打印值 | `build/desreg` / `build/canplc` | 手动 `scp` 到 `/root/bin/` |
+| ⑤ 4G 上报（⚠ 未上板） | **`des_4g`**（`probe` / `at` / `feed` / `run`） | 与 `des_app` 并行的独立进程：旁听上传口，经板载 4G 模组把状态与工单发到 MQTT 服务器 | 看日志；断线自动重连 | `build/des_4g` | **不进清单**，手动 `scp`；说明见 [软件与UI](../docs/软件与UI.md)「4G 远程监控与第二条链路」 |
 
 `des_app` / `des_tool` 共用同一批对象，区别只在**入口与命令集**（产品没有会动机械臂 / 皮带的命令）。**二者运行期间 `desreg` 只用 `r` 只读**（总线只能有一个主人），写操作统一由它们执行。
 
@@ -37,9 +38,10 @@ ps/
 │                   #   measure_tool + calib（仅 des_tool）
 ├── src/ui/         # 界面：hmi / ui_input / ui_text（FreeType 中文）/ display（HDMI + 3/4 缩放）
 ├── src/vision/     # 厂家 face_detection demo 的 4 个改造件（见下）
-├── tools/          # desreg、canplc
+├── src/uplink/     # 4G 上报（只链进 des_4g，不进 des_app）：usbfs_port / at_port / at_chan / quectel / board_link / uplink
+├── tools/          # desreg、canplc、des_4g（入口；逻辑在 src/uplink/）
 ├── tests/          # test_scheduler / test_modbus / test_rs485 / test_calib / test_measure / test_belt_hil /
-│                   #   test_can / test_npu / test_servo_gap
+│                   #   test_can / test_npu / test_servo_gap / test_ops / test_belt_pid / test_uplink
 ├── kernel/         # mipicam 驱动源码 + 唯一一份 mipicam_module.h
 └── vendor/         # json.hpp（nlohmann 单头，编入）
 ```
@@ -132,7 +134,7 @@ ps/
 
 构建步骤、`.env` 与 SDK 依赖见 [开发环境与构建](../docs/开发环境与构建.md)「PS：构建」与 [scripts/README](../scripts/README.md)。要点：
 
-- **`make -C ps all` 出 11 个产物**：`des_app`、`des_tool`、`desreg`、`canplc` + 7 个 `test_*`。只有 `des_app` 进部署清单，其余手动 `scp`；`test_npu` / `test_servo_gap` 要显式点名。
+- **`make -C ps all` 出 14 个产物**：`des_app`、`des_tool`、`des_4g`、`desreg`、`canplc` + 9 个 `test_*`。只有 `des_app` 进部署清单，其余手动 `scp`；`test_npu` / `test_servo_gap` / `test_belt_pid` 要显式点名。
 - 两个入口共享源码各编一次成 `build/obj/*.o`（`-MMD -MP`）；源文件由 Makefile `wildcard` 自动收集（增删 `.cpp` 免改 Makefile），只有 `OPS_SRC`（`calib.cpp` / `measure_tool.cpp` / `tool_util.cpp`）显式列给 `des_tool`，不链进产品；第二遍 `make` 应是 no-op。
 - `des_app` / `des_tool` 需要厂家 NPU demo 的 `libs/`（OpenCV 4.7 + ArmNN），Makefile 变量 `SDK` 指向，不入库；Windows 解压丢 `.so` 软链接先跑 `sh scripts/env/sdk_fix_sonames.sh <SDK> <readelf>`。
 - 运行时库路径已写进 rpath（`/opt/armnn_lib/lib`、`/opt/ffmpeg_opencv4.7.0_aarch64/lib`），板上不用 `LD_LIBRARY_PATH`；`/dev/mipicam` 独占，三个程序同时只能跑一个。

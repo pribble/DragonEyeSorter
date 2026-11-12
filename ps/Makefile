@@ -14,7 +14,7 @@
 # 本文件不写主机路径：FD_ROOT / ARMNN_LIB / OPENCV_LIB / FREETYPE_INC / BOARD_LIBS 一律来自 .env（本机、不入库）或命令行。
 #
 # 目录：src/ 我们自己的源码（产品运行时与运维工具共用，按角色分 app / hw / sched / measure / ui / vision）、
-#       tools/ 底层命令行（desreg / canplc）、tests/ 自动断言测试、kernel/ 驱动、vendor/ 非我们写的。
+#       tools/ 底层命令行（desreg / canplc）与 4G 上报程序 des_4g（源码在 src/uplink/）、tests/ 自动断言测试、kernel/ 驱动、vendor/ 非我们写的。
 #       两个入口：src/app/main.cpp -> des_app（产品运行时 run / live），
 #                 src/app/tool_main.cpp -> des_tool（人工运维 14 个模式）。
 #       上板脚本与配置不在这里：唯一源是 ../scripts/deploy/out/（与部署清单同一份，见那里的 README）。
@@ -27,6 +27,7 @@
 #
 # Targets: desreg (C, no deps), test_scheduler (C++, no deps), test_calib / test_measure / test_npu (C++, need SDK),
 #          test_belt_hil (board, PL v5+), test_can / canplc (SocketCAN), test_modbus (loopback TCP), des_app / des_tool (C++, need SDK), all, clean.
+#          des_4g / test_uplink (C++, no deps): the 4G uplink and its test against a scripted module.
 #          注意：test_npu / test_servo_gap 不在 all 里（要显式点名，见 ps/README.md）。
 # Deploy:  ../scripts/deploy/ 里是上板清单与部署器（对比 / 部署 / 暂存）：make -C ps all 结束会顺手刷一份
 #          ../scripts/deploy/out/（要上板的那一份：主程序与模型刷进去，脚本、des.env 与配置就地不动；
@@ -62,7 +63,7 @@ RPATH  := -Wl,-rpath,/opt/armnn_lib/lib:/opt/ffmpeg_opencv4.7.0_aarch64/lib
 
 # 头文件搜索路径（平铺 include）。kernel/ 只为了 src/vision/mipi_camera.cpp 拿到唯一一份 ioctl 头，
 # vendor/ 是 nlohmann json.hpp（app / measure / ui / vision 都用），tests 放共享断言宏。
-INC := -Isrc/app -Isrc/hw -Isrc/sched -Isrc/measure -Isrc/ui -Isrc/vision -Ikernel -Itests -Ivendor
+INC := -Isrc/app -Isrc/hw -Isrc/sched -Isrc/measure -Isrc/ui -Isrc/vision -Isrc/uplink -Ikernel -Itests -Ivendor
 
 # ---------------------------------------------------------------- sources (wildcard)
 ENTRY_APP := src/app/main.cpp
@@ -99,7 +100,7 @@ check-board:
 	@$(if $(wildcard $(FREETYPE_INC)),echo FREETYPE_INC ok,$(error FREETYPE_INC 未设置或目录不存在：$(FREETYPE_INC)。$(ENV_HINT)))
 	@$(if $(wildcard $(BOARD_LIBS)),echo BOARD_LIBS ok,$(error BOARD_LIBS 未设置或目录不存在：$(BOARD_LIBS)。$(ENV_HINT)))
 
-all: $(BUILD)/desreg $(BUILD)/test_scheduler $(BUILD)/test_modbus $(BUILD)/test_rs485 $(BUILD)/test_ops $(BUILD)/test_calib $(BUILD)/test_measure $(BUILD)/test_belt_hil $(BUILD)/test_can $(BUILD)/canplc $(BUILD)/des_app $(BUILD)/des_tool
+all: $(BUILD)/desreg $(BUILD)/test_scheduler $(BUILD)/test_modbus $(BUILD)/test_rs485 $(BUILD)/test_ops $(BUILD)/test_calib $(BUILD)/test_measure $(BUILD)/test_belt_hil $(BUILD)/test_can $(BUILD)/canplc $(BUILD)/des_4g $(BUILD)/test_uplink $(BUILD)/des_app $(BUILD)/des_tool
 	-@powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/deploy/deploy.ps1 -Stage
 
 $(BUILD):
@@ -163,6 +164,16 @@ $(BUILD)/test_belt_hil: tests/test_belt_hil.cpp src/app/belt_ctl.cpp src/app/bel
 # optional belt-speed PI (PS side, encoder feedback): pure logic, host or board
 $(BUILD)/test_belt_pid: tests/test_belt_pid.cpp src/sched/speed_pid.cpp src/sched/speed_pid.hpp $(wildcard tests/*.hpp) | $(BUILD)
 	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_belt_pid.cpp src/sched/speed_pid.cpp
+
+# 4G uplink (src/uplink): a program of its own next to des_app — AT commands to the M.2 LTE module through usbfs, the
+# module's own MQTT client; listens to des_app's feed only. No SDK. src/uplink is NOT part of APP_SRC (des_app does
+# not link it). test_uplink runs it against a scripted module (any Linux host or the board).
+UPLINK_SRC := $(wildcard src/uplink/*.cpp)
+$(BUILD)/des_4g: tools/des_4g.cpp $(UPLINK_SRC) $(wildcard src/uplink/*.hpp) | $(BUILD)
+	$(CXX) $(CXXFLAGS) $(INC) -o $@ tools/des_4g.cpp $(UPLINK_SRC) -lpthread
+
+$(BUILD)/test_uplink: tests/test_uplink.cpp $(UPLINK_SRC) $(wildcard src/uplink/*.hpp tests/*.hpp) | $(BUILD)
+	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_uplink.cpp $(UPLINK_SRC) -lpthread
 
 # check-sdk / check-board are order-only (after |): they run first but, being phony, must not force a relink
 # 产品运行时（run / live）与运维工具（14 个模式）共用同一批对象，只有入口不同；des_tool 额外链标定 / 测量报告对象。

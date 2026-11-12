@@ -1,0 +1,21 @@
+{
+  // des_4g 的配置示例：复制到板上 /root/des/des_4g.json 再改（支持 // 注释）。说明见 docs/软件与UI.md「4G 远程监控与第二条链路」。
+  "mqtt": {
+    "host": "broker.emqx.io",   // MQTT 服务器（这里是公共测试服务器；现场能否连通要实测）
+    "port": 1883,
+    "client_id": "",            // 留空 = "des-" + 模组 IMEI 后 6 位
+    "user": "",
+    "pass": "",
+    "keepalive_s": 60,
+    "apn": "",                  // 留空 = 用卡和网络给的默认接入点
+    "cid": 1
+  },
+  "topic_prefix": "des/CHANGE-ME-ab12cd34",   // 主题前缀：换成一串别人猜不到的字母数字；手机端订阅 <前缀>/#
+  "state_period_s": 10,         // 无变化时多久发一次状态
+  "state_min_s": 2,             // 有变化时最快多久发一次
+  "mode": "always",             // always = 一直发；backup = 网线通着时只每 idle_period_s 发一次，网线断了全速发
+  "idle_period_s": 60,
+  "eth_if": "eth0",             // 有线网口名（用来判断网线通断）
+  "board": { "host": "127.0.0.1", "feed_port": 9500 },   // des_app 的网口上传口（des_app.json 的 storage.feed_port）
+  "modem": { "vid": "2c7c", "usb_if": -1, "tty": "" }    // usb_if -1 = 自动找 AT 口；tty 非空 = 改用串口设备
+}
