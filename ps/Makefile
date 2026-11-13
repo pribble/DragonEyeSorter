@@ -172,8 +172,8 @@ UPLINK_SRC := $(wildcard src/uplink/*.cpp)
 $(BUILD)/des_4g: tools/des_4g.cpp $(UPLINK_SRC) $(wildcard src/uplink/*.hpp) | $(BUILD)
 	$(CXX) $(CXXFLAGS) $(INC) -o $@ tools/des_4g.cpp $(UPLINK_SRC) -lpthread
 
-$(BUILD)/test_uplink: tests/test_uplink.cpp $(UPLINK_SRC) $(wildcard src/uplink/*.hpp tests/*.hpp) | $(BUILD)
-	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_uplink.cpp $(UPLINK_SRC) -lpthread
+$(BUILD)/test_uplink: tests/test_uplink.cpp $(UPLINK_SRC) src/hw/modbus_tcp.cpp $(wildcard src/uplink/*.hpp src/hw/modbus_tcp.hpp tests/*.hpp) | $(BUILD)
+	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_uplink.cpp $(UPLINK_SRC) src/hw/modbus_tcp.cpp -lpthread
 
 # check-sdk / check-board are order-only (after |): they run first but, being phony, must not force a relink
 # 产品运行时（run / live）与运维工具（14 个模式）共用同一批对象，只有入口不同；des_tool 额外链标定 / 测量报告对象。

@@ -3,6 +3,8 @@
 MQTT 包的编解码、90 s 剧本，以及对着本机一个极简 MQTT 服务端完整跑一遍（连接带遗嘱、保留状态、回答 ping、退出发 offline）。
     python test_fake_board.py        退出码 = 失败项数
 """
+import hashlib
+import hmac
 import io
 import json
 import socket
@@ -74,6 +76,43 @@ def test_script():
     check(len(b2.state(1e7).encode()) < 1400, 'state fits one MQTT message of the module')
 
 
+def test_commands():
+    key = 'test-key-0123456789'
+    b = fb.Board(seed=3, key=key)
+    b.step(16.0, 2)                       # order 1 (warning) open
+    s = json.loads(b.state(16))
+    check(s['cmds'] == ['ack', 'pause', 'stop', 'resume'] and s['nonce'] == b.nonce and s['counts'] == 'app', 'commands and nonce announced')
+    check(s['line'] == dict(state=1, alarm=0, recipe=1, speed=60.0), 'line status while running: %r' % s['line'])
+    check('cmds' not in json.loads(fb.Board(seed=3).state(1)), 'no key: no commands announced')
+
+    def msg(cmd, arg, seq, k=key, nonce=None):
+        text = '%s|%d|%s|%d' % (nonce or b.nonce, seq, cmd, arg)
+        return dict(cmd=cmd, arg=arg, id=seq, seq=seq, sig=hmac.new(k.encode(), text.encode(), hashlib.sha256).hexdigest())
+    r, out = b.command(dict(cmd='ping', id=5))
+    check(r == dict(id=5, cmd='ping', ok=True) and not out, 'ping needs no signature')
+    r, out = b.command(msg('ack', 65535, 10, k='another-key-000'))
+    check(r['ok'] is False and r['err'] == 'bad signature' and b.orders[1]['status'] == 'open', 'wrong key refused')
+    r, out = b.command(msg('ack', 65535, 10, nonce='0' * 16))
+    check(r['ok'] is False and r['err'] == 'bad signature', 'a signature made for another run (other nonce) is refused')
+    r, out = b.command(msg('ack', 65535, 10))
+    check(r['ok'] is True and len(out) == 1 and json.loads(out[0])['status'] == 'acked' and b.orders[1]['acked_by'] == '4G', 'ack: open -> acked, change published')
+    r, out = b.command(msg('ack', 65535, 10))
+    check(r['ok'] is False and r['err'] == 'replayed', 'the same sequence number again is refused')
+    r, out = b.command(msg('start', 0, 11))
+    check(r['ok'] is False and r['err'] == 'command not enabled', 'start is not offered')
+    total = b.total
+    r, out = b.command(msg('pause', 0, 12))
+    b.step(17.0, 3)
+    s = json.loads(b.state(17))
+    check(r['ok'] is True and b.total == total and s['line']['state'] == 2 and s['line']['speed'] == 0.0, 'pause: no parts, state 2')
+    r, out = b.command(msg('resume', 0, 13))
+    b.step(18.0, 3)
+    check(r['ok'] is True and b.total == total + 3 and json.loads(b.state(18))['line']['state'] == 1, 'resume: parts again')
+    b.step(61.0, 1)                       # the scripted belt fault
+    check(json.loads(b.state(61))['line'] == dict(state=4, alarm=2, recipe=1, speed=0.0), 'scripted fault shows as state 4')
+    check(fb.Board(seed=1, key='').command(msg('ack', 1, 1))[0]['err'] == 'command not enabled', 'no key: every command refused')
+
+
 def test_loopback():
     ls = socket.socket()
     ls.bind(('127.0.0.1', 0))
@@ -140,6 +179,7 @@ def test_loopback():
 if __name__ == '__main__':
     test_codec()
     test_script()
+    test_commands()
     test_loopback()
     print('test_fake_board: %d passed, %d failed' % (passed, failed))
     raise SystemExit(failed)

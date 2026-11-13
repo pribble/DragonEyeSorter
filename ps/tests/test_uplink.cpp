@@ -12,7 +12,10 @@
 #include <thread>
 #include <unistd.h>
 
+#include "can_proto.h"
 #include "json.hpp"
+#include "modbus_tcp.hpp"
+#include "sha256.hpp"
 #include "test_check.hpp"
 #include "uplink.hpp"
 #include "usbfs_port.hpp"
@@ -527,6 +530,195 @@ void test_dead_port()
     CHECK(!up2.step() && at.lost(), "closed port: reported as lost");
 }
 
+// the des_app side of the real Modbus slave: executes queued writes like Runner::handle_modbus (RESULT, then SEQ + 1)
+struct FakeApp {
+    ModbusTcp mb{MB_N_HR, MB_N_IR};
+    std::thread th;
+    std::atomic<bool> quit{false};
+    std::atomic<int> answer{CANP_ACK_OK};
+    std::mutex m;
+    std::vector<ModbusTcp::Write> seen;
+    uint16_t seq = 0;
+    explicit FakeApp(uint16_t version)
+    {
+        mb.start(0);
+        mb.set_input(MB_IR_VERSION, version);
+        mb.set_input(MB_IR_STATE, CANP_ST_RUN);
+        mb.set_input(MB_IR_SPEED, 600);
+        mb.set_input(MB_IR_RECIPE, 1);
+        mb.set_inputs(MB_IR_TOTAL, {1, 120, 0, 100, 0, 15, 0, 5});   // total 65656, ok 100, ng 15, recheck 5
+        th = std::thread([this]() {
+            while (!quit) {
+                for (const ModbusTcp::Write &w : mb.take_writes()) {
+                    { std::lock_guard<std::mutex> lk(m); seen.push_back(w); }
+                    mb.set_holding(MB_HR_RESULT, uint16_t(answer.load()));
+                    mb.set_holding(MB_HR_SEQ, ++seq);
+                }
+                usleep(3000);
+            }
+        });
+    }
+    ~FakeApp() { quit = true; th.join(); mb.stop(); }
+    std::vector<ModbusTcp::Write> writes() { std::lock_guard<std::mutex> lk(m); return seen; }
+};
+
+void test_sha()
+{
+    CHECK(sha256_hex("abc") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", "SHA-256 of abc");
+    CHECK(sha256_hex("") == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "SHA-256 of the empty string");
+    CHECK(sha256_hex(std::string(119, 'a')) == sha256_hex(std::string(119, 'a')) && sha256_hex(std::string(55, 'a')) != sha256_hex(std::string(56, 'a')),
+          "padding boundary lengths run");
+    CHECK(sha256_hex("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq") == "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1",
+          "SHA-256 two-block vector");
+    CHECK(hmac_sha256_hex("Jefe", "what do ya want for nothing?") == "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843", "HMAC RFC 4231 case 2");
+    CHECK(hmac_sha256_hex(std::string(131, '\xaa'), "Test Using Larger Than Block-Size Key - Hash Key First") ==
+              "60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54", "HMAC RFC 4231 case 6 (key longer than a block)");
+    CHECK(same_text("abc", "abc") && !same_text("abc", "abd") && !same_text("abc", "ab"), "same_text");
+    CHECK(uplink_cmd_text("n", 12, "ack", 65535) == "n|12|ack|65535", "the signed text");
+}
+
+void test_mb_client()
+{
+    FakeApp app(0x0103);
+    MbClient c("127.0.0.1", app.mb.port(), MB_UNIT_MONITOR);
+    uint16_t r[8] = {0};
+    CHECK(c.read(4, MB_IR_VERSION, 1, r) && r[0] == 0x0103, "read the map version (%s)", c.error().c_str());
+    CHECK(c.read(4, MB_IR_TOTAL, 8, r) && r[0] == 1 && r[1] == 120 && r[7] == 5, "read 8 input registers");
+    CHECK(!c.read(4, MB_N_IR - 1, 5, r) && c.error() == "exception 2", "illegal address -> exception 2 (%s)", c.error().c_str());
+    CHECK(c.read(3, MB_HR_SEQ, 1, r) && r[0] == 0, "the connection survives an exception");
+    CHECK(c.write(MB_HR_WO_ACK, 9), "write single register");
+    for (int i = 0; i < 100 && app.writes().empty(); i++) usleep(2000);
+    CHECK(app.writes().size() == 1 && app.writes()[0].addr == MB_HR_WO_ACK && app.writes()[0].value == 9, "the slave queued the write");
+    for (int i = 0; i < 100 && !(c.read(3, MB_HR_SEQ, 1, r) && r[0] == 1); i++) usleep(2000);
+    CHECK(r[0] == 1, "SEQ moved after the owner handled it");
+    CHECK(app.mb.requests() == 0, "none of this counted as PLC traffic (%llu)", (unsigned long long)app.mb.requests());
+    MbClient dead("127.0.0.1", 1, MB_UNIT_MONITOR);
+    CHECK(!dead.read(4, 0, 1, r) && dead.error().compare(0, 8, "connect:") == 0, "nothing listening: an error, no hang");
+}
+
+void test_commands()
+{
+    FakeModem fm;
+    FdPort port(fm.host_fd());
+    AtChan at(port);
+    BoardLink board;
+    board.on_connect(true);
+    board.on_frame(fr('H', "s1", k_hdr));
+    FakeApp app(0x0103);
+    MbClient mbc("127.0.0.1", app.mb.port(), MB_UNIT_MONITOR);
+    UplinkConfig c;
+    c.mqtt.host = "broker.example"; c.prefix = "des/t2"; c.modbus_port = app.mb.port();
+    c.cmd_key = "test-key-0123456789"; c.cmd_allow = {"ack", "stop"};
+    Uplink up(c, at, board);
+    up.attach_modbus(&mbc);
+    up.set_nonce("n0nce");
+    double t = 100;
+    std::vector<std::string> log;
+    up.clock = [&]() { return t; };
+    up.eth = []() { return 1; };
+    up.log = [&](const std::string &s) { log.push_back(s); };
+    auto last_state = [&]() {
+        nlohmann::json j;
+        for (auto &p : fm.pubs())
+            if (p.topic == "des/t2/state") j = nlohmann::json::parse(p.payload, nullptr, false);
+        return j;
+    };
+    CHECK(steps(up, t, 5, 12, [&]() { return up.phase() == Uplink::Phase::Up && last_state().is_object(); }), "commands: reaches Up");
+    nlohmann::json s = last_state();
+    CHECK(s["line"]["state"] == CANP_ST_RUN && s["line"]["speed"] == 60.0 && s["line"]["recipe"] == 1, "state carries the line status: %s", s.dump().c_str());
+    CHECK(s["counts"] == "app" && s["total"] == 65656 && s["ok"] == 100 && s["ng"] == 15 && s["recheck"] == 5, "des_app's own 32-bit counters");
+    CHECK(s["cmds"] == nlohmann::json({"ack", "stop"}) && s["nonce"] == "n0nce", "allowed commands and the nonce are announced");
+    int id = 100;
+    auto send = [&](const char *cmd, long long arg, long long seq, const char *key) {
+        const nlohmann::json j = {{"cmd", cmd}, {"arg", arg}, {"id", ++id}, {"seq", seq},
+                                  {"sig", hmac_sha256_hex(key, uplink_cmd_text("n0nce", seq, cmd, arg))}};
+        const std::string p = j.dump();
+        fm.inject("+QMTRECV: 0,0,\"des/t2/cmd\"," + std::to_string(p.size()) + ",\"" + p + "\"");
+        nlohmann::json r;
+        steps(up, t, 0.1, 10, [&]() {
+            for (auto &q : fm.pubs())
+                if (q.topic == "des/t2/reply") { const auto x = nlohmann::json::parse(q.payload, nullptr, false); if (x.is_object() && x["id"] == id) r = x; }
+            return r.is_object();
+        });
+        return r;
+    };
+    nlohmann::json r = send("ack", 65535, 10, "test-key-0123456789");
+    CHECK(r.is_object() && r["ok"] == true && r["result"] == 0, "signed ack accepted: %s", r.dump().c_str());
+    CHECK(app.writes().size() == 1 && app.writes()[0].addr == MB_HR_WO_ACK && app.writes()[0].value == 65535, "ack reached des_app's register");
+    r = send("ack", 65535, 10, "test-key-0123456789");
+    CHECK(r.is_object() && r["ok"] == false && r["err"] == "replayed" && app.writes().size() == 1, "the same sequence number again is refused");
+    r = send("ack", 3, 11, "some-other-key-000");
+    CHECK(r.is_object() && r["ok"] == false && r["err"] == "bad signature" && app.writes().size() == 1, "wrong key: refused, nothing written");
+    r = send("start", 0, 12, "test-key-0123456789");
+    CHECK(r.is_object() && r["ok"] == false && r["err"] == "command not enabled" && app.writes().size() == 1, "start is not in the allow list");
+    r = send("ack", 0, 13, "test-key-0123456789");
+    CHECK(r.is_object() && r["ok"] == false && r["err"] == "bad argument" && app.writes().size() == 1, "ack without an order id");
+    app.answer = CANP_ACK_REJECTED;
+    r = send("stop", 0, 14, "test-key-0123456789");
+    CHECK(r.is_object() && r["ok"] == false && r["result"] == CANP_ACK_REJECTED, "des_app's refusal is passed on: %s", r.dump().c_str());
+    CHECK(app.writes().size() == 2 && app.writes()[1].addr == MB_HR_CMD && app.writes()[1].value == CANP_CMD_STOP, "stop reached des_app");
+    r = send("ack", 7, 5, "test-key-0123456789");
+    CHECK(r.is_object() && r["err"] == "replayed", "an older sequence number is refused");
+    app.mb.set_input(MB_IR_STATE, CANP_ST_PAUSED);
+    CHECK(steps(up, t, 1, 8, [&]() { const auto j = last_state(); return j.is_object() && j["line"]["state"] == CANP_ST_PAUSED; }),
+          "a change of the line state is published");
+    CHECK(app.mb.requests() == 0, "the uplink never looked like a PLC (%llu requests counted)", (unsigned long long)app.mb.requests());
+
+    // no key: line status yes, commands no
+    FakeModem fm2;
+    FdPort port2(fm2.host_fd());
+    AtChan at2(port2);
+    MbClient mbc2("127.0.0.1", app.mb.port(), MB_UNIT_MONITOR);
+    UplinkConfig c2 = c;
+    c2.cmd_key.clear();
+    Uplink up2(c2, at2, board);
+    up2.attach_modbus(&mbc2);
+    double t2 = 100;
+    up2.clock = [&]() { return t2; };
+    up2.eth = []() { return 1; };
+    CHECK(steps(up2, t2, 5, 12, [&]() { return up2.phase() == Uplink::Phase::Up && !fm2.pubs().empty(); }), "no key: reaches Up");
+    s = nlohmann::json::parse(fm2.pubs().back().payload, nullptr, false);
+    CHECK(s.is_object() && s.contains("line") && !s.contains("cmds") && !s.contains("nonce"), "no key: line status without commands");
+}
+
+void test_old_map()
+{
+    FakeModem fm;
+    FdPort port(fm.host_fd());
+    AtChan at(port);
+    BoardLink board;
+    board.on_connect(true);
+    board.on_frame(fr('H', "s1", k_hdr));
+    board.on_frame(fr('R', "", "1,0.5,7,0,gear_ok,0.991,pick,gear_box,,30.02"));
+    FakeApp app(0x0102);   // a des_app without the monitor unit
+    MbClient mbc("127.0.0.1", app.mb.port(), MB_UNIT_MONITOR);
+    UplinkConfig c;
+    c.mqtt.host = "broker.example"; c.prefix = "des/t3"; c.modbus_port = app.mb.port(); c.cmd_key = "test-key-0123456789";
+    Uplink up(c, at, board);
+    up.attach_modbus(&mbc);
+    up.set_nonce("n1");
+    double t = 100;
+    std::vector<std::string> log;
+    up.clock = [&]() { return t; };
+    up.eth = []() { return 1; };
+    up.log = [&](const std::string &s) { log.push_back(s); };
+    CHECK(steps(up, t, 5, 12, [&]() { return up.phase() == Uplink::Phase::Up && !fm.pubs().empty(); }), "old map: reaches Up");
+    const nlohmann::json s = nlohmann::json::parse(fm.pubs().back().payload, nullptr, false);
+    CHECK(s.is_object() && !s.contains("line") && !s.contains("cmds") && s["counts"] == "feed" && s["total"] == 1, "old map: state from the feed only");
+    bool said = false;
+    for (const std::string &l : log) said |= l.find("older than 0x0103") != std::string::npos;
+    CHECK(said, "old map: the reason is logged");
+    steps(up, t, 2, 6, []() { return false; });
+    for (int i = 0; i < 100 && app.mb.clients() > 0; i++) usleep(5000);
+    CHECK(app.mb.clients() == 0, "old map: the Modbus connection is closed and stays closed (%d)", app.mb.clients());
+    const nlohmann::json j = {{"cmd", "ack"}, {"arg", 1}, {"id", 9}, {"seq", 1}, {"sig", hmac_sha256_hex(c.cmd_key, uplink_cmd_text("n1", 1, "ack", 1))}};
+    const std::string p = j.dump();
+    fm.inject("+QMTRECV: 0,0,\"des/t3/cmd\"," + std::to_string(p.size()) + ",\"" + p + "\"");
+    CHECK(steps(up, t, 0.1, 10, [&]() { return fm.pubs().back().topic == "des/t3/reply"; }), "old map: the command is answered");
+    const nlohmann::json r = nlohmann::json::parse(fm.pubs().back().payload, nullptr, false);
+    CHECK(r.is_object() && r["ok"] == false && r["err"] == "command not enabled" && app.writes().empty(), "old map: commands stay off");
+}
+
 }  // namespace
 
 int main()
@@ -540,5 +732,9 @@ int main()
     test_uplink("always");
     test_uplink("backup");
     test_dead_port();
+    test_sha();
+    test_mb_client();
+    test_commands();
+    test_old_map();
     return test_summary("test_uplink");
 }

@@ -1,12 +1,18 @@
 // uplink.cpp — see uplink.hpp
 #include "uplink.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <fstream>
 #include <sstream>
 #include <time.h>
+#include <unistd.h>
 
+#include "can_proto.h"
 #include "json.hpp"
+#include "modbus_tcp.hpp"
+#include "sha256.hpp"
 
 namespace des {
 namespace {
@@ -44,12 +50,15 @@ std::string load_uplink_config(const std::string &path, UplinkConfig &c)
         opt(j, "topic_prefix", c.prefix); opt(j, "state_period_s", c.state_period_s); opt(j, "state_min_s", c.state_min_s);
         opt(j, "idle_period_s", c.idle_period_s); opt(j, "mode", c.mode); opt(j, "eth_if", c.eth_if);
         if (const auto b = j.find("board"); b != j.end() && b->is_object()) {
-            opt(*b, "host", c.board_host); opt(*b, "feed_port", c.feed_port);
+            opt(*b, "host", c.board_host); opt(*b, "feed_port", c.feed_port); opt(*b, "modbus_port", c.modbus_port);
         }
         if (const auto m = j.find("modem"); m != j.end() && m->is_object()) {
             std::string vid;
             opt(*m, "vid", vid); opt(*m, "usb_if", c.usb_if); opt(*m, "tty", c.tty);
             if (!vid.empty()) c.vid = unsigned(strtoul(vid.c_str(), nullptr, 16));
+        }
+        if (const auto m = j.find("commands"); m != j.end() && m->is_object()) {
+            opt(*m, "key", c.cmd_key); opt(*m, "allow", c.cmd_allow);
         }
     } catch (const std::exception &e) {
         return path + ": " + e.what();
@@ -64,6 +73,12 @@ std::string load_uplink_config(const std::string &path, UplinkConfig &c)
         if (s->find('"') != std::string::npos) return path + ": mqtt strings cannot contain a double quote";
     if (c.state_period_s < 1 || c.state_min_s < 1 || c.idle_period_s < 1) return path + ": periods must be >= 1 s";
     if (c.mode != "always" && c.mode != "backup") return path + ": mode must be \"always\" or \"backup\"";
+    if (c.modbus_port < 0 || c.modbus_port > 65535) return path + ": board.modbus_port out of range";
+    if (!c.cmd_key.empty() && c.cmd_key.size() < 8) return path + ": commands.key must be at least 8 characters";
+    if (!c.cmd_key.empty() && c.modbus_port <= 0) return path + ": commands need board.modbus_port";
+    for (const std::string &a : c.cmd_allow)
+        if (a != "ack" && a != "stop" && a != "pause" && a != "resume" && a != "start" && a != "reset" && a != "speed")
+            return path + ": commands.allow has an unknown command \"" + a + "\"";
     return "";
 }
 
@@ -75,7 +90,8 @@ int eth_carrier(const std::string &ifname)
     return c == '1' ? 1 : 0;
 }
 
-std::string uplink_state_json(const BoardSnapshot &b, const ModemInfo &m, int eth, double up_s, const UplinkStats &st)
+std::string uplink_state_json(const BoardSnapshot &b, const ModemInfo &m, int eth, double up_s, const UplinkStats &st,
+                              const UplinkExtras *x)
 {
     json j = {{"online", true}, {"up_s", std::llround(up_s)}, {"app", b.alive()}, {"session", b.session},
               {"total", b.total}, {"ok", b.ok}, {"ng", b.ng}, {"recheck", b.recheck},
@@ -87,7 +103,20 @@ std::string uplink_state_json(const BoardSnapshot &b, const ModemInfo &m, int et
     if (b.total)
         j["last"] = {{"label", b.last_label}, {"disp", b.last_disp}, {"dest", b.last_dest},
                      {"conf", std::round(b.last_conf * 1000) / 1000}, {"size_mm", std::round(b.last_size_mm * 100) / 100}};
+    j["counts"] = "feed";
+    if (x && x->line.valid) {   // des_app's own registers: its counters replace the ones summed from the feed
+        const LineStatus &l = x->line;
+        j["line"] = {{"state", l.state}, {"speed", std::round(l.speed * 10) / 10}, {"alarm", l.alarm}, {"recipe", l.recipe}};
+        j["total"] = l.total; j["ok"] = l.ok; j["ng"] = l.ng; j["recheck"] = l.recheck;
+        j["counts"] = "app";
+    }
+    if (x && !x->cmds.empty()) { j["cmds"] = x->cmds; j["nonce"] = x->nonce; }
     return dump(j);
+}
+
+std::string uplink_cmd_text(const std::string &nonce, long long seq, const std::string &cmd, long long arg)
+{
+    return nonce + "|" + std::to_string(seq) + "|" + cmd + "|" + std::to_string(arg);
 }
 
 std::string uplink_fit_order(const std::string &text, size_t max_bytes)
@@ -108,6 +137,9 @@ Uplink::Uplink(const UplinkConfig &c, AtChan &at, BoardLink &board) : cfg_(c), a
     eth = [this]() { return eth_carrier(cfg_.eth_if); };
     clock = mono;
     t0_ = -1;
+    uint8_t r[8] = {0};   // nonce: new at every start, so commands signed for an earlier run are dead
+    if (std::ifstream u("/dev/urandom", std::ios::binary); u) u.read(reinterpret_cast<char *>(r), sizeof r);
+    x_.nonce = hex_of(r, sizeof r);
 }
 
 const char *Uplink::phase_name() const
@@ -153,7 +185,16 @@ void Uplink::handle_cmd(const std::string &payload)
     st_.commands++;
     json r = {{"id", id}, {"cmd", cmd}};
     if (cmd == "ping") { r["ok"] = true; r["up_s"] = std::llround(clock() - t0_); }
-    else { r["ok"] = false; r["err"] = cmd.empty() ? "bad command" : "command not enabled"; }
+    else if (cmd.empty()) { r["ok"] = false; r["err"] = "bad command"; }
+    else {
+        auto num = [&](const char *k) { return j.contains(k) && j[k].is_number_integer() ? j[k].get<long long>() : 0LL; };
+        const std::string sig = j.contains("sig") && j["sig"].is_string() ? j["sig"].get<std::string>() : std::string();
+        int result = -1;
+        const std::string e = run_command(cmd, num("arg"), num("seq"), sig, result);
+        r["ok"] = e.empty();
+        if (!e.empty()) r["err"] = e;
+        if (result >= 0) r["result"] = result;
+    }
     say("command \"" + cmd + "\" -> " + (r["ok"].get<bool>() ? "ok" : r["err"].get<std::string>()));
     publish(cfg_.prefix + "/reply", dump(r), false);
 }
@@ -181,19 +222,22 @@ void Uplink::up_pass(double now)
         q_.refresh(info_);
     }
     if (!link_down_) {
+        poll_line(now);
         const BoardSnapshot b = board_.snapshot();
         const int e = eth();
         const bool idle = cfg_.mode == "backup" && e == 1;
         bool due = now - last_state_ >= (idle ? cfg_.idle_period_s : cfg_.state_period_s);
         if (e != sent_eth_) due = true;
-        if (!idle && b.seq != sent_seq_ && now - last_state_ >= cfg_.state_min_s) due = true;
+        if (!idle && (b.seq != sent_seq_ || line_seq_ != sent_line_seq_) && now - last_state_ >= cfg_.state_min_s) due = true;
         if (due) {
             if (sent_eth_ != -2 && e != sent_eth_)
                 say(e == 1 ? "wired link is back" : "wired link is down: reporting over 4G only");
             last_state_ = now;
-            if (publish(cfg_.prefix + "/state", uplink_state_json(b, info_, e, now - t0_, st_), true)) {
+            const uint64_t ls = line_seq_;
+            if (publish(cfg_.prefix + "/state", uplink_state_json(b, info_, e, now - t0_, st_, &x_), true)) {
                 sent_seq_ = b.seq;
                 sent_eth_ = e;
+                sent_line_seq_ = ls;
             }
         }
     }
@@ -203,6 +247,79 @@ void Uplink::up_pass(double now)
         go(Phase::Data, backoff_);   // check the data connection, then open the broker connection again
         backoff_ = backoff_ * 2 > 60 ? 60 : backoff_ * 2;
     }
+}
+
+// des_app's input registers, once a second; a change of what the dashboard shows forces a state message
+void Uplink::poll_line(double now)
+{
+    if (!mb_ || mb_off_ || now < next_line_) return;
+    next_line_ = now + 1;
+    uint16_t ir[MB_N_IR];
+    if (!mb_->read(4, 0, MB_N_IR, ir)) {
+        if (x_.line.valid) {
+            say("des_app registers unreachable (" + mb_->error() + "): state from the feed only, commands off");
+            x_.line.valid = false;
+            x_.cmds.clear();
+            line_seq_++;
+        }
+        next_line_ = now + 5;
+        return;
+    }
+    if (ir[MB_IR_VERSION] < 0x0103) {   // it counted this request as a PLC: one false "PLC lost" order at most, then silence
+        char v[8];
+        snprintf(v, sizeof v, "%04x", ir[MB_IR_VERSION]);
+        say(std::string("des_app register map 0x") + v + " is older than 0x0103 (no monitor unit): Modbus stays off, state from the feed only, no remote commands");
+        mb_off_ = true;
+        mb_->close();
+        return;
+    }
+    auto u32 = [&](int a) { return uint32_t(ir[a]) << 16 | ir[a + 1]; };
+    LineStatus l;
+    l.valid = true;
+    l.state = ir[MB_IR_STATE]; l.flags = ir[MB_IR_FLAGS]; l.alarm = ir[MB_IR_ALARM]; l.recipe = ir[MB_IR_RECIPE];
+    l.speed = ir[MB_IR_SPEED] / 10.0;
+    l.total = u32(MB_IR_TOTAL); l.ok = u32(MB_IR_OK); l.ng = u32(MB_IR_NG); l.recheck = u32(MB_IR_RECHECK);
+    const LineStatus &o = x_.line;
+    if (!o.valid) {
+        say("des_app registers readable (map 0x0103): line state and its own counters go into the state" +
+            std::string(cfg_.cmd_key.empty() ? "; remote commands off (no key)" : "; remote commands on"));
+        if (!cfg_.cmd_key.empty()) x_.cmds = cfg_.cmd_allow;
+    }
+    if (!o.valid || o.state != l.state || o.alarm != l.alarm || o.recipe != l.recipe || o.total != l.total || std::fabs(o.speed - l.speed) >= 1.0)
+        line_seq_++;
+    x_.line = l;
+}
+
+// "" = done and des_app answered OK; result = des_app's CANP_ACK_* when it answered at all
+std::string Uplink::run_command(const std::string &cmd, long long arg, long long seq, const std::string &sig, int &result)
+{
+    if (!mb_ || mb_off_ || !x_.line.valid || cfg_.cmd_key.empty() ||
+        std::find(cfg_.cmd_allow.begin(), cfg_.cmd_allow.end(), cmd) == cfg_.cmd_allow.end())
+        return "command not enabled";
+    if (!same_text(sig, hmac_sha256_hex(cfg_.cmd_key, uplink_cmd_text(x_.nonce, seq, cmd, arg)))) return "bad signature";
+    if (seq <= last_cmd_seq_) return "replayed";
+    last_cmd_seq_ = seq;
+    uint16_t addr = MB_HR_CMD, value = 0;
+    if (cmd == "ack") { if (arg < 1 || arg > 65535) return "bad argument"; addr = MB_HR_WO_ACK; value = uint16_t(arg); }
+    else if (cmd == "speed") { if (arg < 1 || arg > 65535) return "bad argument"; addr = MB_HR_SPEED; value = uint16_t(arg); }
+    else if (cmd == "start") value = CANP_CMD_START;
+    else if (cmd == "stop") value = CANP_CMD_STOP;
+    else if (cmd == "pause") value = CANP_CMD_PAUSE;
+    else if (cmd == "resume") value = CANP_CMD_RESUME;
+    else if (cmd == "reset") value = CANP_CMD_RESET_ALARM;
+    else return "command not enabled";
+    uint16_t before = 0, rs[2] = {0, 0};
+    if (!mb_->read(3, MB_HR_SEQ, 1, &before) || !mb_->write(addr, value)) return "des_app unreachable: " + mb_->error();
+    for (int i = 0; i < 20; i++) {       // des_app executes writes in its next control cycle (<= 17 ms)
+        usleep(20000);
+        if (!mb_->read(3, MB_HR_RESULT, 2, rs)) return "des_app unreachable: " + mb_->error();
+        if (rs[1] != before) {
+            result = rs[0];
+            static const char *const why[] = {"", "rejected in the current state", "value out of range", "unknown command"};
+            return result == CANP_ACK_OK ? "" : std::string("des_app: ") + (result < 4 ? why[result] : "refused");
+        }
+    }
+    return "no answer from des_app";
 }
 
 void Uplink::shutdown()

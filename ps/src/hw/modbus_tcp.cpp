@@ -110,7 +110,7 @@ bool ModbusTcp::handle(Conn &c)
         uint8_t exc = 0;
         {
             std::lock_guard<std::mutex> lk(m_);
-            requests_.fetch_add(1, std::memory_order_relaxed);
+            if (unit != MB_UNIT_MONITOR) requests_.fetch_add(1, std::memory_order_relaxed);   // "a PLC is talking"
             const uint16_t a = pn >= 2 ? be16(pdu) : 0, q = pn >= 4 ? be16(pdu + 2) : 0;
             if (fc == 0x03 || fc == 0x04) {
                 const std::vector<uint16_t> &t = fc == 0x03 ? hr_ : ir_;

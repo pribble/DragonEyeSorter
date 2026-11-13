@@ -16,6 +16,14 @@
   "mode": "always",             // always = 一直发；backup = 网线通着时只每 idle_period_s 发一次，网线断了全速发
   "idle_period_s": 60,
   "eth_if": "eth0",             // 有线网口名（用来判断网线通断）
-  "board": { "host": "127.0.0.1", "feed_port": 9500 },   // des_app 的网口上传口（des_app.json 的 storage.feed_port）
+  "board": {
+    "host": "127.0.0.1",
+    "feed_port": 9500,          // des_app 的网口上传口（des_app.json 的 storage.feed_port）
+    "modbus_port": 502          // des_app 的 Modbus-TCP 口：读线体状态、执行远程命令；要求 des_app 映射版本 >= 0x0103，旧版填 0
+  },
+  "commands": {
+    "key": "",                  // 操作密钥（至少 8 个字符）；留空 = 不接受任何远程命令。手机看板里填同一个
+    "allow": ["ack", "stop", "pause"]   // 允许的命令；可选 ack stop pause resume start reset speed，默认不含会让线体动起来的
+  },
   "modem": { "vid": "2c7c", "usb_if": -1, "tty": "" }    // usb_if -1 = 自动找 AT 口；tty 非空 = 改用串口设备
 }

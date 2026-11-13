@@ -6,6 +6,8 @@
   WebSocket itself, subscribes to <prefix>/# and shows what the board publishes:
     <prefix>/state  retained JSON (or the text "offline")     <prefix>/wo     one JSON per work-order change
     <prefix>/cmd    {"cmd":"ping","id":n} sent from here      <prefix>/reply  the board's answer (round-trip time)
+  When the state lists "cmds", the "远程操作" card appears: each command is sent with {"seq","sig"}, where
+  sig = HMAC-SHA256(key, "<nonce>|<seq>|<cmd>|<arg>") (nonce from the state, key typed here and kept in this browser).
   Settings (broker WebSocket URL, topic prefix) are kept in this browser only; they can also come in the address
   after '#':  des_4g_view.html#b=wss://broker.example:8084/mqtt&p=des/your-prefix
   Open it from a file, or put it on any static web host. Counts are "parts decided since des_4g connected".
@@ -102,6 +104,7 @@ details summary { cursor: pointer; color: var(--ink2); font-size: 13px; }
     <dl class="rows">
       <dt>板子</dt><dd><span class="chip" id="s-board"><i>?</i><span>未知</span></span></dd>
       <dt>主程序</dt><dd><span class="chip" id="s-app"><i>?</i><span>未知</span></span></dd>
+      <dt id="s-line-k" hidden>线体</dt><dd id="s-line-v" hidden><span class="chip" id="s-line"><i>?</i><span>未知</span></span><br><small id="s-line-sub"></small></dd>
       <dt>有线网</dt><dd><span class="chip" id="s-eth"><i>?</i><span>未知</span></span></dd>
       <dt>运维工单</dt><dd><span class="chip" id="s-wo"><i>?</i><span>未知</span></span><br><small id="s-wo-title"></small></dd>
       <dt>上报程序已运行</dt><dd id="s-up">—</dd>
@@ -109,7 +112,7 @@ details summary { cursor: pointer; color: var(--ink2); font-size: 13px; }
   </section>
 
   <section class="card">
-    <h2>产量<span>4G 程序连上后判定的件数</span></h2>
+    <h2>产量<span id="k-src">4G 程序连上后判定的件数</span></h2>
     <div class="herorow">
       <div><div class="hero" id="k-total">—</div><div class="sub">件<span id="k-sim"></span></div></div>
       <div id="spark" aria-label="每分钟件数"><svg viewBox="0 0 150 44" preserveAspectRatio="none"></svg><div id="tip"></div></div>
@@ -135,6 +138,14 @@ details summary { cursor: pointer; color: var(--ink2); font-size: 13px; }
       <button id="ping" disabled>测往返时间</button>
       <div><span id="ping-out" class="sub">从本页发一条命令到板子再回来</span></div>
     </div>
+  </section>
+
+  <section class="card" id="cmd-card" hidden>
+    <h2>远程操作<span>命令带签名，板子只认密钥对的</span></h2>
+    <label for="c-key">操作密钥（与板上 des_4g.json 的 commands.key 相同）</label>
+    <input id="c-key" type="password" autocomplete="off" spellcheck="false">
+    <div id="cmd-btns" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px"></div>
+    <p class="sub" id="cmd-out" style="margin:10px 0 0">还没有发过命令。</p>
   </section>
 
   <section class="card">
@@ -237,6 +248,48 @@ class MqttWs {
   close() { this.closed = true; clearTimeout(this.again); clearInterval(this.timer); try { this.ws.close(); } catch (e) {} }
 }
 
+// ---------------------------------------------------------------- HMAC-SHA256 (works without a secure context)
+const SHA_K = new Uint32Array([
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be,
+  0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa,
+  0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85,
+  0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3,
+  0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f,
+  0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2]);
+function sha256(msg) {                       // Uint8Array -> Uint8Array(32)
+  const h = new Uint32Array([0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]);
+  const total = (msg.length + 9 + 63) & ~63, data = new Uint8Array(total), view = new DataView(data.buffer), w = new Uint32Array(64);
+  data.set(msg); data[msg.length] = 0x80;
+  view.setUint32(total - 8, Math.floor(msg.length / 0x20000000)); view.setUint32(total - 4, (msg.length << 3) >>> 0);
+  const rotr = (x, n) => (x >>> n) | (x << (32 - n));
+  for (let off = 0; off < total; off += 64) {
+    for (let i = 0; i < 16; i++) w[i] = view.getUint32(off + 4 * i);
+    for (let i = 16; i < 64; i++) {
+      const s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >>> 3), s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >>> 10);
+      w[i] = (w[i - 16] + s0 + w[i - 7] + s1) >>> 0;
+    }
+    let [a, b, c, d, e, f, g, hh] = h;
+    for (let i = 0; i < 64; i++) {
+      const t1 = (hh + (rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)) + ((e & f) ^ (~e & g)) + SHA_K[i] + w[i]) >>> 0;
+      const t2 = ((rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) >>> 0;
+      hh = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+    }
+    h[0] += a; h[1] += b; h[2] += c; h[3] += d; h[4] += e; h[5] += f; h[6] += g; h[7] += hh;
+  }
+  const out = new Uint8Array(32), ov = new DataView(out.buffer);
+  for (let i = 0; i < 8; i++) ov.setUint32(4 * i, h[i]);
+  return out;
+}
+function hmacHex(key, text) {                // strings -> hex of HMAC-SHA256
+  let k = enc.encode(key);
+  if (k.length > 64) k = sha256(k);
+  const ipad = new Uint8Array(64).fill(0x36), opad = new Uint8Array(64).fill(0x5c), m = enc.encode(text);
+  for (let i = 0; i < k.length; i++) { ipad[i] ^= k[i]; opad[i] ^= k[i]; }
+  const inner = new Uint8Array(64 + m.length); inner.set(ipad); inner.set(m, 64);
+  const outer = new Uint8Array(96); outer.set(opad); outer.set(sha256(inner), 64);
+  return Array.from(sha256(outer), b => b.toString(16).padStart(2, '0')).join('');
+}
+
 // ---------------------------------------------------------------- view
 const $ = id => document.getElementById(id);
 const LABELS = { gear_ok: '良品', gear_short_l: '缺料·轻', gear_short_h: '缺料·重', gear_dirty_l: '脏污·轻', gear_dirty_h: '脏污·重',
@@ -244,6 +297,9 @@ const LABELS = { gear_ok: '良品', gear_short_l: '缺料·轻', gear_short_h: '
 const DISP = { pick: '抓取', flap: '挡板', recheck: '复检' };
 const DEST = { gear_box: '齿轮盒', scrap: '报废', rework: '返修', recheck: '复检', tail: '带尾' };
 const LEVEL = { 1: ['info', 'i', '提示'], 2: ['warn', '!', '警告'], 3: ['crit', '×', '故障'] };
+const LINE = { 0: ['', '■', '停止'], 1: ['good', '✓', '运行'], 2: ['warn', '!', '暂停'], 3: ['crit', '×', '急停'], 4: ['crit', '×', '故障停机'] };
+const CMDS = { ack: ['确认全部工单', 65535, '把所有待确认的工单标记为已确认？'], pause: ['暂停', 0, '让线体暂停？'], stop: ['停止', 0, '让线体停止？'],
+               resume: ['继续', 0, '让线体继续运行？皮带会动。'], start: ['启动', 0, '启动线体？皮带和机械臂会动，先确认现场无人操作。'], reset: ['复位报警', 0, '复位线体的报警？'] };
 const nf = new Intl.NumberFormat('zh-CN');
 const hhmmss = t => new Date(t).toLocaleTimeString('zh-CN', { hour12: false });
 function chip(el, kind, glyph, text) { el.className = (el.classList.contains('pill') ? 'pill ' : '') + 'chip ' + kind; el.children[0].textContent = glyph; el.children[1].textContent = text; }
@@ -251,7 +307,9 @@ function span(n) { n = Math.max(0, Math.round(n)); const h = Math.floor(n / 3600
   return h ? h + ' 小时 ' + m + ' 分' : m ? m + ' 分 ' + s + ' 秒' : s + ' 秒'; }
 
 let cfg = { b: '', p: '' }, mq = null, state = null, stateAt = 0, live = false, online = null;
-let lastTotal = null, lastSession = null;
+let lastTotal = null, lastSession = null, lastCounts = null;
+const sent = new Map();                    // command id -> label, waiting for the board's reply
+let cmdSeq = 0, cmdShown = '';
 const minutes = [];                        // [{m: minute index, n: parts}] newest last, at most 12
 const orders = new Map(), events = [], pings = new Map(), rtts = [];
 let pingId = Math.floor(Math.random() * 1e6);
@@ -286,7 +344,7 @@ function onState(text, retained) {
     if (!prev.app && j.app) event('主程序恢复');
   }
   if (!retained) {                           // parts per minute, from the growth of the total
-    if (j.session !== lastSession || lastTotal === null || j.total < lastTotal) { lastSession = j.session; lastTotal = j.total; }
+    if (j.session !== lastSession || j.counts !== lastCounts || lastTotal === null || j.total < lastTotal) { lastSession = j.session; lastCounts = j.counts; lastTotal = j.total; }
     const m = Math.floor(Date.now() / 60000);
     if (!minutes.length || minutes[minutes.length - 1].m !== m) { minutes.push({ m, n: 0 }); if (minutes.length > 12) minutes.shift(); }
     minutes[minutes.length - 1].n += j.total - lastTotal;
@@ -309,6 +367,13 @@ function onOrder(text) {
 
 function onReply(text) {
   let j; try { j = JSON.parse(text); } catch (e) { return; }
+  if (j && sent.has(j.id)) {                 // answer to a remote command
+    const label = sent.get(j.id); sent.delete(j.id);
+    const why = { 'bad signature': '密钥不对', 'replayed': '命令重复或过期', 'command not enabled': '板子没有开放这条命令', 'bad argument': '参数不对' };
+    $('cmd-out').textContent = hhmmss(Date.now()) + ' 「' + label + '」' + (j.ok ? '已执行' : '被拒绝：' + (why[j.err] || j.err || '未知原因'));
+    event('远程命令「' + label + '」' + (j.ok ? '已执行' : '被拒绝'));
+    return;
+  }
   const t0 = pings.get(j && j.id);
   if (!t0) return;
   pings.delete(j.id);
@@ -382,9 +447,25 @@ function render() {
     else { const lv = LEVEL[w.level] || LEVEL[1]; chip($('s-wo'), lv[0], lv[1], w.active + ' 张活动（最高：' + lv[2] + '）' + (w.unacked ? '，' + w.unacked + ' 张待确认' : '')); }
     $('s-wo-title').textContent = w.active && w.title ? '#' + w.id + ' ' + w.title : '';
     $('s-up').textContent = span(s.up_s + (live ? age : 0));
+    const hasLine = !!s.line;
+    $('s-line-k').hidden = $('s-line-v').hidden = !hasLine;
+    if (hasLine) {
+      const ln = LINE[s.line.state] || ['', '?', '状态 ' + s.line.state];
+      chip($('s-line'), ln[0], ln[1], ln[2]);
+      $('s-line-sub').textContent = '带速 ' + (s.line.speed || 0).toFixed(1) + ' mm/s · 配方 ' + s.line.recipe + (s.line.alarm ? ' · 报警码 ' + s.line.alarm : '');
+    }
   } else {
     for (const id of ['s-app', 's-eth', 's-wo']) chip($(id), '', '?', '未知');
     $('s-wo-title').textContent = ''; $('s-up').textContent = '—';
+    $('s-line-k').hidden = $('s-line-v').hidden = true;
+  }
+  // remote commands: only what the board says it accepts, only while it is online
+  const cmds = show && live && Array.isArray(s.cmds) ? s.cmds.filter(c => CMDS[c]) : [];
+  $('cmd-card').hidden = !cmds.length;
+  if (cmds.join() !== cmdShown) {
+    cmdShown = cmds.join();
+    const box = $('cmd-btns'); box.textContent = '';
+    for (const c of cmds) { const b = document.createElement('button'); b.textContent = CMDS[c][0]; b.onclick = () => sendCmd(c); box.append(b); }
   }
   // banner: the one thing to look at first
   let b = null;
@@ -400,6 +481,7 @@ function render() {
   if (s) {
     const tot = s.total || 0, pct = n => tot ? (n / tot * 100).toFixed(1) + '%' : '';
     $('k-total').textContent = nf.format(tot);
+    $('k-src').textContent = s.counts === 'app' ? '主程序本次运行的累计' : '4G 程序连上后判定的件数';
     $('k-sim').innerHTML = s.sim ? '<span class="tag">模拟数据</span>' : '';
     $('k-ok').textContent = nf.format(s.ok || 0); $('k-re').textContent = nf.format(s.recheck || 0); $('k-ng').textContent = nf.format(s.ng || 0);
     $('p-ok').textContent = pct(s.ok || 0); $('p-re').textContent = pct(s.recheck || 0); $('p-ng').textContent = pct(s.ng || 0);
@@ -459,6 +541,7 @@ function loadCfg() {
   if (h.get('p')) cfg.p = h.get('p');
   cfg.p = (cfg.p || '').replace(/\/+$/, '');
   $('f-b').value = cfg.b || 'wss://broker.emqx.io:8084/mqtt'; $('f-p').value = cfg.p;
+  try { $('c-key').value = localStorage.getItem('des_4g_view_key') || ''; } catch (e) {}
   if (!cfg.b && cfg.p) cfg.b = $('f-b').value;
 }
 $('f-save').onclick = () => {
@@ -467,6 +550,19 @@ $('f-save').onclick = () => {
   $('setup').open = !(cfg.b && cfg.p);
   start();
 };
+function sendCmd(c) {
+  const key = $('c-key').value, def = CMDS[c];
+  if (!key) { $('cmd-out').textContent = '先填操作密钥。'; return; }
+  if (!state || !state.nonce || !mq || !mq.up) { $('cmd-out').textContent = '板子不在线，发不出去。'; return; }
+  if (!confirm(def[2])) return;
+  try { localStorage.setItem('des_4g_view_key', key); } catch (e) {}
+  const id = ++pingId, seq = cmdSeq = Math.max(Date.now(), cmdSeq + 1), arg = def[1];
+  const sig = hmacHex(key, state.nonce + '|' + seq + '|' + c + '|' + arg);
+  mq.publish(cfg.p + '/cmd', JSON.stringify({ cmd: c, arg, id, seq, sig }));
+  sent.set(id, def[0]);
+  $('cmd-out').textContent = '「' + def[0] + '」已发出，等板子回答…';
+  setTimeout(() => { if (sent.delete(id)) $('cmd-out').textContent = '「' + def[0] + '」10 秒内没有回答。'; }, 10000);
+}
 $('ping').onclick = () => {
   const id = ++pingId;
   if (!mq || !mq.publish(cfg.p + '/cmd', JSON.stringify({ cmd: 'ping', id }))) return;

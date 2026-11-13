@@ -1,7 +1,9 @@
 // modbus_tcp.hpp — Modbus-TCP slave on the PS Ethernet port (赛题领域 3 高级「工业网口对接产线 PLC」).
 //
 // Small generic server: holding registers (FC 03 read, FC 06 / 16 write) and input registers (FC 04 read), own thread,
-// poll() based, MBAP framing, up to 4 clients, unit id ignored. Writes are only queued: the owner (app/runner) drains
+// poll() based, MBAP framing, up to 4 clients. The unit id is ignored except MB_UNIT_MONITOR: such requests are served
+// like any other but are not counted in requests(), so a monitoring program on the board (tools/des_4g) does not look
+// like a PLC that comes and goes. Writes are only queued: the owner (app/runner) drains
 // them every control cycle and applies them with the CAN rules; the Modbus reply echoes the write (standard) and the
 // result is a register the PLC reads back. Exceptions: 01 illegal function, 02 illegal address, 03 illegal value
 // (bad quantity / length). Register map: docs/软件与UI.md「Modbus-TCP」.
@@ -22,7 +24,9 @@ namespace des {
 
 // register map v1: the board is the slave; same codes / rules as can_proto.h (CMD / ACK / ST / FLAG / DISP_*);
 // 0-based addresses (PLC software counting from 1 shows 40001.. / 30001..); 32-bit values high word first.
-inline constexpr uint16_t MB_MAP_VERSION = 0x0102;   // 0x0101: + HR 7 LAMP, IR 24..29 RS485; 0x0102: + HR 8, IR 32..37 work orders
+inline constexpr uint16_t MB_MAP_VERSION = 0x0103;   // 0x0101: + HR 7 LAMP, IR 24..29 RS485; 0x0102: + HR 8, IR 32..37 work orders;
+                                                     // 0x0103: unit id 250 = monitor, not counted as PLC traffic (registers unchanged)
+inline constexpr uint8_t MB_UNIT_MONITOR = 0xFA;     // 250: in the range Modbus reserves, no PLC uses it
 // holding registers (FC 03 read, FC 06 / 16 write): a write is executed in the next control cycle (<= 17 ms), then
 // SEQ + 1 and RESULT holds its CANP_ACK_* code
 enum : uint16_t {
@@ -89,7 +93,7 @@ public:
     void set_holding(size_t addr, uint16_t v);    // read-back value (e.g. the result register)
     std::vector<Write> take_writes();             // queued writes, oldest first (allocates; tests)
     size_t take_writes(Write *out, size_t cap);   // alloc-free; overflow stays queued for the next cycle
-    uint64_t requests() const { return requests_.load(std::memory_order_relaxed); }
+    uint64_t requests() const { return requests_.load(std::memory_order_relaxed); }   // PLC requests (not MB_UNIT_MONITOR)
     int clients() const { return clients_.load(std::memory_order_relaxed); }
 
 private:

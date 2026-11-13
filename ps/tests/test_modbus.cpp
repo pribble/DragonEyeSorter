@@ -157,6 +157,19 @@ int main()
     f = recv_frame(fd2);
     CHECK(f.size() == 13 && reg(f, 0) == 1, "second client");
     CHECK(mb.requests() == 16, "request count %llu", (unsigned long long)mb.requests());
+    /* the monitor unit (tools/des_4g): answered like any other, echoed in the reply, never counted as PLC traffic */
+    send(fd2, mbap(21, std::string("\x04", 1) + u16(MB_IR_VERSION) + u16(1), MB_UNIT_MONITOR).data(), 12, 0);
+    f = recv_frame(fd2);
+    CHECK(f.size() == 11 && uint8_t(f[6]) == MB_UNIT_MONITOR && reg(f, 0) == MB_MAP_VERSION, "monitor unit: read answered, unit echoed");
+    send(fd2, mbap(22, std::string("\x06", 1) + u16(MB_HR_WO_ACK) + u16(7), MB_UNIT_MONITOR).data(), 12, 0);
+    f = recv_frame(fd2);
+    CHECK(f.size() == 12 && uint8_t(f[6]) == MB_UNIT_MONITOR, "monitor unit: write echoed");
+    {
+        const std::vector<ModbusTcp::Write> w = mb.take_writes();
+        CHECK(w.size() == 1 && w[0].addr == MB_HR_WO_ACK && w[0].value == 7, "monitor unit: the write is queued like a PLC write");
+    }
+    CHECK(mb.requests() == 16, "monitor unit requests are not counted (%llu)", (unsigned long long)mb.requests());
+    CHECK(MB_MAP_VERSION == 0x0103 && MB_UNIT_MONITOR == 250, "map version / monitor unit constants");
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
     CHECK(mb.clients() == 2, "clients %d", mb.clients());
     /* client cap (kMaxClients = 4): three more connect, the 5th is accepted and immediately closed */

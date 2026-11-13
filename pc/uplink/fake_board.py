@@ -2,13 +2,18 @@
 """fake_board.py: 冒充板上的 4G 上报程序 des_4g，往 MQTT 服务器发与它格式相同的状态和工单，
 用来在没有 4G 模组时预演手机看板 des_4g_view.html。只用标准库。状态里带 "sim": true，看板会标「模拟数据」。
 
-    python fake_board.py --prefix des/xxxxxxxx [--host broker.emqx.io] [--port 1883] [--period 2] [--seconds 0]
+    python fake_board.py --prefix des/xxxxxxxx [--key 操作密钥] [--host broker.emqx.io] [--port 1883] [--period 2] [--seconds 0]
+
+带 --key 时状态里会列出可用的远程命令（确认工单 / 暂停 / 停止 / 继续），看板出现「远程操作」一栏；
+命令的签名规则与 des_4g 相同：sig = HMAC-SHA256(key, "<nonce>|<seq>|<cmd>|<arg>")，seq 必须比上一次大。
 
 剧本（90 s 一圈，循环）：正常过件 → 15 s 警告工单 → 30 s 网线断开 → 45 s 网线恢复、警告恢复
 → 60 s 故障工单并停线 → 75 s 两张工单关闭、恢复过件。看板上的「测往返时间」会得到回答。
 Ctrl+C 退出时发 offline；被强行杀掉时由服务器代发遗嘱 offline。
 """
 import argparse
+import hashlib
+import hmac
 import json
 import random
 import select
@@ -148,8 +153,14 @@ STATUS_CN = {'open': '待处理', 'acked': '处理中', 'recovered': '已恢复�
 class Board:
     """State of the pretend line; step(t) advances the 90 s script and returns the work-order changes to publish."""
 
-    def __init__(self, seed=None):
+    CMDS = ['ack', 'pause', 'stop', 'resume']
+
+    def __init__(self, seed=None, key=''):
         self.rng = random.Random(seed)
+        self.key = key
+        self.nonce = '%016x' % random.getrandbits(64)
+        self.last_seq = 0
+        self.run_state = 1        # what the operator asked for: 1 run, 2 paused, 0 stopped
         self.session = time.strftime('%Y%m%d-%H%M%S')
         self.total = self.ok = self.ng = self.recheck = 0
         self.last = None
@@ -193,7 +204,7 @@ class Board:
             if at >= when and when not in self.done:
                 self.done.add(when)
                 act()
-        for _ in range(0 if self.stopped else parts):
+        for _ in range(0 if self.stopped or self.run_state != 1 else parts):
             r = self.rng.random()
             self.total += 1
             if r < 0.85:
@@ -209,6 +220,43 @@ class Board:
             self.last['size_mm'] = round(self.rng.gauss(30.0, 0.04), 2)
         return out
 
+    def command(self, j):
+        """A message from <prefix>/cmd -> (reply dict, [work-order JSON to publish])."""
+        cmd = j.get('cmd', '') if isinstance(j, dict) else ''
+        reply = dict(id=j.get('id', 0) if isinstance(j, dict) else 0, cmd=cmd)
+        if cmd == 'ping':
+            reply['ok'] = True
+            return reply, []
+
+        def refuse(why):
+            reply.update(ok=False, err=why)
+            return reply, []
+        if not self.key or cmd not in self.CMDS:
+            return refuse('command not enabled')
+        arg, seq = j.get('arg', 0), j.get('seq', 0)
+        if not isinstance(arg, int) or not isinstance(seq, int):
+            return refuse('bad signature')
+        want = hmac.new(self.key.encode(), ('%s|%d|%s|%d' % (self.nonce, seq, cmd, arg)).encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(want, str(j.get('sig', ''))):
+            return refuse('bad signature')
+        if seq <= self.last_seq:
+            return refuse('replayed')
+        self.last_seq = seq
+        out = []
+        if cmd == 'ack':
+            if not 1 <= arg <= 65535:
+                return refuse('bad argument')
+            now = int(time.time() * 1000)
+            for oid, o in sorted(self.orders.items()):
+                if (arg == 65535 or arg == oid) and o['status'] in ('open', 'recovered'):
+                    st = 'acked' if o['status'] == 'open' else 'closed'
+                    o.update(status=st, status_cn=STATUS_CN[st], wall_ack=now, wall_last=now, acked_by='4G')
+                    out.append(json.dumps(o, ensure_ascii=False))
+        else:
+            self.run_state = {'pause': 2, 'stop': 0, 'resume': 1}[cmd]
+        reply.update(ok=True, result=0)
+        return reply, out
+
     def state(self, up_s):
         act = [o for o in self.orders.values() if o['status'] in ('open', 'acked')]
         top = max(act, key=lambda o: (o['level'], o['id'])) if act else None
@@ -217,16 +265,20 @@ class Board:
                  wo=dict(active=len(act), unacked=sum(o['status'] in ('open', 'recovered') for o in self.orders.values()),
                          level=top['level'] if top else 0, id=top['id'] if top else 0, title=top['title'] if top else ''),
                  net=dict(csq=22, dbm=-69, oper='模拟运营商', act='FDD LTE'),
-                 tx=dict(ok=self.published, fail=0, conn=1))
+                 tx=dict(ok=self.published, fail=0, conn=1), counts='app',
+                 line=dict(state=4 if self.stopped else self.run_state, alarm=2 if self.stopped else 0, recipe=1,
+                           speed=0.0 if self.stopped or self.run_state != 1 else 60.0))
+        if self.key:
+            s.update(cmds=self.CMDS, nonce=self.nonce)
         if self.last:
             s['last'] = self.last
         return json.dumps(s, ensure_ascii=False)
 
 
-def run(prefix, host, port, period, seconds, out=sys.stdout):
+def run(prefix, host, port, period, seconds, out=sys.stdout, key=''):
     mq = Mqtt(host, port, 'des-sim-%06x' % random.getrandbits(24), prefix + '/state')
     mq.subscribe(prefix + '/cmd')
-    board = Board()
+    board = Board(key=key)
     t0 = time.monotonic()
     print('fake board -> %s:%d  topics %s/...  (Ctrl+C to stop)' % (host, port, prefix), file=out)
     try:
@@ -249,11 +301,13 @@ def run(prefix, host, port, period, seconds, out=sys.stdout):
                     j = json.loads(text)
                 except ValueError:
                     continue
-                cmd = j.get('cmd', '') if isinstance(j, dict) else ''
-                reply = dict(id=j.get('id', 0) if isinstance(j, dict) else 0, cmd=cmd)
-                reply.update(dict(ok=True, up_s=int(time.monotonic() - t0)) if cmd == 'ping' else dict(ok=False, err='command not enabled'))
+                reply, changed = board.command(j)
                 mq.publish(prefix + '/reply', json.dumps(reply))
-                print('%6.1f  cmd    %s -> %s' % (time.monotonic() - t0, cmd, 'ok' if reply['ok'] else 'refused'), file=out)
+                for wo in changed:
+                    mq.publish(prefix + '/wo', wo)
+                if reply['ok'] and reply['cmd'] != 'ping':
+                    mq.publish(prefix + '/state', board.state(time.monotonic() - t0), retain=True)   # show the effect at once
+                print('%6.1f  cmd    %s -> %s' % (time.monotonic() - t0, reply['cmd'], 'ok' if reply['ok'] else 'refused (%s)' % reply.get('err')), file=out)
     except KeyboardInterrupt:
         pass
     mq.publish(prefix + '/state', 'offline', retain=True)
@@ -268,8 +322,11 @@ def main():
     ap.add_argument('--port', type=int, default=1883)
     ap.add_argument('--period', type=float, default=2.0, help='多少秒发一次状态')
     ap.add_argument('--seconds', type=float, default=0, help='运行多久后退出，0 = 一直跑')
+    ap.add_argument('--key', default='', help='操作密钥：给了才开放远程命令（至少 8 个字符）')
     a = ap.parse_args()
-    run(a.prefix.rstrip('/'), a.host, a.port, a.period, a.seconds)
+    if a.key and len(a.key) < 8:
+        ap.error('--key 至少 8 个字符')
+    run(a.prefix.rstrip('/'), a.host, a.port, a.period, a.seconds, key=a.key)
 
 
 if __name__ == '__main__':

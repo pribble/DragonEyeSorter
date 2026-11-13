@@ -22,6 +22,7 @@
 #include <unistd.h>
 #include <vector>
 
+#include "modbus_tcp.hpp"
 #include "uplink.hpp"
 #include "usbfs_port.hpp"
 
@@ -165,6 +166,8 @@ int mode_run(const UplinkConfig &c, bool verbose)
 {
     BoardLink board;
     board.start(c.board_host, c.feed_port);
+    std::unique_ptr<MbClient> mb;   // des_app's registers through the monitor unit (hw/modbus_tcp.hpp)
+    if (c.modbus_port > 0) mb = std::make_unique<MbClient>(c.board_host, c.modbus_port, MB_UNIT_MONITOR);
     logline("des_4g: broker " + c.mqtt.host + ":" + std::to_string(c.mqtt.port) + ", topics " + c.prefix + "/..., mode " + c.mode);
     while (!g_quit) {
         std::string what;
@@ -179,6 +182,7 @@ int mode_run(const UplinkConfig &c, bool verbose)
         if (verbose) at.trace = [](char dir, const std::string &l) { printf("    %c %s\n", dir, l.c_str()); };
         Uplink up(c, at, board);
         up.log = logline;
+        if (mb) up.attach_modbus(mb.get());
         while (!g_quit && up.step()) {}
         if (g_quit) up.shutdown();
         else {
