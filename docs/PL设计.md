@@ -29,6 +29,8 @@
 | `des_pwm` | 侧边导流挡板舵机的 2 路 PWM（单挡板，现用 1 路），按带位置触发 | 自研 | P1 | ✅ 上板（读回 / 50Hz）；挡板舵机 11-01 已接、开 1500 / 合 1100µs |
 | `des_vision` | 边缘 / 二值显示 + ROI 投影测尺寸 | 自研 | P1 | ✅ 上板，6 种模式实画面验证、统计读回正确 |
 | `des_485` | RS485 Modbus-RTU 收发：硬件 DE、CRC16 生成 / 校验、3.5 字符判帧、应答超时、校验位、监听帧（寄存器窗口 `0x6xx`） | 自研 | P1 | ✅ v16 上板；帧时序与继电器模块读 / 写实测见 [测试与验证](测试与验证.md)；⬜ 启动 / 暂停 / 急停 / 复位灯态与 CAN→RS485 待测 |
+| `des_bpi` | 带速 PI：计米轮编码器测周法测速 + 定点 PI，输出步进脉冲频率的比例修正（寄存器窗口 `0x7xx`） | 自研 | P1 | ⬜ v17 第 1 批：仿真 44 项全过、整顶层等价回归通过；未编比特流、未上板 |
+| `des_ptrig` | 带位置比较触发：4 路，到位当拍锁存时间戳 / 位置，可装载挡板脉宽并提前重启 PWM 周期、输出 `TRIG_OUT` 脉冲（寄存器窗口 `0x8xx`） | 自研 | P1 | ⬜ v17 第 1 批：仿真 32 项全过；未编比特流、未上板 |
 | `awb_seq_div` | ISP 自动白平衡逐位除法器（替换厂家流水线除法器） | 自研 | P0 | ✅ 在用，省约 4k LUT |
 | `img_morph` / `blob_ccl` / `roi_scaler` / `tensor_pack` / `overlay` | 形态学、连通域、ROI 缩放、张量打包、叠加 | 自研 | P2 | ⬜ 未做（大块图像算法优先放 PS） |
 | `traj_interp` | 多轴时间同步插补（115200 带宽承载不了高频插补点） | 自研 | P2 | ⬜ 未做 |
@@ -77,7 +79,7 @@
 | 0x038 / 0x03C | R | `CAP_ENC0` / `CAP_ENC1` | 同一时钟沿的计米轮编码器计数（v16）：图像、步进、编码器三路同刻锁存 |
 | 其余 | R | — | 读回 `0xDEADBEEF` |
 
-`DES_VERSION` 编码：16 = v16（`CAP_ENC0/1` + `des_485`）；12 = v12~v15（重构 / 重编未改寄存器接口）；v8~v10 未改寄存器接口（v10 只去光源输出、未单独上板）。PS 只需判断 5 / 6 / 7 / 11 / 16（拍摄锁存 / `des_vision` / `des_pwm` / `des_io` / `des_485` 与 `CAP_ENC`）。
+`DES_VERSION` 编码：17 = v17 第 1 批（`des_bpi` + `des_ptrig` + `des_pwm` 的 `SLEW`，源码里已是 17，**尚未编比特流、板上仍读 16**）；16 = v16（`CAP_ENC0/1` + `des_485`）；12 = v12~v15（重构 / 重编未改寄存器接口）；v8~v10 未改寄存器接口（v10 只去光源输出、未单独上板）。PS 只需判断 5 / 6 / 7 / 11 / 16（拍摄锁存 / `des_vision` / `des_pwm` / `des_io` / `des_485` 与 `CAP_ENC`）。
 
 **拍摄锁存**：厂家帧写模块 `uidbuf_write` 开始写一帧、完成中断 `f2p_irq` 上升沿各翻转一次，经两级同步进 75MHz 域；开始时锁暂存、完成时整组更新 `CAP_*`，PS 在 `WaitFinish` 返回后有整帧时间读。PS 用 `CAP_POS0/1` 按件所在图像行插值，得该行读出时刻的带位置（卷帘快门）。
 
@@ -107,6 +109,7 @@
 - **输出极性**：按 TB6600 共阳接法（PUL 低有效、脉冲 5µs；换向后等 10µs 再发脉冲；ENA 使能时输出高）；顶层 `STEP_COMMON_CATHODE=1` 反相为共阴直驱（PUL 高有效，ENA 高 = 脱机），见 [硬件与接线](硬件与接线.md)。
 - **运动中改写 `TARGET`**：传送带「停在某步」的做法（减速点自动重算）；目标落在运动方向身后（写得太晚）时减速停在目标之后（`AT_TARGET` = 0），不卡在 moving；改写成恰好等于当前位置则就地停（`AT_TARGET` = 1）。
 - **停止**：`estop` 输入或写 HALT 立即停脉冲（不减速），置 HALTED。**速度上限**按每秒 5 万步用（5µs 脉冲需 10µs 周期）。
+- **速度比例修正 `vscale`**（v17，来自 `des_bpi`）：有符号 Q0.16，实际脉冲频率 = 设定频率 ×（1 + `vscale`），只作用在相位累加器上；加减速斜率、刹车距离（`BRAKE`）和到位判断仍按设定频率算，所以修正怎么变都不影响停在哪一步。`vscale` = 0 时与 v16 逐拍一致。另输出 `cruise_o`（运动中、不在减速、当前速度 = `VMAX_INC`）给 `des_bpi` 判断这一段能不能调。
 
 | 偏移 | R/W | 说明 |
 |---|---|---|
@@ -159,6 +162,9 @@
 | 0x408 / 0x40C | R/W | `CH0_US` / `CH1_US` 脉宽 µs |
 | 0x410 | R | `CNT` 已开始的周期数 |
 | 0x414 | R | `ID` = 0x50574D31 |
+| 0x418 | R/W | `SLEW`（v17）：输出脉宽每周期最多向 `CHx_US` 走多少 µs；0 = 立即到位（与 v16 相同） |
+
+v17 另加外部装载口（`des_ptrig` 驱动）：装入某一路脉宽后，距上一次周期起点满 5ms（参数 `RESYNC_US`）就立刻重启周期，新脉冲最迟 5ms 发出，不必等满一个 20ms 周期；进行中的脉冲不会被截短。没有触发时行为与 v16 逐拍一致。仿真（`run_sim.sh ptrig`）：周期中段触发后 3µs 出新脉冲，同相位下直接写寄存器要等 9998µs。
 
 ### 现场输入 `des_io`（`PL_BASE + 0x500`）
 
@@ -215,6 +221,56 @@
 
 PS：`des_hw` 的 `des_485_config / des_485_xfer / des_485_listen`（`DES_VERSION_485` = 16）；调试 `desreg 485 [cfg|tx|bc|soak|listen|clr]`；应用层（继电器模块 + 三色灯 + CAN / Modbus-TCP 转发）在 `ps/src/app/rs485_io` 与 `ps/src/hw/modbus_rtu`，见 [软件与UI](软件与UI.md)。
 
+### 带速 PI `des_bpi`（`PL_BASE + 0x700`，v17 第 1 批，未上板）
+
+[pl/soc_base/src/des/des_bpi.v](../pl/soc_base/src/des/des_bpi.v)。对应拓展 2「高级工业控制算法硬件实现 · PID 闭环」。上电默认关（`CTRL.b0` = 0，输出 0，皮带按 v16 开环走）。
+
+- **测速（测周法）**：只认「计数到达 4 的倍数」这一种边沿（始终是同一个电气边沿，A/B 相位误差与占空比误差抵消）。距上一次取样满 `PERIOD` 后的第一个这种边沿结束一个窗口：速度 = 计数差 × 2³² ÷ 时钟数（Q0.32 计数 / 时钟），时间分辨率 1 个时钟。`TIMEOUT` 内没有边沿 = 皮带没动：`MEAS` 置 0、`STALL` 置位。
+- **PI**：相对误差 e =（`SET` − `MEAS`）÷ `SET`（Q0.16，带死区 `DB`）；输出 = 限幅（e × `KP` >> 12 + 积分 >> 16，±`SMAX`），积分 += e × `KI`，积分同样限幅（抗饱和）。用相对误差，所以增益与带速、时钟频率无关。输出送步进的 `vscale`。
+- **什么时候调**：只有整个窗口都处在步进巡航段（`cruise_o`），且巡航后已跳过 `SETTLE` 个窗口，才走一步；起步、减速、停在抓取线、改带速的过渡期间积分和输出保持不动。
+- 资源：一个 48 / 32 位逐位除法器（两次除法复用）、一个 18 × 17 乘法器（两次乘法复用）；综合数字待重编后回填 ⚠。
+- 仿真 [pl/sim/tb_des_bpi.v](../pl/sim/tb_des_bpi.v)（`run_sim.sh bpi`，接真实 `stepper_ctrl` 与皮带 / 编码器模型，时钟缩到 1MHz）44 项全过：打滑 4% 时开环测得 48.00mm/s（±0.3%，编码器四相不等宽）、闭环回到 50.00mm/s（±0.3%）且修正量 4.17%；负载阶跃 0.6s 内恢复；超出限幅时输出恰好停在限值、解除后 0.7s 内恢复（无积分饱和拖尾）；停带 / 起步 / 改带速期间输出不变；堵转置 `STALL`；位置模式下带着 PI 仍停在精确步数；`BRAKE` 在连续修正 3s 后不变。⚠ 这些是仿真里的模型数字，不是实测，实物数字上板后进 [测试与验证](测试与验证.md)。
+
+| 偏移 | R/W | 说明 |
+|---|---|---|
+| 0x700 | R/W | `CTRL`：b0 使能；b1（只写）清积分与输出 |
+| 0x704 | R | `STATUS`：b0 已使能 / b1 上一个窗口走了一步 / b2 `STALL` / b3 输出在限幅 / b4 已有参考边沿 / b5 步进在巡航 |
+| 0x708 | R/W | `SET` 目标带速（Q0.32 编码器计数 / 时钟；0 = 不调） |
+| 0x70C / 0x710 | R/W | `KP`（Q4.12）/ `KI`（Q0.16，每窗口） |
+| 0x714 | R/W | `SMAX` 输出限幅（Q0.16，硬上限 16384 = 25%） |
+| 0x718 | R/W | `DB` 相对误差死区（Q0.16） |
+| 0x71C / 0x720 | R/W | `PERIOD` 最短窗口（时钟数，默认 750000 = 10ms）/ `TIMEOUT`（默认 7500000 = 100ms） |
+| 0x724 | R/W | `SETTLE` 进入巡航后跳过的窗口数（默认 5） |
+| 0x728 / 0x72C | R | `MEAS` 实测带速（Q0.32）/ `ERR` 相对误差（有符号 Q0.16，过死区后） |
+| 0x730 / 0x734 | R | `SCALE` 当前输出（有符号 Q0.16）/ `INTEG` 其中的积分部分 |
+| 0x738 / 0x73C | R | `MEAS_CNT` 已测窗口数 / `STEP_CNT` 已走的 PI 步数 |
+| 0x740 / 0x744 | R | `DM` / `DT`：上一个窗口的计数差（有符号）与时钟数 |
+| 0x748 | R | `ID` = 0x42504931 |
+
+PS：`des_hw` 的 `des_bpi_present / des_bpi_config / des_bpi_set / des_bpi_enable / des_bpi_clear / des_bpi_read`（`DES_VERSION_V17` = 17，没有这个模块的比特流上一律返回 `DES_E_ARG`、不写寄存器）；调试 `desreg bpi [on|off|clr|set|cfg|watch]`。应用层：`des_app.json` 的 `belt.pid` 新增 `hw`（默认 true）及 `hw_kp / hw_ki / hw_limit / hw_deadband / hw_period_ms / hw_settle`——比特流带 `des_bpi` 时，界面参数页的「带速 PI」开关改为驱动 PL 环，`Runner` 只负责把目标带速写进 `SET`，原 PS 侧 PI 不再运行；v16 比特流上行为不变（仍是 PS 侧 PI）。`des_app` 退出时关闭 PL 环。
+
+### 带位置比较触发 `des_ptrig`（`PL_BASE + 0x800`，v17 第 1 批，未上板）
+
+[pl/soc_base/src/des/des_ptrig.v](../pl/soc_base/src/des/des_ptrig.v)。4 路；上电全部未布防，任何输出都不动。布防后的一路在位置源（步进 `POS` 或编码器计数）到达阈值的那一拍触发一次：锁存 `FREE_CNT` 与位置、自动撤防，并按配置执行动作。比较用 32 位差值，计数器回绕不受影响；布防时阈值已经过了就立即触发并置 `LATE`。口径是「位置同步输出」，不是电子齿轮。
+
+- 动作：1 / 2 = 把配置里的脉宽装进 `des_pwm` 通道 0 / 1（并提前重启周期，见 `des_pwm`）；3 = 输出一拍 `servo_go`（顶层暂未接，留给第 3 批）；另可同时在 `TRIG_OUT` 出一个脉冲。
+- 管脚：`TRIG_OUT` = J12 PIN21（V8，空闲脚；⚠ 按 [硬件与接线](硬件与接线.md) 空闲脚表的顺序对应，上板前用万用表核对）。
+- 仿真 [pl/sim/tb_des_ptrig.v](../pl/sim/tb_des_ptrig.v)（`run_sim.sh ptrig`，后面接真实 `des_pwm`）32 项全过：触发时间戳 = 位置读到阈值的那一拍、两个方向、跨 `0x7FFFFFFF→0x80000000` 回绕、编码器作位置源、迟到标志、两路同拍触发、脉宽装载与周期重启的时延、无截短脉冲、`SLEW` 逐周期序列、撤防。
+
+| 偏移 | R/W | 说明 |
+|---|---|---|
+| 0x800 | W | `CTRL`：b0 全部撤防并清标志 |
+| 0x804 | R | `STATUS`：[3:0] 已布防 / [11:8] 已触发 / [19:16] 迟到 |
+| 0x808 | R | `FIRE_CNT` 触发总次数 |
+| 0x80C | R | `ID` = 0x50544731 |
+| 0x810 | R/W | `OUT_CLK`：`TRIG_OUT` 脉冲长度（时钟数，默认 7500 = 100µs） |
+| 0x840 + 0x10·i | R/W | `THR` 阈值（i = 0~3） |
+| 0x844 + 0x10·i | R/W | `CFG`：b0 布防（触发后自清）/ b1 方向（0 = 位置 ≥ 阈值，1 = ≤）/ b2 位置源（0 步进，1 编码器）/ [6:4] 动作 / b7 出 `TRIG_OUT` 脉冲 / [27:16] 脉宽 µs |
+| 0x848 + 0x10·i | R | `TS` 触发时的 `FREE_CNT` |
+| 0x84C + 0x10·i | R | `POS` 触发时的位置源读数 |
+
+PS：`des_hw` 的 `des_ptrig_present / des_ptrig_arm / des_ptrig_disarm / des_ptrig_out_us / des_ptrig_read` 与 `des_pwm_slew`；调试 `desreg ptrig [arm <i> <阈值> | rel <i> <相对量>] [up|down] [pos|enc] [pwm0|pwm1|go] [µs] [out] | off [i] | out <µs>`（`rel` 在同一条命令里读当前位置再加相对量）。应用层（挡板调度）还没有改用它，现阶段只用于上板验证与测触发时延。
+
 ## 分段与扩展登记
 
-分段固定：`0x0xx` des_regs / `0x1xx` servo_bus / `0x2xx` stepper_ctrl / `0x3xx` des_vision / `0x4xx` des_pwm / `0x5xx` des_io / `0x6xx` des_485；窗口 `0x8030_1000~0x8030_1FFF`（4KB）。新模块从 `0x7xx` 起，**实现前先在此登记偏移**，并与 `ps/src/hw/` 头文件同一次提交更新。已登记扩展：`0x5xx` `des_io`（PS 侧 `DES_IO_*`）、`0x6xx` `des_485`（`DES_485_*`），见 `ps/src/hw/des_regs.h`。
+分段固定：`0x0xx` des_regs / `0x1xx` servo_bus / `0x2xx` stepper_ctrl / `0x3xx` des_vision / `0x4xx` des_pwm / `0x5xx` des_io / `0x6xx` des_485 / `0x7xx` des_bpi / `0x8xx` des_ptrig；窗口 `0x8030_1000~0x8030_1FFF`（4KB）。新模块从 `0x9xx` 起，**实现前先在此登记偏移**，并与 `ps/src/hw/` 头文件同一次提交更新。已登记扩展：`0x5xx` `des_io`（PS 侧 `DES_IO_*`）、`0x6xx` `des_485`（`DES_485_*`）、`0x7xx` `des_bpi`（`DES_BPI_*`）、`0x8xx` `des_ptrig`（`DES_PTG_*`），见 `ps/src/hw/des_regs.h`。预留：`0x9xx` 振动采集（v17 第 2 批）、`0xAxx` 多轴插补（第 3 批）。

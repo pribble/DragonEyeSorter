@@ -6,7 +6,8 @@
 # width / enable read-back (v10: no lamp bit) and period counter; command response latencies (servo bus, stepper); v9+: stepper
 # target rewrite (TARGET = POS while moving stops there, a target behind ramps down); v11+: des_io ID, e-stop not latched,
 # encoder count steady with the belt standing; v16+: CAP_ENC0/1 mapped, des_485 ID and one RS485 request
-# (address 247, nobody answers: timeout) with its on-wire duration. Prints PASS /
+# (address 247, nobody answers: timeout) with its on-wire duration; v17+: des_bpi / des_ptrig IDs, both idle after
+# reset, belt-PI measurement reads STALL with the belt standing, a trigger armed behind the position fires. Prints PASS /
 # FAIL per item and a summary; exit code = failures. Uses the camera (des_tool probe in the background).
 SELF=$(readlink -f -- "$0" 2>/dev/null || echo "$0")
 DES_HOME=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd)   # 以脚本自己所在目录为准，不吃继承来的 DES_HOME
@@ -113,6 +114,29 @@ if [ "$VER" -ge 16 ]; then
                 || fail "RS485 request duration ${MS} ms (expected 8.33)" ;;
         *) echo "WARN RS485: $OUT - idle bus not quiet? (terminated bus without fail-safe bias; try with the USB-RS485 adapter)" ;;
     esac
+fi
+
+# --- v17: belt speed PI (des_bpi), belt position compare trigger (des_ptrig), flap PWM slew
+if [ "$VER" -ge 17 ]; then
+    BID=$($R r 0x748); TID=$($R r 0x80C)
+    [ "$BID" = "0x42504931" ] && pass "des_bpi ID $BID" || fail "des_bpi ID $BID"
+    [ "$TID" = "0x50544731" ] && pass "des_ptrig ID $TID" || fail "des_ptrig ID $TID"
+    C=$(hex "$($R r 0x700)"); S=$(hex "$($R r 0x730)"); A=$(hex "$($R r 0x804)"); SL=$(hex "$($R r 0x418)")
+    [ "$C" = 0 ] && [ "$S" = 0 ] && pass "belt PI off, SCALE 0 (reset state = v16 behaviour)" \
+        || fail "belt PI not idle (CTRL $C SCALE $S): something left it on"
+    [ $((A & 0xF)) = 0 ] && pass "no position trigger armed" || fail "position trigger armed (STATUS $A)"
+    [ "$SL" = 0 ] && pass "PWM slew 0" || fail "PWM slew $SL"
+    # belt standing: no encoder event for TIMEOUT -> STALL, MEAS 0 (the measurement runs with the loop off)
+    ST=$(hex "$($R r 0x704)"); M=$(hex "$($R r 0x728)")
+    [ $((ST & 4)) = 4 ] && [ "$M" = 0 ] && pass "belt PI measurement: STALL and MEAS 0 with the belt standing" \
+        || fail "belt PI measurement with the belt standing: STATUS $ST MEAS $M"
+    # an entry armed 10 steps behind the position fires at once (LATE) and loads the PWM width; outputs stay disabled
+    $R ptrig rel 0 -10 pwm0 1234 > /dev/null
+    A=$(hex "$($R r 0x804)"); W=$(hex "$($R r 0x408)"); N=$(hex "$($R r 0x808)")
+    [ $(((A >> 8) & 1)) = 1 ] && [ $(((A >> 16) & 1)) = 1 ] && [ "$W" = 1234 ] \
+        && pass "position trigger: entry behind the position fired at once (LATE), PWM ch0 loaded 1234 us, fires $N" \
+        || fail "position trigger: STATUS $A, CH0_US $W (expected fired + late, 1234)"
+    $R ptrig off > /dev/null; $R pwm 0 1500 > /dev/null; $R pwm off > /dev/null
 fi
 
 # --- command response

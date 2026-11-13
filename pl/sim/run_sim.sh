@@ -19,8 +19,14 @@ case "${1:-des_axi}" in
   io)
     iverilog -g2005 -I"$D" -o "$T/sim" tb_des_io.v $D/des_io.v
     ;;
+  bpi)   # v17 belt speed PI around the real stepper_ctrl
+    iverilog -g2005 -I"$D" -o "$T/sim" tb_des_bpi.v $D/des_bpi.v $D/stepper_ctrl.v
+    ;;
   pwm)
     iverilog -g2005 -I"$D" -o "$T/sim" tb_des_pwm.v $D/des_pwm.v
+    ;;
+  ptrig)   # v17 position compare trigger with the real des_pwm behind it
+    iverilog -g2005 -I"$D" -o "$T/sim" tb_des_ptrig.v $D/des_ptrig.v $D/des_pwm.v
     ;;
   rs485)
     iverilog -g2005 -I"$D" -o "$T/sim" tb_des_485.v $D/des_485.v

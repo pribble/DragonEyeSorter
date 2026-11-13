@@ -1,6 +1,6 @@
 #!/bin/bash
 # 一次跑完全部 PL 仿真目标（逐个调用 run_sim.sh）
-# 用法：bash pl/sim/run_all.sh [target ...]（不给参数 = 9 个全跑；可从任意目录调用）
+# 用法：bash pl/sim/run_all.sh [target ...]（不给参数 = 11 个全跑；可从任意目录调用）
 #
 # 环境变量：
 #   SIM_JOBS=N  并行度，默认 = nproc；1 = 串行（输出行与 PASS/FAIL 判定不变）
@@ -12,7 +12,7 @@ SIM=$(CDPATH= cd -- "$(dirname -- "$(readlink -f -- "$0")")" && pwd)
 cd "$SIM" || exit 1
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
-[ $# -gt 0 ] && TARGETS="$*" || TARGETS="des_axi servo_bus stepper io pwm rs485 vision vision2 awb"
+[ $# -gt 0 ] && TARGETS="$*" || TARGETS="des_axi servo_bus stepper io pwm rs485 vision vision2 awb bpi ptrig"
 JOBS=${SIM_JOBS:-}
 if [ -z "$JOBS" ]; then
   JOBS=$(nproc 2>/dev/null || echo 1)

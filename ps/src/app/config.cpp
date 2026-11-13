@@ -99,6 +99,16 @@ std::string load_config(const std::string &path, AppConfig &cfg)
                 if (belt.pid.kp < 0 || belt.pid.ki < 0 || belt.pid.trim_mm_s < 0 || belt.pid.trim_mm_s > 20 ||
                     belt.pid.deadband_mm_s < 0)
                     return path + ": belt.pid kp/ki/trim/deadband must be >= 0 and trim <= 20 mm/s";
+                // PL loop (des_bpi, v17+): same ranges as des_bpi_config, checked here so a typo stops the start
+                ji::gets(*p, "hw", belt.pid.hw, "hw_kp", belt.pid.hw_kp, "hw_ki", belt.pid.hw_ki,
+                         "hw_limit", belt.pid.hw_limit, "hw_deadband", belt.pid.hw_deadband,
+                         "hw_period_ms", belt.pid.hw_period_ms, "hw_settle", belt.pid.hw_settle);
+                if (belt.pid.hw_kp < 0 || belt.pid.hw_kp >= 16 || belt.pid.hw_ki < 0 || belt.pid.hw_ki >= 1 ||
+                    belt.pid.hw_limit < 0 || belt.pid.hw_limit > 0.25 || belt.pid.hw_deadband < 0 ||
+                    belt.pid.hw_deadband >= 1 || belt.pid.hw_period_ms < 1 || belt.pid.hw_period_ms > 100 ||
+                    belt.pid.hw_settle < 0 || belt.pid.hw_settle > 255)
+                    return path + ": belt.pid hw_kp 0..16, hw_ki 0..1, hw_limit 0..0.25, hw_deadband 0..1, "
+                                  "hw_period_ms 1..100, hw_settle 0..255";
             }
         }
         TrackerConfig &trk = cfg.tracker;

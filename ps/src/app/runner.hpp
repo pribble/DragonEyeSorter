@@ -139,6 +139,16 @@ private:
     double enc_t_ = -1, enc_actual_ = 0;   // last encoder sample time / measured actual speed (mm/s)
     bool enc_ok_ = false;              // des_io_read succeeded this cycle
     double pid_log_t_ = -1e9;          // 1 Hz [pid] line while the loop is enabled (tuning / demo)
+    // PL belt-speed PI (des_bpi, bitstream v17+, cfg.belt.pid.hw): the same switch then drives the PL loop and the
+    // PS loop above stays idle. The worker only keeps the set-point current; the PL freezes itself outside cruise.
+    bool pl_pid_ = false;
+    double pl_set_ = -1;               // set-point last written (mm/s), -1 = none
+    std::atomic<double> pl_scale_{0};  // PL output read back at 1 Hz (fraction), for the panel line
+    double cruise_base() const         // the cruise speed the belt is meant to hold: adaptation, operator / PLC, config
+    {
+        return (cfg_.belt.adapt.enabled && adapt_v_ > 0) ? adapt_v_ : (speed_mm_s_ > 0 ? speed_mm_s_ : cfg_.belt.run_speed);
+    }
+    void pl_pid_enable(bool on);
     std::array<uint16_t, 6> arm_counts_{};   // last commanded pose (arm thread only)
     OpsRegs ops_;
     std::deque<uint16_t> ops_acks_;

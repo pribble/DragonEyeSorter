@@ -11,7 +11,8 @@ module tb_des_pwm;
     reg  [31:0] wdata = 0;
     wire [31:0] rdata;
     wire [1:0] pwm;
-    des_pwm dut (.clk(clk), .wr(wr), .waddr(waddr), .wdata(wdata), .raddr(raddr), .rdata(rdata), .pwm(pwm));
+    des_pwm dut (.clk(clk), .wr(wr), .waddr(waddr), .wdata(wdata), .raddr(raddr), .rdata(rdata), .pwm(pwm),
+                 .xld(2'b00), .xus(24'd0));   // no position trigger = the v16 behaviour
 
     integer fails = 0, passes = 0;
     reg [8*80-1:0] msg;

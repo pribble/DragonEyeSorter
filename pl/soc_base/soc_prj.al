@@ -75,6 +75,22 @@
                     <Attr Name="CompileOrder" Val="73"/>
                 </FileInfo>
             </File>
+            <File Path="src/des/des_bpi.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="74"/>
+                </FileInfo>
+            </File>
+            <File Path="src/des/des_ptrig.v">
+                <FileInfo>
+                    <Attr Name="UsedInSyn" Val="true"/>
+                    <Attr Name="UsedInP&R" Val="true"/>
+                    <Attr Name="BelongTo" Val="design_1"/>
+                    <Attr Name="CompileOrder" Val="75"/>
+                </FileInfo>
+            </File>
             <File Path="src/des/awb_seq_div.v">
                 <FileInfo>
                     <Attr Name="UsedInSyn" Val="true"/>

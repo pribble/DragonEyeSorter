@@ -20,7 +20,17 @@ Runner::Runner(des_hw_t *hw, const AppConfig &cfg, const RunOptions &opt)
 {
     pid_on_ = cfg.belt.pid.enabled;
     pid_switch_.store(pid_on_);
-    pid_.set_enabled(pid_on_);
+    if (cfg.belt.pid.hw && des_bpi_present(hw)) {   // bitstream v17+: the PL closes the loop
+        const SpeedPidConfig &p = cfg.belt.pid;
+        des_bpi_cfg_t c{p.hw_kp, p.hw_ki, p.hw_limit, p.hw_deadband, unsigned(p.hw_period_ms),
+                        unsigned(std::max(100, 10 * p.hw_period_ms)), p.hw_settle};
+        pl_pid_ = des_bpi_config(hw, &c) == DES_OK;
+        fprintf(stderr, "[run] belt speed PI: %s (kp %.2f ki %.3f limit %.0f %% window %d ms)\n",
+                pl_pid_ ? "PL des_bpi" : "PL des_bpi rejected the settings, PS loop", p.hw_kp, p.hw_ki, p.hw_limit * 100,
+                p.hw_period_ms);
+    }
+    pid_.set_enabled(pid_on_ && !pl_pid_);
+    if (pl_pid_) pl_pid_enable(pid_on_);
     if (opt.speed_mm_s > 0) belt_.set_speed(opt.speed_mm_s);
     JointAngles home;
     home.q = cfg.arm.home_deg;
@@ -31,8 +41,17 @@ void Runner::set_pid_enabled(bool on)
 {
     pid_switch_.store(on, std::memory_order_relaxed);   // the worker applies it at the next cycle
 }
+// PL loop on / off. Off clears the integrator and puts the output to 0 at once (the belt is back on the programmed
+// speed within one clock); on starts from a clean integrator with the set-point written again by the next cycle.
+void Runner::pl_pid_enable(bool on)
+{
+    des_bpi_enable(hw_, on ? 1 : 0);
+    pl_set_ = -1;
+    pl_scale_.store(0);
+}
 Runner::~Runner()
 {
+    if (pl_pid_) des_bpi_enable(hw_, 0);   // never leave the PL trimming the belt for the next program
     state_ = CANP_ST_IDLE;   // a pending intercept close gives up on its next 2 ms poll: the abort lifts the arm open
     BeltPlan hold; hold.kind = BeltPlan::Hold; belt_.apply(hold);   // the belt must not cruise while the arm winds down
     rs485_.reset();   // lamps off, bus thread joined
@@ -433,13 +452,37 @@ void Runner::cycle(Tracker &tr, Picker &pk)
         const bool want_pid = pid_switch_.load(std::memory_order_relaxed);   // HMI 参数页「带速 PI」开关
         if (want_pid != pid_on_) {
             pid_on_ = want_pid;
-            pid_.set_enabled(want_pid);
-            if (!want_pid) pid_off_restore_ = true;
+            if (pl_pid_) pl_pid_enable(want_pid);
+            else {
+                pid_.set_enabled(want_pid);
+                if (!want_pid) pid_off_restore_ = true;
+            }
+        }
+        if (pl_pid_ && pid_on_) {
+            // PL loop (des_bpi): keep its set-point on the cruise speed the belt is meant to hold. Ramps, stops at the
+            // pick line and speed changes need nothing here: the PL only steps on windows that lay inside the cruise.
+            const double base = cruise_base();
+            if (std::fabs(base - pl_set_) > 1e-6) {
+                des_bpi_set(hw_, base / cfg_.belt.enc_scale());
+                pl_set_ = base;
+            }
+            if (now - pid_log_t_ >= 1.0) {   // 1 Hz: panel value + tuning / demo line
+                des_bpi_t b;
+                if (des_bpi_read(hw_, &b) == DES_OK) {
+                    pl_scale_.store(b.scale);
+                    fprintf(stderr, "[pid] PL set %.1f meas %.2f mm/s scale %+.2f %%%s%s\n", base,
+                            b.meas_cps * cfg_.belt.enc_scale(), b.scale * 100, b.status & DES_BPI_ST_SAT ? " LIMIT" : "",
+                            b.status & DES_BPI_ST_STALL ? " STALL" : "");
+                }
+                pid_log_t_ = now;
+            }
         }
         // Optional PS-side belt-speed PI (des_app.json belt.pid, default off): trim the cruise speed from the
         // measuring-wheel encoder. Only while cruising: a stop-at-the-pick-line plan and the startup ramp are left
         // to the PL profile so the stop timing does not change.
-        if (pid_on_ && state_ == CANP_ST_RUN && out.belt.kind == BeltPlan::Run && enc_ok_ &&
+        if (pl_pid_) {
+            // nothing: the PS loop below is not used with the PL loop
+        } else if (pid_on_ && state_ == CANP_ST_RUN && out.belt.kind == BeltPlan::Run && enc_ok_ &&
             !belt_.stopped()) {
             const double base = (cfg_.belt.adapt.enabled && adapt_v_ > 0) ? adapt_v_
                                 : (speed_mm_s_ > 0 ? speed_mm_s_ : cfg_.belt.run_speed);
@@ -544,7 +587,7 @@ std::string Runner::status_line() const
     if (can_fd_ >= 0) r += t - last_plc_hb_ < 1.0 ? " · PLC 在线" : " · PLC 未连";
     if (mb_) r += t - last_mb_ < 1.0 ? " · Modbus 在线" : " · Modbus 未连";
     if (rs485_) r += rs485_->link_ok() ? " · RS485 在线" : " · RS485 断开";
-    if (pid_on_) r += fmt(" · PI %+.1f mm/s", pid_.last_trim());
+    if (pid_on_) r += pl_pid_ ? fmt(" · PL PI %+.1f%%", pl_scale_.load() * 100) : fmt(" · PI %+.1f mm/s", pid_.last_trim());
     if (q[0]) r += std::string(" · ") + q;
     if (!last_event_.empty()) r += " · " + last_event_;
     return r;

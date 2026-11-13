@@ -15,6 +15,10 @@
  *   pwm <ch> <us> | pwm off      flap servo pulse width (v7);   io [estop-clr|enc-zero|ir1-clr|watch [sec]]  (v11)
  *   485 [cfg <baud> [N|E|O] [timeout_ms] | tx <hex..> | bc <hex..> | soak <n> <hex..> | listen [sec] | clr]
  *                                RS485 Modbus-RTU (v16): PDU bytes in hex without CRC (the PL adds / checks it)
+ *   bpi [on | off | clr | set <counts/s> | cfg <kp> <ki> <limit> [deadband] [period_ms] [timeout_ms] [settle] | watch [sec]]
+ *                                belt speed PI in the PL (v17): set-point in encoder counts/s, limit as a fraction
+ *   ptrig [arm <i> <thr> | rel <i> <delta>] [up|down] [pos|enc] [pwm0|pwm1|go] [us] [out] | off [i] | out <us>
+ *                                belt position compare trigger (v17): rel = threshold relative to where the source is now
  * Do not use the write commands while des_app is running (single-master servo bus / stepper).
  */
 #include <stdio.h>
@@ -70,6 +74,104 @@ static int status(void)
            s & DES_ST_STATUS_HALTED ? " halted" : "", s & DES_ST_STATUS_ENABLED ? " enabled" : "");
     if (des_step_brake_steps(&hw) >= 0) printf(", brake %d steps", des_step_brake_steps(&hw));
     printf("\n");
+    des_bpi_t b;
+    if (des_bpi_read(&hw, &b) == DES_OK)
+        printf("BELT PI      %s, set %.1f meas %.1f counts/s, scale %+.2f %%, %u windows / %u steps\n",
+               b.status & DES_BPI_ST_ENABLED ? "on" : "off", b.set_cps, b.meas_cps, b.scale * 100, b.meas_cnt, b.step_cnt);
+    des_ptrig_t t;
+    if (des_ptrig_read(&hw, &t) == DES_OK)
+        printf("POS TRIGGER  armed %u%u%u%u, %u fires\n", t.e[0].armed, t.e[1].armed, t.e[2].armed, t.e[3].armed,
+               t.fire_cnt);
+    return 0;
+}
+
+/* v17: belt speed PI in the PL (des_bpi). Speeds are encoder counts per second (x mm per count = mm/s). */
+static void bpi_print(void)
+{
+    des_bpi_t b;
+    des_bpi_read(&hw, &b);
+    printf("bpi %s | set %.1f meas %.1f counts/s | err %+.2f %% scale %+.2f %% (integral %+.2f %%) | %u windows, "
+           "%u steps | last window %d counts / %u clocks%s%s%s%s\n", b.status & DES_BPI_ST_ENABLED ? "on" : "off",
+           b.set_cps, b.meas_cps, b.err * 100, b.scale * 100, b.integ * 100, b.meas_cnt, b.step_cnt, b.dm, b.dt,
+           b.status & DES_BPI_ST_CRUISE ? " cruise" : "", b.status & DES_BPI_ST_STEPPED ? " stepping" : "",
+           b.status & DES_BPI_ST_SAT ? " LIMIT" : "", b.status & DES_BPI_ST_STALL ? " STALL" : "");
+}
+static int bpi_cmd(int argc, char **argv)
+{
+    if (!des_bpi_present(&hw)) { fprintf(stderr, "bitstream before v17: no des_bpi\n"); return 2; }
+    const char *s = argc > 0 ? argv[0] : "";
+    if (!strcmp(s, "on")) des_bpi_enable(&hw, 1);
+    else if (!strcmp(s, "off")) des_bpi_enable(&hw, 0);
+    else if (!strcmp(s, "clr")) des_bpi_clear(&hw);
+    else if (!strcmp(s, "set") && argc >= 2) des_bpi_set(&hw, atof(argv[1]));
+    else if (!strcmp(s, "cfg") && argc >= 4) {
+        des_bpi_cfg_t c = { atof(argv[1]), atof(argv[2]), atof(argv[3]), argc > 4 ? atof(argv[4]) : 0.0,
+                            argc > 5 ? (unsigned)atoi(argv[5]) : 10u, argc > 6 ? (unsigned)atoi(argv[6]) : 100u,
+                            argc > 7 ? atoi(argv[7]) : 5 };
+        if (des_bpi_config(&hw, &c) != DES_OK) {
+            fprintf(stderr, "bpi cfg: out of range (kp 0..16, ki 0..1, limit 0..0.25, deadband 0..1, period 1..1000 ms, "
+                            "timeout period..10000 ms, settle 0..255)\n");
+            return 1;
+        }
+    } else if (!strcmp(s, "watch")) {
+        const double sec = argc >= 2 ? atof(argv[1]) : 5.0;
+        for (int k = 0; k < (int)(sec * 5); k++) { bpi_print(); usleep(200000); }
+    } else if (argc > 0) {
+        fprintf(stderr, "usage: desreg bpi [on | off | clr | set <counts/s> | cfg <kp> <ki> <limit> [deadband] "
+                        "[period_ms] [timeout_ms] [settle] | watch [sec]]\n");
+        return 1;
+    }
+    bpi_print();
+    return 0;
+}
+
+/* v17: belt position compare trigger (des_ptrig) */
+static int ptrig_cmd(int argc, char **argv)
+{
+    if (!des_ptrig_present(&hw)) { fprintf(stderr, "bitstream before v17: no des_ptrig\n"); return 2; }
+    const char *s = argc > 0 ? argv[0] : "";
+    if ((!strcmp(s, "arm") || !strcmp(s, "rel")) && argc >= 3) {
+        des_ptrig_cfg_t c = { 0, 0, DES_PTG_ACT_NONE, 0, 0 };
+        const int i = atoi(argv[1]);
+        for (int k = 3; k < argc; k++) {
+            if (!strcmp(argv[k], "down")) c.falling = 1;
+            else if (!strcmp(argv[k], "up")) c.falling = 0;
+            else if (!strcmp(argv[k], "enc")) c.use_enc = 1;
+            else if (!strcmp(argv[k], "pos")) c.use_enc = 0;
+            else if (!strcmp(argv[k], "pwm0")) c.action = DES_PTG_ACT_PWM0;
+            else if (!strcmp(argv[k], "pwm1")) c.action = DES_PTG_ACT_PWM1;
+            else if (!strcmp(argv[k], "go")) c.action = DES_PTG_ACT_SERVO_GO;
+            else if (!strcmp(argv[k], "out")) c.pulse_out = 1;
+            else c.pwm_us = atoi(argv[k]);
+        }
+        /* rel: threshold = where the source is now + delta, read in this same command */
+        int32_t thr = (int32_t)strtol(argv[2], NULL, 0);
+        if (s[0] == 'r') thr += c.use_enc ? (int32_t)rd(DES_IO_ENC_CNT) : des_step_pos(&hw);
+        if (des_ptrig_arm(&hw, i, thr, &c) != DES_OK) {
+            fprintf(stderr, "ptrig arm: entry 0..3, pulse width 0..2550 us\n");
+            return 1;
+        }
+    } else if (!strcmp(s, "off")) des_ptrig_disarm(&hw, argc >= 2 ? atoi(argv[1]) : -1);
+    else if (!strcmp(s, "out") && argc >= 2) {
+        if (des_ptrig_out_us(&hw, (unsigned)atoi(argv[1])) != DES_OK) { fprintf(stderr, "ptrig out: 1..200000 us\n"); return 1; }
+    } else if (argc > 0) {
+        fprintf(stderr, "usage: desreg ptrig [arm <i> <thr> | rel <i> <delta>] [up|down] [pos|enc] [pwm0|pwm1|go] [us] "
+                        "[out] | off [i] | out <us>\n");
+        return 1;
+    }
+    des_ptrig_t t;
+    des_ptrig_read(&hw, &t);
+    const uint32_t now = des_now(&hw);
+    printf("ptrig: %u fires | stepper pos %d, encoder %d\n", t.fire_cnt, des_step_pos(&hw), (int32_t)rd(DES_IO_ENC_CNT));
+    for (int i = 0; i < DES_PTG_N; i++) {
+        const uint32_t cfg = rd(DES_PTG_CFG(i));
+        printf("  %d: %-5s thr %d (%s, %s %s)", i, t.e[i].armed ? "armed" : t.e[i].fired ? "fired" : "idle",
+               (int32_t)rd(DES_PTG_THR(i)), cfg & 4u ? "enc" : "pos", cfg & 2u ? "<=" : ">=",
+               ((cfg >> 4) & 7u) == 1 ? "pwm0" : ((cfg >> 4) & 7u) == 2 ? "pwm1" : ((cfg >> 4) & 7u) == 3 ? "go" : "none");
+        if (t.e[i].fired)
+            printf(" | fired at %d, %.3f ms ago%s", t.e[i].pos, des_ticks_us(now - t.e[i].ts) / 1e3, t.e[i].late ? " LATE" : "");
+        printf("\n");
+    }
     return 0;
 }
 
@@ -299,7 +401,8 @@ int main(int argc, char **argv)
     const char *cmd = argc > 1 ? argv[1] : "";
     int rc = 0;
     int read_only = argc == 1 || !strcmp(cmd, "r") || !strcmp(cmd, "lat") || (!strcmp(cmd, "vis") && argc == 2) ||
-                    (!strcmp(cmd, "485") && argc == 2);
+                    (!strcmp(cmd, "485") && argc == 2) || (!strcmp(cmd, "bpi") && argc == 2) ||
+                    (!strcmp(cmd, "ptrig") && argc == 2);
     if (!read_only && orc == DES_E_ID) {
         /* on a bitstream without des_regs this window aliases the camera DMA registers */
         fprintf(stderr, "refusing to write: DES_ID mismatch (0x%08x), bitstream lacks des_regs\n", rd(DES_REG_ID));
@@ -438,6 +541,10 @@ int main(int argc, char **argv)
         }
     } else if (!strcmp(cmd, "485")) {
         rc = rs485_cmd(argc - 2, argv + 2);
+    } else if (!strcmp(cmd, "bpi")) {
+        rc = bpi_cmd(argc - 2, argv + 2);
+    } else if (!strcmp(cmd, "ptrig")) {
+        rc = ptrig_cmd(argc - 2, argv + 2);
     } else if (!strcmp(cmd, "vis")) {
         if (argc >= 3) {
             int mode = atoi(argv[2]), thr = argc > 3 ? atoi(argv[3]) : 128, ethr = argc > 4 ? atoi(argv[4]) : 200;

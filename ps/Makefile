@@ -175,6 +175,10 @@ $(BUILD)/des_4g: tools/des_4g.cpp $(UPLINK_SRC) $(wildcard src/uplink/*.hpp) | $
 $(BUILD)/test_uplink: tests/test_uplink.cpp $(UPLINK_SRC) src/hw/modbus_tcp.cpp $(wildcard src/uplink/*.hpp src/hw/modbus_tcp.hpp tests/*.hpp) | $(BUILD)
 	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_uplink.cpp $(UPLINK_SRC) src/hw/modbus_tcp.cpp -lpthread
 
+# des_hw v17 calls (belt speed PI, position trigger, PWM slew) against a fake register window: pure logic, host or board
+$(BUILD)/test_hw_v17: tests/test_hw_v17.c src/hw/des_hw.c src/hw/des_hw.h src/hw/des_regs.h | $(BUILD)
+	$(CC) $(CFLAGS) $(INC) -o $@ tests/test_hw_v17.c src/hw/des_hw.c
+
 # check-sdk / check-board are order-only (after |): they run first but, being phony, must not force a relink
 # 产品运行时（run / live）与运维工具（14 个模式）共用同一批对象，只有入口不同；des_tool 额外链标定 / 测量报告对象。
 $(BUILD)/des_app: $(APP_MAIN_OBJ) $(APP_OBJ) | check-sdk check-board $(BUILD)

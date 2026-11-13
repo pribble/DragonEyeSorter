@@ -11,7 +11,11 @@ module stepper_ctrl #(
     input  wire [7:0]  raddr, output reg  [31:0] rdata,
     input  wire        estop, output wire        pul_n,
     output wire        dir_n, output wire        ena_o,
-    output wire [31:0] pos_o
+    output wire [31:0] pos_o,
+    // v17 belt-speed PI (des_bpi): vscale = signed Q0.16, step rate = programmed rate * (1 + vscale). The ramps, the
+    // brake distance and the stop-on-step logic keep working on the programmed rate; vscale 0 = v16, clock for clock
+    input  wire signed [16:0] vscale,
+    output wire        moving_o, output wire        cruise_o
 );
     localparam integer PULSE_CLK = CLK_HZ / 1_000_000 * PULSE_US, SETUP_CLK = CLK_HZ / 1_000_000 * DIR_SETUP_US;
     localparam integer ACCW = $clog2(ACC_DIV), PULSEW = $clog2(PULSE_CLK + 1), SETUPW = $clog2(SETUP_CLK + 1);
@@ -28,7 +32,11 @@ module stepper_ctrl #(
     // remaining <= accel_steps == dist[31] | (dist <= accel_steps); remaining == {0,1} == !dist[31] & dist == {0,1}
     wire overshoot = mode && dist[31];
     wire want_down = stopping || overshoot || (mode && (dist[31] || dist <= accel_steps));
-    wire [32:0] phase_next = {1'b0, phase} + {1'b0, cur_inc};
+    reg signed [49:0] scl = 0;                                   // cur_inc * vscale, one clock late
+    always @(posedge clk) scl <= $signed({1'b0, cur_inc}) * vscale;
+    wire signed [34:0] inc_s = $signed({3'b000, cur_inc}) + scl[49:16];
+    wire [31:0] inc_eff = inc_s[34] ? 32'd0 : |inc_s[33:32] ? 32'hFFFF_FFFF : inc_s[31:0];
+    wire [32:0] phase_next = {1'b0, phase} + {1'b0, inc_eff};
     wire step_now = moving && (setup_cnt == 0) && phase_next[32] && !(mode && !dist[31] && dist == 32'd0);
     // one ramp distance and one +-acc_inc adder for the vmax approach (the two directions never share a cycle)
     wire        vmax_up = vmax_inc > cur_inc;
@@ -89,6 +97,8 @@ module stepper_ctrl #(
     assign dir_n = ~dir;
     assign ena_o = enable;
     assign pos_o = pos;
+    assign moving_o = moving;
+    assign cruise_o = moving && !want_down && cur_inc == vmax_inc;
     always @(*) begin
         case (raddr)
             8'h00: rdata = {25'd0, vel_dir, 1'b0, mode, 3'd0, enable};
