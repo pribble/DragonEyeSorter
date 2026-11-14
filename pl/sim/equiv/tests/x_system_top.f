@@ -22,4 +22,5 @@ pl/soc_base/src/write_fdma/wfifo.v
 * pl/sim/equiv/audit/x_stepper_ctrl_v17_g2012.v
 * pl/soc_base/src/des/des_bpi.v
 * pl/soc_base/src/des/des_ptrig.v
+* pl/soc_base/src/des/des_vib.v
 @ pl/sim/equiv/stubs/x_system_top_stubs.v
