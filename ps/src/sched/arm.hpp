@@ -50,6 +50,9 @@ struct ArmConfig {
                                  // toward the base: it sticks out ~40 mm and hit the base turret at 83 mm (10-21)
     float max_tilt_deg = 0;      // tilted grasp: lean the tool away from the base up to this (0 = vertical only)
     float tilt_step_deg = 5;     // tilts tried: 0, step, 2 step, ... (the smallest that reaches wins)
+    float tilt_comp_mm = 0;      // tilted grasps aim this much farther from the base axis (radially, table plane):
+                                 // stretched out of the vertical reach the gripper lands short (11-15: slow, 40 deg/s:
+                                 // ~8 mm at 167 mm from the base axis; full speed 8 overshot, 4 picked 168..181 mm 4/4)
     std::array<JointCal, 6> joint{};
     // gripper (#6): counts at fully open (max_open mm) and fully closed (0 mm), linear in between, unless grip_table
     // gives measured (count, opening mm) points: the finger linkage is far from linear (10-22: 32 mm at 2318 where
