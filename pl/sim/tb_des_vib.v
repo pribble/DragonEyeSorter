@@ -177,9 +177,7 @@ module tb_des_vib;
         rreg(12'h91C, r0); nw = r0[15:0];
         rreg(12'h928, r0); sumx = $signed(r0); rreg(12'h92C, r0); sumy = $signed(r0); rreg(12'h930, r0); sumz = $signed(r0);
         rreg(12'h934, r0); sqx = r0; rreg(12'h938, r0); sqy = r0; rreg(12'h93C, r0); sqz = r0;
-        rreg(12'h940, r0); mnx = $signed(r0[15:0]); mxx = $signed(r0[31:16]);
-        rreg(12'h944, r0); mny = $signed(r0[15:0]); mxy = $signed(r0[31:16]);
-        rreg(12'h948, r0); mnz = $signed(r0[15:0]); mxz = $signed(r0[31:16]);
+        rreg(12'h940, r0); check(r0 == 32'hDEADBEEF, "no min / max registers (0x940 unused)");
         rreg(12'h91C, r1);
         check(r1[15:0] == nw && nw >= 6, "statistics read inside one window (no update in between)");
         bad = 0;
@@ -192,10 +190,8 @@ module tb_des_vib;
             end
             if (sum != (ax == 0 ? sumx : ax == 1 ? sumy : sumz)) bad = bad + 1;
             if ((sq >> 10) != (ax == 0 ? sqx : ax == 1 ? sqy : sqz)) bad = bad + 1;
-            if (mn != (ax == 0 ? mnx : ax == 1 ? mny : mnz) || mx != (ax == 0 ? mxx : ax == 1 ? mxy : mxz)) bad = bad + 1;
         end
-        $sformat(msg, "window %0d: sum / sum of squares >> 10 / min / max of x y z all exact (%0d mismatches; x %0d..%0d)",
-                 nw, bad, mnx, mxx);
+        $sformat(msg, "window %0d: sum and sum of squares >> 10 of x y z all exact (%0d mismatches)", nw, bad);
         check(bad == 0, msg);
 
         // ---- 4. a register transfer while streaming: answered, no sample lost ----

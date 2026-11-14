@@ -285,10 +285,8 @@ int des_vib_stats(const des_hw_t *h, des_vib_stats_t *st)
     if (!des_vib_present(h) || !st) return DES_E_ARG;
     for (int tries = 0; tries < 5; tries++) {
         const uint32_t w0 = des_rd(h, DES_VIB_WIN_CNT);
-        uint32_t sum[3], sq[3], mm[3];
-        for (int a = 0; a < 3; a++) {
-            sum[a] = des_rd(h, DES_VIB_SUM0 + 4u * a); sq[a] = des_rd(h, DES_VIB_SQ0 + 4u * a); mm[a] = des_rd(h, DES_VIB_MM0 + 4u * a);
-        }
+        uint32_t sum[3], sq[3];
+        for (int a = 0; a < 3; a++) { sum[a] = des_rd(h, DES_VIB_SUM0 + 4u * a); sq[a] = des_rd(h, DES_VIB_SQ0 + 4u * a); }
         if (des_rd(h, DES_VIB_WIN_CNT) != w0) continue;   /* a window closed while reading */
         const unsigned win = des_rd(h, DES_VIB_WIN) & 0x7FFu;
         st->windows = w0;
@@ -299,8 +297,6 @@ int des_vib_stats(const des_hw_t *h, des_vib_stats_t *st)
             const double var = ms - mean * mean;
             st->mean_g[a] = mean * DES_VIB_G_PER_LSB;
             st->rms_g[a] = (var > 0 ? sqrt(var) : 0.0) * DES_VIB_G_PER_LSB;
-            st->min_g[a] = (int16_t)(mm[a] & 0xFFFFu) * DES_VIB_G_PER_LSB;
-            st->max_g[a] = (int16_t)(mm[a] >> 16) * DES_VIB_G_PER_LSB;
         }
         return DES_OK;
     }

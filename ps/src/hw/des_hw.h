@@ -182,7 +182,6 @@ typedef struct {
     uint32_t windows;              /* windows completed (16-bit counter, wraps) */
     unsigned n;                    /* samples per window */
     double mean_g[3], rms_g[3];    /* per axis: mean and RMS about the mean (AC part), in g */
-    double min_g[3], max_g[3];
 } des_vib_stats_t;
 int des_vib_present(const des_hw_t *h);
 /* one-byte register transfer with the sensor; read: *out gets the byte. DES_E_BUSY if the PL never finishes */

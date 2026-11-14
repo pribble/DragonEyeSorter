@@ -186,9 +186,8 @@
 #define DES_VIB_WIN_CNT      0x91Cu    /* R  windows completed, 16 bits */
 #define DES_VIB_HEAD0        0x920u    /* R  oldest sample {y, x} (signed 16 each) ; W any value: drop it (pop) */
 #define DES_VIB_HEAD1        0x924u    /* R  oldest sample {FREE_CNT[19:4] at its DATA_READY, z} */
-#define DES_VIB_SUM0         0x928u    /* R  last window: sum of x / y / z at SUM0 + 4 * axis (signed) */
-#define DES_VIB_SQ0          0x934u    /* R  last window: (sum of squares) >> 10 of x / y / z at SQ0 + 4 * axis */
-#define DES_VIB_MM0          0x940u    /* R  last window: {max, min} of x / y / z at MM0 + 4 * axis (signed 16 each) */
+#define DES_VIB_SUM0         0x928u    /* R  last window: sum of x / y / z at SUM0 + 4 * axis (signed, 24 bits) */
+#define DES_VIB_SQ0          0x934u    /* R  last window: (sum of squares) >> 10 of x / y / z at SQ0 + 4 * axis (26 bits) */
 #define DES_VIB_ID_VALUE     0x56494231u
 #define DES_VIB_FIFO_DEPTH   512u
 #define DES_IO_ST_ESTOP_LATCHED 0x01u

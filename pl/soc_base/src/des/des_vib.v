@@ -9,8 +9,10 @@
 //   so every sample carries the instant the sensor finished it. INT1 is used as a level (a sample already waiting
 //   when streaming starts is still read); after each read the level is ignored for GUARD clocks while it falls.
 // - Samples go to a 512 x 64-bit FIFO (block RAM): {ts[19:4], z, y, x}. A full FIFO drops the new sample and counts it.
-// - Window statistics per axis over WIN samples (0 = 2048): sum, sum of squares >> 10, min, max. One multiplier and
-//   one set of adders serve the three axes: the per-axis registers rotate, so no multiplexers are needed.
+// - Window statistics per axis over WIN samples (0 = 2048): sum and sum of squares >> 10 (mean and RMS in the PS).
+//   One multiplier and one set of adders serve the three axes: the per-axis registers rotate, so no multiplexers are
+//   needed. Widths assume ADXL345 data (at most 13 significant bits, full resolution +-16 g): |x| <= 4096, so a window
+//   of 2048 needs 24 bits for the sum and 36 for the sum of squares. (Min / max were dropped to fit the device.)
 module des_vib #(
     parameter integer HALF = 10,          // SCLK half period in clocks: 75 MHz / 20 = 3.75 MHz (ADXL345: <= 5 MHz)
     parameter integer GUARD = 255         // clocks after a read during which INT1 is ignored
@@ -58,15 +60,15 @@ module des_vib #(
     wire [9:0] level = wp - rp;
     wire       full = level[9];
     // ---------------- statistics ----------------
-    reg signed [15:0] v0 = 0, v1 = 0, v2 = 0, mn0 = 0, mn1 = 0, mn2 = 0, mx0 = 0, mx1 = 0, mx2 = 0;
-    reg signed [27:0] s0 = 0, s1 = 0, s2 = 0;
-    reg [41:0] q0 = 0, q1 = 0, q2 = 0;
+    reg signed [15:0] v0 = 0, v1 = 0, v2 = 0;
+    reg signed [23:0] s0 = 0, s1 = 0, s2 = 0;
+    reg [35:0] q0 = 0, q1 = 0, q2 = 0;
     reg signed [31:0] p = 0;
     reg [10:0] cnt = 0;
     reg [1:0]  k = 0;
     reg        st_on = 1'b0, st_ph = 1'b0, latch = 1'b0;
-    reg signed [27:0] rs0 = 0, rs1 = 0, rs2 = 0;
-    reg [31:0] rq0 = 0, rq1 = 0, rq2 = 0, rm0 = 0, rm1 = 0, rm2 = 0;
+    reg signed [23:0] rs0 = 0, rs1 = 0, rs2 = 0;
+    reg [25:0] rq0 = 0, rq1 = 0, rq2 = 0;
     wire       first = cnt == 11'd0;
     wire [10:0] last = win - 1'b1;                       // win 0 -> 2047: windows of 2048
     always @(posedge clk) begin
@@ -135,9 +137,7 @@ module des_vib #(
                 st_ph <= 1'b0;
                 v0 <= v1; v1 <= v2; v2 <= v0;
                 s0 <= s1; s1 <= s2; s2 <= first ? v0 : s0 + v0;   // both arms signed: v0 sign-extends
-                q0 <= q1; q1 <= q2; q2 <= first ? {10'd0, p} : q0 + {10'd0, p};
-                mn0 <= mn1; mn1 <= mn2; mn2 <= (first || v0 < mn0) ? v0 : mn0;
-                mx0 <= mx1; mx1 <= mx2; mx2 <= (first || v0 > mx0) ? v0 : mx0;
+                q0 <= q1; q1 <= q2; q2 <= first ? {4'd0, p} : q0 + {4'd0, p};
                 k <= k + 1'b1;
                 if (k == 2'd2) begin
                     st_on <= 1'b0;
@@ -148,8 +148,7 @@ module des_vib #(
         end
         if (latch) begin                        // after the third rotation: axis order x, y, z again
             rs0 <= s0; rs1 <= s1; rs2 <= s2;
-            rq0 <= q0[41:10]; rq1 <= q1[41:10]; rq2 <= q2[41:10];
-            rm0 <= {mx0, mn0}; rm1 <= {mx1, mn1}; rm2 <= {mx2, mn2};
+            rq0 <= q0[35:10]; rq1 <= q1[35:10]; rq2 <= q2[35:10];
             win_cnt <= win_cnt + 1'b1;
         end
         if (clr) begin
@@ -173,9 +172,8 @@ module des_vib #(
             6'h07: rdata = {16'd0, win_cnt};
             6'h08: rdata = head[31:0];        // {y, x}
             6'h09: rdata = head[63:32];       // {ts[19:4], z}
-            6'h0A: rdata = {{4{rs0[27]}}, rs0}; 6'h0B: rdata = {{4{rs1[27]}}, rs1}; 6'h0C: rdata = {{4{rs2[27]}}, rs2};
-            6'h0D: rdata = rq0;               6'h0E: rdata = rq1;               6'h0F: rdata = rq2;
-            6'h10: rdata = rm0;               6'h11: rdata = rm1;               6'h12: rdata = rm2;
+            6'h0A: rdata = {{8{rs0[23]}}, rs0}; 6'h0B: rdata = {{8{rs1[23]}}, rs1}; 6'h0C: rdata = {{8{rs2[23]}}, rs2};
+            6'h0D: rdata = {6'd0, rq0};       6'h0E: rdata = {6'd0, rq1};       6'h0F: rdata = {6'd0, rq2};
             default: rdata = 32'hDEADBEEF;
         endcase
     end

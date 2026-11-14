@@ -151,12 +151,9 @@ int main(void)
         R(DES_VIB_WIN) = 64; R(DES_VIB_WIN_CNT) = 7;
         R(DES_VIB_SUM0) = 640; R(DES_VIB_SUM0 + 4) = (uint32_t)-1280; R(DES_VIB_SUM0 + 8) = 16384;
         R(DES_VIB_SQ0) = (64 * (100 + 16)) >> 10; R(DES_VIB_SQ0 + 4) = (64 * 400) >> 10; R(DES_VIB_SQ0 + 8) = (64 * 65536) >> 10;
-        R(DES_VIB_MM0) = (14u << 16) | 6u; R(DES_VIB_MM0 + 4) = ((uint32_t)(uint16_t)-20 << 16) | (uint16_t)-20; R(DES_VIB_MM0 + 8) = (256u << 16) | 256u;
         CHECK(des_vib_stats(&h, &vs) == DES_OK && vs.windows == 7 && vs.n == 64, "stats: window 7 of 64 samples");
         CHECK(near(vs.mean_g[0], 10 * 0.0039, 1e-6) && near(vs.mean_g[1], -20 * 0.0039, 1e-6) && near(vs.mean_g[2], 256 * 0.0039, 1e-6),
               "stats: means 0.039 / -0.078 / 0.9984 g");
-        CHECK(near(vs.min_g[0], 6 * 0.0039, 1e-6) && near(vs.max_g[0], 14 * 0.0039, 1e-6) && near(vs.min_g[1], -20 * 0.0039, 1e-6),
-              "stats: signed min / max");
         CHECK(vs.rms_g[1] < 1e-9 && vs.rms_g[2] < 1e-9 && vs.rms_g[0] > 0.0, "stats: constant axes have no AC part");
     }
 
