@@ -38,6 +38,8 @@ foreach ($p in $bootgen, "$tc-objcopy.exe", "$tc-ld.exe") { if (-not (Test-Path 
 $VENDOR_BOOT_MD5 = 'D6B2D387CB405444D1E7EF10E2855285'
 # u-boot.elf 的基准 MD5：入库零件，每次打包都用它；不符就说明文件被换/损坏
 $UBOOT_ELF_MD5   = 'E844648EC910C87EA8A036AD4D3D3E45'
+# 启动头（BOOT.bin 前 8 KB）的基准 MD5：这套 fsbl / u-boot / boot.bif 下与比特流无关（v3 ~ v17b1 上板实测相同）
+$HEADER_MD5      = 'B08737B304DE466ADF393A216F904655'
 
 function Get-VendorDir {
     # 仓库外的厂家 NPU demo 目录：显式参数 > 环境变量 NPU_DEMO > 报错
@@ -134,6 +136,25 @@ try {
         & $bootgen -arch dr1p104 -image boot.bif -o BOOT.bin -w | Out-Null
     } finally { Pop-Location }
     if (-not (Test-Path "$work\BOOT.bin")) { throw "BootGen 打包失败" }
+    # BootGen（albg1.exe）有时把未初始化的内存写进启动头的保留区（11-15：0x8C 起与 0x200 起是本机环境变量文本，
+    # 0x8C 是属性字，FSBL 读成「开了认证」后停在 Stage 2，板子起不来）。用 parts\ 里这套零件时，前 8 KB 与比特流无关：
+    # 上板能启动的 v3 ~ v17b1 前 8 KB 逐字节相同。写脏的只有 0x8C~0xE7 与 0x200~0x2FF（含两处按头算的校验值），
+    # 这里按正常头的值改回，再核对前 8 KB 的 MD5；核不上就不输出。
+    $img = [System.IO.File]::ReadAllBytes("$work\BOOT.bin")
+    $hdrMd5 = { $m = [System.Security.Cryptography.MD5]::Create(); ($m.ComputeHash($img, 0, 8192) | ForEach-Object { $_.ToString('X2') }) -join '' }
+    if ((& $hdrMd5) -ne $HEADER_MD5) {
+        $good = '00000000000000000003000003000000ba8ec67c' + ('00' * 64) + '36638d757875aab2'   # 0x8C..0xE7 of a booting image
+        for ($i = 0; $i -lt 92; $i++) { $img[0x8C + $i] = [Convert]::ToByte($good.Substring(2 * $i, 2), 16) }
+        for ($i = 0x200; $i -le 0x2FF; $i++) { $img[$i] = 0 }
+        if ((& $hdrMd5) -ne $HEADER_MD5) {
+            throw @"
+BootGen 生成的启动头（前 8 KB）与能启动的版本不同，而且不只是保留区被写脏：不输出 $Out。
+  若是有意换了 fsbl.elf / u-boot.elf / boot.bif，先确认新镜像能启动，再把本脚本的 `$HEADER_MD5 改成新头的 MD5。
+"@
+        }
+        [System.IO.File]::WriteAllBytes("$work\BOOT.bin", $img)
+        "注意：BootGen 在启动头保留区留了垃圾数据，已按正常头改回（前 8 KB MD5 已核对）"
+    }
     Copy-Item "$work\BOOT.bin" $Out -Force
     "OK: $Out  ($((Get-Item $Out).Length) bytes, md5 $((Get-FileHash $Out -Algorithm MD5).Hash))"
     "bitstream: $Bit  (md5 $((Get-FileHash $Bit -Algorithm MD5).Hash))"
