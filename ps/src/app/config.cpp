@@ -126,6 +126,7 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             float yaw_deg = a.base_yaw * 180.f / kPi, g0_deg = a.grip_axis_at_zero * 180.f / kPi, side_deg = a.servo_side * 180.f / kPi;
             ji::gets(*c, "base_yaw_deg", yaw_deg, "grip_axis_at_zero_deg", g0_deg, "tool_offset_mm", a.tool_offset, "servo_side_deg", side_deg);
             a.base_yaw = yaw_deg * kPi / 180.f; a.grip_axis_at_zero = g0_deg * kPi / 180.f; a.servo_side = side_deg * kPi / 180.f;
+            ji::get(*c, "tilt_comp_mm", a.tilt_comp_mm);   // tilted grasps aim farther out (ArmConfig::tilt_comp_mm)
             ji::gets(*c, "belt_z", a.belt_z, "max_tilt_deg", a.max_tilt_deg, "tilt_step_deg", a.tilt_step_deg,
                      "servo_in_min_r_mm", a.servo_in_min_r, "grip_open_count", a.grip_open_count, "grip_closed_count",
                      a.grip_closed_count, "grip_max_open", a.grip_max_open, "grip_squeeze", a.grip_squeeze);
@@ -389,6 +390,8 @@ std::string load_config(const std::string &path, AppConfig &cfg)
     cfg.picker.tail_x = cfg.tracker.tail_x; cfg.picker.recheck_outlet = 0; cfg.picker.arm_base = cfg.arm.base_xy;
     // after calib.json (calib-arm may have moved it)
     cfg.picker.tangential_first = cfg.arm.max_tilt_deg > 0;
+    if (!(cfg.arm.tilt_comp_mm >= 0 && cfg.arm.tilt_comp_mm <= 30))
+        return path + ": arm.tilt_comp_mm must be 0 .. 30 (mm farther out for tilted grasps)";
     // round parts close along the ready pose's wrist line (after arm_home.json: the taught #5)
     if (cfg.picker.keep_wrist) arm_home_wrist(cfg.arm, cfg.picker.wrist_rel, cfg.picker.wrist_tau);
     else cfg.picker.wrist_rel = NAN;
