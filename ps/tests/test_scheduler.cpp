@@ -1516,6 +1516,31 @@ static void test_arm()
             const Vec2 b1 = descend_at(k, np, v1);
             CHECK(v0 == 0 && v1 == 0 && std::hypot(b1.x - b0.x, b1.y - b0.y) < 0.01f,
                   "tilt_comp_mm 8: vertical pick at 120 mm unchanged (%.3f mm)", std::hypot(b1.x - b0.x, b1.y - b0.y));
+            // near_comp (11-15: vertical grasps close to the base landed ~6 mm short): table by radius, linear between
+            k.tilt_comp_mm = 0;
+            k.near_comp = {{{130.f, 0.f}}, {{110.f, 6.f}}};   // unsorted on purpose: load_config sorts, so do it here
+            std::sort(k.near_comp.begin(), k.near_comp.end(),
+                      [](const std::array<float, 2> &x, const std::array<float, 2> &y) { return x[0] < y[0]; });
+            CHECK(std::fabs(arm_near_comp(k, 90) - 6) < 1e-4f && std::fabs(arm_near_comp(k, 120) - 3) < 1e-4f &&
+                      arm_near_comp(k, 150) == 0 && arm_near_comp(ArmConfig{}, 100) == 0,
+                  "arm_near_comp: 6 below 110 mm, 3 at 120, 0 beyond 130, 0 without a table");
+            const float rn = std::hypot(np.x - k.base_xy.x, np.y - k.base_xy.y);
+            float v2;
+            const Vec2 b2 = descend_at(k, np, v2);
+            const float ndx = np.x - k.base_xy.x, ndy = np.y - k.base_xy.y;
+            const float nrad = ((b2.x - b0.x) * ndx + (b2.y - b0.y) * ndy) / rn;
+            const float ntan = ((b2.x - b0.x) * -ndy + (b2.y - b0.y) * ndx) / rn;
+            CHECK(v2 == 0 && std::fabs(nrad - arm_near_comp(k, rn)) < 0.5f && std::fabs(ntan) < 0.5f,
+                  "near_comp: vertical pick at %.1f mm aims %.2f mm farther out (want %.2f), %.2f sideways", rn, nrad,
+                  arm_near_comp(k, rn), ntan);
+            const Vec2 fp{k.base_xy.x, k.base_xy.y + 140.f};
+            float w0, w1;
+            ArmConfig k0 = k;
+            k0.near_comp.clear();
+            const Vec2 f0 = descend_at(k0, fp, w0), f1 = descend_at(k, fp, w1);
+            CHECK(w0 == 0 && w1 == 0 && std::hypot(f1.x - f0.x, f1.y - f0.y) < 0.01f,
+                  "near_comp: 140 mm (beyond the table) unchanged (%.3f mm, tilt %.0f)", std::hypot(f1.x - f0.x, f1.y - f0.y),
+                  w1);
         }
         t.max_tilt_deg = 0;
         CHECK(plan_pick(t, tp, arm_tangential_axis(t, tp), 40, 32, 0, h, wt) != nullptr,

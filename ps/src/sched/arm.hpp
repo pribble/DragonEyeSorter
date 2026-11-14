@@ -53,6 +53,10 @@ struct ArmConfig {
     float tilt_comp_mm = 0;      // tilted grasps aim this much farther from the base axis (radially, table plane):
                                  // stretched out of the vertical reach the gripper lands short (11-15: slow, 40 deg/s:
                                  // ~8 mm at 167 mm from the base axis; full speed 8 overshot, 4 picked 168..181 mm 4/4)
+    // vertical grasps close to the base land short too (11-15: ~6 mm at 109 mm, part centre on the belt side of the
+    // fingertip line; 120..131 mm fine): [[radius mm, mm farther out], ...] sorted by radius, linear in between, the
+    // end values beyond the ends; empty = none (arm_near_comp)
+    std::vector<std::array<float, 2>> near_comp;
     std::array<JointCal, 6> joint{};
     // gripper (#6): counts at fully open (max_open mm) and fully closed (0 mm), linear in between, unless grip_table
     // gives measured (count, opening mm) points: the finger linkage is far from linear (10-22: 32 mm at 2318 where
@@ -96,6 +100,8 @@ const char *arm_ik(const ArmConfig &c, Vec3 p, float close_axis, JointAngles &ou
                    float q5_pref_deg = NAN);
 // Closing axis (table frame, rad) tangential to the arm base at table point p: the one a tilted grasp can use.
 float arm_tangential_axis(const ArmConfig &c, Vec2 p_table);
+// ArmConfig::near_comp at r mm from the base axis (0 without a table)
+float arm_near_comp(const ArmConfig &c, float r);
 // The same for an arm base given directly (the picker only keeps PickerConfig::arm_base).
 inline float arm_tangential_axis(Vec2 base_xy, Vec2 p_table)
 {
