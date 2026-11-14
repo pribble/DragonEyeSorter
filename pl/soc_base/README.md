@@ -19,6 +19,7 @@
 | v16 | 10-24 编 / **10-25 上板** | `71f41a20…`（比特流 `f0f63c91…`）；`BOOT.bin.prev` = v15 `b0aef232…`、`BOOT.bin.v14` = v14 `a72e00f7…` | 75MHz +0.126ns / 像素 +0.117ns / HDMI +0.006ns / NPU 域内 +0.054ns；违例只剩厂家 VTC ↔ NPU / 150M 跨时钟（保持 −2.594 与原版同） | **0 失败**（原 21 项 + v16 三项：CAP_ENC 映射、des_485 ID、RS485 一帧线上 8.334ms） |
 | 第五轮精简（源码级，未记版号） | —（**未上板**，板端仍 v16） | scratch medium 档全流程重编 40m04s 收敛：候选 BOOT `AD6AEB6A…`（比特流 `2B1FEBF7…`）；最终时序不如 v16（NPU 域内 −0.368ns / 89 EP），采用前须上板复核 | —（未上板） | —（未上板） |
 | 第六轮构建收敛（源码级 + 单进程 recipe，未记版号） | —（**未上板**，板端仍 v16；默认 high 单进程全流程 **59m16s 收敛**） | 比特流 `bcfb34fe64be99e7da724eea3c99231e`（4,052,202 B）；`BOOT.bin` 候选 `bf9826f0…`（5,179,264 B） | **Routed 0 违例（余量很薄 ⚠）**：Setup WNS **+0.007ns** / S-EP 0、Hold WNS **+0.022ns** / H-EP 0；place slice 83.80%（43,980）/ ERAM 245/280 | —（未上板） |
+| v17 第 1 批（瘦身版，候选） | 11-14 编 / **未上板**，板端仍 v16；单进程全流程 86 分钟收敛 | 比特流 `293336a4010477a53b8518b5681e918d`（4,052,202 B）；`BOOT.bin` 候选 `de6a34a1…`（5,179,264 B） | **Routed 0 违例**：Setup WNS +0.035ns（NPU 域内）/ Hold +0.022ns；75MHz +0.107ns / HDMI 串行 +0.116ns / 像素→HDMI +0.107ns；slice 85.04%（44,629）/ ERAM 245/280 / DSP 160 | —（未上板；上板后须 HDMI 连续目视 ≥10 分钟） |
 
 上表哈希的完整 md5、各版 `pl_check` 项与逐日上板记录见 [docs/log](../../docs/log/README.md)；源码级精简轮（未记版号、未上板）的逐轮 A/B 数字同理。
 
@@ -30,7 +31,7 @@
 - `al_ip/` — 安路 IP 参数（PLL、NPU_SOFT 等）
 - `src/` — 明文 RTL：`system_top.v`、`hdmi_tx/`、`MIPI_V2/`（`mipi_rx/` + `src/` 只剩 `csi_unpacket.v` 与 `design_top_wrapper.v`）、`write_fdma/`、`ui_isp/`、`pwm.v`（已做多轮零行为重构，见 [log/2026-10-24-PL厂家RTL重构](../../docs/log/2026-10-24-PL厂家RTL重构.md)）
 - `src/ui_isp/` — ISP 链路**平铺一层**：`isp_top.v`、`raw10_unpacket_4lane.v` 与 8 个单文件模块（`BLC.v`、`image_cut.v`、`contrast_adj.v`、`Brightness_adjustment.v`、`Saturation_adj.v`、`image_correction.v`、`data96_128.v`、`data128_96.v`）直接放根目录；`gamma/`（2 个 `.v`：`gamma.v` + 唯一在用的 `lut_2_2.v`）、`demosaic_4x_2_0/`（6 个 `.v` + 2 个厂家 `blk_mem_gen` IP）、`awb_1_1/`（2 个 `.v` + 1 个 IP）因多文件 / IP 保留子目录
-- `src/des/` — **自研模块**：des_regs、servo_bus、stepper_ctrl、des_vision、des_pwm、des_io、des_485（v16）、des_bpi / des_ptrig（v17 第 1 批，仿真通过、未编未上板）、awb_seq_div（已登记进 `soc_prj.al`）；`des_common.vh`（同步 / 去抖公共模块，被 des_regs / des_io 引用，纯 `include` 无需单独登记）
+- `src/des/` — **自研模块**：des_regs、servo_bus、stepper_ctrl、des_vision、des_pwm、des_io、des_485（v16）、des_bpi / des_ptrig（v17 第 1 批，仿真通过、候选比特流已编出、未上板）、awb_seq_div（已登记进 `soc_prj.al`）；`des_common.vh`（同步 / 去抖公共模块，被 des_regs / des_io 引用，纯 `include` 无需单独登记）
 - `src/constraint/` — 管脚 `io.adc`（CEP = BANK11 3.3V）、时序 `timing.sdc`
 - `soc_prj_Runs/syn_1/soc_prj.prj` 与 `soc_prj_Runs/phy_1/soc_prj.prj` — 综合 / 布局布线工程文件（`*_Runs/` 被 ignore，改动要 `git add -f`；单进程构建后 `syn_1` / `phy_1` 降级为历史件与只读探针，run 目录用 `phy_1/soc_prj.prj` + 一份 `settings.cfg`）
 
