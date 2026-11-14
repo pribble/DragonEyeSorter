@@ -24,6 +24,7 @@ enum OpsCode : uint8_t {
     OPS_ESTOP = 1, OPS_BELT_SPEED, OPS_CAMERA, OPS_LIGHT, OPS_BEAM, OPS_PICK, OPS_SERVO, OPS_RS485, OPS_PLC, OPS_NPU,
     OPS_VISION_RATE, OPS_STORAGE, OPS_NG_RATE, OPS_RECHECK_RATE, OPS_OD_DRIFT,
     OPS_TEST,   // 运维页「发送测试工单」: checks the push chain board -> remote station -> acknowledgement
+    OPS_VIB, OPS_VIB_HIGH,   // v17 batch 2: belt motor vibration (app/vib_mon.hpp), warning / fault level
     OPS_N
 };
 struct OpsCodeInfo {
@@ -55,6 +56,9 @@ struct OpsConfig {
     int od_window = 10;             // mean OD of the last good parts ...
     float od_drift = 0.5f;          // ... off the nominal by more than this share of the tolerance
     float event_clear_s = 30;       // event-type orders (beam, pick, servo) recover after this long without a repeat
+    // vibration (vib_mon): AC RMS of the three axes above vib_warn_g / vib_fault_g for vib_s -> warning / fault order
+    // (neither stops the line). ⚠ placeholders until measured on the motor seat with the belt running.
+    float vib_warn_g = 0.30f, vib_fault_g = 0.80f, vib_s = 2.0f;
 };
 struct WorkOrder {
     uint16_t id = 0;
@@ -126,6 +130,7 @@ struct HealthInput {
     std::string npu_error;
     double free_mb = -1;                // < 0 = not checked this cycle
     uint64_t log_errors = 0, log_dropped = 0;
+    double vib_rms_g = -1, vib_peak_hz = 0;   // vibration monitor (< 0 = off / no window yet)
 };
 class HealthMonitor {
 public:
@@ -142,7 +147,7 @@ private:
         int step(bool cond, double now, double on_s, double off_s);   // +1 raised now, -1 cleared now, 0 no change
     };
     const OpsConfig c_;
-    Hold belt_, light_, rate_, rs485_, plc_;
+    Hold belt_, light_, rate_, rs485_, plc_, vib_w_, vib_f_;
     double t_start_ = -1;
     // light
     int light_mode_ = -1;

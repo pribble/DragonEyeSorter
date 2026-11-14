@@ -120,7 +120,7 @@ $(OBJ)/%.o: %.c | $(OBJ)
 -include $(wildcard $(OBJ)/*.d)
 
 $(BUILD)/desreg: tools/desreg.c src/hw/des_hw.c src/hw/des_hw.h src/hw/des_regs.h | $(BUILD)
-	$(CC) $(CFLAGS) $(INC) -o $@ tools/desreg.c src/hw/des_hw.c
+	$(CC) $(CFLAGS) $(INC) -o $@ tools/desreg.c src/hw/des_hw.c -lm
 
 $(BUILD)/test_scheduler: tests/test_scheduler.cpp $(SCHED_SRC) $(wildcard src/sched/*.hpp) $(wildcard tests/*.hpp) | $(BUILD)
 	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_scheduler.cpp $(SCHED_SRC)
@@ -154,7 +154,7 @@ $(BUILD)/test_can: tests/test_can.c src/hw/can_link.h src/hw/can_proto.h | $(BUI
 
 # servo bus: idle time a servo needs after its reply before the next frame (board, servos wired; stop des_app)
 $(BUILD)/test_servo_gap: tests/test_servo_gap.c $(OBJ)/des_hw.o | $(OBJ) $(BUILD)
-	$(CC) $(CFLAGS) $(INC) -o $@ tests/test_servo_gap.c $(OBJ)/des_hw.o
+	$(CC) $(CFLAGS) $(INC) -o $@ tests/test_servo_gap.c $(OBJ)/des_hw.o -lm
 
 # hardware-in-the-loop: needs the board (PL v5+), no motor
 $(BUILD)/test_belt_hil: tests/test_belt_hil.cpp src/app/belt_ctl.cpp src/app/belt_ctl.hpp src/app/util.cpp $(SCHED_SRC) $(OBJ)/des_hw.o | $(OBJ) $(BUILD)
@@ -165,8 +165,11 @@ $(BUILD)/test_belt_pid: tests/test_belt_pid.cpp src/sched/speed_pid.cpp src/sche
 	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_belt_pid.cpp src/sched/speed_pid.cpp
 
 # des_hw v17 calls (belt speed PI, position trigger, PWM slew) against a fake register window: pure logic, host or board
+$(BUILD)/test_vib: tests/test_vib.cpp src/app/vib_mon.cpp src/app/vib_mon.hpp src/app/ops.cpp src/app/util.cpp $(OBJ)/des_hw.o | $(OBJ) $(BUILD)
+	$(CXX) $(CXXFLAGS) $(INC) -o $@ tests/test_vib.cpp src/app/vib_mon.cpp src/app/ops.cpp src/app/util.cpp $(OBJ)/des_hw.o -lpthread
+
 $(BUILD)/test_hw_v17: tests/test_hw_v17.c src/hw/des_hw.c src/hw/des_hw.h src/hw/des_regs.h | $(BUILD)
-	$(CC) $(CFLAGS) $(INC) -o $@ tests/test_hw_v17.c src/hw/des_hw.c
+	$(CC) $(CFLAGS) $(INC) -o $@ tests/test_hw_v17.c src/hw/des_hw.c -lm
 
 # check-sdk / check-board are order-only (after |): they run first but, being phony, must not force a relink
 # 产品运行时（run / live）与运维工具（14 个模式）共用同一批对象，只有入口不同；des_tool 额外链标定 / 测量报告对象。

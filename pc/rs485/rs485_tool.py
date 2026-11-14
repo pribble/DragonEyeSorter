@@ -16,6 +16,12 @@ watch the board's RS485 traffic, or stand in for the relay module (docs/到货�
                                                           fault; the buzzer only with --buzzer
   python rs485_tool.py sniff --port COM10                 listen only: every frame with time, gap, CRC (board <-> module)
   python rs485_tool.py slave --port COM10                 be the relay module (address --addr): the board talks to the PC
+  python rs485_tool.py probe --port COM10                 any Modbus device: per baud rate (N parity) FC 03 / FC 04 of
+                                                          register 0 at addresses 1..16, 255 -> who answers, with what
+  python rs485_tool.py regs  --port COM10 --addr 1 0 16   read-only: FC 03 and FC 04 registers 0..15 (start count; signed
+                                                          and /10 shown, to spot temperature x10 / humidity x10)
+  python rs485_tool.py wreg  --port COM10 --addr 1 R V    FC 06: one holding register, then read it back (and, when the
+                                                          value is a new address, ask at the new address)
 Common: --addr 1  --baud 9600  --parity N  --coils 8  --lamp-coils 0,1,2,3 (relay of green, yellow, red, buzzer; same as
 des_app.json rs485.lamp_coils). Needs pyserial (pip install pyserial). A / B swapped = no reply: swap them (harmless).
 
@@ -171,6 +177,72 @@ def bits_to_lamps(bits, lc):
     return "+".join(on) if on else "all off"
 
 
+def read_regs(bus, addr, fc, start, n):
+    rep, err, ms = bus.xact(bytes([addr, fc, start >> 8, start & 0xFF, n >> 8, n & 0xFF]))
+    if rep is None:
+        return None, err, ms
+    if len(rep) < 3 or rep[2] != 2 * n or len(rep) < 3 + 2 * n:
+        return None, "bad reply length: " + hexs(rep), ms
+    return [rep[3 + 2 * i] << 8 | rep[4 + 2 * i] for i in range(n)], "", ms
+
+
+def cmd_probe(bus, a):
+    found = 0
+    for baud in (9600, 4800, 19200, 38400, 115200):
+        bus.open(baud, "N")
+        for addr in list(range(1, 17)) + [255]:
+            for fc in (3, 4):
+                v, err, ms = read_regs(bus, addr, fc, 0, 1)
+                if v is not None or (err and err.startswith("exception")):
+                    print("%6d 8N1  address %3d  FC %02d register 0: %s  (%.1f ms)" % (
+                        baud, addr, fc, ("0x%04X = %d" % (v[0], v[0])) if v is not None else err, ms))
+                    found += 1
+    print("%d answers" % found if found else "nobody answered (A / B swapped? power? the relay module on the same bus?)")
+    return 0 if found else 1
+
+
+def cmd_regs(bus, a):
+    start = int(a.args[0], 0) if a.args else 0
+    n = int(a.args[1], 0) if len(a.args) > 1 else 16
+    if not (0 <= start <= 0xFFFF and 1 <= n <= 64):
+        sys.exit("regs <start 0..0xFFFF> <count 1..64>")
+    for fc in (3, 4):
+        v, err, ms = read_regs(bus, a.addr, fc, start, n)
+        if v is None:   # some devices refuse a block that runs into unused registers: one at a time
+            v = []
+            for r in range(start, start + n):
+                w, e, _ = read_regs(bus, a.addr, fc, r, 1)
+                v.append(w[0] if w is not None else None)
+            if all(x is None for x in v):
+                print("FC %02d %d..%d: %s" % (fc, start, start + n - 1, err))
+                continue
+        print("FC %02d (address %d):" % (fc, a.addr))
+        for i, x in enumerate(v):
+            if x is None:
+                print("  reg 0x%04X  -" % (start + i))
+            else:
+                sx = x - 0x10000 if x & 0x8000 else x
+                print("  reg 0x%04X  0x%04X  %6d  /10 = %7.1f" % (start + i, x, sx, sx / 10))
+    return 0
+
+
+def cmd_wreg(bus, a):
+    if len(a.args) != 2:
+        sys.exit("wreg <register> <value>")
+    reg, val = int(a.args[0], 0), int(a.args[1], 0)
+    if not (0 <= reg <= 0xFFFF and 0 <= val <= 0xFFFF):
+        sys.exit("register and value 0..0xFFFF")
+    rep, err, ms = bus.xact(bytes([a.addr, 6, reg >> 8, reg & 0xFF, val >> 8, val & 0xFF]))
+    print("FC 06 address %d register 0x%04X <- %d: %s (%.1f ms)" % (a.addr, reg, val, "echo ok" if rep else err, ms))
+    time.sleep(0.3)
+    v, err2, _ = read_regs(bus, a.addr, 3, reg, 1)
+    print("read back at address %d: %s" % (a.addr, ("%d" % v[0]) if v is not None else err2))
+    if 1 <= val <= 247 and val != a.addr:
+        v, err3, _ = read_regs(bus, val, 3, reg, 1)
+        print("read back at address %d: %s" % (val, ("%d" % v[0]) if v is not None else err3))
+    return 0 if rep else 1
+
+
 def cmd_scan(bus, a):
     for baud in (9600, 19200, 4800, 38400, 115200):
         for par in ("N", "E"):
@@ -302,7 +374,8 @@ def cmd_slave(bus, a, lc):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("op", choices=["ports", "scan", "addr", "setaddr", "coils", "set", "lamp", "demo", "sniff", "slave"])
+    ap.add_argument("op", choices=["ports", "scan", "addr", "setaddr", "coils", "set", "lamp", "demo", "sniff", "slave",
+                                   "probe", "regs", "wreg"])
     ap.add_argument("args", nargs="*")
     ap.add_argument("--port", default="")
     ap.add_argument("--addr", type=int, default=1)
@@ -332,6 +405,12 @@ def main():
     try:
         if a.op == "scan":
             return cmd_scan(bus, a)
+        if a.op == "probe":
+            return cmd_probe(bus, a)
+        if a.op == "regs":
+            return cmd_regs(bus, a)
+        if a.op == "wreg":
+            return cmd_wreg(bus, a)
         if a.op == "addr":
             v, err, ms = query_addr(bus)
             print("module at address %d, %.1f ms" % (v, ms) if v is not None else err)

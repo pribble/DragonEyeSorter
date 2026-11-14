@@ -37,6 +37,7 @@
 #include "tracker.hpp"
 #include "ui_input.hpp"
 #include "util.hpp"
+#include "vib_mon.hpp"
 namespace des {
 namespace {
 struct TrackView {
@@ -66,6 +67,8 @@ struct Snapshot {
     Tracker::Stats st;
     uint64_t processed = 0, stale = 0;
     int8_t beam = -1;                           // through-beam: -1 off, 0 clear, 1 blocked (overlay line colour)
+    VibView vib;                                // belt motor vibration (off unless des_app.json "vib" enabled)
+    float vib_warn_g = 0, vib_fault_g = 0;
     cv::Mat panel;                              // status panel, rendered by the worker (~10 Hz), blitted per frame
     cv::Mat hmi;                                // operator interface band (Hmi::H rows at Hmi::Y0)
 };
@@ -159,6 +162,14 @@ cv::Mat render_panel(const Snapshot &s, const Shared &sh, uint32_t pl_frame, uin
         }
         row("运维工单", v, os.faults ? RED : os.unacked ? ORANGE : DIM);
     }
+    if (s.vib.on) {   // belt motor vibration: AC RMS (PL window statistics) + spectrum peak (PS FFT)
+        const float r = s.vib.rms_g_total;
+        const bool hi = r >= s.vib_fault_g, warn = r >= s.vib_warn_g;
+        row("电机振动", r < 0 ? std::string("等待数据")
+                              : fmt("%.3f g · 主频 %.0f Hz · %s", double(r), double(s.vib.peak_hz),
+                                    hi ? "故障" : warn ? "预警" : "正常"),
+            r < 0 ? DIM : hi ? RED : warn ? ORANGE : TEXT);
+    }
     // the runner's line, wrapped at its spaces (Chinese words have none inside); DIM so it reads as one quiet block
     const int wrap_px = kPanelW - 2 * 18;
     std::string word, cur;
@@ -202,6 +213,19 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
                    cfg.beam.x_mm, cfg.tracker.decide_x);
     } else if (cfg.beam.enabled) {
         fprintf(stderr, "beam: enabled but no position (des_tool calib-beam writes calib.json \"beam\")\n");
+    }
+    std::unique_ptr<VibMonitor> vib;   // belt motor vibration (des_vib, v17 batch 2): only when configured
+    if (cfg.vib.enabled) {
+        std::string vdir;
+        if (plog.is_open()) {
+            const size_t k = plog.csv_path.find_last_of('/');
+            vdir = k == std::string::npos ? std::string(".") : plog.csv_path.substr(0, k);
+        }
+        vib.reset(new VibMonitor);
+        const std::string ve = vib->open(hw, cfg.vib, vdir);
+        if (!ve.empty()) { fprintf(stderr, "vib: %s (vibration monitor off)\n", ve.c_str()); vib.reset(); }
+        else printf("vib: ADXL345 +-%d g, rate code 0x%02X, window %d, FFT %d\n", 2 << cfg.vib.range, cfg.vib.rate,
+                    cfg.vib.window, cfg.vib.fft);
     }
     std::unique_ptr<Collector> col;
     if (!opt.collect.label.empty()) {
@@ -570,6 +594,11 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
             }
             hin.log_errors = plog.errors;
             hin.log_dropped = plog.dropped;
+            if (vib) {
+                vib->poll(now);
+                hin.vib_rms_g = vib->view().rms_g_total;
+                hin.vib_peak_hz = vib->view().peak_hz;
+            }
             health.update(hin, ops);
             for (const WorkOrders::Change &c : ops.take_changes()) {
                 const OpsCodeInfo &info = ops_code_info(c.w.code);
@@ -608,6 +637,7 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
         s->adapt = adapt; s->adapt_v = adapt_v;
         s->processed = processed; s->stale = stale;
         s->beam = !beam ? -1 : io_ok && (io.status & DES_IO_ST_IR1_BLOCKED) ? 1 : 0;
+        if (vib) { s->vib = vib->view(); s->vib_warn_g = cfg.ops.vib_warn_g; s->vib_fault_g = cfg.ops.vib_fault_g; }
         tr.retire(accum.peek(des_step_pos(&hw)));
         const double end = mono_s();
         s->work_ms = (end - t0) * 1e3;

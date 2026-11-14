@@ -11,6 +11,7 @@
 #include "rs485_io.hpp"
 #include "speed_pid.hpp"
 #include "tracker.hpp"
+#include "vib_mon.hpp"
 namespace des {
 struct CameraConfig {
     int vmax = 0;                // IMX415 VMAX override after init (0 = keep the driver's 2283); 2276 -> 60.0 fps
@@ -100,6 +101,7 @@ struct AppConfig {
     Rs485Config rs485;           // RS485 relay module + tower light in `run` (app/rs485_io.hpp; PL v16)
     PlcConfig plc;
     OpsConfig ops;               // fault detection -> work orders (app/ops.hpp): des_app.json "ops"
+    VibConfig vib;               // belt motor vibration (app/vib_mon.hpp; PL v17 batch 2): des_app.json "vib"
     std::string label_list = "label_list.json";  // 类别表唯一源 = scripts/deploy/out/，相对本配置目录解析
     std::string calib_file = "calib.json";     // written by des_tool calib-cam, merged over this file if present
     std::string calib_loaded;                  // path actually merged (empty = none)

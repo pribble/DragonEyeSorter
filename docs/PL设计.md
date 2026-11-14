@@ -31,6 +31,7 @@
 | `des_485` | RS485 Modbus-RTU 收发：硬件 DE、CRC16 生成 / 校验、3.5 字符判帧、应答超时、校验位、监听帧（寄存器窗口 `0x6xx`） | 自研 | P1 | ✅ v16 上板；帧时序与继电器模块读 / 写实测见 [测试与验证](测试与验证.md)；⬜ 启动 / 暂停 / 急停 / 复位灯态与 CAN→RS485 待测 |
 | `des_bpi` | 带速 PI：计米轮编码器测周法测速 + 定点 PI，输出步进脉冲频率的比例修正（寄存器窗口 `0x7xx`） | 自研 | P1 | ⬜ v17 第 1 批：仿真 45 项全过、整顶层等价回归通过；按器件收小后布线收敛、0 违例，**有比特流，未上板**（见 [log](log/2026-11-14-v17第1批瘦身后布通.md)） |
 | `des_ptrig` | 带位置比较触发：2 路，到位当拍锁存时间戳，可装载挡板脉宽并提前重启 PWM 周期、输出 `TRIG_OUT` 脉冲（寄存器窗口 `0x8xx`） | 自研 | P1 | ⬜ v17 第 1 批：仿真 37 项全过；按器件收小后布线收敛、0 违例，**有比特流，未上板**（见 [log](log/2026-11-14-v17第1批瘦身后布通.md)） |
+| `des_vib` | 振动采集：ADXL345 三线 SPI（模式 3、3.75 MHz）+ INT1 数据就绪；每个样本带数据就绪时刻的时间戳进 512 深 FIFO（块 RAM），PL 按窗口算每轴的和 / 平方和 / 最小 / 最大（寄存器窗口 `0x9xx`） | 自研 | P1 | ⬜ v17 第 2 批：仿真 21 项全过（含 ADXL345 行为模型）、整顶层等价回归通过；未上板 |
 | `awb_seq_div` | ISP 自动白平衡逐位除法器（替换厂家流水线除法器） | 自研 | P0 | ✅ 在用，省约 4k LUT |
 | `img_morph` / `blob_ccl` / `roi_scaler` / `tensor_pack` / `overlay` | 形态学、连通域、ROI 缩放、张量打包、叠加 | 自研 | P2 | ⬜ 未做（大块图像算法优先放 PS） |
 | `traj_interp` | 多轴时间同步插补（115200 带宽承载不了高频插补点） | 自研 | P2 | ⬜ 未做 |
@@ -79,7 +80,7 @@
 | 0x038 / 0x03C | R | `CAP_ENC0` / `CAP_ENC1` | 同一时钟沿的计米轮编码器计数（v16）：图像、步进、编码器三路同刻锁存 |
 | 其余 | R | — | 读回 `0xDEADBEEF` |
 
-`DES_VERSION` 编码：17 = v17 第 1 批（`des_bpi` + `des_ptrig` + `des_pwm` 的 `SLEW`，源码里已是 17，候选比特流已编出、**未上板，板上仍读 16**；这版比特流里 `SLEW` 关掉、`des_ptrig` 2 路）；16 = v16（`CAP_ENC0/1` + `des_485`）；12 = v12~v15（重构 / 重编未改寄存器接口）；v8~v10 未改寄存器接口（v10 只去光源输出、未单独上板）。PS 只需判断 5 / 6 / 7 / 11 / 16（拍摄锁存 / `des_vision` / `des_pwm` / `des_io` / `des_485` 与 `CAP_ENC`）。
+`DES_VERSION` 编码：17 = v17 第 1 批（`des_bpi` + `des_ptrig` + `des_pwm` 的 `SLEW`，源码里已是 17，候选比特流已编出、**未上板，板上仍读 16**；这版比特流里 `SLEW` 关掉、`des_ptrig` 2 路；第 2 批加 `des_vib` 不改 `VERSION`，PS 按 `0x90C` 的 ID 判断有没有）；16 = v16（`CAP_ENC0/1` + `des_485`）；12 = v12~v15（重构 / 重编未改寄存器接口）；v8~v10 未改寄存器接口（v10 只去光源输出、未单独上板）。PS 只需判断 5 / 6 / 7 / 11 / 16（拍摄锁存 / `des_vision` / `des_pwm` / `des_io` / `des_485` 与 `CAP_ENC`）。
 
 **拍摄锁存**：厂家帧写模块 `uidbuf_write` 开始写一帧、完成中断 `f2p_irq` 上升沿各翻转一次，经两级同步进 75MHz 域；开始时锁暂存、完成时整组更新 `CAP_*`，PS 在 `WaitFinish` 返回后有整帧时间读。PS 用 `CAP_POS0/1` 按件所在图像行插值，得该行读出时刻的带位置（卷帘快门）。
 
@@ -270,6 +271,34 @@ PS：`des_hw` 的 `des_bpi_present / des_bpi_config / des_bpi_set / des_bpi_enab
 
 PS：`des_hw` 的 `des_ptrig_present / des_ptrig_arm / des_ptrig_disarm / des_ptrig_read` 与 `des_pwm_slew`；调试 `desreg ptrig [arm <i> <阈值> | rel <i> <相对量>] [up|down] [pos|enc] [pwm0|pwm1] [µs] [out] | off [i]`（`rel` 在同一条命令里读当前位置再加相对量）。应用层（挡板调度）还没有改用它，现阶段只用于上板验证与测触发时延。
 
+### 振动采集 `des_vib`（`PL_BASE + 0x900`，v17 第 2 批，未上板）
+
+[pl/soc_base/src/des/des_vib.v](../pl/soc_base/src/des/des_vib.v)。对应拓展 1「频谱分析」、拓展 2「振动特征提取」、拓展 4「故障分级」。上电不采集：`CS` 高、`SCLK` 高、`SDIO` 释放，对其他模块没有影响。
+
+- **接口**：ADXL345 三线 SPI（`SDIO` 一根线双向，模式 3，`SCLK` 3.75 MHz；ADXL345 上限 5 MHz）+ `INT1`（数据就绪）。传感器的全部设置由 PS 经 `XFER` 单字节读写完成，先写 `DATA_FORMAT` 的三线位；没写之前传感器在四线模式，读回全是 `0xFF`。
+- **采样与时间戳**：使能后，`INT1` 为高且引擎空闲就一次读出 `DATAX0`~`DATAZ1` 六个字节（多字节读，传感器保证六个字节属于同一次转换）。时间戳 = `INT1` 上升沿那一拍的 `FREE_CNT`（两级同步，晚 2 拍），所以每个样本的时刻精确到 13 ns，与相机帧起始、编码器、对射边沿用同一个时间基准。`INT1` 按电平处理：使能时已经在等的样本也会读；每次读完 255 拍内不看 `INT1`，让它落下去。
+- **FIFO**：512 × 64 位（块 RAM），每项 `{FREE_CNT[19:4], z, y, x}`；时间戳 16 位、分辨率 213 ns、14 ms 回绕一次，PS 按相邻样本还原连续时间。满了丢新样本并计数。
+- **窗口统计（PL 特征提取）**：每 `WIN` 个样本（0 = 2048，复位 1024）锁存一次每轴的和、平方和 >> 10、最小值、最大值。三轴共用一个乘法器和一组加法器：每轴的寄存器轮转，一个样本 6 拍算完，不需要多路选择器。PS 用 `和 / N` 得均值、`平方和 × 1024 / N − 均值²` 得交流有效值。
+- 仿真 [pl/sim/tb_des_vib.v](../pl/sim/tb_des_vib.v)（`run_sim.sh vib`，ADXL345 行为模型：四线 / 三线切换、多字节读期间数据不变、读 `DATAZ1` 清数据就绪；模型同时检查 `CS` 边沿时 `SCLK` 为高、半周期、`CS` 高电平时间 ≥150 ns、两边从不同时驱动 `SDIO`）21 项全过：读 `DEVID`（三线前 0xFF、三线后 0xE5）、写配置寄存器、半周期 133.3 ns、使能时已在等的样本被读到、100 个样本数值与时间戳逐个相符（时间戳 = 数据就绪沿 + 2 拍）、16 样本窗口的四项统计与模型逐轴相符、采样中插入寄存器读写不丢样本、溢出时保留最早 512 个并计数、关闭 / 清除。
+
+| 偏移 | R/W | 说明 |
+|---|---|---|
+| 0x900 | R/W | `CTRL`：b0 采集使能；b1（只写）清 FIFO、计数与窗口 |
+| 0x904 | R | `STATUS`：b0 采集中 / b1 单字节传输忙 / b2 `INT1` 电平 / b3 有样本被丢（FIFO 满）/ [25:16] FIFO 内样本数（0~512） |
+| 0x908 | W / R | `XFER`：写 = 启动一次单字节传输，[15] 读、[13:8] 寄存器、[7:0] 数据（忙时忽略）；读 = [8] 忙、[7:0] 上次读到的字节 |
+| 0x90C | R | `ID` = 0x56494231（"VIB1"） |
+| 0x910 | R/W | `WIN` 统计窗口样本数，[10:0]，0 = 2048 |
+| 0x914 | R | `COUNT`：[15:0] 已读样本数 / [31:16] 被丢样本数（饱和） |
+| 0x918 | R | `LAST_TS` 最新样本数据就绪沿的 `FREE_CNT` |
+| 0x91C | R | `WIN_CNT` 已完成窗口数（16 位） |
+| 0x920 | R / W | 读 = 最早样本 `{y, x}`（各有符号 16 位）；写任意值 = 丢掉它（出队） |
+| 0x924 | R | 最早样本 `{FREE_CNT[19:4], z}` |
+| 0x928 + 4·轴 | R | 上一窗口每轴的和（有符号；轴 0 / 1 / 2 = x / y / z） |
+| 0x934 + 4·轴 | R | 上一窗口每轴平方和 >> 10 |
+| 0x940 + 4·轴 | R | 上一窗口每轴 `{最大, 最小}`（各有符号 16 位） |
+
+PS：`des_hw` 的 `des_vib_present / des_vib_xfer / des_vib_init / des_vib_stream / des_vib_drain / des_vib_stats`；调试 `desreg vib [init [量程] [速率] | on [窗口] | off | x <寄存器> [数据] | dump [n] | watch [秒]]`。应用层（频谱、分级、工单、界面）见 [软件与UI](软件与UI.md)「振动监测」。
+
 ## 分段与扩展登记
 
-分段固定：`0x0xx` des_regs / `0x1xx` servo_bus / `0x2xx` stepper_ctrl / `0x3xx` des_vision / `0x4xx` des_pwm / `0x5xx` des_io / `0x6xx` des_485 / `0x7xx` des_bpi / `0x8xx` des_ptrig；窗口 `0x8030_1000~0x8030_1FFF`（4KB）。新模块从 `0x9xx` 起，**实现前先在此登记偏移**，并与 `ps/src/hw/` 头文件同一次提交更新。已登记扩展：`0x5xx` `des_io`（PS 侧 `DES_IO_*`）、`0x6xx` `des_485`（`DES_485_*`）、`0x7xx` `des_bpi`（`DES_BPI_*`）、`0x8xx` `des_ptrig`（`DES_PTG_*`），见 `ps/src/hw/des_regs.h`。预留：`0x9xx` 振动采集（v17 第 2 批）、`0xAxx` 多轴插补（第 3 批）。
+分段固定：`0x0xx` des_regs / `0x1xx` servo_bus / `0x2xx` stepper_ctrl / `0x3xx` des_vision / `0x4xx` des_pwm / `0x5xx` des_io / `0x6xx` des_485 / `0x7xx` des_bpi / `0x8xx` des_ptrig / `0x9xx` des_vib；窗口 `0x8030_1000~0x8030_1FFF`（4KB）。新模块从 `0x9xx` 起，**实现前先在此登记偏移**，并与 `ps/src/hw/` 头文件同一次提交更新。已登记扩展：`0x5xx` `des_io`（PS 侧 `DES_IO_*`）、`0x6xx` `des_485`（`DES_485_*`）、`0x7xx` `des_bpi`（`DES_BPI_*`）、`0x8xx` `des_ptrig`（`DES_PTG_*`）、`0x9xx` `des_vib`（`DES_VIB_*`），见 `ps/src/hw/des_regs.h`。预留：`0xAxx` 多轴插补（第 3 批）。

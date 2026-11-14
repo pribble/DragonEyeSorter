@@ -36,6 +36,10 @@ const OpsCodeInfo kInfo[OPS_N] = {
     {"od_drift", "尺寸测量", "外径均值漂移", "用标准件放画面正中复测外径；确认偏差后重定测量偏置，或检查来料尺寸",
      OpsLevel::Warning, false},
     {"test", "运维系统", "测试工单", "验证推送链路：远程运维站应同时收到这张工单；在任一端确认后关闭", OpsLevel::Info, false},
+    {"vibration", "传送带电机", "振动偏大（预警）",
+     "检查步进电机座与联轴器是否松动、皮带张紧与跑偏；与正常运行时的振动主频对比；恢复后自动关闭", OpsLevel::Warning, false},
+    {"vibration_high", "传送带电机", "振动超限（故障）",
+     "尽快停线检查电机座螺钉、联轴器、轴承与皮带；排除后振动回落自动恢复，再在界面确认", OpsLevel::Fault, false},
 };
 // why of a failed pick (ArmExec / plan_pick, English) for a work order
 std::string pick_why_cn(const std::string &w)
@@ -243,6 +247,17 @@ void HealthMonitor::update(const HealthInput &in, WorkOrders &wo)
     const double now = in.now;
     const int64_t wall = in.wall_ms;
     if (t_start_ < 0) t_start_ = now;
+    // vibration of the belt motor (vib_mon): two levels, each must last vib_s, recovers after 2 s below
+    if (in.vib_rms_g >= 0) {
+        const std::string d = fmt("振动有效值 %.3f g（预警 %.2f / 故障 %.2f g），主频 %.0f Hz", in.vib_rms_g,
+                                  double(c_.vib_warn_g), double(c_.vib_fault_g), in.vib_peak_hz);
+        int s = vib_w_.step(in.vib_rms_g >= c_.vib_warn_g, now, c_.vib_s, 2.0);
+        if (s > 0) wo.raise(OPS_VIB, d, now, wall);
+        else if (s < 0) wo.clear(OPS_VIB, now, wall);
+        s = vib_f_.step(in.vib_rms_g >= c_.vib_fault_g, now, c_.vib_s, 2.0);
+        if (s > 0) wo.raise(OPS_VIB_HIGH, d, now, wall);
+        else if (s < 0) wo.clear(OPS_VIB_HIGH, now, wall);
+    }
     // e-stop (the line is already held by the PL latch): open while latched, recovered at 复位报警
     if (in.run_state == 3 && !wo.active(OPS_ESTOP))
         wo.raise(OPS_ESTOP, "急停回路断开，PL 已锁存并停住皮带", now, wall);
