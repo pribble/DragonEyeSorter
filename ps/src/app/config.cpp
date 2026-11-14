@@ -1,5 +1,6 @@
 // config.cpp — see config.hpp
 #include "config.hpp"
+#include <algorithm>
 #include <fstream>
 #include <memory>
 #include <utility>
@@ -137,6 +138,13 @@ std::string load_config(const std::string &path, AppConfig &cfg)
             ji::gets(*c, "base_yaw_deg", yaw_deg, "grip_axis_at_zero_deg", g0_deg, "tool_offset_mm", a.tool_offset, "servo_side_deg", side_deg);
             a.base_yaw = yaw_deg * kPi / 180.f; a.grip_axis_at_zero = g0_deg * kPi / 180.f; a.servo_side = side_deg * kPi / 180.f;
             ji::get(*c, "tilt_comp_mm", a.tilt_comp_mm);   // tilted grasps aim farther out (ArmConfig::tilt_comp_mm)
+            if (c->contains("near_comp")) {   // [[radius mm, mm farther out], ...] for vertical grasps near the base
+                a.near_comp.clear();
+                for (const auto &e : (*c)["near_comp"])
+                    if (e.size() == 2) a.near_comp.push_back({e[0].get<float>(), e[1].get<float>()});
+                std::sort(a.near_comp.begin(), a.near_comp.end(),
+                          [](const std::array<float, 2> &x, const std::array<float, 2> &y) { return x[0] < y[0]; });
+            }
             ji::gets(*c, "belt_z", a.belt_z, "max_tilt_deg", a.max_tilt_deg, "tilt_step_deg", a.tilt_step_deg,
                      "servo_in_min_r_mm", a.servo_in_min_r, "grip_open_count", a.grip_open_count, "grip_closed_count",
                      a.grip_closed_count, "grip_max_open", a.grip_max_open, "grip_squeeze", a.grip_squeeze);
@@ -402,6 +410,9 @@ std::string load_config(const std::string &path, AppConfig &cfg)
     cfg.picker.tangential_first = cfg.arm.max_tilt_deg > 0;
     if (!(cfg.arm.tilt_comp_mm >= 0 && cfg.arm.tilt_comp_mm <= 30))
         return path + ": arm.tilt_comp_mm must be 0 .. 30 (mm farther out for tilted grasps)";
+    for (const auto &e : cfg.arm.near_comp)
+        if (!(e[0] > 0 && e[1] >= -20 && e[1] <= 20))
+            return path + ": arm.near_comp wants [[radius mm > 0, -20 .. 20 mm], ...]";
     // round parts close along the ready pose's wrist line (after arm_home.json: the taught #5)
     if (cfg.picker.keep_wrist) arm_home_wrist(cfg.arm, cfg.picker.wrist_rel, cfg.picker.wrist_tau);
     else cfg.picker.wrist_rel = NAN;

@@ -42,7 +42,7 @@
     "base_h": 106, "l_upper": 82.85, "l_fore": 82.85, "l_wrist": 79.05, "l_tool": 111,
     "tool_offset_mm": 9, "servo_side_deg": -90,
     "base_xy": [453, 132], "base_yaw_deg": -90, "belt_z": -53, "grip_axis_at_zero_deg": 90,
-    "max_tilt_deg": 40, "tilt_step_deg": 5, "tilt_comp_mm": 4,
+    "max_tilt_deg": 40, "tilt_step_deg": 5, "tilt_comp_mm": 4, "near_comp": [[110, 6], [125, 0]],
     "joints": [
       { "id": 1, "zero_count": 2012, "counts_per_deg": 12.47, "min_deg": -145, "max_deg": 145 },
       { "id": 2, "zero_count": 3085, "counts_per_deg": -12.14, "min_deg": -70, "max_deg": 145 },
