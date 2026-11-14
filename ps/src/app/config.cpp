@@ -254,6 +254,9 @@ std::string load_config(const std::string &path, AppConfig &cfg)
         if (const json *c = sec_gets(j, "rs485", "enabled", rs.enabled, "baud", rs.baud, "timeout_ms", rs.timeout_ms,
                                      "addr", rs.addr, "coils", rs.coils, "poll_ms", rs.poll_ms, "buzzer_s", rs.buzzer_s, "fault_s", rs.fault_s,
                                      "inputs", rs.inputs)) {
+            ji::gets(*c, "th_addr", rs.th_addr, "th_period_s", rs.th_period_s);
+            if (rs.th_addr < 0 || rs.th_addr > 247 || rs.th_addr == rs.addr || !(rs.th_period_s >= 0.2f))
+                return path + ": rs485.th_addr 0..247 and not the relay module's address, th_period_s >= 0.2";
             std::string idle = rs.idle == IDLE_GREEN ? "green" : rs.idle == IDLE_BLINK ? "blink" : "off";
             ji::get(*c, "idle", idle);
             if (idle == "off") rs.idle = IDLE_OFF;
@@ -287,6 +290,10 @@ std::string load_config(const std::string &path, AppConfig &cfg)
                  "rate_min", op.rate_min, "ng_rate", op.ng_rate, "recheck_rate", op.recheck_rate, "od_window",
                  op.od_window, "od_drift", op.od_drift, "event_clear_s", op.event_clear_s);
         sec_gets(j, "ops", "vib_warn_g", op.vib_warn_g, "vib_fault_g", op.vib_fault_g, "vib_s", op.vib_s);
+        sec_gets(j, "ops", "env_temp_lo", op.env_temp_lo, "env_temp_hi", op.env_temp_hi, "env_hum_hi", op.env_hum_hi,
+                 "env_s", op.env_s);
+        if (!(op.env_temp_hi > op.env_temp_lo && op.env_hum_hi > 0 && op.env_s >= 0))
+            return path + ": ops.env_temp_hi > env_temp_lo, env_hum_hi > 0, env_s >= 0";
         if (op.rate_window < 1 || op.rate_min < 1 || op.od_window < 0) return path + ": ops windows must be >= 1";
         if (!(op.vib_warn_g > 0 && op.vib_fault_g >= op.vib_warn_g && op.vib_s >= 0))
             return path + ": ops.vib_warn_g > 0, vib_fault_g >= vib_warn_g, vib_s >= 0";

@@ -13,6 +13,11 @@
 // errors / reply times = the report's bus numbers. (FC 0F is not used: the 10-26 bestep board ignores it unless all
 // bits are 0, and answers FC 01 only for 8 coils -> its config has coils = 8.)
 //
+// Second slave (11-15): an SHT30 temperature / humidity transmitter (th_addr, 9600 8N1, holding registers 0 = temperature
+// x 10 signed, 1 = humidity x 10; protocol probed on the device, docs/到货联调清单.md §7b), read every th_period_s in
+// the same thread between the lamp transactions. Each slave has its own link state: link_ok() is the relay module
+// only, so a transmitter that answers cannot hide a relay module that does not (and the other way round).
+//
 // The bus is the PL rs485 module (des_485_xfer, bitstream v16): it adds / checks the CRC16, drives DE and frames the
 // reply by the 3.5-character silence. rs485_hw_xfer() binds it; tests pass a simulated slave instead.
 #pragma once
@@ -39,6 +44,8 @@ struct Rs485Config {
     float fault_s = 10;              // fault: red steady this long after the fault starts, then dark (no blinking: a
                                      // relay clicking every second, user 10-28); < 0 = as long as the fault, 0 = never
     int inputs = 0;                  // digital inputs to read (FC 02) on a "4 in 4 out" module, 0 = none
+    int th_addr = 0;                 // temperature / humidity transmitter address, 0 = none (11-15 board: 2)
+    float th_period_s = 1;           // its read period
 };
 enum : uint8_t { LAMP_GREEN = 1, LAMP_YELLOW = 2, LAMP_RED = 4, LAMP_BUZZER = 8 };
 // Rs485Config::idle (des_app.json rs485.idle "off" / "green" / "blink")
@@ -92,6 +99,11 @@ public:
         bool override_on = false;
         double last_ok_s = -1e9;             // mono time of the last good transaction
         std::string last_err;
+        // temperature / humidity transmitter (th_addr)
+        bool th_valid = false;               // a reading arrived (the values below are the newest)
+        float temp_c = 0, hum_rh = 0;
+        double th_last_s = -1e9;             // mono time of the last good reading
+        uint64_t th_ok = 0, th_err = 0;      // readings / failed or out-of-range reads
     };
     Rs485Io(const Rs485Config &c, RtuXfer xfer);
     ~Rs485Io();                           // stop(): lamps off, thread joined
@@ -101,19 +113,21 @@ public:
     void set_override(bool on, uint8_t lamps);             // PLC lamp command (CAN LAMP / Modbus HR 7)
     uint8_t override_lamps() const { return ovr_lamps_; }
     bool override_on() const { return ovr_on_; }
-    bool link_ok() const;                 // a good transaction within the last 2 s
+    bool link_ok() const;                 // the relay module answered within the last 2 s
+    int th_link() const;                  // transmitter: -1 none configured, 0 quiet for 3 periods (>= 3 s), 1 ok
     Stats stats() const;
 private:
     void loop();
-    // one checked transaction; bits = decoded FC 01 / 02 reply; false on any failure (counted)
-    bool xact(const uint8_t *req, size_t n, uint32_t *bits);
+    // one checked transaction; bits = decoded FC 01 / 02 reply, regs = FC 03 / 04 reply; false on any failure (counted)
+    bool xact(const uint8_t *req, size_t n, uint32_t *bits, uint16_t *regs = nullptr, int max_regs = 0);
     Rs485Config cfg_;
     RtuXfer xfer_;
     std::thread th_;
     std::atomic<bool> run_{false};
     std::atomic<uint8_t> state_{0}, ovr_lamps_{0};
     std::atomic<bool> alarm_{false}, warn_{false}, ovr_on_{false};
-    std::atomic<double> last_ok_{-1e9};
+    std::atomic<double> last_ok_{-1e9};      // relay module (cfg.addr) only
+    std::atomic<double> th_last_ok_{-1e9};   // transmitter (cfg.th_addr) only
     mutable std::mutex m_;   // stats_
     Stats stats_;
 };

@@ -68,7 +68,8 @@
   "plc": { "modbus_port": 502 },
   "beam": { "enabled": true, "match_mm": 12, "expire_mm": 120, "miss_mm": 25 },
   "rs485": { "enabled": true, "baud": 9600, "parity": "N", "timeout_ms": 100, "addr": 1, "coils": 8,
-             "lamp_coils": [0, 1, 2, 3], "poll_ms": 200, "buzzer_s": 1, "inputs": 0, "idle": "off", "fault_s": 10 },
+             "lamp_coils": [0, 1, 2, 3], "poll_ms": 200, "buzzer_s": 1, "inputs": 0, "idle": "off", "fault_s": 10,
+             "th_addr": 2, "th_period_s": 1 },
   "storage": { "enabled": true, "images": "ng", "jpeg_quality": 92, "max_queue": 256, "feed_port": 9500 },
 
   "bins": ["gear_box"],

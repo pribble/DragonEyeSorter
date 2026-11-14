@@ -25,6 +25,7 @@ enum OpsCode : uint8_t {
     OPS_VISION_RATE, OPS_STORAGE, OPS_NG_RATE, OPS_RECHECK_RATE, OPS_OD_DRIFT,
     OPS_TEST,   // 运维页「发送测试工单」: checks the push chain board -> remote station -> acknowledgement
     OPS_VIB, OPS_VIB_HIGH,   // v17 batch 2: belt motor vibration (app/vib_mon.hpp), warning / fault level
+    OPS_ENV, OPS_ENV_LINK,   // RS485 temperature / humidity transmitter: out of range / not answering
     OPS_N
 };
 struct OpsCodeInfo {
@@ -59,6 +60,9 @@ struct OpsConfig {
     // vibration (vib_mon): AC RMS of the three axes above vib_warn_g / vib_fault_g for vib_s -> warning / fault order
     // (neither stops the line). ⚠ placeholders until measured on the motor seat with the belt running.
     float vib_warn_g = 0.30f, vib_fault_g = 0.80f, vib_s = 2.0f;
+    // environment (RS485 transmitter): temperature outside [env_temp_lo, env_temp_hi] or humidity above env_hum_hi for
+    // env_s -> warning; the transmitter quiet (after it answered once) -> warning
+    float env_temp_lo = 5, env_temp_hi = 40, env_hum_hi = 85, env_s = 5;
 };
 struct WorkOrder {
     uint16_t id = 0;
@@ -131,6 +135,9 @@ struct HealthInput {
     double free_mb = -1;                // < 0 = not checked this cycle
     uint64_t log_errors = 0, log_dropped = 0;
     double vib_rms_g = -1, vib_peak_hz = 0;   // vibration monitor (< 0 = off / no window yet)
+    int env_link = -1;                  // temperature / humidity transmitter: -1 none, 0 quiet, 1 ok
+    bool env_valid = false;             // env_temp_c / env_hum_rh hold a reading
+    double env_temp_c = 0, env_hum_rh = 0;
 };
 class HealthMonitor {
 public:
@@ -147,7 +154,8 @@ private:
         int step(bool cond, double now, double on_s, double off_s);   // +1 raised now, -1 cleared now, 0 no change
     };
     const OpsConfig c_;
-    Hold belt_, light_, rate_, rs485_, plc_, vib_w_, vib_f_;
+    Hold belt_, light_, rate_, rs485_, plc_, vib_w_, vib_f_, env_, env_link_;
+    bool env_seen_ = false;
     double t_start_ = -1;
     // light
     int light_mode_ = -1;

@@ -74,6 +74,32 @@ struct SimRelay {
         }
     }
 };
+// The 11-15 SHT30 transmitter: FC 03 / 04 registers 0 = temperature x 10 (signed), 1 = humidity x 10.
+struct SimTh {
+    uint8_t addr = 2;
+    std::atomic<int> temp10{228}, hum10{583};
+    std::atomic<bool> offline{false};
+    std::atomic<int> reads{0};
+    bool xfer(const uint8_t *q, int n, RtuXferResult &r)   // true = it was for this device
+    {
+        if (n < 6 || q[0] != addr) return false;
+        r = RtuXferResult();
+        if (offline) { r.rc = RTU_TIMEOUT; return true; }
+        reads++;
+        const uint16_t a = uint16_t(q[2] << 8 | q[3]), c = uint16_t(q[4] << 8 | q[5]);
+        r.rc = RTU_OK; r.resp_ms = 3.4; r.wire_ms = 18;
+        uint8_t *o = r.raw;
+        o[0] = addr; o[1] = q[1];
+        if ((q[1] != RTU_READ_HOLDING && q[1] != RTU_READ_INPUT_REGS) || a + c > 20) { o[1] |= 0x80; o[2] = 2; r.n = 3; return true; }
+        o[2] = uint8_t(2 * c);
+        for (int i = 0; i < c; i++) {
+            const int v = a + i == 0 ? temp10.load() : a + i == 1 ? hum10.load() : 0;
+            o[3 + 2 * i] = uint8_t(uint16_t(v) >> 8); o[4 + 2 * i] = uint8_t(v);
+        }
+        r.n = 3 + 2 * c;
+        return true;
+    }
+};
 void test_pdu()
 {
     const auto r10 = bytes({0x01, 0x03, 0x00, 0x00, 0x00, 0x0A});
@@ -236,6 +262,40 @@ void test_worker()
     idle.start();
     CHECK(!idle.link_ok(), "no transport: never linked");
 }
+// relay module + temperature / humidity transmitter on one bus: readings, separate link states, sanity check
+void test_transmitter()
+{
+    SimRelay relay;
+    SimTh th;
+    Rs485Config c;
+    c.enabled = true; c.poll_ms = 100; c.buzzer_s = 0; c.th_addr = 2; c.th_period_s = 0.2f;
+    Rs485Io io(c, [&](const uint8_t *q, int n, bool e, RtuXferResult &r) { if (!th.xfer(q, n, r)) relay.xfer(q, n, e, r); });
+    io.set_line(CANP_ST_RUN, false, false);
+    io.start();
+    CHECK(wait_for([&] { return io.stats().th_valid; }, 1.5), "transmitter read");
+    Rs485Io::Stats s = io.stats();
+    CHECK(s.temp_c > 22.79f && s.temp_c < 22.81f && s.hum_rh > 58.29f && s.hum_rh < 58.31f, "22.8 C / 58.3 %%RH (%.2f / %.2f)",
+          double(s.temp_c), double(s.hum_rh));
+    CHECK(io.link_ok() && io.th_link() == 1 && relay.coils == 0x1, "both links ok, lamp still driven");
+    th.temp10 = -55;   // -5.5 C: signed register
+    CHECK(wait_for([&] { return io.stats().temp_c < -5.4f && io.stats().temp_c > -5.6f; }, 1.0), "negative temperature (%.2f)",
+          double(io.stats().temp_c));
+    th.hum10 = 1500;   // 150 %RH: not a reading
+    const uint64_t err0 = io.stats().th_err;
+    CHECK(wait_for([&] { return io.stats().th_err > err0; }, 1.0) && io.stats().hum_rh < 100.1f, "out-of-range reading refused, old value kept");
+    th.hum10 = 583;
+    relay.offline = true;   // relay module gone, transmitter still answers: the relay link must go down anyway
+    CHECK(wait_for([&] { return !io.link_ok(); }, 3.0) && io.th_link() == 1, "relay quiet: its link down, transmitter's up");
+    relay.offline = false;
+    CHECK(wait_for([&] { return io.link_ok(); }, 1.5), "relay back");
+    th.offline = true;     // transmitter gone, relay still answers
+    CHECK(wait_for([&] { return io.th_link() == 0; }, 4.5) && io.link_ok(), "transmitter quiet: its link down after 3 s, relay's up");
+    io.stop();
+    Rs485Config none = c;
+    none.th_addr = 0;
+    Rs485Io io2(none, RtuXfer());
+    CHECK(io2.th_link() == -1, "no transmitter configured: th_link -1");
+}
 // the real 10-26 board (bestep 4-ch): with coils = 8 the worker lights the lamps by FC 05 and reads them back
 void test_bestep_board()
 {
@@ -298,5 +358,6 @@ int main()
     test_lamps();
     test_worker();
     test_bestep_board();
+    test_transmitter();
     return test_summary("test_rs485");
 }

@@ -40,6 +40,9 @@ const OpsCodeInfo kInfo[OPS_N] = {
      "检查步进电机座与联轴器是否松动、皮带张紧与跑偏；与正常运行时的振动主频对比；恢复后自动关闭", OpsLevel::Warning, false},
     {"vibration_high", "传送带电机", "振动超限（故障）",
      "尽快停线检查电机座螺钉、联轴器、轴承与皮带；排除后振动回落自动恢复，再在界面确认", OpsLevel::Fault, false},
+    {"environment", "环境", "环境温湿度超限", "检查展位通风、空调和日照；温湿度回到范围内自动恢复", OpsLevel::Warning, false},
+    {"env_link", "RS485 总线", "温湿度变送器通信中断", "检查变送器的 24V 供电和 RS485 A / B 接线（与继电器模块并在一起）",
+     OpsLevel::Warning, false},
 };
 // why of a failed pick (ArmExec / plan_pick, English) for a work order
 std::string pick_why_cn(const std::string &w)
@@ -368,6 +371,22 @@ void HealthMonitor::update(const HealthInput &in, WorkOrders &wo)
             wo.raise(OPS_RS485, fmt("继电器模块超过 %.0f s 无应答（三色灯不受控）", double(c_.link_s + 2)), now, wall);
         else if (s < 0)
             wo.clear(OPS_RS485, now, wall);
+    }
+    // environment (RS485 temperature / humidity transmitter)
+    if (in.env_link >= 0) {
+        if (in.env_link == 1) env_seen_ = true;
+        int s = env_link_.step(env_seen_ && in.env_link == 0, now, c_.link_s, 1.0);
+        if (s > 0) wo.raise(OPS_ENV_LINK, "温湿度变送器超过 3 s 无应答", now, wall);
+        else if (s < 0) wo.clear(OPS_ENV_LINK, now, wall);
+        if (in.env_valid && in.env_link == 1) {
+            const bool bad = in.env_temp_c < c_.env_temp_lo || in.env_temp_c > c_.env_temp_hi || in.env_hum_rh > c_.env_hum_hi;
+            s = env_.step(bad, now, c_.env_s, 5.0);
+            if (s > 0)
+                wo.raise(OPS_ENV, fmt("环境 %.1f ℃ / %.1f %%RH（允许 %.0f ~ %.0f ℃、≤ %.0f %%RH）", in.env_temp_c, in.env_hum_rh,
+                                      double(c_.env_temp_lo), double(c_.env_temp_hi), double(c_.env_hum_hi)), now, wall);
+            else if (s < 0)
+                wo.clear(OPS_ENV, now, wall);
+        }
     }
     {
         const int s = plc_.step(in.plc_lost, now, 1.0, 1.0);
