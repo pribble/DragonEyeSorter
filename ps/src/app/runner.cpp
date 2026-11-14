@@ -23,7 +23,7 @@ Runner::Runner(des_hw_t *hw, const AppConfig &cfg, const RunOptions &opt)
     if (cfg.belt.pid.hw && des_bpi_present(hw)) {   // bitstream v17+: the PL closes the loop
         const SpeedPidConfig &p = cfg.belt.pid;
         des_bpi_cfg_t c{p.hw_kp, p.hw_ki, p.hw_limit, p.hw_deadband, unsigned(p.hw_period_ms),
-                        unsigned(std::max(100, 10 * p.hw_period_ms)), p.hw_settle};
+                        unsigned(std::min(200, std::max(100, 10 * p.hw_period_ms))), p.hw_settle};   // PL: 24-bit clock count
         pl_pid_ = des_bpi_config(hw, &c) == DES_OK;
         fprintf(stderr, "[run] belt speed PI: %s (kp %.2f ki %.3f limit %.0f %% window %d ms)\n",
                 pl_pid_ ? "PL des_bpi" : "PL des_bpi rejected the settings, PS loop", p.hw_kp, p.hw_ki, p.hw_limit * 100,

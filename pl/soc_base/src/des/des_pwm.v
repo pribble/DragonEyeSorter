@@ -3,7 +3,9 @@
 // v17: SLEW (us per period, 0 = at once) walks the output width to the written one; xld (position trigger, des_ptrig)
 // loads a channel width and restarts the period as soon as RESYNC_US have passed since the last start, so the new
 // pulse leaves within RESYNC_US instead of up to a whole period. SLEW 0 and xld 0 = the v16 behaviour, clock for clock.
-module des_pwm #(parameter integer CLK_HZ = 75_000_000, parameter integer RESYNC_US = 5000) (
+// SLEW_EN 0 leaves the SLEW logic out (the register then reads 0 and ignores writes): the top level does that to
+// save area, nothing on the PS side uses SLEW yet.
+module des_pwm #(parameter integer CLK_HZ = 75_000_000, parameter integer RESYNC_US = 5000, parameter integer SLEW_EN = 1) (
     input  wire        clk, wr, input  wire [7:0]  waddr,
     input  wire [31:0] wdata, input  wire [7:0]  raddr,
     output reg  [31:0] rdata,
@@ -22,7 +24,7 @@ module des_pwm #(parameter integer CLK_HZ = 75_000_000, parameter integer RESYNC
     wire [16:0] us_next = {1'b0, us} + 17'd1;   // one incrementer, reused by the period compare
     function [11:0] clamp_us(input [11:0] v); clamp_us = (v > 12'd2550) ? 12'd2550 : v; endfunction
     function [11:0] walk(input [11:0] a, input [11:0] w);   // one period's move of the output width toward the target
-        if (slew == 12'd0) walk = w;
+        if (SLEW_EN == 0 || slew == 12'd0) walk = w;
         else if (w > a) walk = (w - a > slew) ? a + slew : w;
         else walk = (a - w > slew) ? a - slew : w;
     endfunction
@@ -32,7 +34,7 @@ module des_pwm #(parameter integer CLK_HZ = 75_000_000, parameter integer RESYNC
             6'h01: period_us <= (wdata[15:0] < 16'd2600) ? 16'd2600 : wdata[15:0];
             6'h02: width_w[11:0]  <= (wdata > 32'd2550) ? 12'd2550 : wdata[11:0];
             6'h03: width_w[23:12] <= (wdata > 32'd2550) ? 12'd2550 : wdata[11:0];
-            6'h06: slew <= wdata[11:0];
+            6'h06: if (SLEW_EN != 0) slew <= wdata[11:0];
         endcase
         if (xld[0]) width_w[11:0]  <= clamp_us(xus[11:0]);
         if (xld[1]) width_w[23:12] <= clamp_us(xus[23:12]);

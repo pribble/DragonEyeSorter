@@ -80,8 +80,7 @@ static int status(void)
                b.status & DES_BPI_ST_ENABLED ? "on" : "off", b.set_cps, b.meas_cps, b.scale * 100, b.meas_cnt, b.step_cnt);
     des_ptrig_t t;
     if (des_ptrig_read(&hw, &t) == DES_OK)
-        printf("POS TRIGGER  armed %u%u%u%u, %u fires\n", t.e[0].armed, t.e[1].armed, t.e[2].armed, t.e[3].armed,
-               t.fire_cnt);
+        printf("POS TRIGGER  armed %u%u, %u fires\n", t.e[0].armed, t.e[1].armed, t.fire_cnt);
     return 0;
 }
 
@@ -91,8 +90,9 @@ static void bpi_print(void)
     des_bpi_t b;
     des_bpi_read(&hw, &b);
     printf("bpi %s | set %.1f meas %.1f counts/s | err %+.2f %% scale %+.2f %% (integral %+.2f %%) | %u windows, "
-           "%u steps | last window %d counts / %u clocks%s%s%s%s\n", b.status & DES_BPI_ST_ENABLED ? "on" : "off",
-           b.set_cps, b.meas_cps, b.err * 100, b.scale * 100, b.integ * 100, b.meas_cnt, b.step_cnt, b.dm, b.dt,
+           "%u steps | counting %s%s%s%s%s\n", b.status & DES_BPI_ST_ENABLED ? "on" : "off",
+           b.set_cps, b.meas_cps, b.err * 100, b.scale * 100, b.integ * 100, b.meas_cnt, b.step_cnt,
+           b.status & DES_BPI_ST_DOWN ? "down" : "up",
            b.status & DES_BPI_ST_CRUISE ? " cruise" : "", b.status & DES_BPI_ST_STEPPED ? " stepping" : "",
            b.status & DES_BPI_ST_SAT ? " LIMIT" : "", b.status & DES_BPI_ST_STALL ? " STALL" : "");
 }
@@ -103,14 +103,16 @@ static int bpi_cmd(int argc, char **argv)
     if (!strcmp(s, "on")) des_bpi_enable(&hw, 1);
     else if (!strcmp(s, "off")) des_bpi_enable(&hw, 0);
     else if (!strcmp(s, "clr")) des_bpi_clear(&hw);
-    else if (!strcmp(s, "set") && argc >= 2) des_bpi_set(&hw, atof(argv[1]));
+    else if (!strcmp(s, "set") && argc >= 2) {
+        if (des_bpi_set(&hw, atof(argv[1])) != DES_OK) { fprintf(stderr, "bpi set: below 292000 counts/s\n"); return 1; }
+    }
     else if (!strcmp(s, "cfg") && argc >= 4) {
         des_bpi_cfg_t c = { atof(argv[1]), atof(argv[2]), atof(argv[3]), argc > 4 ? atof(argv[4]) : 0.0,
                             argc > 5 ? (unsigned)atoi(argv[5]) : 10u, argc > 6 ? (unsigned)atoi(argv[6]) : 100u,
                             argc > 7 ? atoi(argv[7]) : 5 };
         if (des_bpi_config(&hw, &c) != DES_OK) {
-            fprintf(stderr, "bpi cfg: out of range (kp 0..16, ki 0..1, limit 0..0.25, deadband 0..1, period 1..1000 ms, "
-                            "timeout period..10000 ms, settle 0..255)\n");
+            fprintf(stderr, "bpi cfg: out of range (kp 0..16, ki 0..1, limit 0..0.25, deadband 0..1, period 1..200 ms, "
+                            "timeout period..200 ms, settle 0..255)\n");
             return 1;
         }
     } else if (!strcmp(s, "watch")) {
@@ -140,7 +142,6 @@ static int ptrig_cmd(int argc, char **argv)
             else if (!strcmp(argv[k], "pos")) c.use_enc = 0;
             else if (!strcmp(argv[k], "pwm0")) c.action = DES_PTG_ACT_PWM0;
             else if (!strcmp(argv[k], "pwm1")) c.action = DES_PTG_ACT_PWM1;
-            else if (!strcmp(argv[k], "go")) c.action = DES_PTG_ACT_SERVO_GO;
             else if (!strcmp(argv[k], "out")) c.pulse_out = 1;
             else c.pwm_us = atoi(argv[k]);
         }
@@ -148,15 +149,13 @@ static int ptrig_cmd(int argc, char **argv)
         int32_t thr = (int32_t)strtol(argv[2], NULL, 0);
         if (s[0] == 'r') thr += c.use_enc ? (int32_t)rd(DES_IO_ENC_CNT) : des_step_pos(&hw);
         if (des_ptrig_arm(&hw, i, thr, &c) != DES_OK) {
-            fprintf(stderr, "ptrig arm: entry 0..3, pulse width 0..2550 us\n");
+            fprintf(stderr, "ptrig arm: entry 0..1, pulse width 0..2550 us\n");
             return 1;
         }
     } else if (!strcmp(s, "off")) des_ptrig_disarm(&hw, argc >= 2 ? atoi(argv[1]) : -1);
-    else if (!strcmp(s, "out") && argc >= 2) {
-        if (des_ptrig_out_us(&hw, (unsigned)atoi(argv[1])) != DES_OK) { fprintf(stderr, "ptrig out: 1..200000 us\n"); return 1; }
-    } else if (argc > 0) {
-        fprintf(stderr, "usage: desreg ptrig [arm <i> <thr> | rel <i> <delta>] [up|down] [pos|enc] [pwm0|pwm1|go] [us] "
-                        "[out] | off [i] | out <us>\n");
+    else if (argc > 0) {
+        fprintf(stderr, "usage: desreg ptrig [arm <i> <thr> | rel <i> <delta>] [up|down] [pos|enc] [pwm0|pwm1] [us] "
+                        "[out] | off [i]\n");
         return 1;
     }
     des_ptrig_t t;
@@ -167,9 +166,9 @@ static int ptrig_cmd(int argc, char **argv)
         const uint32_t cfg = rd(DES_PTG_CFG(i));
         printf("  %d: %-5s thr %d (%s, %s %s)", i, t.e[i].armed ? "armed" : t.e[i].fired ? "fired" : "idle",
                (int32_t)rd(DES_PTG_THR(i)), cfg & 4u ? "enc" : "pos", cfg & 2u ? "<=" : ">=",
-               ((cfg >> 4) & 7u) == 1 ? "pwm0" : ((cfg >> 4) & 7u) == 2 ? "pwm1" : ((cfg >> 4) & 7u) == 3 ? "go" : "none");
+               ((cfg >> 4) & 3u) == 1 ? "pwm0" : ((cfg >> 4) & 3u) == 2 ? "pwm1" : "none");
         if (t.e[i].fired)
-            printf(" | fired at %d, %.3f ms ago%s", t.e[i].pos, des_ticks_us(now - t.e[i].ts) / 1e3, t.e[i].late ? " LATE" : "");
+            printf(" | fired %.3f ms ago%s", des_ticks_us(now - t.e[i].ts) / 1e3, t.e[i].late ? " LATE" : "");
         printf("\n");
     }
     return 0;

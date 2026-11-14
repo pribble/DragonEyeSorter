@@ -242,7 +242,7 @@ module system_top (
     );
     des_ptrig ptrig_inst (   // v17: belt position compare trigger, nothing armed after reset
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h8), .waddr(des_waddr[7:0]), .wdata(des_wdata), .raddr(des_raddr[7:0]), .rdata(tg_rdata), .ts(des_ts),
-        .pos(st_pos), .enc(io_enc), .pwm_ld(tg_ld), .pwm_us(tg_us), .servo_go(), .trig_o(TRIG_OUT)
+        .pos(st_pos), .enc(io_enc), .pwm_ld(tg_ld), .pwm_us(tg_us), .trig_o(TRIG_OUT)
     );
     des_vision vision_inst (
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h3), .waddr(des_waddr[7:0]), .wdata(des_wdata), .raddr(des_raddr[7:0]), .rdata(vis_rdata),
@@ -258,7 +258,7 @@ module system_top (
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h6), .waddr(des_waddr[7:0]), .wdata(des_wdata), .raddr(des_raddr[7:0]), .rdata(rs_rdata), .ts(des_ts),
         .rx_i(RS485_RXD), .tx_o(RS485_TXD), .de_o(RS485_DE)
     );
-    des_pwm pwm_inst (
+    des_pwm #(.SLEW_EN(0)) pwm_inst (   // SLEW left out to save area (not used by the PS yet)
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h4), .waddr(des_waddr[7:0]), .wdata(des_wdata),
         .raddr(des_raddr[7:0]), .rdata(pwm_rdata), .pwm({FLAP2_PWM, FLAP1_PWM}), .xld(tg_ld), .xus(tg_us)
     );
