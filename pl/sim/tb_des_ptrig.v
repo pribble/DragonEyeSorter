@@ -1,7 +1,7 @@
 `timescale 1ns/1ps
 // des_ptrig (belt position compare trigger) with the real des_pwm behind it. 1 MHz clock: 1 clock = 1 us.
 // Fire instant, wrap-safe compare, late flag, both directions, encoder source, PWM load + early period restart
-// (latency against a plain register write), no truncated pulse, SLEW ramp, TRIG_OUT pulse, servo go, disarm.
+// (latency against a plain register write), no truncated pulse, SLEW ramp, TRIG_OUT pulse, disarm.
 module tb_des_ptrig;
     reg clk = 0;
     always #500 clk = ~clk;                        // 1 MHz
@@ -15,11 +15,11 @@ module tb_des_ptrig;
     always @(posedge clk) ts <= ts + 1;
     wire [1:0]  pwm, pwm_ld;
     wire [23:0] pwm_us;
-    wire        servo_go, trig_o;
+    wire        trig_o;
 
     des_ptrig #(.CLK_HZ(1_000_000)) dut (
         .clk(clk), .wr(wr && waddr[11:8] == 4'h8), .waddr(waddr[7:0]), .wdata(wdata), .raddr(raddr[7:0]), .rdata(tg_rdata),
-        .ts(ts), .pos(pos), .enc(enc), .pwm_ld(pwm_ld), .pwm_us(pwm_us), .servo_go(servo_go), .trig_o(trig_o));
+        .ts(ts), .pos(pos), .enc(enc), .pwm_ld(pwm_ld), .pwm_us(pwm_us), .trig_o(trig_o));
     des_pwm #(.CLK_HZ(1_000_000)) pw (
         .clk(clk), .wr(wr && waddr[11:8] == 4'h4), .waddr(waddr[7:0]), .wdata(wdata), .raddr(raddr[7:0]), .rdata(pw_rdata),
         .pwm(pwm), .xld(pwm_ld), .xus(pwm_us));
@@ -53,7 +53,7 @@ module tb_des_ptrig;
 
     // ---------------- monitors (times in us) ----------------
     real rise0 = 0, w0 = 0, rise1 = 0, w1 = 0, t_trig_r = 0, w_trig = 0;
-    integer n0 = 0, wlog [0:63], go_clocks = 0, bad_w0 = 0;
+    integer n0 = 0, wlog [0:63], bad_w0 = 0;
     always @(posedge pwm[0]) rise0 = $realtime / 1000.0;
     always @(negedge pwm[0]) begin
         w0 = $realtime / 1000.0 - rise0; wlog[n0 % 64] = $rtoi(w0 + 0.5); n0 = n0 + 1;
@@ -62,7 +62,6 @@ module tb_des_ptrig;
     always @(negedge pwm[1]) w1 = $realtime / 1000.0 - rise1;
     always @(posedge trig_o) t_trig_r = $realtime / 1000.0;
     always @(negedge trig_o) w_trig = $realtime / 1000.0 - t_trig_r;
-    always @(posedge clk) if (servo_go) go_clocks = go_clocks + 1;
     // reference fire instant: ts in the clock where the watched source first equals the watched value
     reg [31:0] watch = 0, t_ref = 0;
     reg        watch_enc = 0, seen = 1;
@@ -75,6 +74,9 @@ module tb_des_ptrig;
     initial begin
         rreg(12'h80C, r); check(r == 32'h50544731, "ID");
         rreg(12'h804, r); rreg(12'h810, r2); check(r == 0 && r2 == 100, "reset: nothing armed, TRIG_OUT 100 us");
+        wreg(12'h810, 32'd50); rreg(12'h810, r); check(r == 100, "TRIG_OUT length is fixed (write ignored)");
+        wreg(12'h860, 32'd5); wreg(12'h864, cfg(0, 0, 0, 0, 0, 1));
+        rreg(12'h804, r); rreg(12'h860, r2); check(r == 0 && r2 == 32'hDEADBEEF, "only entries 0 and 1 exist: 0x860 ignored");
         rreg(12'h418, r); check(r == 0, "des_pwm SLEW reset value 0");
 
         // ---- 1. rising compare: fires in the clock the position reaches the threshold, not before ----
@@ -86,7 +88,7 @@ module tb_des_ptrig;
         rreg(12'h804, r); rreg(12'h848, r2); rreg(12'h84C, r3);
         check(!r[0] && r[8] && !r[16], "fired once, disarmed, not late");
         check(r2 == t_ref, "TS = the clock in which the position reads 1000");
-        check(r3 == 32'd1000, "POS latched = 1000");
+        check(r3 == 32'hDEADBEEF, "no position latch (0x84C not implemented)");
         rreg(12'h808, r); check(r == 1, "FIRE_CNT 1");
         us(200);
         $sformat(msg, "TRIG_OUT pulse %0.0f us", w_trig); check(w_trig == 100.0, msg);
@@ -96,15 +98,15 @@ module tb_des_ptrig;
         // ---- 2. threshold already passed when armed: fires at once, LATE ----
         wreg(12'h840, 32'd500); wreg(12'h844, cfg(0, 0, 0, 0, 0, 1));
         us(3);
-        rreg(12'h804, r); rreg(12'h84C, r2);
-        $sformat(msg, "late arm: fired at once with LATE, POS 1200 (STATUS %0h, POS %0d)", r, r2); check(r[8] && r[16] && r2 == 32'd1200, msg);
+        rreg(12'h804, r); rreg(12'h848, r2);
+        $sformat(msg, "late arm: fired at once with LATE (STATUS %0h), TS %0d clocks back", r, ts - r2); check(r[8] && r[16] && ts - r2 < 10, msg);
 
         // ---- 3. falling direction ----
         wreg(12'h850, 32'd900); wreg(12'h854, cfg(0, 0, 0, 0, 1, 1));
         arm_watch(32'd900, 0);
         walk(32'd880, 10);
-        rreg(12'h858, r); rreg(12'h85C, r2); rreg(12'h804, r3);
-        check(r == t_ref && r2 == 32'd900 && r3[9] && !r3[17], "falling: fired at 900 exactly, not late");
+        rreg(12'h858, r); rreg(12'h804, r3);
+        check(r == t_ref && r3[9] && !r3[17], "falling: fired at 900 exactly, not late");
 
         // ---- 4. across the 32-bit wrap (0x7FFFFFF0 -> 0x80000010) ----
         pos = 32'h7FFF_FFF0;
@@ -114,19 +116,29 @@ module tb_des_ptrig;
         us(5);
         rreg(12'h804, r); check(r[0] && !r[8], "wrap: armed below the sign change, not fired");
         walk(32'h8000_0020, 5);
-        rreg(12'h848, r); rreg(12'h84C, r2); rreg(12'h804, r3);
-        check(r == t_ref && r2 == 32'h8000_0010 && !r3[16], "wrap: fired at 0x80000010 exactly");
+        rreg(12'h848, r); rreg(12'h804, r3);
+        check(r == t_ref && !r3[16], "wrap: fired at 0x80000010 exactly");
+        // ---- 4b. across the wrap of the 24 compared bits (0x00FFFFF0 -> 0x01000010) ----
+        pos = 32'h00FF_FFF0; us(2);
+        wreg(12'h840, 32'h0100_0010); wreg(12'h844, cfg(0, 0, 0, 0, 0, 1));
+        arm_watch(32'h0100_0010, 0); us(5);
+        rreg(12'h804, r); check(r[0] && !r[8], "24-bit wrap: armed below it, not fired");
+        walk(32'h0100_0020, 5);
+        rreg(12'h848, r); rreg(12'h804, r3); check(r == t_ref && !r3[16], "24-bit wrap: fired at 0x01000010 exactly");
+        rreg(12'h840, r); check(r == 32'h0000_0010, "THR reads back its low 24 bits, sign-extended");
+        wreg(12'h840, 32'hFFFF_FFF0); rreg(12'h840, r); check(r == 32'hFFFF_FFF0, "a small negative THR reads back as written");
+        pos = 32'h8000_0020; us(2);
 
         // ---- 5. encoder as the source ----
         enc = 32'hFFFF_FF00;                         // the belt encoder counts down going forward
         us(2);
-        wreg(12'h860, 32'hFFFF_FE00); wreg(12'h864, cfg(0, 0, 0, 1, 1, 1));
+        wreg(12'h850, 32'hFFFF_FE00); wreg(12'h854, cfg(0, 0, 0, 1, 1, 1));
         arm_watch(32'hFFFF_FE00, 1);
         walk(32'h8000_0100, 3);                      // the stepper position moving must not matter
-        rreg(12'h804, r); check(r[2] && !r[10], "encoder entry ignores the stepper position");
+        rreg(12'h804, r); check(r[1] && !r[9], "encoder entry ignores the stepper position");
         walk_enc(32'hFFFF_FDF0, 4);
-        rreg(12'h868, r); rreg(12'h86C, r2);
-        check(r == t_ref && r2 == 32'hFFFF_FE00, "encoder source: fired at the encoder threshold");
+        rreg(12'h858, r);
+        check(r == t_ref, "encoder source: fired at the encoder threshold");
 
         // ---- 6. PWM load: restarts the period, new pulse out within microseconds ----
         pos = 0; us(2);
@@ -193,11 +205,7 @@ module tb_des_ptrig;
         wreg(12'h418, 32'd0); wreg(12'h408, 32'd1500); us(45_000);
         check(w0 == 1500.0, "SLEW 0: the width jumps as in v16");
 
-        // ---- 9. servo go, disarm ----
-        go_clocks = 0;
-        wreg(12'h840, 32'd400); wreg(12'h844, cfg(0, 0, 3, 0, 0, 1));
-        pos <= 32'd400; us(6);
-        check(go_clocks == 1, "action 3: servo_go high for exactly one clock");
+        // ---- 9. disarm ----
         wreg(12'h840, 32'd600); wreg(12'h844, cfg(0, 0, 0, 0, 0, 1));
         wreg(12'h850, 32'd600); wreg(12'h854, cfg(0, 0, 0, 0, 0, 1));
         wreg(12'h854, cfg(0, 0, 0, 0, 0, 0));       // entry 1 disarmed by its own CFG

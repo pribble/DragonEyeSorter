@@ -126,33 +126,34 @@ static inline double des_enc_cps(uint32_t inc) { return inc * (double)DES_FREE_C
 #define DES_BPI_ST_SAT     0x08u   /* output at the limit */
 #define DES_BPI_ST_REF     0x10u   /* a reference edge is held (measuring) */
 #define DES_BPI_ST_CRUISE  0x20u   /* stepper in cruise right now */
+#define DES_BPI_ST_DOWN    0x40u   /* the encoder count went down over the last window */
 typedef struct {
     double kp;            /* output per unit of relative error, 0 .. 15.99 */
     double ki;            /* integral gain per window, 0 .. 0.9999 */
     double limit;         /* output limit as a fraction of the speed, 0 .. 0.25 (PL caps it there) */
     double deadband;      /* relative error left alone, 0 .. 0.9999 */
-    unsigned period_ms;   /* shortest measuring window, 1 .. 1000 */
-    unsigned timeout_ms;  /* no encoder event for this long = standing, period_ms .. 10000 */
+    unsigned period_ms;   /* shortest measuring window, 1 .. 200 (24-bit clock count in the PL) */
+    unsigned timeout_ms;  /* no encoder event for this long = standing, period_ms .. 200 */
     int settle;           /* cruise windows skipped after the cruise speed is reached, 0 .. 255 */
 } des_bpi_cfg_t;
 typedef struct {
     uint32_t status;              /* DES_BPI_ST_* */
     double set_cps, meas_cps;     /* set-point / measured speed, encoder counts per second */
     double err, scale, integ;     /* fractions: err = (set - meas) / set after the dead band, scale = output */
-    uint32_t meas_cnt, step_cnt;  /* windows measured / PI steps taken */
-    int32_t dm; uint32_t dt;      /* last window: counts and 75 MHz clocks */
+    uint32_t meas_cnt, step_cnt;  /* windows measured / PI steps taken, 16-bit counters that wrap */
 } des_bpi_t;
 int des_bpi_present(const des_hw_t *h);                       /* 1 = the bitstream has des_bpi */
 int des_bpi_config(des_hw_t *h, const des_bpi_cfg_t *c);     /* DES_E_ARG when a field is out of range (nothing written) */
-int des_bpi_set(des_hw_t *h, double counts_per_s);           /* set-point; 0 = nothing to control */
+int des_bpi_set(des_hw_t *h, double counts_per_s);           /* set-point; 0 = nothing to control; DES_E_ARG above 292000 */
 int des_bpi_enable(des_hw_t *h, int on);                     /* off: output 0 at once, integrator cleared */
 int des_bpi_clear(des_hw_t *h);                              /* integrator and output to 0, stays enabled */
 int des_bpi_read(const des_hw_t *h, des_bpi_t *b);
 
-#define DES_PTG_N 4
-enum { DES_PTG_ACT_NONE = 0, DES_PTG_ACT_PWM0 = 1, DES_PTG_ACT_PWM1 = 2, DES_PTG_ACT_SERVO_GO = 3 };
+#define DES_PTG_N 2
+enum { DES_PTG_ACT_NONE = 0, DES_PTG_ACT_PWM0 = 1, DES_PTG_ACT_PWM1 = 2 };
 typedef struct {
-    int falling;          /* 0: fire when source >= threshold, 1: when source <= threshold (wrapping 32-bit difference) */
+    int falling;          /* 0: fire when source >= threshold, 1: when source <= threshold (wrapping 24-bit difference:
+                             the threshold must lie within 8 million counts of the source) */
     int use_enc;          /* 0: stepper POS, 1: belt encoder count */
     int action;           /* DES_PTG_ACT_* */
     int pwm_us;           /* width loaded by the PWM actions, 0 .. 2550 */
@@ -160,19 +161,18 @@ typedef struct {
 } des_ptrig_cfg_t;
 typedef struct {
     uint32_t fire_cnt;
-    struct { uint8_t armed, fired, late; uint32_t ts; int32_t pos; } e[DES_PTG_N];
+    struct { uint8_t armed, fired, late; uint32_t ts; } e[DES_PTG_N];   /* ts = FREE_CNT at the fire */
 } des_ptrig_t;
 /* the CFG word of an entry (exposed for the unit test) */
 static inline uint32_t des_ptrig_cfg_word(const des_ptrig_cfg_t *c, int arm)
 {
-    return ((uint32_t)(c->pwm_us & 0xFFF) << 16) | (c->pulse_out ? 0x80u : 0u) | ((uint32_t)(c->action & 7) << 4) |
+    return ((uint32_t)(c->pwm_us & 0xFFF) << 16) | (c->pulse_out ? 0x80u : 0u) | ((uint32_t)(c->action & 3) << 4) |
            (c->use_enc ? 4u : 0u) | (c->falling ? 2u : 0u) | (arm ? 1u : 0u);
 }
 int des_ptrig_present(const des_hw_t *h);
 /* threshold first, then the CFG word with the arm bit: an entry already past its threshold fires at once (LATE) */
 int des_ptrig_arm(des_hw_t *h, int i, int32_t thr, const des_ptrig_cfg_t *c);
 int des_ptrig_disarm(des_hw_t *h, int i);                    /* i < 0: every entry, flags cleared */
-int des_ptrig_out_us(des_hw_t *h, unsigned us);              /* TRIG_OUT pulse length, 1 .. 200000 us */
 int des_ptrig_read(const des_hw_t *h, des_ptrig_t *t);
 
 /* ---- servo bus (Desheng protocol v4.01; PL adds FF FF header and checksum) ---- */

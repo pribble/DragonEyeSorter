@@ -130,47 +130,46 @@
 #define DES_485_ID_VALUE     0x34383501u
 
 /* des_bpi, PL_BASE + 0x700 (v17): belt speed PI on the metering-wheel encoder (pl/soc_base/src/des/des_bpi.v).
- * Speeds are Q0.32 encoder counts per 75 MHz clock; relative quantities are Q0.16 (65536 = 100 %). */
+ * Speeds are Q0.32 encoder counts per 75 MHz clock, 24 bits kept (below 2^-8 counts per clock = 292968 counts/s);
+ * relative quantities are Q0.16 (65536 = 100 %). W = write-only (reads 0xDEADBEEF). */
 #define DES_BPI_CTRL         0x700u    /* RW b0 enable (0 = scale 0 = open loop as before) ; W b1 clear integrator */
 #define DES_BPI_STATUS       0x704u    /* R  b0 enabled b1 last window stepped b2 stall (no encoder edge for TIMEOUT)
-                                          b3 output at the limit b4 reference edge held b5 stepper in cruise */
-#define DES_BPI_SET          0x708u    /* RW set-point, Q0.32 counts per clock (0 = nothing to control) */
-#define DES_BPI_KP           0x70Cu    /* RW Q4.12 */
-#define DES_BPI_KI           0x710u    /* RW Q0.16 per window */
+                                          b3 output at the limit b4 reference edge held b5 stepper in cruise
+                                          b6 the count went down over the last window */
+#define DES_BPI_SET          0x708u    /* RW set-point, Q0.32 counts per clock, [23:0] (0 = nothing to control) */
+#define DES_BPI_KP           0x70Cu    /* W  Q4.12 */
+#define DES_BPI_KI           0x710u    /* W  Q0.16 per window */
 #define DES_BPI_SMAX         0x714u    /* RW output limit, Q0.16, capped at 16384 (25 %) */
-#define DES_BPI_DB           0x718u    /* RW dead band on the relative error, Q0.16 */
-#define DES_BPI_PERIOD       0x71Cu    /* RW shortest window in clocks (750000 = 10 ms) */
-#define DES_BPI_TIMEOUT      0x720u    /* RW clocks without an encoder event = belt standing (7500000 = 100 ms) */
-#define DES_BPI_SETTLE       0x724u    /* RW cruise windows skipped after the cruise speed is reached (5) */
+#define DES_BPI_DB           0x718u    /* W  dead band on the relative error, Q0.16 */
+#define DES_BPI_PERIOD       0x71Cu    /* W  shortest window in clocks, [23:0] (750000 = 10 ms) */
+#define DES_BPI_TIMEOUT      0x720u    /* W  clocks without an encoder event = belt standing, [23:0] (7500000 = 100 ms) */
+#define DES_BPI_SETTLE       0x724u    /* W  cruise windows skipped after the cruise speed is reached (5) */
 #define DES_BPI_MEAS         0x728u    /* R  measured speed, Q0.32 counts per clock */
 #define DES_BPI_ERR          0x72Cu    /* R  (SET - MEAS) / SET, signed Q0.16, after the dead band */
 #define DES_BPI_SCALE        0x730u    /* R  output: step rate = programmed rate * (1 + SCALE), signed Q0.16 */
 #define DES_BPI_INTEG        0x734u    /* R  integral part of SCALE, signed Q0.16 */
-#define DES_BPI_MEAS_CNT     0x738u    /* R  windows measured */
-#define DES_BPI_STEP_CNT     0x73Cu    /* R  PI steps taken */
-#define DES_BPI_DM           0x740u    /* R  encoder counts of the last window (signed) */
-#define DES_BPI_DT           0x744u    /* R  clocks of the last window */
+#define DES_BPI_MEAS_CNT     0x738u    /* R  windows measured, 16 bits (wraps) */
+#define DES_BPI_STEP_CNT     0x73Cu    /* R  PI steps taken, 16 bits (wraps) */
 #define DES_BPI_ID           0x748u    /* R  0x42504931 */
 #define DES_BPI_ID_VALUE     0x42504931u
 
-/* des_ptrig, PL_BASE + 0x800 (v17): belt position compare trigger, 4 entries (pl/soc_base/src/des/des_ptrig.v) */
+/* des_ptrig, PL_BASE + 0x800 (v17): belt position compare trigger, 2 entries (pl/soc_base/src/des/des_ptrig.v) */
 #define DES_PTG_CTRL         0x800u    /* W  b0 disarm all entries and clear their flags */
-#define DES_PTG_STATUS       0x804u    /* R  [3:0] armed [11:8] fired [19:16] late (threshold already passed at arming) */
-#define DES_PTG_FIRE_CNT     0x808u    /* R  fires since reset */
+#define DES_PTG_STATUS       0x804u    /* R  [1:0] armed [9:8] fired [17:16] late (threshold already passed at arming) */
+#define DES_PTG_FIRE_CNT     0x808u    /* R  fires since reset, 16 bits (wraps) */
 #define DES_PTG_ID           0x80Cu    /* R  0x50544731 */
-#define DES_PTG_OUT_CLK      0x810u    /* RW TRIG_OUT pulse length in 75 MHz clocks (7500 = 100 us) */
-/* entry 0; entry i (0..3) sits 0x10 * i higher: DES_PTG_THR(i) etc. */
-#define DES_PTG_THR0         0x840u    /* RW threshold (stepper POS or encoder count) */
+#define DES_PTG_OUT_CLK      0x810u    /* R  TRIG_OUT pulse length in 75 MHz clocks, fixed (7500 = 100 us) */
+/* entry 0; entry i (0..1) sits 0x10 * i higher: DES_PTG_THR(i) etc. */
+#define DES_PTG_THR0         0x840u    /* RW threshold (stepper POS or encoder count); the low 24 bits are kept and
+                                          compared, read back sign-extended */
 #define DES_PTG_CFG0         0x844u    /* RW b0 arm (clears on fire) b1 direction (0: source >= THR, 1: source <= THR;
-                                          on the wrapping 32-bit difference) b2 source (0 stepper POS, 1 encoder)
-                                          [6:4] action (0 none, 1 load flap PWM ch0, 2 ch1, 3 servo go)
+                                          on the wrapping 24-bit difference) b2 source (0 stepper POS, 1 encoder)
+                                          [5:4] action (0 none, 1 load flap PWM ch0, 2 ch1)
                                           b7 pulse TRIG_OUT [27:16] PWM width in us for actions 1 / 2 */
 #define DES_PTG_TS0          0x848u    /* R  FREE_CNT at the fire */
-#define DES_PTG_POS0         0x84Cu    /* R  source value at the fire */
 #define DES_PTG_THR(i)       (DES_PTG_THR0 + 0x10u * (i))
 #define DES_PTG_CFG(i)       (DES_PTG_CFG0 + 0x10u * (i))
 #define DES_PTG_TS(i)        (DES_PTG_TS0 + 0x10u * (i))
-#define DES_PTG_POS(i)       (DES_PTG_POS0 + 0x10u * (i))
 #define DES_PTG_ID_VALUE     0x50544731u
 #define DES_IO_ST_ESTOP_LATCHED 0x01u
 #define DES_IO_ST_ESTOP_NOW     0x02u

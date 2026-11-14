@@ -34,7 +34,7 @@ int main(void)
     CHECK(des_bpi_config(&h, &cfg) == DES_E_ARG && des_bpi_set(&h, 1000) == DES_E_ARG && des_bpi_enable(&h, 1) == DES_E_ARG &&
           des_bpi_clear(&h) == DES_E_ARG && des_bpi_read(&h, &b) == DES_E_ARG, "v16: des_bpi calls refuse");
     CHECK(des_ptrig_arm(&h, 0, 100, &tc) == DES_E_ARG && des_ptrig_disarm(&h, -1) == DES_E_ARG &&
-          des_ptrig_out_us(&h, 100) == DES_E_ARG && des_ptrig_read(&h, &t) == DES_E_ARG, "v16: des_ptrig calls refuse");
+          des_ptrig_read(&h, &t) == DES_E_ARG, "v16: des_ptrig calls refuse");
     CHECK(des_pwm_slew(&h, 40) == DES_E_ARG, "v16: des_pwm_slew refuses");
     CHECK(R(DES_BPI_CTRL) == 0 && R(DES_BPI_SET) == 0 && R(DES_BPI_KP) == 0 && R(DES_PTG_CFG(0)) == 0 && R(DES_PTG_CTRL) == 0 &&
           R(DES_PWM_SLEW) == 0, "v16: nothing written");
@@ -53,6 +53,9 @@ int main(void)
     /* 50 mm/s at 0.049227 mm per count = 1015.70 counts/s -> 1015.70 * 2^32 / 75e6 = 58165 */
     CHECK(des_bpi_set(&h, 50.0 / 0.049227) == DES_OK && R(DES_BPI_SET) == 58165, "set-point 50 mm/s -> 58165 (Q0.32 per clock)");
     CHECK(des_bpi_set(&h, -50.0 / 0.049227) == DES_OK && R(DES_BPI_SET) == 58165, "set-point takes the magnitude");
+    CHECK(des_bpi_set(&h, 292000.0) == DES_E_ARG && des_bpi_set(&h, -3e5) == DES_E_ARG && R(DES_BPI_SET) == 58165 &&
+          des_bpi_set(&h, 291999.0) == DES_OK && R(DES_BPI_SET) < (1u << 24), "set-point beyond the PL's 24 bits refused");
+    des_bpi_set(&h, 50.0 / 0.049227);
     CHECK(near(des_enc_cps(58165), 1015.70, 0.02), "58165 reads back as 1015.70 counts/s");
     des_bpi_enable(&h, 1); CHECK(R(DES_BPI_CTRL) == 1, "enable -> CTRL 1");
     des_bpi_clear(&h);     CHECK(R(DES_BPI_CTRL) == 3, "clear keeps the enable bit and sets b1");
@@ -61,53 +64,56 @@ int main(void)
     {
         des_bpi_cfg_t bad[] = { { 16.0, 0.1, 0.08, 0, 10, 100, 5 }, { 0.5, 1.0, 0.08, 0, 10, 100, 5 }, { 0.5, 0.1, 0.26, 0, 10, 100, 5 },
                                 { 0.5, 0.1, 0.08, 1.0, 10, 100, 5 }, { 0.5, 0.1, 0.08, 0, 0, 100, 5 }, { 0.5, 0.1, 0.08, 0, 10, 5, 5 },
-                                { 0.5, 0.1, 0.08, 0, 10, 100, 256 }, { -0.1, 0.1, 0.08, 0, 10, 100, 5 } };
+                                { 0.5, 0.1, 0.08, 0, 10, 100, 256 }, { -0.1, 0.1, 0.08, 0, 10, 100, 5 },
+                                { 0.5, 0.1, 0.08, 0, 201, 201, 5 }, { 0.5, 0.1, 0.08, 0, 10, 201, 5 } };
         int refused = 0;
         for (unsigned i = 0; i < sizeof bad / sizeof bad[0]; i++) refused += des_bpi_config(&h, &bad[i]) == DES_E_ARG;
-        CHECK(refused == 8 && R(DES_BPI_KP) == 2048 && R(DES_BPI_SMAX) == 5243, "8 out-of-range configs refused, registers untouched");
+        CHECK(refused == 10 && R(DES_BPI_KP) == 2048 && R(DES_BPI_SMAX) == 5243, "10 out-of-range configs refused, registers untouched");
+        des_bpi_cfg_t edge = { 0.5, 0.1, 0.08, 0, 200, 200, 5 };
+        CHECK(des_bpi_config(&h, &edge) == DES_OK && R(DES_BPI_PERIOD) == 15000000 && R(DES_BPI_TIMEOUT) < (1u << 24),
+              "200 ms accepted: 15000000 clocks fit the PL's 24 bits");
     }
     /* read-back scaling, including the sign of the Q0.16 fields */
-    R(DES_BPI_STATUS) = DES_BPI_ST_ENABLED | DES_BPI_ST_SAT | DES_BPI_ST_CRUISE;
+    R(DES_BPI_STATUS) = DES_BPI_ST_ENABLED | DES_BPI_ST_SAT | DES_BPI_ST_CRUISE | DES_BPI_ST_DOWN;
     R(DES_BPI_MEAS) = 55839;                 /* 96 % of the set-point */
     R(DES_BPI_ERR) = 2621;                   /* +4 % */
     R(DES_BPI_SCALE) = (uint32_t)-5243;      /* -8 % */
     R(DES_BPI_INTEG) = (uint32_t)-3277;      /* -5 % */
-    R(DES_BPI_MEAS_CNT) = 77; R(DES_BPI_STEP_CNT) = 66; R(DES_BPI_DM) = (uint32_t)-12; R(DES_BPI_DT) = 886000;
+    R(DES_BPI_MEAS_CNT) = 77; R(DES_BPI_STEP_CNT) = 66;
     CHECK(des_bpi_read(&h, &b) == DES_OK, "read");
-    CHECK(b.status == (DES_BPI_ST_ENABLED | DES_BPI_ST_SAT | DES_BPI_ST_CRUISE) && near(b.set_cps, 1015.70, 0.02) &&
+    CHECK(b.status == (DES_BPI_ST_ENABLED | DES_BPI_ST_SAT | DES_BPI_ST_CRUISE | DES_BPI_ST_DOWN) && near(b.set_cps, 1015.70, 0.02) &&
           near(b.meas_cps, 975.08, 0.02), "read: status, set 1015.70, meas 975.08 counts/s");
     CHECK(near(b.err, 0.04, 1e-4) && near(b.scale, -0.08, 1e-4) && near(b.integ, -0.05, 1e-4), "read: err +4 %, scale -8 %, integral -5 %");
-    CHECK(b.meas_cnt == 77 && b.step_cnt == 66 && b.dm == -12 && b.dt == 886000, "read: counters, DM signed, DT");
+    CHECK(b.meas_cnt == 77 && b.step_cnt == 66, "read: counters");
 
     /* ---- des_ptrig ---- */
     CHECK(des_ptrig_cfg_word(&tc, 1) == 0x044C0091u, "CFG word: 1100 us, TRIG_OUT, PWM ch0, stepper, rising, armed = 0x044C0091");
-    CHECK(des_ptrig_arm(&h, 2, -123456, &tc) == DES_OK && R(DES_PTG_THR(2)) == (uint32_t)-123456 && R(DES_PTG_CFG(2)) == 0x044C0091u,
-          "arm entry 2: THR at 0x860 (signed), CFG at 0x864");
-    CHECK(DES_PTG_THR(2) == 0x860 && DES_PTG_CFG(3) == 0x874 && DES_PTG_TS(1) == 0x858 && DES_PTG_POS(0) == 0x84C, "entry offsets");
+    CHECK(des_ptrig_arm(&h, 1, -123456, &tc) == DES_OK && R(DES_PTG_THR(1)) == (uint32_t)-123456 && R(DES_PTG_CFG(1)) == 0x044C0091u,
+          "arm entry 1: THR at 0x850 (signed), CFG at 0x854");
+    CHECK(DES_PTG_THR(1) == 0x850 && DES_PTG_CFG(0) == 0x844 && DES_PTG_TS(1) == 0x858, "entry offsets");
     {
-        des_ptrig_cfg_t e = { 1, 1, DES_PTG_ACT_SERVO_GO, 0, 0 };
-        CHECK(des_ptrig_cfg_word(&e, 0) == 0x00000036u, "CFG word: falling, encoder, servo go, not armed = 0x36");
-        des_ptrig_cfg_t bad1 = { 0, 0, 4, 0, 0 }, bad2 = { 0, 0, DES_PTG_ACT_PWM1, 2551, 0 };
-        CHECK(des_ptrig_arm(&h, 4, 0, &tc) == DES_E_ARG && des_ptrig_arm(&h, -1, 0, &tc) == DES_E_ARG &&
+        des_ptrig_cfg_t e = { 1, 1, DES_PTG_ACT_PWM1, 0, 0 };
+        CHECK(des_ptrig_cfg_word(&e, 0) == 0x00000026u, "CFG word: falling, encoder, PWM ch1, not armed = 0x26");
+        des_ptrig_cfg_t bad1 = { 0, 0, 3, 0, 0 }, bad2 = { 0, 0, DES_PTG_ACT_PWM1, 2551, 0 };
+        CHECK(des_ptrig_arm(&h, 2, 0, &tc) == DES_E_ARG && des_ptrig_arm(&h, -1, 0, &tc) == DES_E_ARG &&
               des_ptrig_arm(&h, 0, 0, &bad1) == DES_E_ARG && des_ptrig_arm(&h, 0, 0, &bad2) == DES_E_ARG && R(DES_PTG_CFG(0)) == 0,
-              "arm refuses entry 4 / -1, action 4, width 2551");
+              "arm refuses entry 2 / -1, action 3, width 2551");
     }
-    des_ptrig_disarm(&h, 2);
-    CHECK(R(DES_PTG_CFG(2)) == 0x044C0090u, "disarm one entry: CFG rewritten without the arm bit");
+    des_ptrig_disarm(&h, 1);
+    CHECK(R(DES_PTG_CFG(1)) == 0x044C0090u, "disarm one entry: CFG rewritten without the arm bit");
     des_ptrig_disarm(&h, -1);
     CHECK(R(DES_PTG_CTRL) == 1, "disarm all: CTRL b0");
-    CHECK(des_ptrig_out_us(&h, 100) == DES_OK && R(DES_PTG_OUT_CLK) == 7500 && des_ptrig_out_us(&h, 0) == DES_E_ARG,
-          "TRIG_OUT 100 us -> 7500 clocks; 0 refused");
-    R(DES_PTG_STATUS) = 0x00020A05u;   /* armed 0 and 2, fired 1 and 3, late 1 */
-    R(DES_PTG_FIRE_CNT) = 9; R(DES_PTG_TS(1)) = 1234567; R(DES_PTG_POS(1)) = (uint32_t)-42;
+    R(DES_PTG_STATUS) = 0x00020201u;   /* armed 0, fired 1, late 1 */
+    R(DES_PTG_FIRE_CNT) = 9; R(DES_PTG_TS(1)) = 1234567;
     CHECK(des_ptrig_read(&h, &t) == DES_OK && t.fire_cnt == 9, "read");
-    CHECK(t.e[0].armed && !t.e[1].armed && t.e[2].armed && !t.e[3].armed && !t.e[0].fired && t.e[1].fired && !t.e[2].fired &&
-          t.e[3].fired && t.e[1].late && !t.e[3].late && t.e[1].ts == 1234567 && t.e[1].pos == -42,
-          "read: armed / fired / late bits per entry, time stamp, signed position");
+    CHECK(t.e[0].armed && !t.e[1].armed && !t.e[0].fired && t.e[1].fired && t.e[1].late && !t.e[0].late && t.e[1].ts == 1234567,
+          "read: armed / fired / late bits per entry, time stamp");
 
     /* ---- des_pwm slew ---- */
     CHECK(des_pwm_slew(&h, 40) == DES_OK && R(DES_PWM_SLEW) == 40 && des_pwm_slew(&h, -1) == DES_E_ARG &&
           des_pwm_slew(&h, 4096) == DES_E_ARG && R(DES_PWM_SLEW) == 40, "PWM slew 40 written; -1 / 4096 refused");
+    /* (a build without SLEW reads the register back as 0 and the call then reports DES_E_ARG: not reproducible on this
+     * fake window, which stores whatever is written) */
 
     printf("test_hw_v17: %d passed, %d failed\n", passes, fails);
     return fails;

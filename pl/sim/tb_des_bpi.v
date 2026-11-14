@@ -101,8 +101,7 @@ module tb_des_bpi;
     localparam integer SMAX = 5243;                 // 8 % in Q0.16
     initial begin
         rreg(12'h748, r); check(r == 32'h42504931, "ID");
-        rreg(12'h71C, r); rreg(12'h720, r2); check(r == 10_000 && r2 == 100_000, "PERIOD / TIMEOUT reset values (parameters)");
-        rreg(12'h724, r); check(r == 5, "SETTLE reset value 5");
+        rreg(12'h71C, r); rreg(12'h724, r2); check(r == 32'hDEADBEEF && r2 == 32'hDEADBEEF, "PERIOD / SETTLE are write-only");
         wreg(12'h714, 32'd40000); rreg(12'h714, r); check(r == 16384, "SMAX capped at 25 % (16384)");
         // KP 0.5 (Q4.12), KI 0.1 per window (Q0.16), scale limit 8 %, no dead band
         wreg(12'h708, en_inc(50.0)); wreg(12'h70C, 32'd2048); wreg(12'h710, 32'd6554);
@@ -115,6 +114,10 @@ module tb_des_bpi;
         $sformat(msg, "PI off: MEAS %0.3f..%0.3f mm/s = belt 48.00 +-0.3 %%", lo, hi);
         check(rabs(pct(lo, 48.0)) < 0.3 && rabs(pct(hi, 48.0)) < 0.3, msg);
         rreg(12'h730, r); rreg(12'h73C, r2); check(r == 0 && r2 == 0, "PI off: SCALE 0, no PI steps");
+        rreg(12'h738, c0); ms(1000); rreg(12'h738, c1);
+        $sformat(msg, "PERIOD reset value: %0d windows in 1 s (10 ms windows, each closed on the next like edge)", c1 - c0);
+        check(c1 - c0 >= 80 && c1 - c0 <= 100, msg);
+        rreg(12'h704, r); check(r[6], "STATUS.b6: the encoder counts down (model default)");
         step_rate(200, rate);
         $sformat(msg, "PI off: step rate %0.1f = 2389.9 steps/s (v16 speed)", rate); check(rabs(pct(rate, 50.0 / MM_STEP)) < 0.3, msg);
         rreg(12'h224, c0);   // steps of the start ramp = (v^2 - vmin^2) / 2a at the programmed 50 mm/s
@@ -238,7 +241,7 @@ module tb_des_bpi;
         spread(20);
         $sformat(msg, "count direction reversed: MEAS %0.3f..%0.3f mm/s at 50.00 +-0.3 %%", lo, hi);
         check(rabs(pct(lo, 50.0)) < 0.3 && rabs(pct(hi, 50.0)) < 0.3, msg);
-        rreg(12'h740, r); check($signed(r) > 0, "DM positive for an up-counting encoder");
+        rreg(12'h704, r); check(!r[6], "STATUS.b6 clear for an up-counting encoder");
 
         $display("des_bpi: %0d passed, %0d failed", passes, fails);
         $finish;
