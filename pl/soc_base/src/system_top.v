@@ -214,8 +214,12 @@ module system_top (
     wire        vib_sdo, vib_oe;
     wire        sb_drive_low, st_pul_n, st_dir_n, st_ena, des_estop, st_cruise;
     wire signed [16:0] bpi_scale;
-    wire [1:0]  tg_ld;
-    wire [23:0] tg_us;
+    // des_ptrig (v17 batch 1) is not instantiated in batch 2: the device could not hold it together with des_vib and
+    // keep the NPU timing (11-15). Its window reads 0xDEADBEEF (no ID -> the PS reports it absent), TRIG_OUT stays low.
+    wire [1:0]  tg_ld = 2'b00;
+    wire [23:0] tg_us = 24'd0;
+    assign tg_rdata = 32'hDEADBEEF;
+    assign TRIG_OUT = 1'b0;
     assign des_rdata = (des_raddr[11:8] == 4'h1) ? sb_rdata :
                        (des_raddr[11:8] == 4'h2) ? st_rdata :
                        (des_raddr[11:8] == 4'h3) ? vis_rdata :
@@ -243,10 +247,6 @@ module system_top (
     des_bpi bpi_inst (   // v17: belt speed PI, off (scale 0) until the PS enables it
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h7), .waddr(des_waddr[7:0]), .wdata(des_wdata), .raddr(des_raddr[7:0]), .rdata(bpi_rdata), .ts(des_ts),
         .enc(io_enc), .st_cruise(st_cruise), .scale_o(bpi_scale)
-    );
-    des_ptrig ptrig_inst (   // v17: belt position compare trigger, nothing armed after reset
-        .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h8), .waddr(des_waddr[7:0]), .wdata(des_wdata), .raddr(des_raddr[7:0]), .rdata(tg_rdata), .ts(des_ts),
-        .pos(st_pos), .enc(io_enc), .pwm_ld(tg_ld), .pwm_us(tg_us), .trig_o(TRIG_OUT)
     );
     des_vib vib_inst (   // v17 batch 2: ADXL345 vibration acquisition, idle (CS high, SDIO released) until the PS enables it
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h9), .waddr(des_waddr[7:0]), .wdata(des_wdata), .raddr(des_raddr[7:0]), .rdata(vib_rdata), .ts(des_ts),
