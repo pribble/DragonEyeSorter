@@ -87,6 +87,17 @@ Vec2 arm_to_table(const ArmConfig &c, Vec3 p)
 }
 float table_axis_to_arm(const ArmConfig &c, float axis_table) { return wrap_axis(axis_table - c.base_yaw); }
 float arm_tangential_axis(const ArmConfig &c, Vec2 p) { return arm_tangential_axis(c.base_xy, p); }
+float arm_near_comp(const ArmConfig &c, float r)
+{
+    const std::vector<std::array<float, 2>> &t = c.near_comp;   // sorted by radius (load_config)
+    if (t.empty()) return 0;
+    if (r <= t.front()[0]) return t.front()[1];
+    if (r >= t.back()[0]) return t.back()[1];
+    size_t i = 1;
+    while (i + 1 < t.size() && r > t[i][0]) i++;
+    const float d = t[i][0] - t[i - 1][0];
+    return d > 0 ? t[i - 1][1] + (t[i][1] - t[i - 1][1]) * (r - t[i - 1][0]) / d : t[i][1];
+}
 float arm_wrist_axis(const ArmConfig &c, Vec2 p, float q5_deg)
 {
     // arm_ik: q5 = closing line - q1 - grip_axis_at_zero, q1 = direction of p - atan2(tau, rho); in the table frame
@@ -276,16 +287,20 @@ const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, 
     // of the two wrist angles for the closing line, the one nearer the ready pose's (or the requested one, e.g. the
     // inner picks' #5): the wrist does not half-turn
     const float q5_home = c.home_deg[4], q5_pref = std::isnan(q5_pref_deg) ? q5_home : q5_pref_deg;
-    // tilted grasps land short when the arm stretches (tilt_comp_mm): aim farther out along the radial line, which
-    // keeps the tangential closing axis
-    Vec2 p_tilt = p_table;
+    // tilted grasps land short when the arm stretches (tilt_comp_mm), vertical ones close to the base too (near_comp):
+    // aim farther out along the radial line, which keeps the closing axis
+    Vec2 p_tilt = p_table, p_vert = p_table;
     {
         const float dx = p_table.x - c.base_xy.x, dy = p_table.y - c.base_xy.y, r = std::hypot(dx, dy);
-        if (r > 1.f) p_tilt = {p_table.x + c.tilt_comp_mm * dx / r, p_table.y + c.tilt_comp_mm * dy / r};
+        if (r > 1.f) {
+            const float nc = arm_near_comp(c, r);
+            p_tilt = {p_table.x + c.tilt_comp_mm * dx / r, p_table.y + c.tilt_comp_mm * dy / r};
+            p_vert = {p_table.x + nc * dx / r, p_table.y + nc * dy / r};
+        }
     }
     for (float t = 0;; t += c.tilt_step_deg) {
         const float tr = deg2rad(t);
-        const Vec2 pt = t > 0 ? p_tilt : p_table;
+        const Vec2 pt = t > 0 ? p_tilt : p_vert;
         const char *why = arm_ik(c, table_to_arm(c, pt, c.z_safe), ax, above, tr, q5_pref);
         if (!why) why = arm_ik(c, table_to_arm(c, pt, c.z_grasp), ax, down, tr, q5_pref);
         if (!why) {
@@ -327,8 +342,8 @@ const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, 
     // vertical pose above the part with the ready wrist)
     const bool turn = !std::isnan(q5_pref_deg) && std::fabs(above.q[4] - q5_home) > kWristTurnDeg;
     if (turn) {
-        const float ax_home = table_axis_to_arm(c, arm_wrist_axis(c, p_table, q5_home));
-        if (const char *w = arm_ik(c, table_to_arm(c, p_table, c.z_safe), ax_home, turn_from, 0, q5_home)) {
+        const float ax_home = table_axis_to_arm(c, arm_wrist_axis(c, p_vert, q5_home));
+        if (const char *w = arm_ik(c, table_to_arm(c, p_vert, c.z_safe), ax_home, turn_from, 0, q5_home)) {
             (void)w;
             return "wrist turn: no pose above the part with the ready pose's wrist";
         }
