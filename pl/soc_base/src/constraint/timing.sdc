@@ -43,3 +43,11 @@ set_clock_groups -asynchronous \
 set_clock_groups -asynchronous \
     -group [get_clocks {design_0_inst/design_0_video_timing_generator_v01_0_Inst/video_timing_generator_v01_e2dadf6740ca_Inst/dr1_pll_vtc_Inst/u_DR1_PHY_PLL.clkc[0]}] \
     -group [get_clocks {design_0_inst/design_0_pll_150m_Inst/dr1_phy_pll_bdb046a15d6b_Inst/u_DR1_PHY_PLL.clkc[0]}]
+
+# ---------------------------------------------------------------------------
+# DragonEyeSorter 2026-11-15: HDMI serial clock (PLL_3 clkc[0], 742.9 MHz, 33 endpoints). Its paths are the lane
+# serialisers' last register -> the output ODDR (O_hdmi_clk_p / data lanes), no logic: the slack is the wire from
+# where the register was placed to the pin. v17b2 (seed 3) met it by only +0.023 ns and the monitor lost lock now and
+# then (black screen + "HDMI1"; v16 on the same monitor and cable: none in 10 min). Over-constrain it so P&R keeps
+# those registers next to the HDMI pins; the reported clk10 slack then already has this margin taken off.
+set_clock_uncertainty -setup 0.15 [get_clocks {design_0_inst/design_0_PLL_3_Inst/dr1_phy_pll_58e32fb6dd07_Inst/u_DR1_PHY_PLL.clkc[0]}]
