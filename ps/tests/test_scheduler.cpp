@@ -1483,6 +1483,40 @@ static void test_arm()
         const Vec2 np{t.base_xy.x + 10.f, t.base_xy.y + 120.f};
         why = plan_pick(t, np, arm_tangential_axis(t, np), 40, 32, 0, h, wt, &used);
         CHECK(!why && used == 0, "120 mm stays vertical: %s, tilt %.0f", why ? why : "ok", used);
+        // tilt_comp_mm (11-15: tilted grasps landed ~8 mm short): the tilted descend aims 8 mm farther out along the
+        // radial line, the tangential position stays; vertical picks are untouched
+        {
+            auto descend_at = [&](const ArmConfig &c, Vec2 p, float &tilt_used) -> Vec2 {
+                std::vector<ServoFrame> w;
+                tilt_used = -1;
+                if (plan_pick(c, p, arm_tangential_axis(c, p), 40, 32, 0, h, w, &tilt_used)) return {NAN, NAN};
+                for (const ServoFrame &f : w)
+                    if (!strcmp(f.what, "descend")) {
+                        float g;
+                        return arm_to_table(c, arm_fk(c, arm_from_counts(c, f.pos, g)));
+                    }
+                return {NAN, NAN};
+            };
+            ArmConfig k = t;
+            k.max_tilt_deg = 40;
+            float u0, u1;
+            const Vec2 a0 = descend_at(k, tp, u0);
+            k.tilt_comp_mm = 8;
+            const Vec2 a1 = descend_at(k, tp, u1);
+            const float dx = tp.x - k.base_xy.x, dy = tp.y - k.base_xy.y, r = std::hypot(dx, dy);
+            const float rad = ((a1.x - a0.x) * dx + (a1.y - a0.y) * dy) / r;
+            const float tan = ((a1.x - a0.x) * -dy + (a1.y - a0.y) * dx) / r;
+            CHECK(u0 > 0 && u1 > 0 && std::fabs(rad - 8) < 1.f && std::fabs(tan) < 1.f,
+                  "tilt_comp_mm 8: tilted descend %.2f mm farther out, %.2f mm sideways (tilt %.0f / %.0f deg)", rad, tan,
+                  u0, u1);
+            float v0, v1;
+            k.tilt_comp_mm = 0;
+            const Vec2 b0 = descend_at(k, np, v0);
+            k.tilt_comp_mm = 8;
+            const Vec2 b1 = descend_at(k, np, v1);
+            CHECK(v0 == 0 && v1 == 0 && std::hypot(b1.x - b0.x, b1.y - b0.y) < 0.01f,
+                  "tilt_comp_mm 8: vertical pick at 120 mm unchanged (%.3f mm)", std::hypot(b1.x - b0.x, b1.y - b0.y));
+        }
         t.max_tilt_deg = 0;
         CHECK(plan_pick(t, tp, arm_tangential_axis(t, tp), 40, 32, 0, h, wt) != nullptr,
               "max_tilt_deg 0: vertical only");

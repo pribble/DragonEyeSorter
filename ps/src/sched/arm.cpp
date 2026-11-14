@@ -276,10 +276,18 @@ const char *plan_pick(const ArmConfig &c, Vec2 p_table, float close_axis_table, 
     // of the two wrist angles for the closing line, the one nearer the ready pose's (or the requested one, e.g. the
     // inner picks' #5): the wrist does not half-turn
     const float q5_home = c.home_deg[4], q5_pref = std::isnan(q5_pref_deg) ? q5_home : q5_pref_deg;
+    // tilted grasps land short when the arm stretches (tilt_comp_mm): aim farther out along the radial line, which
+    // keeps the tangential closing axis
+    Vec2 p_tilt = p_table;
+    {
+        const float dx = p_table.x - c.base_xy.x, dy = p_table.y - c.base_xy.y, r = std::hypot(dx, dy);
+        if (r > 1.f) p_tilt = {p_table.x + c.tilt_comp_mm * dx / r, p_table.y + c.tilt_comp_mm * dy / r};
+    }
     for (float t = 0;; t += c.tilt_step_deg) {
         const float tr = deg2rad(t);
-        const char *why = arm_ik(c, table_to_arm(c, p_table, c.z_safe), ax, above, tr, q5_pref);
-        if (!why) why = arm_ik(c, table_to_arm(c, p_table, c.z_grasp), ax, down, tr, q5_pref);
+        const Vec2 pt = t > 0 ? p_tilt : p_table;
+        const char *why = arm_ik(c, table_to_arm(c, pt, c.z_safe), ax, above, tr, q5_pref);
+        if (!why) why = arm_ik(c, table_to_arm(c, pt, c.z_grasp), ax, down, tr, q5_pref);
         if (!why) {
             if (tilt_deg) *tilt_deg = t;
             break;
