@@ -47,7 +47,7 @@
 - `clk_mipi` 在 `timing.sdc` 里约束到 `U_io_clk_div_1.clkdivout`（8.0ns，像素时钟 111.1MHz）；厂家原 SDC 写硬 MIPI PHY 引脚名，对本设计（LVDS IO）不生效。
 - 跨时钟域用「翻转 + 两级同步」（像素域 ↔ 75MHz 已在 `set_clock_groups -exclusive`），不直接跨域采样。
 - **构建必须单进程**（`read_design`→`bitgen`）：`timing.sdc` 的 `set_clock_groups` 只在单进程里全程有效；两段式 phy 段重放 SDC 时 PLL 引脚时钟对象尚未建立，全部 group no-op（phy 日志 12 条 `USR-6001`）。见 [开发环境与构建](开发环境与构建.md)「PL：构建与打包」。
-- **VTC pclk 与 NPU / 150M PLL 按异步声明**（`timing.sdc` 2 条 `set_clock_groups -asynchronous`）：三者是独立 PLL、无同步数据通路，place setup 违例全部是厂家 IP 的 CDC recovery / 同步器第一级（P&R 修不了）；VTC → TMDS（`PLL_3` = 5×VTC）仍按同步分析，**不要**加异步组。
+- **VTC pclk ↔ 150M PLL 用 `set_max_delay 5.0 -datapath_only`（双向），不能声明异步**：两者之间是厂家 AXI4S→Video Out 异步 FIFO 的格雷码指针（`primary_addr_gray_reg → sync_r1_reg`）与复位，共 11 个端点。整组声明异步后这些路径完全不受约束，指针各位走线差可超过一个周期 → 偶发读错指针 → 视频丢同步 → 显示器整屏黑一下并重新识别「HDMI1」（第六轮起的比特流都有，v16 与限定后的 v17b2c 没有，见 [log](log/2026-11-15-视频异步FIFO约束与黑屏重连.md)）。5 ns 按厂家 Soft FIFO IP 的写法取（小于两边周期 6.666 / 6.734 ns），核对看 `soc_prj_exception.timing` 的 MCP/SMD 汇总：两条各 6 / 5 个端点、0 违例。VTC pclk ↔ NPU PLL 仍是 `-asynchronous`（只有 VTC 锁定信号去复位厂家 `pwm_0_1`，不进视频数据）；VTC → TMDS（`PLL_3` = 5×VTC）按同步分析，**不要**加异步组。HDMI 串行时钟另有 `set_clock_uncertainty -setup 0.15`，报告里 clk10 的余量已扣掉这 0.15 ns。
 
 ### 资源
 
