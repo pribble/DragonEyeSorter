@@ -45,6 +45,7 @@
 - 跨时钟域用「翻转 + 两级同步」（像素域 ↔ 75MHz 已在 `set_clock_groups -exclusive`），不直接跨域采样。
 - **构建必须单进程**（`read_design`→`bitgen`）：`timing.sdc` 的 `set_clock_groups` 只在单进程里全程有效；两段式 phy 段重放 SDC 时 PLL 引脚时钟对象尚未建立，全部 group no-op（phy 日志 12 条 `USR-6001`）。见 [开发环境与构建](开发环境与构建.md)「PL：构建与打包」。
 - **VTC pclk ↔ 150M PLL 用 `set_max_delay 5.0 -datapath_only`（双向），不能声明异步**：两者之间是厂家 AXI4S→Video Out 异步 FIFO 的格雷码指针（`primary_addr_gray_reg → sync_r1_reg`）与复位，共 11 个端点。整组声明异步后这些路径完全不受约束，指针各位走线差可超过一个周期 → 偶发读错指针 → 视频丢同步 → 显示器整屏黑一下并重新识别「HDMI1」（第六轮起的比特流都有，v16 与限定后的 v17b2c 没有，见 [log](log/2026-11-15-视频异步FIFO约束与黑屏重连.md)）。5 ns 按厂家 Soft FIFO IP 的写法取（小于两边周期 6.666 / 6.734 ns），核对看 `soc_prj_exception.timing` 的 MCP/SMD 汇总：两条各 6 / 5 个端点、0 违例。VTC pclk ↔ NPU PLL 仍是 `-asynchronous`（只有 VTC 锁定信号去复位厂家 `pwm_0_1`，不进视频数据）；VTC → TMDS（`PLL_3` = 5×VTC）按同步分析，**不要**加异步组。（振动版分支 `pl/v17-batch2` 另给 HDMI 串行时钟加了 `set_clock_uncertainty -setup 0.15`，main 没有。）
+- **HDMI 像素时钟由内核按设备树设定，不是 IP 里的静态参数**：时序发生器参数 行 1920/88/44/148（总 2200）、场 1080/4/5/36（总 1125）；像素时钟 PLL 在每次开机时被内核 `anlogic-dynclk` 驱动经 DRP 重配成设备树 `axi_dynclk/expclk` 的值（`dmesg | grep dynclk` 可见）。厂家设备树原值是 **150 MHz → 实际 60.61 Hz、比 CEA-861 的 148.5 MHz 高 1.0%**（容差 ±0.5%），挑时序的显示器会偶发失锁重连，与比特流版本无关；板上启动分区的 `system.dtb` 已用 `scripts/boot/patch_dtb_pixclk.py` 改成 148.5 MHz（实测 148,498,535 Hz、误差 9 ppm，小数分频 M = 17.8198），原件留 `system.dtb.orig`。串行时钟随之为 742.5 MHz，与时序约束一致（改之前实际跑 750 MHz）。见 [log](log/2026-11-16-HDMI像素时钟150MHz改标准148.5MHz.md)。
 
 ### 资源
 
