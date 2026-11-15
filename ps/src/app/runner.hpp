@@ -72,6 +72,14 @@ public:
     bool take_ops_ack(uint16_t &id);    // Modbus HR 8 writes (0xFFFF = all), oldest first
     bool plc_lost() const { return plc_lost_; }   // a PLC that was there went quiet (PlcWatch)
     int rs485_link() const { return rs485_ ? (rs485_->link_ok() ? 1 : 0) : -1; }   // -1 bus not running
+    int env_link() const { return rs485_ ? rs485_->th_link() : -1; }               // -1 no transmitter configured
+    bool env_reading(float &temp_c, float &hum_rh) const                           // newest temperature / humidity
+    {
+        if (!rs485_) return false;
+        const Rs485Io::Stats s = rs485_->stats();
+        temp_c = s.temp_c; hum_rh = s.hum_rh;
+        return s.th_valid;
+    }
     struct PickStats { uint32_t ok = 0, failed = 0, servo = 0; std::string last_why; };
     const PickStats &pick_stats() const { return picks_; }   // worker thread (cycle drains the arm results)
 private:

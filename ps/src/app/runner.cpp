@@ -86,6 +86,9 @@ std::string Runner::start()
             rs485_->start();
             printf("[run] RS485 %d 8%c1, relay module at address %d (tower light)\n", cfg_.rs485.baud, cfg_.rs485.parity,
                    cfg_.rs485.addr);
+            if (cfg_.rs485.th_addr > 0)
+                printf("[run] RS485 temperature / humidity transmitter at address %d, every %.1f s\n", cfg_.rs485.th_addr,
+                       double(cfg_.rs485.th_period_s));
         }
     }
     // side gates: where a part of the spec gear OD on the belt centre line meets each one, and how early it must be decided

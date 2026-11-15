@@ -127,6 +127,62 @@ static int bpi_cmd(int argc, char **argv)
     return 0;
 }
 
+/* v17 batch 2: vibration acquisition (des_vib, ADXL345 on J12 PIN22~25) */
+static int vib_cmd(int argc, char **argv)
+{
+    if (!des_vib_present(&hw)) { fprintf(stderr, "bitstream without des_vib (v17 batch 2)\n"); return 2; }
+    const char *s = argc > 0 ? argv[0] : "";
+    if (!strcmp(s, "init")) {
+        const int range = argc > 1 ? atoi(argv[1]) : 1, rate = argc > 2 ? (int)strtol(argv[2], NULL, 0) : 0x0F;
+        const int rc = des_vib_init(&hw, range, rate);
+        if (rc != DES_OK) {
+            fprintf(stderr, "vib init: %s\n", rc == DES_E_ID ? "DEVID is not 0xE5 (wiring? 3-wire SDIO on PIN24?)"
+                                         : rc == DES_E_BUSY ? "SPI transfer never finished" : "range 0..3, rate 0x06..0x0F");
+            return 1;
+        }
+        printf("ADXL345 found (DEVID 0xE5), range +-%d g, rate code 0x%02X\n", 2 << range, rate);
+        return 0;
+    }
+    if (!strcmp(s, "on") || !strcmp(s, "off")) return des_vib_stream(&hw, s[1] == 'n', argc > 1 ? (unsigned)atoi(argv[1]) : 1024u) == DES_OK ? 0 : 1;
+    if (!strcmp(s, "x") && argc >= 2) {   /* raw: x <reg> [data]: read, or write when data is given */
+        uint8_t b = 0;
+        const unsigned reg = (unsigned)strtoul(argv[1], NULL, 0);
+        const int rc = des_vib_xfer(&hw, argc < 3, reg, argc >= 3 ? (unsigned)strtoul(argv[2], NULL, 0) : 0u, &b);
+        if (rc != DES_OK) { fprintf(stderr, "vib x: %s\n", rc == DES_E_BUSY ? "busy" : "reg 0..0x3F, data 0..0xFF"); return 1; }
+        if (argc < 3) printf("0x%02X\n", b);
+        return 0;
+    }
+    if (!strcmp(s, "dump")) {             /* dump [n]: drain and print samples (g and the time between them) */
+        const int want = argc > 1 ? atoi(argv[1]) : 32;
+        des_vib_sample_t buf[DES_VIB_FIFO_DEPTH];
+        const int n = des_vib_drain(&hw, buf, want < (int)DES_VIB_FIFO_DEPTH ? want : (int)DES_VIB_FIFO_DEPTH);
+        for (int i = 0; i < n; i++)
+            printf("%4d  x %+7.3f  y %+7.3f  z %+7.3f g  dt %7.1f us\n", i, buf[i].x * DES_VIB_G_PER_LSB,
+                   buf[i].y * DES_VIB_G_PER_LSB, buf[i].z * DES_VIB_G_PER_LSB,
+                   i ? des_ticks_us((uint16_t)(buf[i].ts16 - buf[i - 1].ts16) * 16u) : 0.0);
+        return 0;
+    }
+    if (argc > 0 && strcmp(s, "watch")) {
+        fprintf(stderr, "usage: desreg vib [init [range 0..3] [rate 0x06..0x0F] | on [window] | off | x <reg> [data] | "
+                        "dump [n] | watch [sec]]\n");
+        return 1;
+    }
+    const double sec = argc > 1 ? atof(argv[1]) : 0.0;
+    for (int k = 0;; k++) {
+        const uint32_t st = rd(DES_VIB_STATUS), cnt = rd(DES_VIB_COUNT);
+        des_vib_stats_t v;
+        printf("vib %s | INT1 %u | FIFO %u | %u samples, %u dropped", st & 1u ? "on" : "off", (st >> 2) & 1u,
+               (st >> 16) & 0x3FFu, cnt & 0xFFFFu, cnt >> 16);
+        if (des_vib_stats(&hw, &v) == DES_OK && v.windows)
+            printf(" | window %u (%u): rms x %.4f y %.4f z %.4f g, mean z %+.3f g", v.windows, v.n, v.rms_g[0], v.rms_g[1],
+                   v.rms_g[2], v.mean_g[2]);
+        printf("\n");
+        if (sec <= 0 || k >= (int)(sec * 5)) break;
+        usleep(200000);
+    }
+    return 0;
+}
+
 /* v17: belt position compare trigger (des_ptrig) */
 static int ptrig_cmd(int argc, char **argv)
 {
@@ -401,7 +457,7 @@ int main(int argc, char **argv)
     int rc = 0;
     int read_only = argc == 1 || !strcmp(cmd, "r") || !strcmp(cmd, "lat") || (!strcmp(cmd, "vis") && argc == 2) ||
                     (!strcmp(cmd, "485") && argc == 2) || (!strcmp(cmd, "bpi") && argc == 2) ||
-                    (!strcmp(cmd, "ptrig") && argc == 2);
+                    (!strcmp(cmd, "ptrig") && argc == 2) || (!strcmp(cmd, "vib") && (argc == 2 || !strcmp(argv[2], "watch")));
     if (!read_only && orc == DES_E_ID) {
         /* on a bitstream without des_regs this window aliases the camera DMA registers */
         fprintf(stderr, "refusing to write: DES_ID mismatch (0x%08x), bitstream lacks des_regs\n", rd(DES_REG_ID));
@@ -544,6 +600,8 @@ int main(int argc, char **argv)
         rc = bpi_cmd(argc - 2, argv + 2);
     } else if (!strcmp(cmd, "ptrig")) {
         rc = ptrig_cmd(argc - 2, argv + 2);
+    } else if (!strcmp(cmd, "vib")) {
+        rc = vib_cmd(argc - 2, argv + 2);
     } else if (!strcmp(cmd, "vis")) {
         if (argc >= 3) {
             int mode = atoi(argv[2]), thr = argc > 3 ? atoi(argv[3]) : 128, ethr = argc > 4 ? atoi(argv[4]) : 200;

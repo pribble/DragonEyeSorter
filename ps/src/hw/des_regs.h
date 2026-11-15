@@ -171,6 +171,25 @@
 #define DES_PTG_CFG(i)       (DES_PTG_CFG0 + 0x10u * (i))
 #define DES_PTG_TS(i)        (DES_PTG_TS0 + 0x10u * (i))
 #define DES_PTG_ID_VALUE     0x50544731u
+
+/* des_vib, PL_BASE + 0x900 (v17 batch 2): ADXL345 on 3-wire SPI + INT1 = DATA_READY (pl/soc_base/src/des/des_vib.v).
+ * J12 PIN22 CS / PIN23 SCLK / PIN24 SDIO / PIN25 INT1. */
+#define DES_VIB_CTRL         0x900u    /* RW b0 stream (read a sample on every DATA_READY) ; W b1 clear FIFO, counters, window */
+#define DES_VIB_STATUS       0x904u    /* R  b0 streaming b1 transfer busy b2 INT1 level b3 samples dropped (FIFO full)
+                                          [25:16] FIFO level (0..512) */
+#define DES_VIB_XFER         0x908u    /* W  one-byte transfer: [15] read [13:8] register [7:0] data (ignored while busy)
+                                          R  [8] busy [7:0] byte read by the last read transfer */
+#define DES_VIB_ID           0x90Cu    /* R  0x56494231 "VIB1" */
+#define DES_VIB_WIN          0x910u    /* RW statistics window in samples, [10:0] (0 = 2048; reset 1024) */
+#define DES_VIB_COUNT        0x914u    /* R  [15:0] samples read [31:16] samples dropped (FIFO full; saturates) */
+#define DES_VIB_LAST_TS      0x918u    /* R  FREE_CNT at the DATA_READY edge of the newest sample */
+#define DES_VIB_WIN_CNT      0x91Cu    /* R  windows completed, 16 bits */
+#define DES_VIB_HEAD0        0x920u    /* R  oldest sample {y, x} (signed 16 each) ; W any value: drop it (pop) */
+#define DES_VIB_HEAD1        0x924u    /* R  oldest sample {FREE_CNT[19:4] at its DATA_READY, z} */
+#define DES_VIB_SUM0         0x928u    /* R  last window: sum of x / y / z at SUM0 + 4 * axis (signed, 24 bits) */
+#define DES_VIB_SQ0          0x934u    /* R  last window: (sum of squares) >> 10 of x / y / z at SQ0 + 4 * axis (26 bits) */
+#define DES_VIB_ID_VALUE     0x56494231u
+#define DES_VIB_FIFO_DEPTH   512u
 #define DES_IO_ST_ESTOP_LATCHED 0x01u
 #define DES_IO_ST_ESTOP_NOW     0x02u
 #define DES_IO_ST_IR1_BLOCKED   0x04u

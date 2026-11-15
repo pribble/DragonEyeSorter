@@ -10,6 +10,8 @@ module system_top (
     input        IR1_IN, input        LIMIT1_IN,
     inout        SERVO_BUS, output       FLAP1_PWM,
     output       FLAP2_PWM, output       TRIG_OUT,
+    output       VIB_CS, output       VIB_SCLK,
+    inout        VIB_SDIO, input        VIB_INT,
     output       CAN0_TXD,
     input        CAN0_RXD, output       RS485_TXD,
     input        RS485_RXD, output       RS485_DE,
@@ -208,11 +210,16 @@ module system_top (
         .M_AXI_BREADY      (slave_hp0_axi_bready)
     );
     wire [31:0] regs_rdata, sb_rdata, st_rdata, vis_rdata, pwm_rdata, io_rdata, rs_rdata, des_ts, st_pos, io_enc;
-    wire [31:0] bpi_rdata, tg_rdata;
+    wire [31:0] bpi_rdata, tg_rdata, vib_rdata;
+    wire        vib_sdo, vib_oe;
     wire        sb_drive_low, st_pul_n, st_dir_n, st_ena, des_estop, st_cruise;
     wire signed [16:0] bpi_scale;
-    wire [1:0]  tg_ld;
-    wire [23:0] tg_us;
+    // des_ptrig (v17 batch 1) is not instantiated in batch 2: the device could not hold it together with des_vib and
+    // keep the NPU timing (11-15). Its window reads 0xDEADBEEF (no ID -> the PS reports it absent), TRIG_OUT stays low.
+    wire [1:0]  tg_ld = 2'b00;
+    wire [23:0] tg_us = 24'd0;
+    assign tg_rdata = 32'hDEADBEEF;
+    assign TRIG_OUT = 1'b0;
     assign des_rdata = (des_raddr[11:8] == 4'h1) ? sb_rdata :
                        (des_raddr[11:8] == 4'h2) ? st_rdata :
                        (des_raddr[11:8] == 4'h3) ? vis_rdata :
@@ -220,7 +227,8 @@ module system_top (
                        (des_raddr[11:8] == 4'h5) ? io_rdata :
                        (des_raddr[11:8] == 4'h6) ? rs_rdata :
                        (des_raddr[11:8] == 4'h7) ? bpi_rdata :
-                       (des_raddr[11:8] == 4'h8) ? tg_rdata : regs_rdata;
+                       (des_raddr[11:8] == 4'h8) ? tg_rdata :
+                       (des_raddr[11:8] == 4'h9) ? vib_rdata : regs_rdata;
     des_regs #(.VERSION(32'd17)) des_regs_inst (
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h0), .waddr(des_waddr), .wdata(des_wdata), .raddr(des_raddr), .rdata(regs_rdata), .sof_toggle(des_sof_toggle), .ts(des_ts),
         .cap_start_toggle(cap_start_tgl), .cap_done_toggle(cap_done_tgl), .pos(st_pos), .enc(io_enc),
@@ -240,10 +248,11 @@ module system_top (
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h7), .waddr(des_waddr[7:0]), .wdata(des_wdata), .raddr(des_raddr[7:0]), .rdata(bpi_rdata), .ts(des_ts),
         .enc(io_enc), .st_cruise(st_cruise), .scale_o(bpi_scale)
     );
-    des_ptrig ptrig_inst (   // v17: belt position compare trigger, nothing armed after reset
-        .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h8), .waddr(des_waddr[7:0]), .wdata(des_wdata), .raddr(des_raddr[7:0]), .rdata(tg_rdata), .ts(des_ts),
-        .pos(st_pos), .enc(io_enc), .pwm_ld(tg_ld), .pwm_us(tg_us), .trig_o(TRIG_OUT)
+    des_vib vib_inst (   // v17 batch 2: ADXL345 vibration acquisition, idle (CS high, SDIO released) until the PS enables it
+        .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h9), .waddr(des_waddr[7:0]), .wdata(des_wdata), .raddr(des_raddr[7:0]), .rdata(vib_rdata), .ts(des_ts),
+        .cs_n(VIB_CS), .sclk(VIB_SCLK), .sdo(vib_sdo), .sdo_oe(vib_oe), .sdi(VIB_SDIO), .int1(VIB_INT)
     );
+    assign VIB_SDIO = vib_oe ? vib_sdo : 1'bz;
     des_vision vision_inst (
         .clk(des_clk), .wr(des_wr && des_waddr[11:8] == 4'h3), .waddr(des_waddr[7:0]), .wdata(des_wdata), .raddr(des_raddr[7:0]), .rdata(vis_rdata),
         .pclk(S_hs_rx_clk), .s_tdata(S_ISP_O_tdata), .s_tvalid(S_ISP_O_tvalid), .s_tuser(S_ISP_O_tuser),

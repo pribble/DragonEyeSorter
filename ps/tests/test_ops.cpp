@@ -302,6 +302,40 @@ void quality_rules()
     h3.update(in, w3);
     CHECK(w3.list(10).empty(), "disabled: no orders");
 }
+// RS485 temperature / humidity transmitter: out-of-range warning after env_s, link warning only after it answered once
+void env_rules()
+{
+    OpsConfig c;   // 5 .. 40 C, <= 85 %RH, 5 s; link_s 3
+    HealthMonitor h(c);
+    WorkOrders wo;
+    auto run = [&](double t0, double t1, int link, bool valid, double t, double rh) {
+        for (double now = t0; now < t1; now += 0.1) {
+            HealthInput in = base(now);
+            in.env_link = link; in.env_valid = valid; in.env_temp_c = t; in.env_hum_rh = rh;
+            h.update(in, wo);
+        }
+    };
+    run(0, 10, 0, false, 0, 0);
+    CHECK(!wo.active(OPS_ENV_LINK), "transmitter never answered: no link order (not wired yet)");
+    run(10, 20, 1, true, 23.0, 55.0);
+    CHECK(!wo.active(OPS_ENV) && !wo.active(OPS_ENV_LINK), "23 C / 55 %%RH: nothing");
+    run(20, 23, 1, true, 23.0, 90.0);
+    CHECK(!wo.active(OPS_ENV), "90 %%RH for 3 s (< env_s 5): not yet");
+    run(23, 27, 1, true, 23.0, 90.0);
+    CHECK(wo.active(OPS_ENV) && ops_code_info(OPS_ENV).level == OpsLevel::Warning && !ops_code_info(OPS_ENV).stop,
+          "90 %%RH for 7 s: environment warning (does not stop the line)");
+    run(27, 35, 1, true, 23.0, 60.0);
+    CHECK(!wo.active(OPS_ENV), "back to 60 %%RH for 8 s: recovered");
+    run(35, 42, 1, true, 45.0, 60.0);
+    CHECK(wo.active(OPS_ENV), "45 C: environment warning again");
+    run(42, 50, 0, true, 45.0, 60.0);
+    CHECK(wo.active(OPS_ENV_LINK), "transmitter quiet after it answered: link warning");
+    run(50, 55, 1, true, 23.0, 60.0);
+    CHECK(!wo.active(OPS_ENV_LINK), "answering again: link order recovered");
+    run(55, 60, -1, false, 0, 0);
+    CHECK(std::string(ops_code_info(OPS_ENV).key) == "environment" && std::string(ops_code_info(OPS_ENV_LINK).key) == "env_link",
+          "code table keys");
+}
 }  // namespace
 int main()
 {
@@ -310,5 +344,6 @@ int main()
     light_rule();
     event_rules();
     quality_rules();
+    env_rules();
     return test_summary("test_ops");
 }

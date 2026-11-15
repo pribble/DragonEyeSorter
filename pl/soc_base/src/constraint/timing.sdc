@@ -40,6 +40,23 @@ set_clock_groups -asynchronous \
     -group [get_clocks {design_0_inst/design_0_video_timing_generator_v01_0_Inst/video_timing_generator_v01_e2dadf6740ca_Inst/dr1_pll_vtc_Inst/u_DR1_PHY_PLL.clkc[0]}] \
     -group [get_clocks {design_0_inst/design_0_PLL_npu_Inst/dr1_phy_pll_dcc52a480158_Inst/u_DR1_PHY_PLL.clkc[0]}]
 
-set_clock_groups -asynchronous \
-    -group [get_clocks {design_0_inst/design_0_video_timing_generator_v01_0_Inst/video_timing_generator_v01_e2dadf6740ca_Inst/dr1_pll_vtc_Inst/u_DR1_PHY_PLL.clkc[0]}] \
-    -group [get_clocks {design_0_inst/design_0_pll_150m_Inst/dr1_phy_pll_bdb046a15d6b_Inst/u_DR1_PHY_PLL.clkc[0]}]
+# 2026-11-15: VTC pixel clock <-> 150 MHz PLL is NOT declared asynchronous any more. Its crossings are the
+# AXI4S->Video Out asynchronous FIFO (Gray-coded pointers into the other domain's first synchroniser stage) and its
+# resets. Declared asynchronous (10-28 .. 11-15) they were not timed at all, so P&R could spread a pointer's bits
+# over any wire length; once the bit-to-bit skew passes a clock period the reader samples a wrong pointer, the video
+# FIFO reads empty / garbage and the output loses sync: every bitstream built with that group (10-31 round 6
+# bf9826f0, v17b2, v17b2u) blanked the monitor now and then ("HDMI1" re-sync), v16 (built before it) never did.
+# Bound them like the vendor Soft FIFO IP does (gray reg -> sync_r1, -datapath_only, min period minus margin):
+# 5 ns < both periods (6.666 / 6.734 ns) keeps the pointer skew under one cycle without timing the CDC as synchronous.
+set_max_delay -from [get_clocks {design_0_inst/design_0_pll_150m_Inst/dr1_phy_pll_bdb046a15d6b_Inst/u_DR1_PHY_PLL.clkc[0]}] \
+    -to [get_clocks {design_0_inst/design_0_video_timing_generator_v01_0_Inst/video_timing_generator_v01_e2dadf6740ca_Inst/dr1_pll_vtc_Inst/u_DR1_PHY_PLL.clkc[0]}] 5.0 -datapath_only
+set_max_delay -from [get_clocks {design_0_inst/design_0_video_timing_generator_v01_0_Inst/video_timing_generator_v01_e2dadf6740ca_Inst/dr1_pll_vtc_Inst/u_DR1_PHY_PLL.clkc[0]}] \
+    -to [get_clocks {design_0_inst/design_0_pll_150m_Inst/dr1_phy_pll_bdb046a15d6b_Inst/u_DR1_PHY_PLL.clkc[0]}] 5.0 -datapath_only
+
+# ---------------------------------------------------------------------------
+# DragonEyeSorter 2026-11-15: HDMI serial clock (PLL_3 clkc[0], 742.9 MHz, 33 endpoints). Its paths are the lane
+# serialisers' last register -> the output ODDR (O_hdmi_clk_p / data lanes), no logic: the slack is the wire from
+# where the register was placed to the pin. v17b2 (seed 3) met it by only +0.023 ns and the monitor lost lock now and
+# then (black screen + "HDMI1"; v16 on the same monitor and cable: none in 10 min). Over-constrain it so P&R keeps
+# those registers next to the HDMI pins; the reported clk10 slack then already has this margin taken off.
+set_clock_uncertainty -setup 0.15 [get_clocks {design_0_inst/design_0_PLL_3_Inst/dr1_phy_pll_58e32fb6dd07_Inst/u_DR1_PHY_PLL.clkc[0]}]

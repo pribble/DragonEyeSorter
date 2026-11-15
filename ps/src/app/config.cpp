@@ -263,6 +263,9 @@ std::string load_config(const std::string &path, AppConfig &cfg)
         if (const json *c = sec_gets(j, "rs485", "enabled", rs.enabled, "baud", rs.baud, "timeout_ms", rs.timeout_ms,
                                      "addr", rs.addr, "coils", rs.coils, "poll_ms", rs.poll_ms, "buzzer_s", rs.buzzer_s, "fault_s", rs.fault_s,
                                      "inputs", rs.inputs)) {
+            ji::gets(*c, "th_addr", rs.th_addr, "th_period_s", rs.th_period_s);
+            if (rs.th_addr < 0 || rs.th_addr > 247 || rs.th_addr == rs.addr || !(rs.th_period_s >= 0.2f))
+                return path + ": rs485.th_addr 0..247 and not the relay module's address, th_period_s >= 0.2";
             std::string idle = rs.idle == IDLE_GREEN ? "green" : rs.idle == IDLE_BLINK ? "blink" : "off";
             ji::get(*c, "idle", idle);
             if (idle == "off") rs.idle = IDLE_OFF;
@@ -295,7 +298,28 @@ std::string load_config(const std::string &path, AppConfig &cfg)
                  op.link_s, "min_fps", op.min_fps, "min_free_mb", op.min_free_mb, "rate_window", op.rate_window,
                  "rate_min", op.rate_min, "ng_rate", op.ng_rate, "recheck_rate", op.recheck_rate, "od_window",
                  op.od_window, "od_drift", op.od_drift, "event_clear_s", op.event_clear_s);
+        sec_gets(j, "ops", "vib_warn_g", op.vib_warn_g, "vib_fault_g", op.vib_fault_g, "vib_s", op.vib_s);
+        sec_gets(j, "ops", "env_temp_lo", op.env_temp_lo, "env_temp_hi", op.env_temp_hi, "env_hum_hi", op.env_hum_hi,
+                 "env_s", op.env_s);
+        if (!(op.env_temp_hi > op.env_temp_lo && op.env_hum_hi > 0 && op.env_s >= 0))
+            return path + ": ops.env_temp_hi > env_temp_lo, env_hum_hi > 0, env_s >= 0";
         if (op.rate_window < 1 || op.rate_min < 1 || op.od_window < 0) return path + ": ops windows must be >= 1";
+        if (!(op.vib_warn_g > 0 && op.vib_fault_g >= op.vib_warn_g && op.vib_s >= 0))
+            return path + ": ops.vib_warn_g > 0, vib_fault_g >= vib_warn_g, vib_s >= 0";
+        VibConfig &vb = cfg.vib;   // belt motor vibration (app/vib_mon.hpp); off unless "vib": {"enabled": true}
+        if (const json *c = sec_gets(j, "vib", "enabled", vb.enabled, "range", vb.range, "rate", vb.rate, "window",
+                                     vb.window, "fft", vb.fft, "fmin_hz", vb.fmin_hz, "spectrum_s", vb.spectrum_s,
+                                     "log", vb.log)) {
+            if (c->contains("band_hz")) {
+                std::vector<float> b;
+                ji::get(*c, "band_hz", b);
+                if (b.size() != 2 || !(b[0] > 0 && b[1] > b[0])) return path + ": vib.band_hz must be [low, high]";
+                vb.band_hz[0] = b[0]; vb.band_hz[1] = b[1];
+            }
+        }
+        if (vb.range < 0 || vb.range > 3 || vb.rate < 0x06 || vb.rate > 0x0F || vb.window < 1 || vb.window > 2048 ||
+            vb.fft < 64 || vb.fft > 4096 || (vb.fft & (vb.fft - 1)) || !(vb.spectrum_s > 0))
+            return path + ": vib range 0..3, rate 0x06..0x0F, window 1..2048, fft power of two 64..4096, spectrum_s > 0";
         TrackMeasureConfig &t = cfg.measure;
         if (const json *c = sec_gets(j, "measure", "enabled", t.enabled, "per_frame", t.per_frame, "gear_ratio",
                                      t.gear_ratio, "margin_mm", t.margin_mm, "improve", t.improve)) {

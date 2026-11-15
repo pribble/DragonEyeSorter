@@ -1,5 +1,6 @@
 /* des_hw: see des_hw.h */
 #include "des_hw.h"
+#include <math.h>
 
 #include <fcntl.h>
 #include <pthread.h>
@@ -221,6 +222,85 @@ int des_ptrig_read(const des_hw_t *h, des_ptrig_t *t)
         t->e[i].ts = des_rd(h, DES_PTG_TS(i));
     }
     return DES_OK;
+}
+/* ---- v17 batch 2: des_vib ---- */
+int des_vib_present(const des_hw_t *h) { return h->version >= DES_VERSION_V17 && des_rd(h, DES_VIB_ID) == DES_VIB_ID_VALUE; }
+int des_vib_xfer(des_hw_t *h, int read, unsigned reg, unsigned data, uint8_t *out)
+{
+    if (!des_vib_present(h) || reg > 0x3Fu || data > 0xFFu) return DES_E_ARG;
+    for (int k = 0; (des_rd(h, DES_VIB_XFER) & 0x100u) != 0; k++) {   /* a transfer still running */
+        if (k > 1000) return DES_E_BUSY;
+        usleep(10);
+    }
+    des_wr(h, DES_VIB_XFER, (read ? 0x8000u : 0u) | (reg << 8) | (read ? 0u : data));
+    /* 16 bits at 3.75 MHz + set-up / hold = about 5 us; a sample read can be in front of it: about 20 us more */
+    for (int k = 0;; k++) {
+        const uint32_t v = des_rd(h, DES_VIB_XFER);
+        if (!(v & 0x100u)) {
+            if (out) *out = (uint8_t)v;
+            return DES_OK;
+        }
+        if (k > 1000) return DES_E_BUSY;
+        usleep(10);
+    }
+}
+int des_vib_init(des_hw_t *h, int range, int rate_code)
+{
+    if (!des_vib_present(h) || range < 0 || range > 3 || rate_code < 0x06 || rate_code > 0x0F) return DES_E_ARG;
+    uint8_t id = 0;
+    int rc;
+    des_wr(h, DES_VIB_CTRL, 0u);                                          /* not streaming while set up */
+    if ((rc = des_vib_xfer(h, 0, 0x2D, 0x00, NULL)) != DES_OK) return rc;  /* POWER_CTL: standby */
+    if ((rc = des_vib_xfer(h, 0, 0x31, 0x48u | (unsigned)range, NULL)) != DES_OK) return rc;   /* 3-wire, FULL_RES */
+    if ((rc = des_vib_xfer(h, 1, 0x00, 0, &id)) != DES_OK) return rc;
+    if (id != 0xE5) return DES_E_ID;
+    if ((rc = des_vib_xfer(h, 0, 0x2C, (unsigned)rate_code, NULL)) != DES_OK) return rc;        /* BW_RATE */
+    if ((rc = des_vib_xfer(h, 0, 0x38, 0x00, NULL)) != DES_OK) return rc;                       /* FIFO_CTL: bypass */
+    if ((rc = des_vib_xfer(h, 0, 0x2F, 0x00, NULL)) != DES_OK) return rc;                       /* INT_MAP: all INT1 */
+    if ((rc = des_vib_xfer(h, 0, 0x2E, 0x80, NULL)) != DES_OK) return rc;                       /* INT_ENABLE: DATA_READY */
+    return des_vib_xfer(h, 0, 0x2D, 0x08, NULL);                                                 /* POWER_CTL: measure */
+}
+int des_vib_stream(des_hw_t *h, int on, unsigned window)
+{
+    if (!des_vib_present(h) || window < 1 || window > 2048) return DES_E_ARG;
+    des_wr(h, DES_VIB_WIN, window & 0x7FFu);   /* 2048 is written as 0 */
+    des_wr(h, DES_VIB_CTRL, (on ? 1u : 0u) | 2u);
+    return DES_OK;
+}
+int des_vib_drain(des_hw_t *h, des_vib_sample_t *buf, int max)
+{
+    if (!des_vib_present(h) || !buf || max < 0) return DES_E_ARG;
+    int n = (int)((des_rd(h, DES_VIB_STATUS) >> 16) & 0x3FFu);
+    if (n > max) n = max;
+    for (int i = 0; i < n; i++) {
+        const uint32_t a = des_rd(h, DES_VIB_HEAD0), b = des_rd(h, DES_VIB_HEAD1);
+        des_wr(h, DES_VIB_HEAD0, 0u);              /* pop */
+        buf[i].x = (int16_t)(a & 0xFFFFu); buf[i].y = (int16_t)(a >> 16);
+        buf[i].z = (int16_t)(b & 0xFFFFu); buf[i].ts16 = (uint16_t)(b >> 16);
+    }
+    return n;
+}
+int des_vib_stats(const des_hw_t *h, des_vib_stats_t *st)
+{
+    if (!des_vib_present(h) || !st) return DES_E_ARG;
+    for (int tries = 0; tries < 5; tries++) {
+        const uint32_t w0 = des_rd(h, DES_VIB_WIN_CNT);
+        uint32_t sum[3], sq[3];
+        for (int a = 0; a < 3; a++) { sum[a] = des_rd(h, DES_VIB_SUM0 + 4u * a); sq[a] = des_rd(h, DES_VIB_SQ0 + 4u * a); }
+        if (des_rd(h, DES_VIB_WIN_CNT) != w0) continue;   /* a window closed while reading */
+        const unsigned win = des_rd(h, DES_VIB_WIN) & 0x7FFu;
+        st->windows = w0;
+        st->n = win ? win : 2048u;
+        for (int a = 0; a < 3; a++) {
+            const double mean = (int32_t)sum[a] / (double)st->n;
+            const double ms = sq[a] * 1024.0 / st->n;      /* mean square, counts^2 (low 10 bits of the sum dropped) */
+            const double var = ms - mean * mean;
+            st->mean_g[a] = mean * DES_VIB_G_PER_LSB;
+            st->rms_g[a] = (var > 0 ? sqrt(var) : 0.0) * DES_VIB_G_PER_LSB;
+        }
+        return DES_OK;
+    }
+    return DES_E_BUSY;
 }
 int des_io_read(const des_hw_t *h, des_io_t *io)
 {

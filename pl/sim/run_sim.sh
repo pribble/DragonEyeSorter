@@ -31,6 +31,9 @@ case "${1:-des_axi}" in
   rs485)
     iverilog -g2005 -I"$D" -o "$T/sim" tb_des_485.v $D/des_485.v
     ;;
+  vib)   # v17 batch 2 vibration acquisition against a behavioural ADXL345 (3-wire SPI + DATA_READY)
+    iverilog -g2005 -I"$D" -o "$T/sim" tb_des_vib.v $D/des_vib.v
+    ;;
   vision)
     iverilog -g2012 -I"$D" -o "$T/sim" tb_des_vision.v $D/des_vision.v   # the testbench uses join_none
     ;;

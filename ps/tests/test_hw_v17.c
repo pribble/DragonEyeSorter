@@ -17,6 +17,7 @@ static void fake_v17(des_hw_t *h, uint32_t version)
     h->regs = regs; h->fd = -1; h->version = version;
     R(DES_BPI_ID) = DES_BPI_ID_VALUE;
     R(DES_PTG_ID) = DES_PTG_ID_VALUE;
+    R(DES_VIB_ID) = DES_VIB_ID_VALUE;
 }
 static int near(double a, double b, double tol) { return a > b - tol && a < b + tol; }
 
@@ -114,6 +115,47 @@ int main(void)
           des_pwm_slew(&h, 4096) == DES_E_ARG && R(DES_PWM_SLEW) == 40, "PWM slew 40 written; -1 / 4096 refused");
     /* (a build without SLEW reads the register back as 0 and the call then reports DES_E_ARG: not reproducible on this
      * fake window, which stores whatever is written) */
+
+    /* ---- des_vib ---- */
+    {
+        des_vib_sample_t sb[4]; des_vib_stats_t vs; uint8_t byte = 0;
+        fake_v17(&h, 16); R(DES_VIB_ID) = 0xDEADBEEF;
+        CHECK(!des_vib_present(&h) && des_vib_init(&h, 1, 0x0F) == DES_E_ARG && des_vib_stream(&h, 1, 64) == DES_E_ARG &&
+              des_vib_drain(&h, sb, 4) == DES_E_ARG && des_vib_stats(&h, &vs) == DES_E_ARG && R(DES_VIB_CTRL) == 0,
+              "v16: des_vib absent, calls refuse, nothing written");
+        fake_v17(&h, 17);
+        CHECK(des_vib_present(&h), "v17 with the VIB1 ID: present");
+        /* the fake window keeps the word written at XFER and reads it back as the status: bit 8 (busy) must be 0 */
+        CHECK(des_vib_xfer(&h, 0, 0x2C, 0x0F, NULL) == DES_OK && R(DES_VIB_XFER) == 0x2C0Fu, "write transfer word 0x2C0F");
+        CHECK(des_vib_xfer(&h, 1, 0x00, 0, &byte) == DES_OK && R(DES_VIB_XFER) == 0x8000u && byte == 0x00,
+              "read transfer word 0x8000, byte from [7:0]");
+        CHECK(des_vib_xfer(&h, 0, 0x40, 0, NULL) == DES_E_ARG && des_vib_xfer(&h, 0, 0x2D, 0x100, NULL) == DES_E_ARG,
+              "register 0x40 / data 0x100 refused");
+        R(DES_VIB_XFER) = 0x100u;   /* PL reports busy forever */
+        CHECK(des_vib_xfer(&h, 1, 0x00, 0, &byte) == DES_E_BUSY, "a transfer that never finishes: DES_E_BUSY");
+        R(DES_VIB_XFER) = 0;
+        /* on the fake window init stops at its first transfer (0x2D00 reads back with bit 8 = busy): it must fail
+         * and leave streaming off */
+        R(DES_VIB_CTRL) = 1;
+        CHECK(des_vib_init(&h, 1, 0x0F) != DES_OK && R(DES_VIB_CTRL) == 0, "init that fails: error returned, streaming off");
+        R(DES_VIB_XFER) = 0;
+        CHECK(des_vib_init(&h, 4, 0x0F) == DES_E_ARG && des_vib_init(&h, 1, 0x10) == DES_E_ARG, "init: range 4 / rate 0x10 refused");
+        CHECK(des_vib_stream(&h, 1, 2048) == DES_OK && R(DES_VIB_WIN) == 0 && R(DES_VIB_CTRL) == 3u, "stream on, window 2048 -> WIN 0, CTRL 3");
+        CHECK(des_vib_stream(&h, 0, 64) == DES_OK && R(DES_VIB_WIN) == 64 && R(DES_VIB_CTRL) == 2u, "stream off, window 64, clear");
+        CHECK(des_vib_stream(&h, 1, 0) == DES_E_ARG && des_vib_stream(&h, 1, 2049) == DES_E_ARG, "window 0 / 2049 refused");
+        R(DES_VIB_STATUS) = 3u << 16;
+        R(DES_VIB_HEAD0) = ((uint32_t)(uint16_t)-256 << 16) | 100u; R(DES_VIB_HEAD1) = (0xBEEFu << 16) | 256u;
+        CHECK(des_vib_drain(&h, sb, 2) == 2 && sb[0].x == 100 && sb[0].y == -256 && sb[0].z == 256 && sb[0].ts16 == 0xBEEF,
+              "drain: level 3, max 2 -> 2 samples, signed x / y / z, time stamp");
+        /* window of 64: x 10 +- 4 (mean 10, rms 4 counts), y constant -20, z 256 */
+        R(DES_VIB_WIN) = 64; R(DES_VIB_WIN_CNT) = 7;
+        R(DES_VIB_SUM0) = 640; R(DES_VIB_SUM0 + 4) = (uint32_t)-1280; R(DES_VIB_SUM0 + 8) = 16384;
+        R(DES_VIB_SQ0) = (64 * (100 + 16)) >> 10; R(DES_VIB_SQ0 + 4) = (64 * 400) >> 10; R(DES_VIB_SQ0 + 8) = (64 * 65536) >> 10;
+        CHECK(des_vib_stats(&h, &vs) == DES_OK && vs.windows == 7 && vs.n == 64, "stats: window 7 of 64 samples");
+        CHECK(near(vs.mean_g[0], 10 * 0.0039, 1e-6) && near(vs.mean_g[1], -20 * 0.0039, 1e-6) && near(vs.mean_g[2], 256 * 0.0039, 1e-6),
+              "stats: means 0.039 / -0.078 / 0.9984 g");
+        CHECK(vs.rms_g[1] < 1e-9 && vs.rms_g[2] < 1e-9 && vs.rms_g[0] > 0.0, "stats: constant axes have no AC part");
+    }
 
     printf("test_hw_v17: %d passed, %d failed\n", passes, fails);
     return fails;

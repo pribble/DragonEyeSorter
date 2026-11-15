@@ -175,6 +175,25 @@ int des_ptrig_arm(des_hw_t *h, int i, int32_t thr, const des_ptrig_cfg_t *c);
 int des_ptrig_disarm(des_hw_t *h, int i);                    /* i < 0: every entry, flags cleared */
 int des_ptrig_read(const des_hw_t *h, des_ptrig_t *t);
 
+/* ---- des_vib (v17 batch 2): ADXL345 vibration acquisition ---- */
+#define DES_VIB_G_PER_LSB 0.0039   /* ADXL345 full resolution: 3.9 mg per count in every range */
+typedef struct { int16_t x, y, z; uint16_t ts16; } des_vib_sample_t;   /* ts16 = FREE_CNT[19:4] at DATA_READY */
+typedef struct {
+    uint32_t windows;              /* windows completed (16-bit counter, wraps) */
+    unsigned n;                    /* samples per window */
+    double mean_g[3], rms_g[3];    /* per axis: mean and RMS about the mean (AC part), in g */
+} des_vib_stats_t;
+int des_vib_present(const des_hw_t *h);
+/* one-byte register transfer with the sensor; read: *out gets the byte. DES_E_BUSY if the PL never finishes */
+int des_vib_xfer(des_hw_t *h, int read, unsigned reg, unsigned data, uint8_t *out);
+/* sensor set-up: 3-wire SPI + full resolution + range (0 = 2 g .. 3 = 16 g), rate code (0x0F = 3200 Hz,
+ * 0x0E = 1600, 0x0D = 800, 0x0C = 400), DATA_READY on INT1, measuring. DES_E_ID if DEVID is not 0xE5 */
+int des_vib_init(des_hw_t *h, int range, int rate_code);
+int des_vib_stream(des_hw_t *h, int on, unsigned window);   /* window 1..2048 samples; clears FIFO and counters */
+/* drain up to max samples from the FIFO (oldest first); returns the number read or a DES_E_* code */
+int des_vib_drain(des_hw_t *h, des_vib_sample_t *buf, int max);
+int des_vib_stats(const des_hw_t *h, des_vib_stats_t *st);  /* last completed window; DES_E_BUSY if it kept changing */
+
 /* ---- servo bus (Desheng protocol v4.01; PL adds FF FF header and checksum) ---- */
 typedef struct {
     uint8_t status;        /* servo status byte: b5 overload, b2 over-temp, b0 voltage */

@@ -101,6 +101,11 @@ void Rs485Io::set_override(bool on, uint8_t lamps)
     ovr_on_ = on;
 }
 bool Rs485Io::link_ok() const { return mono_s() - last_ok_.load() < 2.0; }
+int Rs485Io::th_link() const
+{
+    if (cfg_.th_addr <= 0) return -1;
+    return mono_s() - th_last_ok_.load() < std::max(3.0, 3.0 * cfg_.th_period_s) ? 1 : 0;
+}
 Rs485Io::Stats Rs485Io::stats() const
 {
     std::lock_guard<std::mutex> lk(m_);
@@ -108,13 +113,13 @@ Rs485Io::Stats Rs485Io::stats() const
     s.override_on = ovr_on_;
     return s;
 }
-bool Rs485Io::xact(const uint8_t *req, size_t n, uint32_t *bits)
+bool Rs485Io::xact(const uint8_t *req, size_t n, uint32_t *bits, uint16_t *regs, int max_regs)
 {
     RtuXferResult r;
     xfer_(req, int(n), req[0] != 0, r);   // address 0 = broadcast: no reply
     uint8_t exc = 0;
     const char *why = nullptr;
-    if (r.rc == RTU_OK && req[0] != 0) why = rtu_check_reply(req, n, r.raw, size_t(r.n), bits, nullptr, 0, &exc);
+    if (r.rc == RTU_OK && req[0] != 0) why = rtu_check_reply(req, n, r.raw, size_t(r.n), bits, regs, max_regs, &exc);
     std::lock_guard<std::mutex> lk(m_);
     Stats &s = stats_;
     s.xfers++;
@@ -137,7 +142,7 @@ bool Rs485Io::xact(const uint8_t *req, size_t n, uint32_t *bits)
     }
     const double now = mono_s();
     s.last_ok_s = now;
-    last_ok_ = now;
+    if (req[0] == uint8_t(cfg_.addr)) last_ok_ = now;   // the relay module's link; the transmitter keeps its own
     return true;
 }
 void Rs485Io::loop()
@@ -146,7 +151,7 @@ void Rs485Io::loop()
     const uint16_t ncoils = uint16_t(std::clamp(cfg_.coils, 1, 32));
     const uint32_t lamp_mask = lamp_to_coils(0x0F, cfg_);   // the relays that carry a lamp: the only ones ever written
     const double t0 = mono_s();
-    double last_read = -1e9, alarm_t = 0, write_hold = -1e9;
+    double last_read = -1e9, alarm_t = 0, write_hold = -1e9, last_th = -1e9;
     bool prev_alarm = false, written_once = false, known = false;
     uint8_t prev_state = 0xFF;
     double state_t = t0;   // when the line entered its current state (fault_s counts from there)
@@ -201,6 +206,22 @@ void Rs485Io::loop()
                 xact(req, n, &in)) {
                 std::lock_guard<std::mutex> lk(m_);
                 stats_.inputs = in;
+            }
+        }
+        if (cfg_.th_addr > 0 && now - last_th >= cfg_.th_period_s) {   // temperature / humidity transmitter
+            last_th = now;
+            uint16_t v[2] = {0, 0};
+            const size_t n = rtu_read_regs(req, uint8_t(cfg_.th_addr), RTU_READ_HOLDING, 0, 2);
+            const bool ok = n && xact(req, n, nullptr, v, 2);
+            const float t = int16_t(v[0]) / 10.0f, h = v[1] / 10.0f;
+            const bool sane = ok && t > -40.5f && t < 125.5f && h >= 0 && h <= 100.5f;   // SHT30 ranges
+            std::lock_guard<std::mutex> lk(m_);
+            if (sane) {
+                stats_.th_valid = true; stats_.temp_c = t; stats_.hum_rh = h;
+                stats_.th_last_s = mono_s(); stats_.th_ok++;
+                th_last_ok_ = stats_.th_last_s;
+            } else {
+                stats_.th_err++;
             }
         }
         usleep(50000);
