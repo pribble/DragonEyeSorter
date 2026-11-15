@@ -48,6 +48,7 @@
 - 跨时钟域用「翻转 + 两级同步」（像素域 ↔ 75MHz 已在 `set_clock_groups -exclusive`），不直接跨域采样。
 - **构建必须单进程**（`read_design`→`bitgen`）：`timing.sdc` 的 `set_clock_groups` 只在单进程里全程有效；两段式 phy 段重放 SDC 时 PLL 引脚时钟对象尚未建立，全部 group no-op（phy 日志 12 条 `USR-6001`）。见 [开发环境与构建](开发环境与构建.md)「PL：构建与打包」。
 - **VTC pclk ↔ 150M PLL 用 `set_max_delay 5.0 -datapath_only`（双向），不能声明异步**：两者之间是厂家 AXI4S→Video Out 异步 FIFO 的格雷码指针（`primary_addr_gray_reg → sync_r1_reg`）与复位，共 11 个端点。整组声明异步后这些路径完全不受约束，指针各位走线差可超过一个周期 → 偶发读错指针 → 视频丢同步 → 显示器整屏黑一下并重新识别「HDMI1」（第六轮起的比特流都有，v16 与限定后的 v17b2c 没有，见 [log](log/2026-11-15-视频异步FIFO约束与黑屏重连.md)）。5 ns 按厂家 Soft FIFO IP 的写法取（小于两边周期 6.666 / 6.734 ns），核对看 `soc_prj_exception.timing` 的 MCP/SMD 汇总：两条各 6 / 5 个端点、0 违例。VTC pclk ↔ NPU PLL 仍是 `-asynchronous`（只有 VTC 锁定信号去复位厂家 `pwm_0_1`，不进视频数据）；VTC → TMDS（`PLL_3` = 5×VTC）按同步分析，**不要**加异步组。HDMI 串行时钟另有 `set_clock_uncertainty -setup 0.15`，报告里 clk10 的余量已扣掉这 0.15 ns。
+- **HDMI 输出时序 = 标准 1080p60（CEA-861）**：厂家视频时序发生器参数 行 1920/88/44/148（总 2200）、场 1080/4/5/36（总 1125），像素时钟由 50 MHz 参考经内部 PLL 自动取整，最接近为 148.485 MHz（−0.01%，59.99 Hz）。早期记录里的「60.6 Hz / 150 MHz」已过时。小屏偶发黑屏优先查显示器供电与 HDMI 线（11-16：快充头供电会反复协商电压导致掉同步），时序参数不用改。
 
 ### 资源
 
