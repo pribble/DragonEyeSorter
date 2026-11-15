@@ -6,7 +6,7 @@
 
 在官方 NPU demo 工程 `soc_prj`（MIPI RX + ISP + VDMA + HDMI + NPU 软核，已过 P&R）上叠加自研模块；顶层 `src/system_top.v`，PS 与 AXI 互联在块设计 `design_0`。
 
-**板端当前 v16**（BOOT `71f41a20` / 比特流 `f0f63c91`；`pl_check.sh` 0 失败）：新增 `des_485`（RS485 Modbus-RTU，窗口 `0x6xx`，J11 第 5 / 6 位）与帧起始锁存的编码器计数（`CAP_ENC0/1`），`VERSION` 16；对原有全部输出的整顶层等价回归逐拍一致。回退点 tag `v15-board-20261024`。逐版上板台账见 [pl/soc_base/README](../pl/soc_base/README.md)；逐轮重构与构建收敛明细见 [log/](log/README.md)。
+**板端当前 v17b2c**（BOOT `08ec06c4` / 比特流 `f55ac9bf`，`VERSION` 17：v16 + `des_bpi` + `des_vib`，不含 `des_ptrig`；`pl_check.sh` 0 失败、同屏目视不闪，见 [log](log/2026-11-15-视频异步FIFO约束与黑屏重连.md)）；退路 v16 留在卡上 `BOOT.bin.v16`。v16 （BOOT `71f41a20` / 比特流 `f0f63c91`；`pl_check.sh` 0 失败）：新增 `des_485`（RS485 Modbus-RTU，窗口 `0x6xx`，J11 第 5 / 6 位）与帧起始锁存的编码器计数（`CAP_ENC0/1`），`VERSION` 16；对原有全部输出的整顶层等价回归逐拍一致。回退点 tag `v15-board-20261024`。逐版上板台账见 [pl/soc_base/README](../pl/soc_base/README.md)；逐轮重构与构建收敛明细见 [log/](log/README.md)。
 
 **CAN 管脚**：底板 CAN 收发器接 PL 管脚 F20（TX）/ F19（RX），LVCMOS33、RX 上拉；RS485 接 L17（TX）/ N16（RX）/ N15（DE，1 = 发送；与 /RE 并联，原理图 p14）（硬件手册 p21），v16 起由 PL `des_485` 驱动。官方 demo 块设计没开 PS CAN（`CAN0_Available=0`，收发脚未约束）→ 把 PS 硬核 `can0_tx_out` / `can0_rx_in` 经块设计引到 `system_top`，再到 F20 / F19。J11 接 PC USB-CAN 双节点实测通过（240/240，见 [测试与验证](测试与验证.md)）。注意：① `ipms_canfd` 驱动的错误帧把 ACK 位置码 0x19 写进 data[2]，candump 显示成 bit-error，别被误导；② 驱动只支持 FD 模式，`ip link … fd off` 直接 EINVAL，收发经典帧不受影响（`can_up.sh` 照用）；③ 底板 B2B 管脚表把 CAN / HDMI 管脚写反，以硬件手册 + 实测为准。
 
@@ -29,9 +29,9 @@
 | `des_pwm` | 侧边导流挡板舵机的 2 路 PWM（单挡板，现用 1 路），按带位置触发 | 自研 | P1 | ✅ 上板（读回 / 50Hz）；挡板舵机 11-01 已接、开 1500 / 合 1100µs |
 | `des_vision` | 边缘 / 二值显示 + ROI 投影测尺寸 | 自研 | P1 | ✅ 上板，6 种模式实画面验证、统计读回正确 |
 | `des_485` | RS485 Modbus-RTU 收发：硬件 DE、CRC16 生成 / 校验、3.5 字符判帧、应答超时、校验位、监听帧（寄存器窗口 `0x6xx`） | 自研 | P1 | ✅ v16 上板；帧时序与继电器模块读 / 写实测见 [测试与验证](测试与验证.md)；⬜ 启动 / 暂停 / 急停 / 复位灯态与 CAN→RS485 待测 |
-| `des_bpi` | 带速 PI：计米轮编码器测周法测速 + 定点 PI，输出步进脉冲频率的比例修正（寄存器窗口 `0x7xx`） | 自研 | P1 | ⬜ v17 第 1 批：仿真 45 项全过、整顶层等价回归通过；按器件收小后布线收敛、0 违例，**有比特流，未上板**（见 [log](log/2026-11-14-v17第1批瘦身后布通.md)） |
-| `des_ptrig` | 带位置比较触发：2 路，到位当拍锁存时间戳，可装载挡板脉宽并提前重启 PWM 周期、输出 `TRIG_OUT` 脉冲（寄存器窗口 `0x8xx`） | 自研 | P1 | ⬜ v17 第 1 批：仿真 37 项全过；按器件收小后布线收敛、0 违例，**有比特流，未上板**（见 [log](log/2026-11-14-v17第1批瘦身后布通.md)） |
-| `des_vib` | 振动采集：ADXL345 三线 SPI（模式 3、3.75 MHz）+ INT1 数据就绪；每个样本带数据就绪时刻的时间戳进 512 深 FIFO（块 RAM），PL 按窗口算每轴的和与平方和（均值、有效值；寄存器窗口 `0x9xx`） | 自研 | P1 | ⬜ v17 第 2 批：仿真 21 项全过（含 ADXL345 行为模型）、整顶层等价回归通过；未上板 |
+| `des_bpi` | 带速 PI：计米轮编码器测周法测速 + 定点 PI，输出步进脉冲频率的比例修正（寄存器窗口 `0x7xx`） | 自研 | P1 | ✅ v17 第 1 批：仿真 45 项全过、整顶层等价回归通过；**随 v17b2c 上板**（`desreg bpi` 读数正常；主程序默认仍用 PS 侧 PI） |
+| `des_ptrig` | 带位置比较触发：2 路，到位当拍锁存时间戳，可装载挡板脉宽并提前重启 PWM 周期、输出 `TRIG_OUT` 脉冲（寄存器窗口 `0x8xx`） | 自研 | P1 | ⬜ v17 第 1 批：仿真 37 项全过；与 `des_vib` 放不下（NPU 时序），**v17b2c 里没有例化**，只在 `BOOT_v17b1.bin`（未上板）里（见 [log](log/2026-11-14-v17第1批瘦身后布通.md)） |
+| `des_vib` | 振动采集：ADXL345 三线 SPI（模式 3、3.75 MHz）+ INT1 数据就绪；每个样本带数据就绪时刻的时间戳进 512 深 FIFO（块 RAM），PL 按窗口算每轴的和与平方和（均值、有效值；寄存器窗口 `0x9xx`） | 自研 | P1 | ✅ v17 第 2 批：仿真 21 项全过（含 ADXL345 行为模型）、整顶层等价回归通过；**随 v17b2c 上板**（ID 0x56494231，`desreg vib` 读数正常）；⚠ 传感器未接线，实测采样待接线后做 |
 | `awb_seq_div` | ISP 自动白平衡逐位除法器（替换厂家流水线除法器） | 自研 | P0 | ✅ 在用，省约 4k LUT |
 | `img_morph` / `blob_ccl` / `roi_scaler` / `tensor_pack` / `overlay` | 形态学、连通域、ROI 缩放、张量打包、叠加 | 自研 | P2 | ⬜ 未做（大块图像算法优先放 PS） |
 | `traj_interp` | 多轴时间同步插补（115200 带宽承载不了高频插补点） | 自研 | P2 | ⬜ 未做 |
