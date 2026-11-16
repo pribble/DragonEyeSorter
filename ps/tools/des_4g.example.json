@@ -23,7 +23,11 @@
   },
   "commands": {
     "key": "",                  // 操作密钥（至少 8 个字符）；留空 = 不接受任何远程命令。手机看板里填同一个
-    "allow": ["ack", "stop", "pause"]   // 允许的命令；可选 ack stop pause resume start reset speed，默认不含会让线体动起来的
+    "allow": ["ack", "stop", "pause"],  // 允许的命令；可选 ack stop pause resume start reset speed recipe，默认不含会让线体动起来的
+    "speeds": [30, 50, 70],     // speed 只接受这几档（mm/s，1..200）；看板据此画按钮。留空 = 任意值
+    "recipes": [                // recipe 只接受这些配方（id 与 des_app 的 recipes.json 一致）；名字显示在看板上。留空 = 任意 id
+      { "id": 1, "name": "齿轮 30 齿 孔 6" }
+    ]
   },
   "modem": { "vid": "2c7c", "usb_if": -1, "tty": "" }    // usb_if -1 = 自动找 AT 口；tty 非空 = 改用串口设备
 }

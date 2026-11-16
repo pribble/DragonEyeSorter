@@ -6,12 +6,16 @@
 //                    the module's will puts the text "offline" here when the module drops off the network
 //   <prefix>/wo      one JSON per work-order change, exactly what des_app pushes on its feed (trimmed to fit)
 //   <prefix>/cmd     to the board: {"cmd":"ping","id":n} is always answered. Commands that act on the line —
-//                    ack (arg = order id, 65535 = all) / stop / pause / resume / start / reset / speed (arg = 0.1 mm/s)
-//                    — need all of: board.modbus_port set, des_app's register map >= 0x0103, commands.key set, the
-//                    command in commands.allow, and {"seq":n,"sig":hex} where sig = HMAC-SHA256(key,
-//                    "<nonce>|<seq>|<cmd>|<arg>") and seq is larger than any seq accepted before. The nonce is
-//                    random per start of this program and published in the state, so an old command cannot be replayed
+//                    ack (arg = order id, 65535 = all) / stop / pause / resume / start / reset / speed (arg = 0.1 mm/s,
+//                    one of commands.speeds when that list is set) / recipe (arg = recipe id, one of commands.recipes
+//                    when set; des_app refuses it while the line runs) — need all of: board.modbus_port set, des_app's
+//                    register map >= 0x0103, commands.key set, the command in commands.allow, and {"seq":n,"sig":hex}
+//                    where sig = HMAC-SHA256(key, "<nonce>|<seq>|<cmd>|<arg>") and seq is larger than any seq accepted
+//                    before. The nonce is random per start of this program and published in the state, so an old
+//                    command cannot be replayed
 //   <prefix>/reply   answers to cmd: {"id","cmd","ok"[,"err"][,"result"]}
+//   <prefix>/meta    retained, once per broker connection while commands are on: {"speeds":[mm/s...],
+//                    "recipes":[{"id","name"}...]} — the choices the dashboard offers (kept out of the 10 s state)
 //
 // With board.modbus_port set the state also carries "line" (run state, belt speed, alarm, recipe) and des_app's own
 // counters ("counts":"app"); without it the counts come from the feed ("counts":"feed", parts since this program
@@ -35,6 +39,8 @@
 
 namespace des {
 
+struct RecipeName { int id = 0; std::string name; };
+
 struct UplinkConfig {
     MqttConfig mqtt;
     std::string prefix = "des/demo";
@@ -49,6 +55,8 @@ struct UplinkConfig {
     int modbus_port = 0;                    // > 0: des_app's Modbus-TCP port on board_host (line state + commands)
     std::string cmd_key;                    // shared secret for remote commands; empty = no remote commands
     std::vector<std::string> cmd_allow{"ack", "stop", "pause"};   // nothing that starts motion by default
+    std::vector<double> speeds;             // belt speed presets, mm/s: the only values "speed" accepts (empty = any)
+    std::vector<RecipeName> recipes;        // the recipes "recipe" accepts, named for the dashboard (empty = any id)
 };
 std::string load_uplink_config(const std::string &path, UplinkConfig &c);   // "" on success
 
@@ -58,12 +66,16 @@ struct LineStatus {                         // from des_app's input registers
     bool valid = false;
     int state = 0, flags = 0, alarm = 0, recipe = 0;   // CANP_ST_* / CANP_FLAG_* / alarm code / recipe id
     double speed = 0;                       // actual belt speed, mm/s
+    double set_speed = 0;                   // its set point (holding register), mm/s; 0 = not read
     uint32_t total = 0, ok = 0, ng = 0, recheck = 0;   // des_app's counters
 };
-struct UplinkExtras { LineStatus line; std::vector<std::string> cmds; std::string nonce; };
+// cmds / nonce / last_seq go into the state while commands are on; last_seq lets a phone whose clock is behind (seq is
+// its clock in ms) still pick a larger seq after another phone sent one
+struct UplinkExtras { LineStatus line; std::vector<std::string> cmds; std::string nonce; long long last_seq = 0; };
 
 std::string uplink_state_json(const BoardSnapshot &b, const ModemInfo &m, int eth, double up_s, const UplinkStats &st,
                               const UplinkExtras *x = nullptr);
+std::string uplink_meta_json(const UplinkConfig &c);                       // <prefix>/meta: speeds / recipes on offer
 std::string uplink_cmd_text(const std::string &nonce, long long seq, const std::string &cmd, long long arg);   // what is signed
 std::string uplink_fit_order(const std::string &json, size_t max_bytes);   // drop the long fields until it fits
 int eth_carrier(const std::string &ifname);                                 // 1 up, 0 down, -1 unknown
@@ -106,6 +118,7 @@ private:
     uint64_t sent_seq_ = ~0ull;
     int sent_eth_ = -2, quiet_cmds_ = 0, pub_fails_ = 0;
     bool link_down_ = false;                        // +QMTSTAT seen: reconnect
+    bool meta_sent_ = false;                        // <prefix>/meta published on this broker connection
     MbClient *mb_ = nullptr;
     bool mb_off_ = false;                           // des_app's map is too old: never ask again
     UplinkExtras x_;

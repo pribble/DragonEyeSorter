@@ -58,7 +58,13 @@ std::string load_uplink_config(const std::string &path, UplinkConfig &c)
             if (!vid.empty()) c.vid = unsigned(strtoul(vid.c_str(), nullptr, 16));
         }
         if (const auto m = j.find("commands"); m != j.end() && m->is_object()) {
-            opt(*m, "key", c.cmd_key); opt(*m, "allow", c.cmd_allow);
+            opt(*m, "key", c.cmd_key); opt(*m, "allow", c.cmd_allow); opt(*m, "speeds", c.speeds);
+            if (const auto r = m->find("recipes"); r != m->end() && r->is_array())
+                for (const json &e : *r) {
+                    RecipeName n;
+                    if (e.is_object()) { opt(e, "id", n.id); opt(e, "name", n.name); }
+                    c.recipes.push_back(n);
+                }
         }
     } catch (const std::exception &e) {
         return path + ": " + e.what();
@@ -77,8 +83,15 @@ std::string load_uplink_config(const std::string &path, UplinkConfig &c)
     if (!c.cmd_key.empty() && c.cmd_key.size() < 8) return path + ": commands.key must be at least 8 characters";
     if (!c.cmd_key.empty() && c.modbus_port <= 0) return path + ": commands need board.modbus_port";
     for (const std::string &a : c.cmd_allow)
-        if (a != "ack" && a != "stop" && a != "pause" && a != "resume" && a != "start" && a != "reset" && a != "speed")
+        if (a != "ack" && a != "stop" && a != "pause" && a != "resume" && a != "start" && a != "reset" && a != "speed" && a != "recipe")
             return path + ": commands.allow has an unknown command \"" + a + "\"";
+    if (c.speeds.size() > 8 || c.recipes.size() > 8) return path + ": commands.speeds / recipes: at most 8 each";
+    for (const double v : c.speeds)
+        if (!(v >= 1 && v <= 200)) return path + ": commands.speeds must be 1..200 mm/s (des_app's limit)";
+    for (const RecipeName &r : c.recipes) {
+        if (r.id < 1 || r.id > 65535) return path + ": commands.recipes needs {\"id\": 1..65535, \"name\": ...}";
+        if (r.name.empty() || r.name.size() > 48) return path + ": commands.recipes: name must be 1..48 bytes";
+    }
     return "";
 }
 
@@ -107,10 +120,24 @@ std::string uplink_state_json(const BoardSnapshot &b, const ModemInfo &m, int et
     if (x && x->line.valid) {   // des_app's own registers: its counters replace the ones summed from the feed
         const LineStatus &l = x->line;
         j["line"] = {{"state", l.state}, {"speed", std::round(l.speed * 10) / 10}, {"alarm", l.alarm}, {"recipe", l.recipe}};
+        if (l.set_speed > 0) j["line"]["set"] = std::round(l.set_speed * 10) / 10;
         j["total"] = l.total; j["ok"] = l.ok; j["ng"] = l.ng; j["recheck"] = l.recheck;
         j["counts"] = "app";
     }
-    if (x && !x->cmds.empty()) { j["cmds"] = x->cmds; j["nonce"] = x->nonce; }
+    if (x && !x->cmds.empty()) { j["cmds"] = x->cmds; j["nonce"] = x->nonce; j["seq"] = x->last_seq; }
+    return dump(j);
+}
+
+std::string uplink_meta_json(const UplinkConfig &c)
+{
+    const auto allowed = [&](const char *k) { return std::find(c.cmd_allow.begin(), c.cmd_allow.end(), k) != c.cmd_allow.end(); };
+    json j = json::object();
+    if (allowed("speed") && !c.speeds.empty()) j["speeds"] = c.speeds;
+    if (allowed("recipe") && !c.recipes.empty()) {
+        json a = json::array();
+        for (const RecipeName &r : c.recipes) a.push_back({{"id", r.id}, {"name", r.name}});
+        j["recipes"] = a;
+    }
     return dump(j);
 }
 
@@ -223,6 +250,9 @@ void Uplink::up_pass(double now)
     }
     if (!link_down_) {
         poll_line(now);
+        if (!meta_sent_ && !x_.cmds.empty() && publish(cfg_.prefix + "/meta", uplink_meta_json(cfg_), true)) meta_sent_ = true;
+    }
+    if (!link_down_) {
         const BoardSnapshot b = board_.snapshot();
         const int e = eth();
         const bool idle = cfg_.mode == "backup" && e == 1;
@@ -279,13 +309,16 @@ void Uplink::poll_line(double now)
     l.state = ir[MB_IR_STATE]; l.flags = ir[MB_IR_FLAGS]; l.alarm = ir[MB_IR_ALARM]; l.recipe = ir[MB_IR_RECIPE];
     l.speed = ir[MB_IR_SPEED] / 10.0;
     l.total = u32(MB_IR_TOTAL); l.ok = u32(MB_IR_OK); l.ng = u32(MB_IR_NG); l.recheck = u32(MB_IR_RECHECK);
+    uint16_t set = 0;
+    if (mb_->read(3, MB_HR_SPEED, 1, &set)) l.set_speed = set / 10.0;   // the set point: what the dashboard marks as chosen
     const LineStatus &o = x_.line;
     if (!o.valid) {
         say("des_app registers readable (map 0x0103): line state and its own counters go into the state" +
             std::string(cfg_.cmd_key.empty() ? "; remote commands off (no key)" : "; remote commands on"));
         if (!cfg_.cmd_key.empty()) x_.cmds = cfg_.cmd_allow;
     }
-    if (!o.valid || o.state != l.state || o.alarm != l.alarm || o.recipe != l.recipe || o.total != l.total || std::fabs(o.speed - l.speed) >= 1.0)
+    if (!o.valid || o.state != l.state || o.alarm != l.alarm || o.recipe != l.recipe || o.total != l.total || std::fabs(o.speed - l.speed) >= 1.0 ||
+        std::fabs(o.set_speed - l.set_speed) >= 0.05)
         line_seq_++;
     x_.line = l;
 }
@@ -299,9 +332,22 @@ std::string Uplink::run_command(const std::string &cmd, long long arg, long long
     if (!same_text(sig, hmac_sha256_hex(cfg_.cmd_key, uplink_cmd_text(x_.nonce, seq, cmd, arg)))) return "bad signature";
     if (seq <= last_cmd_seq_) return "replayed";
     last_cmd_seq_ = seq;
+    x_.last_seq = seq;
+    line_seq_++;                         // the next state (within state_min_s) tells every dashboard the new last seq
     uint16_t addr = MB_HR_CMD, value = 0;
     if (cmd == "ack") { if (arg < 1 || arg > 65535) return "bad argument"; addr = MB_HR_WO_ACK; value = uint16_t(arg); }
-    else if (cmd == "speed") { if (arg < 1 || arg > 65535) return "bad argument"; addr = MB_HR_SPEED; value = uint16_t(arg); }
+    else if (cmd == "speed") {
+        if (arg < 1 || arg > 65535) return "bad argument";
+        if (!cfg_.speeds.empty() && std::none_of(cfg_.speeds.begin(), cfg_.speeds.end(), [&](double v) { return std::llround(v * 10) == arg; }))
+            return "bad argument";
+        addr = MB_HR_SPEED; value = uint16_t(arg);
+    }
+    else if (cmd == "recipe") {
+        if (arg < 1 || arg > 65535) return "bad argument";
+        if (!cfg_.recipes.empty() && std::none_of(cfg_.recipes.begin(), cfg_.recipes.end(), [&](const RecipeName &r) { return r.id == arg; }))
+            return "bad argument";
+        addr = MB_HR_RECIPE; value = uint16_t(arg);
+    }
     else if (cmd == "start") value = CANP_CMD_START;
     else if (cmd == "stop") value = CANP_CMD_STOP;
     else if (cmd == "pause") value = CANP_CMD_PAUSE;
@@ -383,6 +429,7 @@ bool Uplink::step()
         say("connected to " + m.host + ":" + std::to_string(m.port) + " as " + m.client_id);
         backoff_ = 2;
         link_down_ = false;
+        meta_sent_ = false;
         pub_fails_ = 0;
         last_state_ = -1e9;
         last_info_ = now;

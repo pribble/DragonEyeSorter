@@ -402,6 +402,29 @@ void test_payloads()
     CHECK(!load("{\"mqtt\": {\"host\": \"h\", \"pass\": \"a\\\"b\"}}", d).empty(), "quote in a password: refused");
     CHECK(!load("{\"mqtt\": {\"host\": \"h\"}, \"mode\": \"sometimes\"}", d).empty(), "unknown mode: refused");
     CHECK(!load("{\"mqtt\": {\"host\": 5}}", d).empty(), "wrong type: refused, no crash");
+    UplinkConfig e;
+    const std::string cmds = "{\"mqtt\": {\"host\": \"h\"}, \"board\": {\"modbus_port\": 502}, \"commands\": {\"key\": \"0123456789\", "
+                             "\"allow\": [\"speed\", \"recipe\", \"start\"], \"speeds\": [30, 50, 72.5], "
+                             "\"recipes\": [{\"id\": 1, \"name\": \"齿轮 30 齿 孔 6\"}, {\"id\": 4, \"name\": \"齿轮 20 齿 孔 6\"}]}}";
+    CHECK(load(cmds, e).empty(), "speeds and recipes load: %s", load(cmds, e).c_str());
+    CHECK(e.speeds.size() == 3 && e.speeds[2] == 72.5 && e.recipes.size() == 2 && e.recipes[1].id == 4 && e.recipes[1].name == "齿轮 20 齿 孔 6",
+          "speeds and recipes values");
+    const nlohmann::json meta = nlohmann::json::parse(uplink_meta_json(e));
+    CHECK(meta["speeds"] == nlohmann::json({30.0, 50.0, 72.5}) && meta["recipes"][0]["id"] == 1 && meta["recipes"][1]["name"] == "齿轮 20 齿 孔 6",
+          "meta lists the choices: %s", meta.dump().c_str());
+    UplinkConfig e2 = e;
+    e2.cmd_allow = {"stop"};
+    CHECK(uplink_meta_json(e2) == "{}", "meta: nothing on offer when speed / recipe are not allowed");
+    auto bad = [&](const std::string &from, const std::string &to) {
+        std::string s = cmds;
+        s.replace(s.find(from), from.size(), to);
+        UplinkConfig x;
+        return !load(s, x).empty();
+    };
+    CHECK(bad("72.5", "250"), "speed above des_app's 200 mm/s: refused");
+    CHECK(bad("\"id\": 4", "\"id\": 0"), "recipe id 0: refused");
+    CHECK(bad("\"name\": \"齿轮 20 齿 孔 6\"", "\"name\": \"\""), "recipe without a name: refused");
+    CHECK(bad("\"start\"", "\"jump\""), "unknown command: refused");
     unlink(path);
 }
 
@@ -681,6 +704,77 @@ void test_commands()
     CHECK(s.is_object() && s.contains("line") && !s.contains("cmds") && !s.contains("nonce"), "no key: line status without commands");
 }
 
+// speed / recipe from the dashboard: only the configured presets reach des_app; the choices go out once on <prefix>/meta
+void test_line_controls()
+{
+    FakeModem fm;
+    FdPort port(fm.host_fd());
+    AtChan at(port);
+    BoardLink board;
+    board.on_connect(true);
+    board.on_frame(fr('H', "s1", k_hdr));
+    FakeApp app(0x0103);
+    app.mb.set_holding(MB_HR_SPEED, 500);
+    MbClient mbc("127.0.0.1", app.mb.port(), MB_UNIT_MONITOR);
+    UplinkConfig c;
+    c.mqtt.host = "broker.example"; c.prefix = "des/t4"; c.modbus_port = app.mb.port();
+    c.cmd_key = "test-key-0123456789"; c.cmd_allow = {"stop", "speed", "recipe"};
+    c.speeds = {30, 50, 72.5};
+    c.recipes = {{1, "齿轮 30 齿 孔 6"}, {3, "齿轮 30 齿 孔 8"}};
+    Uplink up(c, at, board);
+    up.attach_modbus(&mbc);
+    up.set_nonce("n4");
+    double t = 100;
+    up.clock = [&]() { return t; };
+    up.eth = []() { return 1; };
+    auto pubs_on = [&](const std::string &topic) { std::vector<Pub> v; for (auto &p : fm.pubs()) if (p.topic == topic) v.push_back(p); return v; };
+    CHECK(steps(up, t, 5, 12, [&]() { return up.phase() == Uplink::Phase::Up && !pubs_on("des/t4/state").empty() && !pubs_on("des/t4/meta").empty(); }),
+          "controls: reaches Up, state and meta out");
+    auto meta = pubs_on("des/t4/meta");
+    const nlohmann::json m = meta.empty() ? nlohmann::json() : nlohmann::json::parse(meta[0].payload, nullptr, false);
+    CHECK(meta.size() == 1 && meta[0].retain && m["speeds"] == nlohmann::json({30.0, 50.0, 72.5}) && m["recipes"][1]["id"] == 3,
+          "meta: retained, presets and recipes");
+    const nlohmann::json s = nlohmann::json::parse(pubs_on("des/t4/state").back().payload, nullptr, false);
+    CHECK(s["line"]["set"] == 50.0 && s["line"]["speed"] == 60.0, "state: set point next to the actual speed: %s", s["line"].dump().c_str());
+    int id = 400;
+    auto send = [&](const char *cmd, long long arg, long long seq) {
+        const nlohmann::json j = {{"cmd", cmd}, {"arg", arg}, {"id", ++id}, {"seq", seq},
+                                  {"sig", hmac_sha256_hex("test-key-0123456789", uplink_cmd_text("n4", seq, cmd, arg))}};
+        const std::string p = j.dump();
+        fm.inject("+QMTRECV: 0,0,\"des/t4/cmd\"," + std::to_string(p.size()) + ",\"" + p + "\"");
+        nlohmann::json r;
+        steps(up, t, 0.1, 10, [&]() {
+            for (auto &q : pubs_on("des/t4/reply")) { const auto x = nlohmann::json::parse(q.payload, nullptr, false); if (x.is_object() && x["id"] == id) r = x; }
+            return r.is_object();
+        });
+        return r;
+    };
+    nlohmann::json r = send("speed", 725, 1);
+    CHECK(r["ok"] == true && app.writes().size() == 1 && app.writes()[0].addr == MB_HR_SPEED && app.writes()[0].value == 725,
+          "preset speed 72.5 mm/s reaches des_app: %s", r.dump().c_str());
+    r = send("speed", 1500, 2);
+    CHECK(r["ok"] == false && r["err"] == "bad argument" && app.writes().size() == 1, "a speed that is not a preset: refused, nothing written");
+    r = send("recipe", 3, 3);
+    CHECK(r["ok"] == true && app.writes().size() == 2 && app.writes()[1].addr == MB_HR_RECIPE && app.writes()[1].value == 3,
+          "listed recipe reaches des_app: %s", r.dump().c_str());
+    r = send("recipe", 2, 4);
+    CHECK(r["ok"] == false && r["err"] == "bad argument" && app.writes().size() == 2, "recipe not in the list: refused");
+    app.answer = CANP_ACK_REJECTED;
+    r = send("recipe", 1, 5);
+    CHECK(r["ok"] == false && r["result"] == CANP_ACK_REJECTED && r["err"] == "des_app: rejected in the current state",
+          "des_app refusing a changeover while running is passed on: %s", r.dump().c_str());
+    app.answer = CANP_ACK_OK;
+    app.mb.set_holding(MB_HR_SPEED, 300);
+    CHECK(steps(up, t, 1, 8, [&]() { const auto j = nlohmann::json::parse(pubs_on("des/t4/state").back().payload, nullptr, false); return j["line"]["set"] == 30.0; }),
+          "a new set point is published");
+    CHECK(nlohmann::json::parse(pubs_on("des/t4/state").back().payload, nullptr, false)["seq"] == 5,
+          "the state carries the last accepted seq (refused arguments still use theirs up)");
+    CHECK(pubs_on("des/t4/meta").size() == 1, "meta only once per connection");
+    fm.connected = false;
+    fm.inject("+QMTSTAT: 0,1");
+    CHECK(steps(up, t, 2, 16, [&]() { return pubs_on("des/t4/meta").size() == 2; }), "meta again after a reconnect");
+}
+
 void test_old_map()
 {
     FakeModem fm;
@@ -735,6 +829,7 @@ int main()
     test_sha();
     test_mb_client();
     test_commands();
+    test_line_controls();
     test_old_map();
     return test_summary("test_uplink");
 }

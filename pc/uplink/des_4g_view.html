@@ -8,8 +8,10 @@
     <prefix>/cmd    {"cmd":"ping","id":n} sent from here      <prefix>/reply  the board's answer (round-trip time)
   When the state lists "cmds", the "远程操作" card appears: each command is sent with {"seq","sig"}, where
   sig = HMAC-SHA256(key, "<nonce>|<seq>|<cmd>|<arg>") (nonce from the state, key typed here and kept in this browser).
+  Belt speed presets and recipes come from the retained <prefix>/meta ({"speeds":[..],"recipes":[{"id","name"}]}).
   Settings (broker WebSocket URL, topic prefix) are kept in this browser only; they can also come in the address
-  after '#':  des_4g_view.html#b=wss://broker.example:8084/mqtt&p=des/your-prefix
+  after '#':  des_4g_view.html#b=wss://broker.example:8084/mqtt&p=des/your-prefix[&k=<command key>]
+  (k fills the key and is then removed from the address bar: a "control" QR code carries it, the public one does not).
   Open it from a file, or put it on any static web host. Counts are "parts decided since des_4g connected".
 -->
 <head>
@@ -83,7 +85,11 @@ ul.list li:first-child { border-top: 0; padding-top: 0; }
 .empty { color: var(--muted); font-size: 13px; }
 button { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--axis); border-radius: 8px; padding: 8px 14px; cursor: pointer; }
 button:disabled { color: var(--muted); cursor: default; }
-button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary, button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.on:disabled { color: #fff; opacity: .85; }
+.ctl { margin-top: 12px; }
+.ctl-h { font-size: 13px; color: var(--ink2); margin-bottom: 6px; }
+.ctl-b { display: flex; flex-wrap: wrap; gap: 8px; }
 .pingrow { display: flex; gap: 12px; align-items: center; margin-top: 12px; }
 .pingrow div { flex: 1; min-width: 0; }
 label { display: block; font-size: 13px; color: var(--ink2); margin: 10px 0 4px; }
@@ -142,9 +148,9 @@ details summary { cursor: pointer; color: var(--ink2); font-size: 13px; }
 
   <section class="card" id="cmd-card" hidden>
     <h2>远程操作<span>命令带签名，板子只认密钥对的</span></h2>
-    <label for="c-key">操作密钥（与板上 des_4g.json 的 commands.key 相同）</label>
+    <label for="c-key">操作密钥（扫控制二维码会自动填好）</label>
     <input id="c-key" type="password" autocomplete="off" spellcheck="false">
-    <div id="cmd-btns" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px"></div>
+    <div id="cmd-btns"></div>
     <p class="sub" id="cmd-out" style="margin:10px 0 0">还没有发过命令。</p>
   </section>
 
@@ -306,7 +312,7 @@ function chip(el, kind, glyph, text) { el.className = (el.classList.contains('pi
 function span(n) { n = Math.max(0, Math.round(n)); const h = Math.floor(n / 3600), m = Math.floor(n % 3600 / 60), s = n % 60;
   return h ? h + ' 小时 ' + m + ' 分' : m ? m + ' 分 ' + s + ' 秒' : s + ' 秒'; }
 
-let cfg = { b: '', p: '' }, mq = null, state = null, stateAt = 0, live = false, online = null;
+let cfg = { b: '', p: '' }, mq = null, state = null, stateAt = 0, live = false, online = null, meta = null;
 let lastTotal = null, lastSession = null, lastCounts = null;
 const sent = new Map();                    // command id -> label, waiting for the board's reply
 let cmdSeq = 0, cmdShown = '';
@@ -369,7 +375,9 @@ function onReply(text) {
   let j; try { j = JSON.parse(text); } catch (e) { return; }
   if (j && sent.has(j.id)) {                 // answer to a remote command
     const label = sent.get(j.id); sent.delete(j.id);
-    const why = { 'bad signature': '密钥不对', 'replayed': '命令重复或过期', 'command not enabled': '板子没有开放这条命令', 'bad argument': '参数不对' };
+    const why = { 'bad signature': '密钥不对', 'replayed': '序号过期（几部手机同时操作时会遇到），2 秒后再点一次', 'command not enabled': '板子没有开放这条命令',
+                  'bad argument': '板子不接受这个值', 'des_app: rejected in the current state': '线体当前状态不允许（运行中不能切配方；急停时不能启动）',
+                  'des_app: value out of range': '数值超出范围', 'no answer from des_app': '主程序没有回应' };
     $('cmd-out').textContent = hhmmss(Date.now()) + ' 「' + label + '」' + (j.ok ? '已执行' : '被拒绝：' + (why[j.err] || j.err || '未知原因'));
     event('远程命令「' + label + '」' + (j.ok ? '已执行' : '被拒绝'));
     return;
@@ -452,7 +460,8 @@ function render() {
     if (hasLine) {
       const ln = LINE[s.line.state] || ['', '?', '状态 ' + s.line.state];
       chip($('s-line'), ln[0], ln[1], ln[2]);
-      $('s-line-sub').textContent = '带速 ' + (s.line.speed || 0).toFixed(1) + ' mm/s · 配方 ' + s.line.recipe + (s.line.alarm ? ' · 报警码 ' + s.line.alarm : '');
+      $('s-line-sub').textContent = '带速 ' + (s.line.speed || 0).toFixed(1) + ' mm/s' + (s.line.set ? '（处理零件时设定 ' + s.line.set + '）' : '') +
+          ' · 配方 ' + recipeName(s.line.recipe) + (s.line.alarm ? ' · 报警码 ' + s.line.alarm : '');
     }
   } else {
     for (const id of ['s-app', 's-eth', 's-wo']) chip($(id), '', '?', '未知');
@@ -460,13 +469,30 @@ function render() {
     $('s-line-k').hidden = $('s-line-v').hidden = true;
   }
   // remote commands: only what the board says it accepts, only while it is online
-  const cmds = show && live && Array.isArray(s.cmds) ? s.cmds.filter(c => CMDS[c]) : [];
-  $('cmd-card').hidden = !cmds.length;
-  if (cmds.join() !== cmdShown) {
-    cmdShown = cmds.join();
+  const cmds = show && live && Array.isArray(s.cmds) ? s.cmds : [], ln = (show && s.line) || {};
+  const plain = cmds.filter(c => CMDS[c]);
+  const speeds = cmds.includes('speed') && meta && Array.isArray(meta.speeds) ? meta.speeds : [];
+  const recipes = cmds.includes('recipe') && meta && Array.isArray(meta.recipes) ? meta.recipes : [];
+  $('cmd-card').hidden = !(plain.length || speeds.length || recipes.length);
+  const shown = [plain.join(), speeds.join(), recipes.map(r => r.id + ':' + r.name).join(), ln.set, ln.recipe, ln.state].join('|');
+  if (shown !== cmdShown) {
+    cmdShown = shown;
     const box = $('cmd-btns'); box.textContent = '';
-    for (const c of cmds) { const b = document.createElement('button'); b.textContent = CMDS[c][0]; b.onclick = () => sendCmd(c); box.append(b); }
+    const running = ln.state === 1;
+    if (plain.length) box.append(ctlRow('线体', plain.map(c => ({ text: CMDS[c][0], click: () => sendCmd(c, CMDS[c][1], CMDS[c][0], CMDS[c][2]) }))));
+    if (speeds.length) {
+      const row = ctlRow('处理零件时的带速（mm/s）', speeds.map(v => ({ text: String(v), on: Math.abs((ln.set || 0) - v) < 0.05,
+          click: () => sendCmd('speed', Math.round(v * 10), '带速 ' + v + ' mm/s', '把处理零件时的带速设为 ' + v + ' mm/s？空闲时主程序仍会自动提速。') })));
+      const note = document.createElement('div'); note.className = 'sub'; note.id = 'speed-note'; note.style.marginTop = '6px';
+      row.append(note); box.append(row);
+    }
+    if (recipes.length) box.append(ctlRow('配方' + (running ? '（运行中不能切换，先暂停或停止）' : ''), recipes.map(r => ({
+        text: r.name, on: r.id === ln.recipe, disabled: running || r.id === ln.recipe,
+        click: () => sendCmd('recipe', r.id, '切配方 ' + r.name, '切换到配方「' + r.name + '」？\n之后的齿轮按这个配方的尺寸判定，台上的齿轮不是这一种的会被判为尺寸不合格。演示完记得切回来。') }))));
   }
+  const sn = $('speed-note');                // refreshed every second: the actual speed moves with the adaptation
+  if (sn) sn.textContent = '带上没有要处理的零件时，主程序会自动提速；有零件要抓或要分流时降到这里设定的速度，机械臂没准备好时还会再慢。现在实际 ' +
+      (ln.speed || 0).toFixed(1) + ' mm/s。';
   // banner: the one thing to look at first
   let b = null;
   if (!cfg.b || !cfg.p) b = ['info', '还没有设置', '在页面最下面的「连接设置」里填服务器地址和主题前缀。'];
@@ -519,16 +545,32 @@ function onLink(what, arg) {
   else chip(el, 'crit', '×', arg || '无法连接');
   render();
 }
+function ctlRow(title, items) {             // a titled row of buttons: [{text, on, disabled, click}]
+  const row = document.createElement('div'); row.className = 'ctl';
+  const h = document.createElement('div'); h.className = 'ctl-h'; h.textContent = title;
+  const box = document.createElement('div'); box.className = 'ctl-b';
+  for (const it of items) {
+    const b = document.createElement('button'); b.textContent = it.text;
+    if (it.on) b.className = 'on';
+    b.disabled = !!it.disabled; b.onclick = it.click; box.append(b);
+  }
+  row.append(h, box); return row;
+}
+function recipeName(id) {
+  const r = meta && Array.isArray(meta.recipes) ? meta.recipes.find(x => x.id === id) : null;
+  return r ? r.name : String(id);
+}
 function onMessage(topic, text, retained) {
   const sub = topic.slice(cfg.p.length + 1);
-  if (sub === 'state') onState(text, retained);
+  if (sub === 'meta') { try { const j = JSON.parse(text); if (j && typeof j === 'object') { meta = j; render(); } } catch (e) {} }
+  else if (sub === 'state') onState(text, retained);
   else if (sub === 'wo') onOrder(text);
   else if (sub === 'reply') onReply(text);
 }
 
 function start() {
   if (mq) mq.close();
-  mq = null; state = null; stateAt = 0; live = false; online = null; lastTotal = null; orders.clear(); minutes.length = 0;
+  mq = null; state = null; stateAt = 0; live = false; online = null; meta = null; cmdShown = ''; lastTotal = null; orders.clear(); minutes.length = 0;
   renderOrders();
   if (cfg.b && cfg.p) mq = new MqttWs(cfg.b, cfg.p + '/#', onMessage, onLink);
   else { chip($('conn'), '', '?', '未设置'); $('setup').open = true; }
@@ -542,6 +584,13 @@ function loadCfg() {
   cfg.p = (cfg.p || '').replace(/\/+$/, '');
   $('f-b').value = cfg.b || 'wss://broker.emqx.io:8084/mqtt'; $('f-p').value = cfg.p;
   try { $('c-key').value = localStorage.getItem('des_4g_view_key') || ''; } catch (e) {}
+  const k = h.get('k');                      // the control QR code: take the key, then drop it from the address bar
+  if (k) {
+    $('c-key').value = k;
+    try { localStorage.setItem('des_4g_view_key', k); } catch (e) {}
+    h.delete('k');
+    try { history.replaceState(null, '', location.pathname + location.search + (h.toString() ? '#' + h.toString() : '')); } catch (e) {}
+  }
   if (!cfg.b && cfg.p) cfg.b = $('f-b').value;
 }
 $('f-save').onclick = () => {
@@ -550,18 +599,19 @@ $('f-save').onclick = () => {
   $('setup').open = !(cfg.b && cfg.p);
   start();
 };
-function sendCmd(c) {
-  const key = $('c-key').value, def = CMDS[c];
+function sendCmd(c, arg, label, ask) {
+  const key = $('c-key').value.trim();
   if (!key) { $('cmd-out').textContent = '先填操作密钥。'; return; }
   if (!state || !state.nonce || !mq || !mq.up) { $('cmd-out').textContent = '板子不在线，发不出去。'; return; }
-  if (!confirm(def[2])) return;
+  if (!confirm(ask)) return;
   try { localStorage.setItem('des_4g_view_key', key); } catch (e) {}
-  const id = ++pingId, seq = cmdSeq = Math.max(Date.now(), cmdSeq + 1), arg = def[1];
+  // seq: this phone's clock in ms, but always past what the board last accepted (another phone may run ahead)
+  const id = ++pingId, seq = cmdSeq = Math.max(Date.now(), cmdSeq + 1, (Number(state.seq) || 0) + 1);
   const sig = hmacHex(key, state.nonce + '|' + seq + '|' + c + '|' + arg);
   mq.publish(cfg.p + '/cmd', JSON.stringify({ cmd: c, arg, id, seq, sig }));
-  sent.set(id, def[0]);
-  $('cmd-out').textContent = '「' + def[0] + '」已发出，等板子回答…';
-  setTimeout(() => { if (sent.delete(id)) $('cmd-out').textContent = '「' + def[0] + '」10 秒内没有回答。'; }, 10000);
+  sent.set(id, label);
+  $('cmd-out').textContent = '「' + label + '」已发出，等板子回答…';
+  setTimeout(() => { if (sent.delete(id)) $('cmd-out').textContent = '「' + label + '」10 秒内没有回答。'; }, 10000);
 }
 $('ping').onclick = () => {
   const id = ++pingId;
