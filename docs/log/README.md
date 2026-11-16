@@ -50,3 +50,4 @@
 | v17 第 1 批瘦身后布通（`des_bpi` 24 位、`des_ptrig` 2 路、顶层关 `SLEW`；slice 85.04%，Setup WNS +0.035 ns / Hold +0.022 ns、0 违例，HDMI 串行域 +0.116 ns；全流程 86 分钟；有比特流与候选 BOOT，**未上板**） | [2026-11-14](2026-11-14-v17第1批瘦身后布通.md) |
 | 视频异步 FIFO 约束与黑屏重连（第六轮起 VTC ↔ 150M 整组声明异步 → 格雷码指针不受约束 → 偶发黑屏并重新识别 HDMI；改双向 `set_max_delay 5.0 -datapath_only` 后 v17b2c 上板不闪、pl_check 0 失败；另记 HDMI 串行时钟 0.15 ns 余量与 BootGen 写脏启动头） | [2026-11-15](2026-11-15-视频异步FIFO约束与黑屏重连.md) |
 | HDMI 像素时钟实际是 150 MHz / 60.61 Hz（内核 dynclk 按设备树 `expclk` 重配，比标准高 1.0%）：改设备树为 148.5 MHz（实测误差 9 ppm），与比特流无关；补丁脚本 `scripts/boot/patch_dtb_pixclk.py` | [2026-11-16](2026-11-16-HDMI像素时钟150MHz改标准148.5MHz.md) |
+| 4G 上报上板：EM05-CN + 联通卡经 4G 连公共 MQTT 服务器，状态每 10 s、ping 往返约 0.6 s、命令验签 / 防重放、拔网线后仍经 4G 上报、开机自启（`des_4g_service.sh`）；单独重启 des_4g 时 MQTT 标识占用约 30 s | [2026-11-16](2026-11-16-4G上报上板.md) |

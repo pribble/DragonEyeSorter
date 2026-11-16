@@ -27,6 +27,7 @@
 # ---------- ③ 开机自启链的脚本（源：scripts/deploy/out/，就地取材） ----------
 scripts/deploy/out/des.env	/root/des/des.env	config	no	**板端路径唯一来源**：DES_HOME / DES_CONFIG / DES_PIDF / DES_TOOLS / DES_MIPICAM_KO 等，.sh 与 des_app 都从这里取，代码里不写死
 scripts/deploy/out/des_service.sh	/root/des/des_service.sh	script	no	守护：开机自启（/etc/init.d/S90des 指向它）、拉起 can_up.sh 与 des_app.sh、崩溃退避重启
+scripts/deploy/out/des_4g_service.sh	/root/des/des_4g_service.sh	script	no	4G 上报守护：开机自启（/etc/init.d/S91des4g 指向它）、拉起 /root/bin/des_4g run des_4g.json、退出后退避重启；没有 des_4g.json 不启动（des_4g 与 des_4g.json 含密钥，手动上板）
 scripts/deploy/out/can_up.sh	/root/des/can_up.sh	script	no	CAN 起接口（经典模式被控制器拒时自动退 FD）
 scripts/deploy/out/des_app.sh	/root/des/des_app.sh	script	no	启动器：缺 /dev/mipicam 时先 insmod mipicam.ko 再 exec des_app
 scripts/deploy/out/shutdown.sh	/root/des/shutdown.sh	script	no	关机：停 des_app → 硬件看门狗超时拉到最大（约 2 分钟）→ halt。看门狗在永久在线域、关不掉，halt 后必然自己复位重启，这 2 分钟里断电（「6_关机」快捷方式调它）
