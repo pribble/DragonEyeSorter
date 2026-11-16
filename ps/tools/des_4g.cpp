@@ -151,12 +151,15 @@ int mode_feed(const UplinkConfig &c, int seconds)
     board.start(c.board_host, c.feed_port);
     ModemInfo none;
     UplinkStats st;
+    BoardEnvReader env(c.log_dir);   // temperature / humidity / vibration files and board health, as "run" reports them
+    UplinkExtras x;
     for (int i = 0; i < seconds && !g_quit; i++) {
         sleep(1);
         const BoardSnapshot b = board.snapshot();
         std::string wo;
         while (board.next_order(wo)) printf("wo    %s\n", uplink_fit_order(wo, 1400).c_str());
-        printf("state %s\n", uplink_state_json(b, none, eth_carrier(c.eth_if), i + 1, st).c_str());
+        x.env = env.read();
+        printf("state %s\n", uplink_state_json(b, none, eth_carrier(c.eth_if), i + 1, st, &x).c_str());
         fflush(stdout);
     }
     return 0;

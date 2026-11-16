@@ -9,6 +9,8 @@
   When the state lists "cmds", the "远程操作" card appears: each command is sent with {"seq","sig"}, where
   sig = HMAC-SHA256(key, "<nonce>|<seq>|<cmd>|<arg>") (nonce from the state, key typed here and kept in this browser).
   Belt speed presets and recipes come from the retained <prefix>/meta ({"speeds":[..],"recipes":[{"id","name"}]}).
+  "环境与设备" shows the state's env (temperature / humidity), vib (belt motor vibration) and sys (board CPU / memory /
+  SD card / uptime) when the board sends them.
   Settings (broker WebSocket URL, topic prefix) are kept in this browser only; they can also come in the address
   after '#':  des_4g_view.html#b=wss://broker.example:8084/mqtt&p=des/your-prefix[&k=<command key>]
   (k fills the key and is then removed from the address bar: a "control" QR code carries it, the public one does not).
@@ -95,6 +97,10 @@ button.on:disabled { color: #fff; opacity: .85; }
 label { display: block; font-size: 13px; color: var(--ink2); margin: 10px 0 4px; }
 input { font: inherit; width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--axis); background: var(--plane); color: var(--ink); }
 details summary { cursor: pointer; color: var(--ink2); font-size: 13px; }
+.envrow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.big { font-size: 34px; line-height: 1.1; font-weight: 650; font-variant-numeric: tabular-nums; }
+.big small { font-size: 16px; font-weight: 500; color: var(--ink2); margin-left: 2px; }
+.big.warn { color: var(--serious); } .big.crit { color: var(--crit); }
 .tag { font-size: 12px; border: 1px solid var(--axis); border-radius: 6px; padding: 1px 6px; color: var(--ink2); margin-left: 6px; font-weight: 400; }
 </style>
 </head>
@@ -120,7 +126,7 @@ details summary { cursor: pointer; color: var(--ink2); font-size: 13px; }
   <section class="card">
     <h2>产量<span id="k-src">4G 程序连上后判定的件数</span></h2>
     <div class="herorow">
-      <div><div class="hero" id="k-total">—</div><div class="sub">件<span id="k-sim"></span></div></div>
+      <div><div class="hero" id="k-total">—</div><div class="sub">件<span id="k-rate"></span><span id="k-sim"></span></div></div>
       <div id="spark" aria-label="每分钟件数"><svg viewBox="0 0 150 44" preserveAspectRatio="none"></svg><div id="tip"></div></div>
     </div>
     <div class="split" id="split" role="img" aria-label="良品、复检、不良占比"></div>
@@ -131,6 +137,20 @@ details summary { cursor: pointer; color: var(--ink2); font-size: 13px; }
     </div>
     <dl class="rows" style="margin-top:14px">
       <dt>最近一件</dt><dd id="k-last">—</dd>
+    </dl>
+  </section>
+
+  <section class="card">
+    <h2>环境与设备<span id="e-age"></span></h2>
+    <div class="envrow">
+      <div><div class="big" id="e-t">—</div><div class="sub">环境温度 · 正常 5～40 °C</div></div>
+      <div><div class="big" id="e-h">—</div><div class="sub">环境湿度 · 正常 ≤ 85 %</div></div>
+    </div>
+    <dl class="rows" style="margin-top:14px">
+      <dt>皮带电机振动</dt><dd id="e-vib">—</dd>
+      <dt>板子 CPU / 内存</dt><dd id="e-cpu">—</dd>
+      <dt>SD 卡剩余</dt><dd id="e-disk">—</dd>
+      <dt>板子已开机</dt><dd id="e-up">—</dd>
     </dl>
   </section>
 
@@ -507,6 +527,8 @@ function render() {
   if (s) {
     const tot = s.total || 0, pct = n => tot ? (n / tot * 100).toFixed(1) + '%' : '';
     $('k-total').textContent = nf.format(tot);
+    const done = minutes.slice(0, -1).slice(-5);   // finished minutes since this page opened, the last 5 at most
+    $('k-rate').textContent = live && done.length ? ' · 节拍 ' + (done.reduce((a, p) => a + p.n, 0) / done.length).toFixed(1) + ' 件/分' : '';
     $('k-src').textContent = s.counts === 'app' ? '主程序本次运行的累计' : '4G 程序连上后判定的件数';
     $('k-sim').innerHTML = s.sim ? '<span class="tag">模拟数据</span>' : '';
     $('k-ok').textContent = nf.format(s.ok || 0); $('k-re').textContent = nf.format(s.recheck || 0); $('k-ng').textContent = nf.format(s.ng || 0);
@@ -531,9 +553,38 @@ function render() {
     $('n-tx').innerHTML = '';
     $('n-tx').append('成功 ' + nf.format(t.ok || 0) + ' 条' + (t.fail ? '，失败 ' + nf.format(t.fail) + ' 条' : '') + (t.conn > 1 ? '，重连过 ' + (t.conn - 1) + ' 次' : ''));
     $('wo-sum').textContent = s.wo ? '活动 ' + (s.wo.active || 0) + ' · 待确认 ' + (s.wo.unacked || 0) : '';
+    renderEnv(s, live && age ? age : 0);
   }
   renderSpark();
   $('ping').disabled = !(mq && mq.up && online && live) || pings.size > 0;
+}
+
+function big(el, value, unit, kind) {
+  el.className = 'big' + (kind ? ' ' + kind : ''); el.textContent = value;
+  if (unit) { const u = document.createElement('small'); u.textContent = unit; el.append(u); }
+}
+// environment and board health; extra = seconds since this state arrived. Ranges = des_app's work-order defaults
+// (ops.hpp: 5..40 °C, <= 85 %RH, vibration 0.30 g warning / 0.80 g fault)
+function renderEnv(s, extra) {
+  const e = s.env, v = s.vib, y = s.sys || {};
+  if (e && typeof e.t === 'number') {
+    const ago = (e.age || 0) + extra, old = ago > 60;
+    big($('e-t'), e.t.toFixed(1), '°C', old ? '' : e.t < 5 || e.t > 40 ? 'crit' : '');
+    big($('e-h'), e.h.toFixed(1), '%', old ? '' : e.h > 85 ? 'warn' : '');
+    $('e-age').textContent = old ? '温湿度是 ' + span(ago) + '前的（传感器没在更新）' : '温湿度 ' + Math.round(ago) + ' 秒前';
+  } else {
+    big($('e-t'), '—'); big($('e-h'), '—');
+    $('e-age').textContent = '没有温湿度数据';
+  }
+  $('e-vib').textContent = v && typeof v.rms === 'number'
+      ? v.rms.toFixed(3) + ' g · 主频 ' + v.hz + ' Hz · ' + (v.rms >= 0.8 ? '过大' : v.rms >= 0.3 ? '偏大' : '正常') +
+        ((v.age || 0) + extra > 60 ? '（' + span((v.age || 0) + extra) + '前）' : '')
+      : '未接入';
+  $('e-cpu').textContent = 'CPU ' + (y.cpu >= 0 ? y.cpu + '%' : '—') + ' · 内存可用 ' + (y.mem >= 0 ? y.mem + '%' : '—');
+  $('e-disk').textContent = y.disk_mb >= 0
+      ? (y.disk_mb >= 1024 ? (y.disk_mb / 1024).toFixed(1) + ' GB' : y.disk_mb + ' MB') + '（' + y.disk + '%）' + (y.disk_mb < 200 ? ' · 快满了' : '')
+      : '—';
+  $('e-up').textContent = y.up >= 0 ? span(y.up + extra) : '—';
 }
 
 function onLink(what, arg) {

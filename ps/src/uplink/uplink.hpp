@@ -19,7 +19,9 @@
 //
 // With board.modbus_port set the state also carries "line" (run state, belt speed, alarm, recipe) and des_app's own
 // counters ("counts":"app"); without it the counts come from the feed ("counts":"feed", parts since this program
-// connected). Modbus requests use the monitor unit id (uplink/mb_client.hpp).
+// connected). Modbus requests use the monitor unit id (uplink/mb_client.hpp). Always: "sys" (board CPU / memory / SD
+// card / uptime) and, when des_app writes them, "env" (temperature / humidity) and "vib" (belt motor vibration), read
+// from files every 5 s (uplink/board_env.hpp).
 //
 // Wired link: the carrier of eth_if is part of the state. mode "always" publishes at the same rate whatever the
 // cable does; mode "backup" slows the state to idle_period_s while the cable is in and returns to the full rate the
@@ -33,6 +35,7 @@
 #include <string>
 #include <vector>
 
+#include "board_env.hpp"
 #include "board_link.hpp"
 #include "mb_client.hpp"
 #include "quectel.hpp"
@@ -49,6 +52,7 @@ struct UplinkConfig {
     std::string eth_if = "eth0";
     std::string board_host = "127.0.0.1";
     int feed_port = 9500;
+    std::string log_dir = "/root/des/data/log";   // des_app's storage.dir: env.csv / vib_*.csv; "" = no sensor readings
     unsigned vid = 0x2c7c;                  // USB vendor id of the module (移远)
     int usb_if = -1;                        // AT interface number, -1 = find it
     std::string tty;                        // use this serial device instead of usbfs (a kernel with the driver)
@@ -71,7 +75,7 @@ struct LineStatus {                         // from des_app's input registers
 };
 // cmds / nonce / last_seq go into the state while commands are on; last_seq lets a phone whose clock is behind (seq is
 // its clock in ms) still pick a larger seq after another phone sent one
-struct UplinkExtras { LineStatus line; std::vector<std::string> cmds; std::string nonce; long long last_seq = 0; };
+struct UplinkExtras { LineStatus line; std::vector<std::string> cmds; std::string nonce; long long last_seq = 0; BoardEnv env; };
 
 std::string uplink_state_json(const BoardSnapshot &b, const ModemInfo &m, int eth, double up_s, const UplinkStats &st,
                               const UplinkExtras *x = nullptr);
@@ -122,7 +126,8 @@ private:
     MbClient *mb_ = nullptr;
     bool mb_off_ = false;                           // des_app's map is too old: never ask again
     UplinkExtras x_;
-    double next_line_ = 0;
+    BoardEnvReader env_reader_;
+    double next_line_ = 0, next_env_ = 0;
     uint64_t line_seq_ = 0, sent_line_seq_ = ~0ull;
     long long last_cmd_seq_ = 0;
 };

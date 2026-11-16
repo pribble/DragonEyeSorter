@@ -9,8 +9,11 @@
 #include <mutex>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <thread>
+#include <time.h>
 #include <unistd.h>
+#include <utime.h>
 
 #include "can_proto.h"
 #include "json.hpp"
@@ -775,6 +778,54 @@ void test_line_controls()
     CHECK(steps(up, t, 2, 16, [&]() { return pubs_on("des/t4/meta").size() == 2; }), "meta again after a reconnect");
 }
 
+// temperature / humidity / vibration from des_app's files, board health from (fake) /proc
+void test_board_env()
+{
+    const std::string root = "/tmp/test_board_env_" + std::to_string(getpid());
+    auto put = [](const std::string &path, const std::string &text, long age_s) {
+        std::ofstream(path, std::ios::binary) << text;
+        if (age_s >= 0) { const time_t t = time(nullptr) - age_s; utimbuf u{t, t}; utime(path.c_str(), &u); }
+    };
+    for (const char *d : {"", "/log", "/log/d1", "/log/d2", "/log/d2/img", "/proc"}) mkdir((root + d).c_str(), 0755);
+    put(root + "/log/d1/env.csv", "wall_ms,temp_c,hum_rh\n1,30.0,40.0\n", 500);                  // an older session
+    put(root + "/log/d2/env.csv", "wall_ms,temp_c,hum_rh\n2,21.5,58.0\n3,21.9,59.8\n4,22", 12);  // newest; a row half written
+    put(root + "/log/d2/vib_19700101_000100.csv", "t_s,rate_hz,rms_x_g,rms_y_g,rms_z_g,rms_g,mean_z_g,peak_axis,peak_hz\n"
+                                                  "1,3155,0.01,0.02,0.03,0.041,-0.99,2,765\n", 3);
+    put(root + "/log/d2/vib_19700101_000000.csv", "t_s,rate_hz,rms_x_g,rms_y_g,rms_z_g,rms_g,mean_z_g,peak_axis,peak_hz\n"
+                                                  "1,3155,0,0,0,0.5,0,0,100\n", 900);
+    put(root + "/proc/stat", "cpu  100 0 100 800 0 0 0 0 0 0\ncpu0 1 2 3 4\n", -1);
+    put(root + "/proc/meminfo", "MemTotal:        1000 kB\nMemFree:          100 kB\nMemAvailable:     250 kB\n", -1);
+    put(root + "/proc/uptime", "123.45 99.00\n", -1);
+    BoardEnvReader rd(root + "/log", root + "/proc");
+    BoardEnv e = rd.read();
+    CHECK(e.env && e.temp_c == 21.9 && e.hum_rh == 59.8, "env: last complete row of the newest env.csv (%.1f / %.1f)", e.temp_c, e.hum_rh);
+    CHECK(e.env_age_s >= 11 && e.env_age_s <= 14, "env: age from the file time (%.0f s)", e.env_age_s);
+    CHECK(e.vib && e.vib_rms_g == 0.041 && e.vib_peak_hz == 765 && e.vib_age_s <= 5, "vib: newest vib_*.csv by time, columns by name");
+    CHECK(e.cpu_pct == -1 && e.mem_avail_pct == 25 && e.board_up_s == 123.45 && e.disk_free_mb > 0 && e.disk_free_pct >= 0,
+          "first read: memory / uptime / disk, CPU needs a second read");
+    put(root + "/proc/stat", "cpu  150 0 150 900 0 0 0 0 0 0\n", -1);
+    e = rd.read();
+    CHECK(e.cpu_pct == 50, "CPU busy between two reads: %d %%", e.cpu_pct);
+    std::string h, r;
+    put(root + "/log/d1/only_header.csv", "a,b\n", -1);
+    CHECK(!csv_last_row(root + "/log/d1/only_header.csv", h, r), "a file with only the header has no row");
+    std::string longrow(2000, '7');
+    put(root + "/log/d1/long.csv", "a\n1\n" + longrow + "\n", -1);
+    CHECK(csv_last_row(root + "/log/d1/long.csv", h, r) == false, "a last row longer than the window is not cut in half");
+    bool ok = false;
+    CHECK(csv_field("a,b,c", "1,x,3", "b", ok) == 0 && !ok && csv_field("a,b,c", "1,x,3", "c", ok) == 3 && ok, "csv_field");
+    BoardEnvReader none(root + "/nothing", root + "/proc");
+    e = none.read();
+    CHECK(!e.env && !e.vib && e.disk_free_mb < 0 && e.mem_avail_pct == 25, "no log folder: no sensor values, board health still there");
+    UplinkExtras x;
+    x.env = rd.read();
+    const nlohmann::json j = nlohmann::json::parse(uplink_state_json(BoardSnapshot(), ModemInfo(), 1, 1, UplinkStats(), &x));
+    CHECK(j["env"]["t"] == 21.9 && j["env"]["h"] == 59.8 && j["vib"]["rms"] == 0.041 && j["vib"]["hz"] == 765 && j["sys"]["mem"] == 25 &&
+              j["sys"]["up"] == 123 && j["sys"].contains("disk_mb"),
+          "state: env / vib / sys: %s", j.dump().c_str());
+    (void)!system(("rm -rf " + root).c_str());
+}
+
 void test_old_map()
 {
     FakeModem fm;
@@ -830,6 +881,7 @@ int main()
     test_mb_client();
     test_commands();
     test_line_controls();
+    test_board_env();
     test_old_map();
     return test_summary("test_uplink");
 }

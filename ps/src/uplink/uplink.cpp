@@ -51,6 +51,7 @@ std::string load_uplink_config(const std::string &path, UplinkConfig &c)
         opt(j, "idle_period_s", c.idle_period_s); opt(j, "mode", c.mode); opt(j, "eth_if", c.eth_if);
         if (const auto b = j.find("board"); b != j.end() && b->is_object()) {
             opt(*b, "host", c.board_host); opt(*b, "feed_port", c.feed_port); opt(*b, "modbus_port", c.modbus_port);
+            opt(*b, "log_dir", c.log_dir);
         }
         if (const auto m = j.find("modem"); m != j.end() && m->is_object()) {
             std::string vid;
@@ -125,6 +126,17 @@ std::string uplink_state_json(const BoardSnapshot &b, const ModemInfo &m, int et
         j["counts"] = "app";
     }
     if (x && !x->cmds.empty()) { j["cmds"] = x->cmds; j["nonce"] = x->nonce; j["seq"] = x->last_seq; }
+    if (x) {   // environment and board health (board_env.hpp); a field is left out while it is unknown
+        const BoardEnv &e = x->env;
+        if (e.env) j["env"] = {{"t", std::round(e.temp_c * 10) / 10}, {"h", std::round(e.hum_rh * 10) / 10}, {"age", std::llround(e.env_age_s)}};
+        if (e.vib) j["vib"] = {{"rms", std::round(e.vib_rms_g * 1000) / 1000}, {"hz", std::llround(e.vib_peak_hz)}, {"age", std::llround(e.vib_age_s)}};
+        json s = json::object();
+        if (e.cpu_pct >= 0) s["cpu"] = e.cpu_pct;
+        if (e.mem_avail_pct >= 0) s["mem"] = e.mem_avail_pct;
+        if (e.disk_free_mb >= 0) { s["disk_mb"] = std::llround(e.disk_free_mb); s["disk"] = e.disk_free_pct; }
+        if (e.board_up_s >= 0) s["up"] = std::llround(e.board_up_s);
+        if (!s.empty()) j["sys"] = s;
+    }
     return dump(j);
 }
 
@@ -159,7 +171,7 @@ std::string uplink_fit_order(const std::string &text, size_t max_bytes)
     return dump(json{{"id", j.value("id", 0)}, {"code", j.value("code", 0)}, {"level", j.value("level", 0)}});
 }
 
-Uplink::Uplink(const UplinkConfig &c, AtChan &at, BoardLink &board) : cfg_(c), at_(at), board_(board), q_(at)
+Uplink::Uplink(const UplinkConfig &c, AtChan &at, BoardLink &board) : cfg_(c), at_(at), board_(board), q_(at), env_reader_(c.log_dir)
 {
     eth = [this]() { return eth_carrier(cfg_.eth_if); };
     clock = mono;
@@ -250,6 +262,7 @@ void Uplink::up_pass(double now)
     }
     if (!link_down_) {
         poll_line(now);
+        if (now >= next_env_) { x_.env = env_reader_.read(); next_env_ = now + 5; }   // goes out with the next state
         if (!meta_sent_ && !x_.cmds.empty() && publish(cfg_.prefix + "/meta", uplink_meta_json(cfg_), true)) meta_sent_ = true;
     }
     if (!link_down_) {
