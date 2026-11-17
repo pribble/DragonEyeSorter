@@ -445,7 +445,21 @@ g4() {
     "$DES_HOME/des_4g_service.sh" status
     echo; tail -n 8 "$DES_DATA/des_4g.log" 2>/dev/null | cut -c1-140
     echo; echo "正常：日志里有 connected to ...、remote commands on。只重启 4G 时服务器可能拒绝约 30 秒（QMTOPEN result 2），会自己重连。"
-    ask "重启 4G 上报吗" && "$DES_HOME/des_4g_service.sh" restart
+    echo "一直 result 4 / CONNECT no answer / not registered：先用手机查这张卡有没有欠费、流量用完；缴费后选「重启模组」。"
+    printf '1 = 重启 4G 上报程序   2 = 重启 4G 模组（连不上时用，约 1 分钟）   其他 = 返回: '; read -r _g
+    case "$_g" in
+        1) "$DES_HOME/des_4g_service.sh" restart ;;
+        2)   # 11-18: the card ran out of credit; after paying, only a module reset brought the data connection back
+            "$DES_HOME/des_4g_service.sh" stop
+            sleep 2
+            "$DES_TOOLS/des_4g" at "AT+CFUN=1,1" 10 > /dev/null 2>&1
+            echo "模组重启中…"
+            sleep 5
+            _i=0
+            while [ $_i -lt 30 ] && ! "$DES_TOOLS/des_4g" at "AT" 2 2> /dev/null | grep -q '^OK'; do sleep 2; _i=$((_i + 1)); done
+            "$DES_HOME/des_4g_service.sh" start
+            echo "等约 30 秒后再进本菜单看日志里有没有 connected to" ;;
+    esac
 }
 
 boot_switch() {   # 换比特流：卡上留有命名副本 BOOT.bin.v17b2c / BOOT.bin.v16，复制一份成 BOOT.bin 再重启
