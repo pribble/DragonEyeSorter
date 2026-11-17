@@ -42,7 +42,7 @@ bool FeedParser::feed(const char *data, size_t n, std::vector<Frame> &out)
 {
     size_t off = 0;
     for (;;) {
-        if (skip_) {                                    // an image: count it down without keeping it
+        if (skip_) {                                    // an image not kept: count it down without storing it
             if (off >= n) break;
             const size_t k = n - off < skip_ ? n - off : skip_;
             off += k; skip_ -= k;
@@ -68,7 +68,10 @@ bool FeedParser::feed(const char *data, size_t n, std::vector<Frame> &out)
         } else if (stage_ == 1) {
             cur_.name = buf_;
             stage_ = 2;
-            if (cur_.type == 'I' || pay_len_ > kMaxPayload) { skip_ = pay_len_; if (!skip_) { out.push_back(cur_); stage_ = 0; } }
+            if ((cur_.type == 'I' && pay_len_ > keep_image_max) || pay_len_ > kMaxPayload) {
+                skip_ = pay_len_;
+                if (!skip_) { out.push_back(cur_); stage_ = 0; }
+            }
         } else {
             cur_.payload = buf_;
             out.push_back(cur_);
@@ -103,6 +106,34 @@ bool BoardLink::next_order(std::string &json)
     if (changes_.empty()) return false;
     json = changes_.front();
     changes_.pop_front();
+    return true;
+}
+
+double BoardLink::now() { return now_s(); }
+void BoardLink::set_parts(size_t keep, size_t image_max)
+{
+    std::lock_guard<std::mutex> lk(m_);
+    keep_parts_ = keep;
+    image_max_ = keep ? image_max : 0;
+}
+uint64_t BoardLink::parts_seq()
+{
+    std::lock_guard<std::mutex> lk(m_);
+    return parts_seq_;
+}
+std::vector<PartInfo> BoardLink::recent_parts(std::string &session)
+{
+    std::lock_guard<std::mutex> lk(m_);
+    session = s_.session;
+    return std::vector<PartInfo>(parts_.begin(), parts_.end());
+}
+bool BoardLink::next_image(std::string &name, std::string &jpeg)
+{
+    std::lock_guard<std::mutex> lk(m_);
+    if (images_.empty()) return false;
+    name = std::move(images_.front().first);
+    jpeg = std::move(images_.front().second);
+    images_.pop_front();
     return true;
 }
 
@@ -148,7 +179,7 @@ void BoardLink::on_frame(const FeedParser::Frame &f)
     last_rx_ = now_s();
     switch (f.type) {
     case 'H':   // a new des_app session: its CSV header; counts start over
-        if (s_.session != f.name) { s_.total = s_.ok = s_.ng = s_.recheck = 0; orders_.clear(); recount(); }
+        if (s_.session != f.name) { s_.total = s_.ok = s_.ng = s_.recheck = 0; orders_.clear(); recount(); parts_.clear(); }
         s_.session = f.name;
         cols_ = split(f.payload, ',');
         s_.seq++;
@@ -181,9 +212,27 @@ void BoardLink::on_frame(const FeedParser::Frame &f)
         else if (s_.last_disp == "recheck") s_.recheck++;
         else s_.ng++;
         s_.seq++;
+        if (keep_parts_) {
+            PartInfo p;
+            p.rx = last_rx_;
+            p.track = atoi(col("track").c_str());
+            p.label = s_.last_label; p.disp = s_.last_disp; p.dest = s_.last_dest; p.why = col("why"); p.image = col("image");
+            p.conf = s_.last_conf;
+            if (col("meas_valid") != "0") p.size_mm = s_.last_size_mm;   // older headers have no meas_valid: take size_mm
+            if (col("teeth_judged") == "1") { p.teeth = atoi(col("teeth").c_str()); p.missing = atoi(col("missing").c_str()); }
+            parts_.push_back(std::move(p));
+            while (parts_.size() > keep_parts_) parts_.pop_front();
+            parts_seq_++;
+        }
         break;
     }
-    default: break;   // 'S' statistics, 'I' image: only the time stamp above
+    case 'I':   // an NG crop, right before the record that names it (kept only when the parser kept its bytes)
+        if (image_max_ && !f.payload.empty() && f.payload.size() <= image_max_) {
+            images_.emplace_back(f.name, f.payload);
+            while (images_.size() > 2) images_.pop_front();   // 4G is slow: the newest pictures win
+        }
+        break;
+    default: break;   // 'S' statistics: only the time stamp above
     }
 }
 
@@ -201,6 +250,10 @@ void BoardLink::loop(std::string host, int port)
             continue;
         }
         parser.reset();
+        {
+            std::lock_guard<std::mutex> lk(m_);
+            parser.keep_image_max = image_max_;
+        }
         on_connect(true);
         std::vector<FeedParser::Frame> frames;
         char buf[8192];

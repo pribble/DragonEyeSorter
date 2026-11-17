@@ -22,6 +22,11 @@
     "modbus_port": 502,         // des_app 的 Modbus-TCP 口：读线体状态、执行远程命令；要求 des_app 映射版本 >= 0x0103，旧版填 0
     "log_dir": "/root/des/data/log"   // des_app 的 storage.dir：从这里读最新的 env.csv（温湿度）/ vib_*.csv（振动）；"" = 不读
   },
+  "parts": {                    // 看板「最近零件」：每判定一件发一次最近几件（保留消息），不良图分片发
+    "keep": 5,                  // 一条消息带最近几件（0..8；0 = 不发零件、也不发图）
+    "image_kb": 24,             // 不良图（des_app 的裁切图）不超过这么大才发；0 = 不发图。一张约 10 KB ≈ 11 片
+    "min_s": 1                  // 两条零件消息至少隔多少秒
+  },
   "commands": {
     "key": "",                  // 操作密钥（至少 8 个字符）；留空 = 不接受任何远程命令。手机看板里填同一个
     "allow": ["ack", "stop", "pause"],  // 允许的命令；可选 ack stop pause resume start reset speed recipe，默认不含会让线体动起来的

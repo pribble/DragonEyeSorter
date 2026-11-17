@@ -148,16 +148,29 @@ int mode_at(const UplinkConfig &c, const std::string &command, int timeout_s)
 int mode_feed(const UplinkConfig &c, int seconds)
 {
     BoardLink board;
+    board.set_parts(size_t(c.parts_keep), size_t(c.image_kb) * 1024);
     board.start(c.board_host, c.feed_port);
     ModemInfo none;
     UplinkStats st;
     BoardEnvReader env(c.log_dir);   // temperature / humidity / vibration files and board health, as "run" reports them
     UplinkExtras x;
+    uint64_t parts_seq = 0;
+    const double t0 = BoardLink::now();
     for (int i = 0; i < seconds && !g_quit; i++) {
         sleep(1);
         const BoardSnapshot b = board.snapshot();
         std::string wo;
         while (board.next_order(wo)) printf("wo    %s\n", uplink_fit_order(wo, 1400).c_str());
+        if (board.parts_seq() != parts_seq) {
+            parts_seq = board.parts_seq();
+            std::string ses;
+            const std::vector<PartInfo> v = board.recent_parts(ses);
+            const double now = BoardLink::now();
+            printf("parts %s\n", uplink_parts_json(ses, v, now - t0, now).c_str());
+        }
+        std::string name, jpeg;
+        while (board.next_image(name, jpeg))
+            printf("img   %s: %zu bytes -> %zu chunks\n", name.c_str(), jpeg.size(), uplink_image_chunks(name, jpeg).size());
         x.env = env.read();
         printf("state %s\n", uplink_state_json(b, none, eth_carrier(c.eth_if), i + 1, st, &x).c_str());
         fflush(stdout);
@@ -168,6 +181,7 @@ int mode_feed(const UplinkConfig &c, int seconds)
 int mode_run(const UplinkConfig &c, bool verbose)
 {
     BoardLink board;
+    board.set_parts(size_t(c.parts_keep), size_t(c.image_kb) * 1024);
     board.start(c.board_host, c.feed_port);
     std::unique_ptr<MbClient> mb;   // des_app's registers through the monitor unit (hw/modbus_tcp.hpp)
     if (c.modbus_port > 0) mb = std::make_unique<MbClient>(c.board_host, c.modbus_port, MB_UNIT_MONITOR);

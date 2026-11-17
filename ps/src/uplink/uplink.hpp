@@ -16,6 +16,13 @@
 //   <prefix>/reply   answers to cmd: {"id","cmd","ok"[,"err"][,"result"]}
 //   <prefix>/meta    retained, once per broker connection while commands are on: {"speeds":[mm/s...],
 //                    "recipes":[{"id","name"}...]} — the choices the dashboard offers (kept out of the 10 s state)
+//   <prefix>/parts   retained, when parts were decided (at most every parts_min_s): the last parts_keep parts,
+//                    {"ses","u","p":[{"k" track,"u","l" label,"c" conf,"d" disp,"o" dest,"m" OD mm,"z" teeth,
+//                    "x" missing teeth,"w" why,"i" image name}...]} oldest first; "u" = this program's up time (s) when
+//                    sent / when the part arrived, so a page can turn it into a clock time with the state's up_s
+//   <prefix>/img/<k> retained, chunk k of the newest NG crop (des_app's JPEG, at most image_kb):
+//                    {"f" image name,"k","n" chunks,"d" base64}; a few chunks per pass so commands are not held up
+//                    (11-17 user: the 4G dashboard lists every part and shows the NG pictures like the ops station)
 //
 // With board.modbus_port set the state also carries "line" (run state, belt speed, alarm, recipe) and des_app's own
 // counters ("counts":"app"); without it the counts come from the feed ("counts":"feed", parts since this program
@@ -61,10 +68,13 @@ struct UplinkConfig {
     std::vector<std::string> cmd_allow{"ack", "stop", "pause"};   // nothing that starts motion by default
     std::vector<double> speeds;             // belt speed presets, mm/s: the only values "speed" accepts (empty = any)
     std::vector<RecipeName> recipes;        // the recipes "recipe" accepts, named for the dashboard (empty = any id)
+    int parts_keep = 5;                     // <prefix>/parts: the last N parts (0 = no per-part list, no images)
+    int image_kb = 24;                      // <prefix>/img: NG crops up to this size (0 = no images)
+    double parts_min_s = 1;                 // at most one parts message per this many seconds
 };
 std::string load_uplink_config(const std::string &path, UplinkConfig &c);   // "" on success
 
-struct UplinkStats { uint64_t published = 0, failed = 0, reconnects = 0, orders = 0, commands = 0; };
+struct UplinkStats { uint64_t published = 0, failed = 0, reconnects = 0, orders = 0, commands = 0, images = 0; };
 
 struct LineStatus {                         // from des_app's input registers
     bool valid = false;
@@ -82,6 +92,12 @@ std::string uplink_state_json(const BoardSnapshot &b, const ModemInfo &m, int et
 std::string uplink_meta_json(const UplinkConfig &c);                       // <prefix>/meta: speeds / recipes on offer
 std::string uplink_cmd_text(const std::string &nonce, long long seq, const std::string &cmd, long long arg);   // what is signed
 std::string uplink_fit_order(const std::string &json, size_t max_bytes);   // drop the long fields until it fits
+// <prefix>/parts: up_now = this program's up time, board_now = BoardLink::now() (the clock of PartInfo::rx); the oldest
+// parts are dropped until it fits max_bytes
+std::string uplink_parts_json(const std::string &session, const std::vector<PartInfo> &parts, double up_now, double board_now,
+                              size_t max_bytes = 1400);
+std::vector<std::string> uplink_image_chunks(const std::string &name, const std::string &jpeg, size_t chunk = 960);
+std::string base64(const std::string &bytes);
 int eth_carrier(const std::string &ifname);                                 // 1 up, 0 down, -1 unknown
 
 class Uplink {
@@ -130,6 +146,10 @@ private:
     double next_line_ = 0, next_env_ = 0;
     uint64_t line_seq_ = 0, sent_line_seq_ = ~0ull;
     long long last_cmd_seq_ = 0;
+    uint64_t sent_parts_seq_ = 0;                   // BoardLink::parts_seq() of the last parts message
+    double last_parts_ = -1e9;
+    std::vector<std::string> img_;                  // the picture being sent, as chunk messages
+    size_t img_k_ = 0;                              // next chunk to send
 };
 
 }  // namespace des

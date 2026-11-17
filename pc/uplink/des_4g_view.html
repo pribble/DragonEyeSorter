@@ -11,6 +11,10 @@
   Belt speed presets and recipes come from the retained <prefix>/meta ({"speeds":[..],"recipes":[{"id","name"}]}).
   "环境与设备" shows the state's env (temperature / humidity), vib (belt motor vibration) and sys (board CPU / memory /
   SD card / uptime) when the board sends them.
+  "最近零件" (like the wired ops station's list): <prefix>/parts, retained, the board's last parts {"ses","u","p":[{"k"
+  track,"u","l","c","d","o","m","z","x","w","i"}]}, and <prefix>/img/<k>, retained chunks {"f","k","n","d" base64} of the
+  newest NG crop; a picture shows once all its chunks are in. "u" is the board program's up time, turned into a clock
+  time with the state's up_s.
   Settings (broker WebSocket URL, topic prefix) are kept in this browser only; they can also come in the address
   after '#':  des_4g_view.html#b=wss://broker.example:8084/mqtt&p=des/your-prefix[&k=<command key>]
   (k fills the key and is then removed from the address bar: a "control" QR code carries it, the public one does not).
@@ -102,6 +106,23 @@ details summary { cursor: pointer; color: var(--ink2); font-size: 13px; }
 .big small { font-size: 16px; font-weight: 500; color: var(--ink2); margin-left: 2px; }
 .big.warn { color: var(--serious); } .big.crit { color: var(--crit); }
 .tag { font-size: 12px; border: 1px solid var(--axis); border-radius: 6px; padding: 1px 6px; color: var(--ink2); margin-left: 6px; font-weight: 400; }
+ul.parts { list-style: none; margin: 0; padding: 0; }
+ul.parts li { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--grid); }
+ul.parts li:first-child { border-top: 0; padding-top: 0; }
+ul.parts li.empty { display: block; }
+.thumb { width: 56px; height: 56px; border-radius: 8px; border: 1px solid var(--ring); background: var(--grid); padding: 0; overflow: hidden;
+         display: grid; place-items: center; color: var(--muted); font-size: 12px; text-align: center; line-height: 1.2; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb.good { color: var(--good); font-size: 22px; font-weight: 700; }
+button.thumb { cursor: zoom-in; }
+.p-head { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.p-head b { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.p-head time { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#zoom { position: fixed; inset: 0; z-index: 10; display: none; place-items: center; padding: 16px; background: rgba(0, 0, 0, .72); }
+#zoom.on { display: grid; }
+#zoom figure { margin: 0; width: min(100%, 420px); background: var(--surface); border-radius: 12px; padding: 12px; }
+#zoom img { width: 100%; display: block; border-radius: 8px; background: #000; }
+#zoom figcaption { font-size: 13px; color: var(--ink2); margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -138,6 +159,11 @@ details summary { cursor: pointer; color: var(--ink2); font-size: 13px; }
     <dl class="rows" style="margin-top:14px">
       <dt>最近一件</dt><dd id="k-last">—</dd>
     </dl>
+  </section>
+
+  <section class="card wide">
+    <h2>最近零件<span id="parts-sum">不良品带裁切图，点图放大</span></h2>
+    <ul class="parts" id="parts"><li class="empty">还没有收到零件。每判定一件，板子发一次最近 5 件；不良品的裁切图随后分片传来，约几秒一张。</li></ul>
   </section>
 
   <section class="card">
@@ -196,6 +222,7 @@ details summary { cursor: pointer; color: var(--ink2); font-size: 13px; }
     </details>
   </section>
 </main>
+<div id="zoom" role="dialog" aria-modal="true" aria-label="零件裁切图"><figure><img alt=""><figcaption></figcaption></figure></div>
 
 <script>
 'use strict';
@@ -379,6 +406,7 @@ function onState(text, retained) {
   }
   state = j; stateAt = Date.now();
   render();
+  if (!retained && parts.length) renderParts();   // the clock times of the parts come from the live state
 }
 
 function onOrder(text) {
@@ -555,7 +583,8 @@ function render() {
     $('n-dbm').textContent = known ? n.dbm + ' dBm' : '';
     const t = s.tx || {};
     $('n-tx').innerHTML = '';
-    $('n-tx').append('成功 ' + nf.format(t.ok || 0) + ' 条' + (t.fail ? '，失败 ' + nf.format(t.fail) + ' 条' : '') + (t.conn > 1 ? '，重连过 ' + (t.conn - 1) + ' 次' : ''));
+    $('n-tx').append('成功 ' + nf.format(t.ok || 0) + ' 条' + (t.img ? '（含图片 ' + nf.format(t.img) + ' 张）' : '') +
+        (t.fail ? '，失败 ' + nf.format(t.fail) + ' 条' : '') + (t.conn > 1 ? '，重连过 ' + (t.conn - 1) + ' 次' : ''));
     $('wo-sum').textContent = s.wo ? '活动 ' + (s.wo.active || 0) + ' · 待确认 ' + (s.wo.unacked || 0) : '';
     renderEnv(s, live && age ? age : 0);
   }
@@ -591,6 +620,117 @@ function renderEnv(s, extra) {
   $('e-up').textContent = y.up >= 0 ? span(y.up + extra) : '—';
 }
 
+// ---------------------------------------------------------------- recent parts and NG pictures
+const parts = [], partKeys = new Map();     // newest last, at most 40; key = session/track
+const pics = new Map(), picWait = new Map(); // image name -> object URL; image name -> {n, got, d[], at} while chunks arrive
+const WHY = { 'low confidence': '置信度低，送复检', 'no class': '没有分类结果', 'merged blob': '两件粘在一起', 'class without rule': '类别没有处置规则',
+              'out of reach': '机械臂够不着', 'missed pick line': '错过抓取线', 'cannot stop in time': '来不及停带', 'crowded': '旁边太挤，夹爪放不下',
+              'too wide': '太宽，夹不住', 'pick failed': '没夹住', 'gate conflict': '与挡板动作冲突', 'gate too late': '挡板来不及合上',
+              'beyond gate reach': '挡板够不着', 'not measured': '没测到尺寸', 'off-axis: model only': '离相机轴远，只按模型判',
+              'off-axis: teeth not judged': '离相机轴远，齿数没判', 'lost in view': '画面里跟丢了', 'too few frames': '看到的帧太少',
+              'gripper did not answer (grasp unknown)': '夹爪没应答' };
+function whyText(p) {
+  const w = p.w || '';
+  if (!w || w === p.l || w === 'picked') return '';
+  let m;
+  if ((m = /^spec: (\d+) teeth/.exec(w))) return '齿数不符（' + m[1] + ' 齿）';
+  if ((m = /^OD ([\d.]+)/.exec(w))) return '外径超差（' + m[1] + ' mm）';
+  if ((m = /^bore ([\d.]+)/.exec(w))) return '孔径超差（' + m[1] + ' mm）';
+  if ((m = /^ecc ([\d.]+)/.exec(w))) return '偏心超差（' + m[1] + ' mm）';
+  if ((m = /^measured: short (\d+) missing (\d+) flash (\d+)/.exec(w))) return '实测缺料 ' + m[1] + ' · 缺齿 ' + m[2] + ' · 飞边 ' + m[3] + '，送复检';
+  return WHY[w] || w;
+}
+// the board program's up time u (s) as this phone's clock: needs a live state (its up_s and when it came in)
+function partClock(p) {
+  if (live && state && typeof state.up_s === 'number' && typeof p.u === 'number') {
+    const t = stateAt - (state.up_s - p.u) * 1000;
+    if (t <= Date.now() + 5000 && Date.now() - t < 12 * 3600e3) return t;
+  }
+  return p.t0;                                // from the message itself when it came in live, else null
+}
+function onParts(text, retained) {
+  let j; try { j = JSON.parse(text); } catch (e) { return; }
+  if (!j || !Array.isArray(j.p)) return;
+  const now = Date.now();
+  for (const p of j.p) {
+    if (!p || typeof p.k !== 'number') continue;
+    const key = j.ses + '/' + p.k;
+    if (partKeys.has(key)) continue;
+    const e = Object.assign({}, p, { key, got: now, t0: !retained && typeof p.u === 'number' && typeof j.u === 'number' ? now - (j.u - p.u) * 1000 : null });
+    parts.push(e); partKeys.set(key, e);
+  }
+  while (parts.length > 40) partKeys.delete(parts.shift().key);
+  renderParts();
+}
+function onPic(text) {
+  let j; try { j = JSON.parse(text); } catch (e) { return; }
+  if (!j || typeof j.f !== 'string' || typeof j.d !== 'string' || !(j.n > 0 && j.n <= 64) || !(j.k >= 0 && j.k < j.n) || pics.has(j.f)) return;
+  let w = picWait.get(j.f);
+  if (!w || w.n !== j.n) { w = { n: j.n, got: 0, d: new Array(j.n), at: Date.now() }; picWait.set(j.f, w); }
+  if (w.d[j.k] === undefined) { w.d[j.k] = j.d; w.got++; }
+  if (w.got < w.n) return;
+  picWait.delete(j.f);
+  try {
+    const bin = atob(w.d.join('')), bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    pics.set(j.f, URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' })));
+  } catch (e) { return; }
+  while (pics.size > 40) { const [k, u] = pics.entries().next().value; URL.revokeObjectURL(u); pics.delete(k); }
+  renderParts();
+}
+function zoom(p) {
+  const z = $('zoom');
+  z.querySelector('img').src = pics.get(p.i);
+  z.querySelector('img').alt = (LABELS[p.l] || p.l) + ' #' + p.k;
+  z.querySelector('figcaption').textContent = '#' + p.k + ' ' + (LABELS[p.l] || p.l || '?') + ' · 置信度 ' + Math.round((p.c || 0) * 100) + '%' +
+      (p.m ? ' · 外径 ' + p.m.toFixed(2) + ' mm' : '') + (whyText(p) ? ' · ' + whyText(p) : '') + '　（点任意处关闭）';
+  z.classList.add('on');
+}
+$('zoom').onclick = () => $('zoom').classList.remove('on');
+document.addEventListener('keydown', e => { if (e.key === 'Escape') $('zoom').classList.remove('on'); });
+function renderParts() {
+  const ul = $('parts');
+  const now = Date.now();
+  for (const [f, w] of picWait) if (now - w.at > 120000) picWait.delete(f);   // a picture that never completed
+  if (!parts.length) {
+    ul.innerHTML = '<li class="empty">还没有收到零件。每判定一件，板子发一次最近 5 件；不良品的裁切图随后分片传来，约几秒一张。</li>';
+    $('parts-sum').textContent = '不良品带裁切图，点图放大';
+    return;
+  }
+  ul.textContent = '';
+  for (const p of parts.slice(-20).reverse()) {
+    const kind = p.d === 'pick' ? 'good' : p.d === 'recheck' ? 'warn' : 'crit';
+    const li = document.createElement('li');
+    let th;
+    if (p.i && pics.has(p.i)) {
+      th = document.createElement('button'); th.className = 'thumb'; th.setAttribute('aria-label', '放大 #' + p.k + ' 的图片');
+      const im = new Image(); im.src = pics.get(p.i); im.alt = ''; th.append(im); th.onclick = () => zoom(p);
+    } else {
+      th = document.createElement('div'); th.className = 'thumb' + (p.i ? '' : kind === 'good' ? ' good' : '');
+      // a part from before this page opened only has a picture if it is the newest one (retained); leftover chunks of
+      // older pictures stay on the server, so "in transit" is only shown for parts that came in live
+      const w = p.i && p.t0 !== null ? picWait.get(p.i) : null;
+      th.textContent = p.i ? (w ? '传输中 ' + Math.round(w.got / w.n * 100) + '%' : now - p.got < (p.t0 !== null ? 60000 : 5000) ? '等图…' : '无图')
+                           : kind === 'good' ? '✓' : '无图';
+    }
+    const body = document.createElement('div'); body.style.minWidth = '0';
+    const head = document.createElement('div'); head.className = 'p-head';
+    const c = document.createElement('span'); c.className = 'chip ' + kind;
+    const ci = document.createElement('i'); ci.textContent = kind === 'good' ? '✓' : kind === 'warn' ? '?' : '×';
+    const ct = document.createElement('span'); ct.textContent = LABELS[p.l] || p.l || '?'; c.append(ci, ct);
+    const b = document.createElement('b'); b.textContent = '#' + p.k;
+    const tm = document.createElement('time'); const t = partClock(p); tm.textContent = t ? hhmmss(t) : '打开本页前';
+    head.append(c, b, tm);
+    const sub = document.createElement('div'); sub.className = 'sub';
+    sub.textContent = [(DISP[p.d] || p.d || '?') + (p.o ? ' → ' + (DEST[p.o] || p.o) : ''), '置信度 ' + Math.round((p.c || 0) * 100) + '%',
+                       p.m ? '外径 ' + p.m.toFixed(2) + ' mm' : '', p.z ? p.z + ' 齿' + (p.x ? '（缺 ' + p.x + '）' : '') : '', whyText(p)].filter(Boolean).join(' · ');
+    body.append(head, sub);
+    li.append(th, body); ul.append(li);
+  }
+  const ng = parts.filter(p => p.d !== 'pick').length;
+  $('parts-sum').textContent = Math.min(parts.length, 20) + ' 件 · 不良/复检 ' + ng + ' · 图 ' + pics.size + ' 张';
+}
+
 function onLink(what, arg) {
   const el = $('conn');
   if (what === 'open') { chip(el, 'good', '✓', '已连服务器'); event('本页已连上 MQTT 服务器'); }
@@ -621,12 +761,15 @@ function onMessage(topic, text, retained) {
   else if (sub === 'state') onState(text, retained);
   else if (sub === 'wo') onOrder(text);
   else if (sub === 'reply') onReply(text);
+  else if (sub === 'parts') onParts(text, retained);
+  else if (sub.startsWith('img/')) onPic(text);
 }
 
 function start() {
   if (mq) mq.close();
   mq = null; state = null; stateAt = 0; live = false; online = null; meta = null; cmdShown = ''; lastTotal = null; orders.clear(); minutes.length = 0;
-  renderOrders();
+  parts.length = 0; partKeys.clear(); picWait.clear(); for (const u of pics.values()) URL.revokeObjectURL(u); pics.clear();
+  renderOrders(); renderParts();
   if (cfg.b && cfg.p) mq = new MqttWs(cfg.b, cfg.p + '/#', onMessage, onLink);
   else { chip($('conn'), '', '?', '未设置'); $('setup').open = true; }
   render();
@@ -721,6 +864,7 @@ $('spark').addEventListener('pointermove', sparkTip);
 $('spark').addEventListener('pointerdown', sparkTip);
 $('spark').addEventListener('pointerleave', () => { $('tip').style.display = 'none'; });
 setInterval(render, 1000);
+setInterval(renderParts, 5000);              // "等图…" -> "无图", times once a live state is in
 loadCfg();
 start();
 </script>

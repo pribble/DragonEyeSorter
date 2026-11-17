@@ -2,6 +2,7 @@
 #include "uplink.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
@@ -58,6 +59,9 @@ std::string load_uplink_config(const std::string &path, UplinkConfig &c)
             opt(*m, "vid", vid); opt(*m, "usb_if", c.usb_if); opt(*m, "tty", c.tty);
             if (!vid.empty()) c.vid = unsigned(strtoul(vid.c_str(), nullptr, 16));
         }
+        if (const auto m = j.find("parts"); m != j.end() && m->is_object()) {
+            opt(*m, "keep", c.parts_keep); opt(*m, "image_kb", c.image_kb); opt(*m, "min_s", c.parts_min_s);
+        }
         if (const auto m = j.find("commands"); m != j.end() && m->is_object()) {
             opt(*m, "key", c.cmd_key); opt(*m, "allow", c.cmd_allow); opt(*m, "speeds", c.speeds);
             if (const auto r = m->find("recipes"); r != m->end() && r->is_array())
@@ -93,7 +97,57 @@ std::string load_uplink_config(const std::string &path, UplinkConfig &c)
         if (r.id < 1 || r.id > 65535) return path + ": commands.recipes needs {\"id\": 1..65535, \"name\": ...}";
         if (r.name.empty() || r.name.size() > 48) return path + ": commands.recipes: name must be 1..48 bytes";
     }
+    if (c.parts_keep < 0 || c.parts_keep > 8) return path + ": parts.keep must be 0..8 (one message of at most 1400 bytes)";
+    if (c.image_kb < 0 || c.image_kb > 64) return path + ": parts.image_kb must be 0..64";
+    if (!(c.parts_min_s >= 0.2 && c.parts_min_s <= 60)) return path + ": parts.min_s must be 0.2..60";
     return "";
+}
+
+std::string base64(const std::string &bytes)
+{
+    static const char t[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out;
+    out.reserve((bytes.size() + 2) / 3 * 4);
+    for (size_t i = 0; i < bytes.size(); i += 3) {
+        const uint32_t a = uint8_t(bytes[i]), b = i + 1 < bytes.size() ? uint8_t(bytes[i + 1]) : 0,
+                       c = i + 2 < bytes.size() ? uint8_t(bytes[i + 2]) : 0, v = a << 16 | b << 8 | c;
+        out += t[v >> 18 & 63];
+        out += t[v >> 12 & 63];
+        out += i + 1 < bytes.size() ? t[v >> 6 & 63] : '=';
+        out += i + 2 < bytes.size() ? t[v & 63] : '=';
+    }
+    return out;
+}
+
+std::string uplink_parts_json(const std::string &session, const std::vector<PartInfo> &parts, double up_now, double board_now,
+                              size_t max_bytes)
+{
+    auto r1 = [](double v, double k) { return std::round(v * k) / k; };
+    json a = json::array();
+    for (const PartInfo &p : parts) {
+        json e = {{"k", p.track}, {"u", r1(up_now - (board_now - p.rx), 10)}, {"l", p.label}, {"c", r1(p.conf, 1000)}, {"d", p.disp},
+                  {"o", p.dest}};
+        if (p.size_mm > 0) e["m"] = r1(p.size_mm, 100);
+        if (p.teeth > 0) { e["z"] = p.teeth; if (p.missing > 0) e["x"] = p.missing; }
+        if (!p.why.empty()) e["w"] = p.why.substr(0, 40);
+        if (!p.image.empty()) e["i"] = p.image;
+        a.push_back(e);
+    }
+    for (;;) {
+        const std::string s = dump(json{{"ses", session}, {"u", r1(up_now, 10)}, {"p", a}});
+        if (s.size() <= max_bytes || a.empty()) return s;
+        a.erase(a.begin());   // the oldest goes first
+    }
+}
+
+std::vector<std::string> uplink_image_chunks(const std::string &name, const std::string &jpeg, size_t chunk)
+{
+    std::vector<std::string> out;
+    if (jpeg.empty() || chunk == 0) return out;
+    const size_t n = (jpeg.size() + chunk - 1) / chunk;
+    for (size_t k = 0; k < n; k++)
+        out.push_back(dump(json{{"f", name}, {"k", k}, {"n", n}, {"d", base64(jpeg.substr(k * chunk, chunk))}}));
+    return out;
 }
 
 int eth_carrier(const std::string &ifname)
@@ -113,7 +167,7 @@ std::string uplink_state_json(const BoardSnapshot &b, const ModemInfo &m, int et
                       {"title", b.wo_top_title}}},
               {"eth", eth},
               {"net", {{"csq", m.csq}, {"dbm", m.dbm()}, {"oper", m.oper}, {"act", m.act}}},
-              {"tx", {{"ok", st.published}, {"fail", st.failed}, {"conn", st.reconnects}}}};
+              {"tx", {{"ok", st.published}, {"fail", st.failed}, {"conn", st.reconnects}, {"img", st.images}}}};
     if (b.total)
         j["last"] = {{"label", b.last_label}, {"disp", b.last_disp}, {"dest", b.last_dest},
                      {"conf", std::round(b.last_conf * 1000) / 1000}, {"size_mm", std::round(b.last_size_mm * 100) / 100}};
@@ -282,6 +336,29 @@ void Uplink::up_pass(double now)
                 sent_eth_ = e;
                 sent_line_seq_ = ls;
             }
+        }
+    }
+    // the last parts, one retained message whenever parts were decided (a page opened later still sees them)
+    if (!link_down_ && cfg_.parts_keep > 0) {
+        const uint64_t ps = board_.parts_seq();
+        if (ps != sent_parts_seq_ && now - last_parts_ >= cfg_.parts_min_s) {
+            last_parts_ = now;
+            std::string ses;
+            const std::vector<PartInfo> v = board_.recent_parts(ses);
+            if (publish(cfg_.prefix + "/parts", uplink_parts_json(ses, v, now - t0_, BoardLink::now()), true)) sent_parts_seq_ = ps;
+        }
+    }
+    // NG pictures: two chunks per pass, so a command or the state waits at most two publishes
+    if (!link_down_ && cfg_.parts_keep > 0 && cfg_.image_kb > 0) {
+        if (img_k_ >= img_.size()) {
+            std::string name, jpeg;
+            img_.clear();
+            img_k_ = 0;
+            if (board_.next_image(name, jpeg)) img_ = uplink_image_chunks(name, jpeg);
+        }
+        for (int i = 0; i < 2 && img_k_ < img_.size() && !link_down_; i++) {
+            if (!publish(cfg_.prefix + "/img/" + std::to_string(img_k_), img_[img_k_], true)) break;
+            if (++img_k_ == img_.size()) st_.images++;
         }
     }
     if (link_down_) {

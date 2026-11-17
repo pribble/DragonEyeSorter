@@ -2,8 +2,10 @@
 // The fake module sits on the other end of a socketpair and speaks the 移远 AT dialect the uplink uses (replies,
 // "> " data prompt, results that arrive later as unsolicited lines). Also: USB descriptor parsing, the feed parser,
 // work-order bookkeeping, payload limits, the config loader.
+#include <algorithm>
 #include <arpa/inet.h>
 #include <atomic>
+#include <cmath>
 #include <cstring>
 #include <fstream>
 #include <mutex>
@@ -864,6 +866,146 @@ void test_old_map()
     CHECK(r.is_object() && r["ok"] == false && r["err"] == "command not enabled" && app.writes().empty(), "old map: commands stay off");
 }
 
+// 11-17 user: the 4G dashboard lists every part and shows the NG pictures, like the wired ops station
+void test_parts()
+{
+    // the parser keeps image bytes only when asked, up to a size
+    const std::string img(3000, '\xD8');
+    const std::string stream = frame('H', "s1", k_hdr) + frame('I', "img/a.jpg", img) + frame('I', "img/big.jpg", std::string(9000, 'x'));
+    FeedParser fp;
+    fp.keep_image_max = 5000;
+    std::vector<FeedParser::Frame> out;
+    for (size_t o = 0; o < stream.size(); o += 777) fp.feed(stream.data() + o, std::min<size_t>(777, stream.size() - o), out);
+    CHECK(out.size() == 3 && out[1].payload == img && out[2].type == 'I' && out[2].payload.empty(),
+          "parser: small image kept (%zu bytes), large one skipped", out.size() > 1 ? out[1].payload.size() : 0);
+
+    // BoardLink keeps the last parts and the newest pictures
+    const char *hdr = "wall_ms,t_s,track,cls,label,conf,disp,dest,why,meas_valid,size_mm,teeth,missing,teeth_judged,image";
+    BoardLink b;
+    b.set_parts(3, 5000);
+    b.on_connect(true);
+    b.on_frame(fr('H', "s1", hdr));
+    b.on_frame(fr('R', "", "1,0.1,5,0,gear_ok,0.991,pick,gear_box,,1,31.98,30,0,1,"));
+    b.on_frame(fr('I', "img/s1_6_gear_short_h.jpg", img));
+    b.on_frame(fr('R', "", "2,0.2,6,2,gear_short_h,0.874,flap,scrap,,1,31.40,29,1,1,img/s1_6_gear_short_h.jpg"));
+    b.on_frame(fr('R', "", "3,0.3,7,0,gear_ok,0.55,recheck,recheck,low conf,0,0,0,0,0,"));
+    b.on_frame(fr('R', "", "4,0.4,8,0,gear_ok,0.97,pick,gear_box,,1,32.01,30,0,0,"));
+    std::string ses;
+    std::vector<PartInfo> v = b.recent_parts(ses);
+    CHECK(ses == "s1" && v.size() == 3 && v[0].track == 6 && v[2].track == 8 && b.parts_seq() == 4, "last 3 parts kept, oldest first");
+    if (v.size() == 3) {
+        CHECK(v[0].label == "gear_short_h" && v[0].disp == "flap" && v[0].dest == "scrap" && v[0].teeth == 29 && v[0].missing == 1 &&
+                  std::fabs(v[0].size_mm - 31.40) < 1e-6 && v[0].image == "img/s1_6_gear_short_h.jpg", "NG part: fields and image name");
+        CHECK(v[1].size_mm == 0 && v[1].why == "low conf" && v[1].teeth == 0, "not measured: no size, no teeth; why kept");
+        CHECK(v[2].teeth == 0, "teeth not judged: no tooth count");
+    }
+    std::string name, jpeg;
+    CHECK(b.next_image(name, jpeg) && name == "img/s1_6_gear_short_h.jpg" && jpeg == img && !b.next_image(name, jpeg), "one picture queued");
+    for (int i = 0; i < 4; i++) b.on_frame(fr('I', "img/n" + std::to_string(i) + ".jpg", img));
+    CHECK(b.next_image(name, jpeg) && name == "img/n2.jpg" && b.next_image(name, jpeg) && name == "img/n3.jpg" && !b.next_image(name, jpeg),
+          "at most 2 pictures wait: the newest win");
+    b.on_frame(fr('H', "s2", hdr));
+    CHECK(b.recent_parts(ses).empty() && ses == "s2", "new session: the list starts over");
+    BoardLink off;
+    off.on_frame(fr('H', "s1", hdr));
+    off.on_frame(fr('I', "img/x.jpg", img));
+    off.on_frame(fr('R', "", "1,0.1,5,0,gear_ok,0.991,pick,gear_box,,1,31.98,30,0,1,"));
+    CHECK(off.parts_seq() == 0 && off.recent_parts(ses).empty() && !off.next_image(name, jpeg), "without set_parts: nothing kept");
+
+    // messages
+    CHECK(base64("") == "" && base64("f") == "Zg==" && base64("fo") == "Zm8=" && base64("foo") == "Zm9v" && base64("foobar") == "Zm9vYmFy",
+          "base64 test vectors");
+    const std::vector<std::string> ch = uplink_image_chunks("img/s1_6_gear_short_h.jpg", img);
+    std::string joined;
+    bool fits = true, meta_ok = true;
+    for (size_t k = 0; k < ch.size(); k++) {
+        const nlohmann::json j = nlohmann::json::parse(ch[k], nullptr, false);
+        fits &= ch[k].size() <= 1500;
+        meta_ok &= j.is_object() && j["f"] == "img/s1_6_gear_short_h.jpg" && j["k"] == k && j["n"] == ch.size();
+        if (j.is_object()) joined += j["d"].get<std::string>();
+    }
+    CHECK(ch.size() == 4 && fits && meta_ok && joined == base64(img), "3000 bytes -> 4 chunks of <= 1500 bytes that join back");
+    const std::vector<std::string> big = uplink_image_chunks("img/" + std::string(60, 'n') + ".jpg", std::string(24 * 1024, '\x01'));
+    CHECK(std::all_of(big.begin(), big.end(), [](const std::string &s) { return s.size() <= 1500; }), "24 KB, long name: every chunk fits");
+    std::vector<PartInfo> many(8);
+    for (size_t i = 0; i < many.size(); i++) {
+        many[i].track = int(100 + i); many[i].rx = 50 + i; many[i].label = "gear_short_h"; many[i].disp = "flap"; many[i].dest = "scrap";
+        many[i].why = std::string(80, 'w'); many[i].image = "img/20261117-101500_" + std::to_string(100 + i) + "_gear_short_h.jpg";
+        many[i].conf = 0.8766; many[i].size_mm = 31.456; many[i].teeth = 29; many[i].missing = 1;
+    }
+    const std::string pj = uplink_parts_json("20261117-101500", many, 1000, 60);
+    const nlohmann::json p = nlohmann::json::parse(pj, nullptr, false);
+    CHECK(pj.size() <= 1400 && p.is_object() && p["p"].size() >= 4 && p["p"].back()["k"] == 107, "8 long parts: trimmed to fit, newest kept (%zu bytes, %zu parts)",
+          pj.size(), p.is_object() ? p["p"].size() : 0);
+    if (p.is_object() && !p["p"].empty()) {
+        const nlohmann::json &e = p["p"].back();
+        CHECK(e["u"] == 997.0 && e["c"] == 0.877 && e["m"] == 31.46 && e["z"] == 29 && e["x"] == 1 && e["w"].get<std::string>().size() == 40 &&
+                  p["u"] == 1000.0 && p["ses"] == "20261117-101500",
+              "part fields: arrival up time, rounding, why cut to 40");
+    }
+
+    // over the fake module: parts and picture chunks are retained, a command is answered between chunks
+    FakeModem fm;
+    FdPort port(fm.host_fd());
+    AtChan at(port);
+    BoardLink board;
+    board.set_parts(5, 24 * 1024);
+    board.on_connect(true);
+    board.on_frame(fr('H', "s1", hdr));
+    UplinkConfig c;
+    c.mqtt.host = "broker.example"; c.prefix = "des/t5";
+    Uplink up(c, at, board);
+    double t = 100;
+    up.clock = [&]() { return t; };
+    up.eth = []() { return 1; };
+    CHECK(steps(up, t, 10, 14, [&]() { return up.phase() == Uplink::Phase::Up; }), "parts: reaches Up");
+    auto topic_count = [&](const std::string &pre) { int n = 0; for (auto &q : fm.pubs()) n += q.topic.compare(0, pre.size(), pre) == 0; return n; };
+    CHECK(topic_count("des/t5/parts") == 0 && topic_count("des/t5/img/") == 0, "parts: nothing before the first part");
+    const std::string big_img(5000, '\x7F');   // 6 chunks: three passes
+    board.on_frame(fr('I', "img/s1_6_gear_short_h.jpg", big_img));
+    board.on_frame(fr('R', "", "2,0.2,6,2,gear_short_h,0.874,flap,scrap,,1,31.40,29,1,1,img/s1_6_gear_short_h.jpg"));
+    CHECK(steps(up, t, 0.5, 4, [&]() { return topic_count("des/t5/img/") >= 2; }), "parts: first chunks go out");
+    fm.inject("+QMTRECV: 0,0,\"des/t5/cmd\",21,\"{\"cmd\":\"ping\",\"id\":9}\"");
+    CHECK(steps(up, t, 0.5, 12, [&]() { return topic_count("des/t5/img/") == 6 && topic_count("des/t5/reply") == 1; }), "parts: all 6 chunks and the reply");
+    const auto pubs = fm.pubs();
+    int reply_at = -1, last_chunk_at = -1, parts_at = -1;
+    std::string got;
+    bool retained = true;
+    for (size_t i = 0; i < pubs.size(); i++) {
+        if (pubs[i].topic == "des/t5/reply") reply_at = int(i);
+        if (pubs[i].topic == "des/t5/parts") { parts_at = int(i); retained &= pubs[i].retain; }
+        if (pubs[i].topic.compare(0, 11, "des/t5/img/") == 0) {
+            last_chunk_at = int(i);
+            retained &= pubs[i].retain;
+            const nlohmann::json j = nlohmann::json::parse(pubs[i].payload, nullptr, false);
+            if (j.is_object() && pubs[i].topic == "des/t5/img/" + std::to_string(j["k"].get<int>())) got += j["d"].get<std::string>();
+        }
+    }
+    CHECK(retained && got == base64(big_img), "parts: retained, chunk k on img/<k>, the picture joins back");
+    CHECK(parts_at >= 0 && parts_at < last_chunk_at && reply_at < last_chunk_at, "parts: the list first, the ping answered between chunks (%d / %d / %d)",
+          parts_at, reply_at, last_chunk_at);
+    if (parts_at >= 0) {
+        const nlohmann::json j = nlohmann::json::parse(pubs[size_t(parts_at)].payload, nullptr, false);
+        CHECK(j.is_object() && j["ses"] == "s1" && j["p"].size() == 1 && j["p"][0]["k"] == 6 && j["p"][0]["i"] == "img/s1_6_gear_short_h.jpg",
+              "parts: the list names the picture");
+    }
+    steps(up, t, 0.5, 4, []() { return false; });
+    CHECK(topic_count("des/t5/parts") == 1 && topic_count("des/t5/img/") == 6, "parts: nothing new, nothing sent again");
+    UplinkConfig cc;
+    const char *path = "/tmp/test_uplink_parts.json";
+    auto load = [&](const std::string &body) {
+        FILE *f = fopen(path, "w");
+        if (f) { fputs(("{\"mqtt\":{\"host\":\"h\"},\"topic_prefix\":\"des/x\"" + body + "}").c_str(), f); fclose(f); }
+        cc = UplinkConfig();
+        return load_uplink_config(path, cc);
+    };
+    CHECK(load("").empty() && cc.parts_keep == 5 && cc.image_kb == 24, "config: parts on by default (5 parts, 24 KB pictures)");
+    CHECK(load(",\"parts\":{\"keep\":0}").empty() && cc.parts_keep == 0, "config: parts off");
+    CHECK(!load(",\"parts\":{\"keep\":9}").empty() && !load(",\"parts\":{\"image_kb\":65}").empty() && !load(",\"parts\":{\"min_s\":0}").empty(),
+          "config: out-of-range parts settings refused");
+    unlink(path);
+}
+
 }  // namespace
 
 int main()
@@ -883,5 +1025,6 @@ int main()
     test_line_controls();
     test_board_env();
     test_old_map();
+    test_parts();
     return test_summary("test_uplink");
 }
