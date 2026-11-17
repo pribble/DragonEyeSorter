@@ -307,7 +307,39 @@ calib_arm() {
     paused _ca
     echo; grep -E "^== arm base" "$TMP"
     echo "判据：residual rms 越小越好（上次 3.15 mm，能用）；> 5 mm 说明某个点碰歪了，重做或菜单 19 恢复。"
-    echo "做完过 3 件良品看夹取位置。"
+    # 抓取线 = 视野下游边 + pick_after_fov_mm，原来正好在底座前面：底座沿皮带挪了多少，抓取线跟着挪多少
+    _ox=$(base_x "$_d/calib.json"); _nx=$(base_x "$CAL")
+    _paf=$(grep -o '"pick_after_fov_mm": *[0-9.]*' "$CFG" | grep -o '[0-9.]*$')
+    if [ -n "$_ox" ] && [ -n "$_nx" ] && [ -n "$_paf" ]; then
+        _np=$(awk -v p="$_paf" -v o="$_ox" -v n="$_nx" 'BEGIN { printf "%.1f", p + (n - o) }')
+        echo; echo "底座沿皮带：$(fmt "$_ox" 1) → $(fmt "$_nx" 1) mm；抓取线跟着挪：pick_after_fov_mm $_paf → $_np"
+        if ask "把抓取线改成 $_np 吗（底座挪动 < 2 mm 可以不改）"; then
+            sed -i "s/\"pick_after_fov_mm\": *[0-9.]*/\"pick_after_fov_mm\": $_np/" "$CFG"
+            grep -o '"pick_after_fov_mm": *[0-9.]*' "$CFG" | sed 's/^/已写入 /'
+        fi
+    fi
+    echo "接着：菜单 27 查可达范围 → 菜单 21 重启主程序 → 过 3 件良品看夹取位置。"
+}
+
+base_x() { tr -d '\n\t ' < "$1" 2>/dev/null | grep -o '"arm":{[^}]*}' | grep -o '"base_xy":\[[-0-9.eE+]*' | cut -d[ -f2; }
+
+reach_check() {   # 沿抓取线逐个 y 只规划、不动，看哪些位置抓得到
+    _paf=$(grep -o '"pick_after_fov_mm": *[0-9.]*' "$CFG" | grep -o '[0-9.]*$')
+    _f1=$(jsec "$CAL" tracker fov_x1)
+    _px=$(awk -v a="$_f1" -v b="$_paf" 'BEGIN { printf "%.1f", a + b }')
+    echo "抓取线 x = $_px mm（视野下游边 $(fmt "$_f1" 1) + $_paf）。皮带横向逐个位置只规划、不动："
+    _rc() {
+        for _y in -70 -60 -50 -40 -30 -20 -10 0 10 20 30 40 50 60 68 75 80; do
+            _o=$("$TOOL" arm pick "$_px" "$_y" 2>&1 | grep -E "plan_pick|DRY RUN" | head -1)
+            case "$_o" in
+                *DRY*) printf '  y %4s  可以\n' "$_y";;
+                *)     printf '  y %4s  不行：%s\n' "$_y" "$(echo "$_o" | sed 's/plan_pick: //' | cut -c1-70)";;
+            esac
+        done
+    }
+    paused _rc
+    echo "现配置的可抓范围 reach_y0 ~ reach_y1 = $(grep -o '"reach_y0": *-*[0-9.]*' "$CFG" | grep -o '[-0-9.]*$') ~ $(grep -o '"reach_y1": *-*[0-9.]*' "$CFG" | grep -o '[-0-9.]*$') mm"
+    echo "要在上面「可以」的范围里；超出的话菜单 23 改 reach_y0 / reach_y1（各留 5 mm 余量），菜单 21 重启生效。"
 }
 
 torque_menu() {
@@ -446,6 +478,7 @@ selftest() {
     grep -q '"open_us": 1490, *"closed_us": 1110' "$CFG"; _ok $? "改挡板脉宽"
     config_ok > /dev/null; _ok $? "改挡板后配置能读"
     echo '{"bad json' > "$CFG"; config_ok > /dev/null 2>&1; [ $? != 0 ]; _ok $? "坏配置能被发现"
+    [ -n "$(base_x "$CAL")" ] && [ -n "$(jsec "$CAL" tracker fov_x1)" ]; _ok $? "读底座 x $(base_x "$CAL" | cut -c1-6)、视野下游边 $(jsec "$CAL" tracker fov_x1 | cut -c1-6)"
     [ -n "$(jtop "$CAL" mm_per_px)" ] && [ -n "$(jsec "$CAL" beam x_mm)" ] && [ -n "$(jsec "$CAL" belt mm_per_step)" ]
     _ok $? "读标定值：mm/px $(jtop "$CAL" mm_per_px | cut -c1-8)、光束 x $(jsec "$CAL" beam x_mm | cut -c1-6)、皮带 $(jsec "$CAL" belt mm_per_step | cut -c1-8)"
     rm -rf "$_t"
@@ -473,6 +506,7 @@ menu() {
                            22 立即备份       23 改配置（vi）
  服务                      21 重启主程序     24 4G 状态 / 重启
                            25 安全关机       26 切换比特流（v17b2c / v16）
+ 机械臂挪位后              27 可达范围检查（只规划，不动）
  q 退出
 ======================================================
 EOF
@@ -489,6 +523,7 @@ while :; do
        17) home_teach;;   18) flap_try;;     19) restore_menu;; 20) golden;;
        21) restart_app;;  22) printf '备份名（直接回车 = manual）: '; read -r _bn; backup "${_bn:-manual}";;
        23) edit_cfg;;     24) g4;;           25) safe_off;;     26) boot_switch;;
+       27) reach_check;;
         q|Q) exit 0;;
         *) continue;;
     esac

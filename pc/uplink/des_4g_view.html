@@ -335,6 +335,7 @@ function span(n) { n = Math.max(0, Math.round(n)); const h = Math.floor(n / 3600
 let cfg = { b: '', p: '' }, mq = null, state = null, stateAt = 0, live = false, online = null, meta = null;
 let lastTotal = null, lastSession = null, lastCounts = null;
 const sent = new Map();                    // command id -> label, waiting for the board's reply
+const waiters = new Map();                 // command id -> resolve(reply) for the demo-reset sequence
 let cmdSeq = 0, cmdShown = '';
 const minutes = [];                        // [{m: minute index, n: parts}] newest last, at most 12
 const orders = new Map(), events = [], pings = new Map(), rtts = [];
@@ -400,6 +401,8 @@ function onReply(text) {
                   'des_app: value out of range': '数值超出范围', 'no answer from des_app': '主程序没有回应' };
     $('cmd-out').textContent = hhmmss(Date.now()) + ' 「' + label + '」' + (j.ok ? '已执行' : '被拒绝：' + (why[j.err] || j.err || '未知原因'));
     event('远程命令「' + label + '」' + (j.ok ? '已执行' : '被拒绝'));
+    const w = waiters.get(j.id);
+    if (w) { waiters.delete(j.id); w(j); }
     return;
   }
   const t0 = pings.get(j && j.id);
@@ -499,7 +502,8 @@ function render() {
     cmdShown = shown;
     const box = $('cmd-btns'); box.textContent = '';
     const running = ln.state === 1;
-    if (plain.length) box.append(ctlRow('线体', plain.map(c => ({ text: CMDS[c][0], click: () => sendCmd(c, CMDS[c][1], CMDS[c][0], CMDS[c][2]) }))));
+    if (plain.length) box.append(ctlRow('线体', plain.map(c => ({ text: CMDS[c][0], click: () => sendCmd(c, CMDS[c][1], CMDS[c][0], CMDS[c][2]) }))
+        .concat(cmds.includes('ack') ? [{ text: '演示前复位', click: demoReset }] : [])));
     if (speeds.length) {
       const row = ctlRow('处理零件时的带速（mm/s）', speeds.map(v => ({ text: String(v), on: Math.abs((ln.set || 0) - v) < 0.05,
           click: () => sendCmd('speed', Math.round(v * 10), '带速 ' + v + ' mm/s', '把处理零件时的带速设为 ' + v + ' mm/s？空闲时主程序仍会自动提速。') })));
@@ -650,19 +654,61 @@ $('f-save').onclick = () => {
   $('setup').open = !(cfg.b && cfg.p);
   start();
 };
-function sendCmd(c, arg, label, ask) {
+function canSend() {                      // the key, or null (and a message) when nothing can be sent now
   const key = $('c-key').value.trim();
-  if (!key) { $('cmd-out').textContent = '先填操作密钥。'; return; }
-  if (!state || !state.nonce || !mq || !mq.up) { $('cmd-out').textContent = '板子不在线，发不出去。'; return; }
-  if (!confirm(ask)) return;
+  if (!key) { $('cmd-out').textContent = '先填操作密钥。'; return null; }
+  if (!state || !state.nonce || !mq || !mq.up) { $('cmd-out').textContent = '板子不在线，发不出去。'; return null; }
+  return key;
+}
+function publishCmd(key, c, arg, label) {  // sign and send one command; returns its id
   try { localStorage.setItem('des_4g_view_key', key); } catch (e) {}
   // seq: this phone's clock in ms, but always past what the board last accepted (another phone may run ahead)
   const id = ++pingId, seq = cmdSeq = Math.max(Date.now(), cmdSeq + 1, (Number(state.seq) || 0) + 1);
   const sig = hmacHex(key, state.nonce + '|' + seq + '|' + c + '|' + arg);
   mq.publish(cfg.p + '/cmd', JSON.stringify({ cmd: c, arg, id, seq, sig }));
   sent.set(id, label);
-  $('cmd-out').textContent = '「' + label + '」已发出，等板子回答…';
   setTimeout(() => { if (sent.delete(id)) $('cmd-out').textContent = '「' + label + '」10 秒内没有回答。'; }, 10000);
+  return id;
+}
+function sendCmd(c, arg, label, ask) {
+  const key = canSend();
+  if (!key || !confirm(ask)) return;
+  publishCmd(key, c, arg, label);
+  $('cmd-out').textContent = '「' + label + '」已发出，等板子回答…';
+}
+function sendAndWait(key, c, arg, label) {  // resolves with the board's reply, or null after 10 s
+  return new Promise(resolve => {
+    const id = publishCmd(key, c, arg, label);
+    waiters.set(id, resolve);
+    setTimeout(() => { if (waiters.delete(id)) resolve(null); }, 10000);
+  });
+}
+// 演示前复位: stop (if running / paused), acknowledge every work order, first recipe, belt speed 50 — skipping what is
+// already so; one command at a time, each after the board answered the previous one; stops at the first refusal
+async function demoReset() {
+  const key = canSend();
+  if (!key) return;
+  const ln = state.line || {}, cmds = state.cmds || [];
+  const r0 = meta && Array.isArray(meta.recipes) && meta.recipes.length ? meta.recipes[0] : null;
+  const steps = [];
+  if (cmds.includes('stop') && (ln.state === 1 || ln.state === 2)) steps.push(['stop', 0, '停止线体']);
+  steps.push(['ack', 65535, '确认全部工单']);
+  if (r0 && cmds.includes('recipe') && ln.recipe !== r0.id) steps.push(['recipe', r0.id, '配方切回「' + r0.name + '」']);
+  if (cmds.includes('speed') && meta && Array.isArray(meta.speeds) && meta.speeds.includes(50) && Math.abs((ln.set || 0) - 50) >= 0.05)
+    steps.push(['speed', 500, '带速回 50 mm/s']);
+  if (!confirm('演示前复位：' + steps.map(s => s[2]).join('、') + '？')) return;
+  for (let i = 0; i < steps.length; i++) {
+    const [c, arg, label] = steps[i];
+    $('cmd-out').textContent = '演示前复位 ' + (i + 1) + ' / ' + steps.length + '：' + label + ' …';
+    const r = await sendAndWait(key, c, arg, label);
+    if (!r || !r.ok) {
+      $('cmd-out').textContent = '演示前复位停在第 ' + (i + 1) + ' 步「' + label + '」：' + (r ? (r.err || '被拒绝') : '10 秒内没有回答');
+      return;
+    }
+    if (c === 'stop' || c === 'recipe') await new Promise(res => setTimeout(res, 1500));   // let the line settle first
+  }
+  $('cmd-out').textContent = hhmmss(Date.now()) + ' 演示前复位完成：' + steps.map(s => s[2]).join('、');
+  event('演示前复位完成');
 }
 $('ping').onclick = () => {
   const id = ++pingId;
