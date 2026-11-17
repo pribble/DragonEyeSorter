@@ -34,7 +34,9 @@ module stepper_ctrl #(
     wire want_down = stopping || overshoot || (mode && (dist[31] || dist <= accel_steps));
     reg signed [49:0] scl = 0;                                   // cur_inc * vscale, one clock late
     always @(posedge clk) scl <= $signed({1'b0, cur_inc}) * vscale;
-    wire signed [34:0] inc_s = $signed({3'b000, cur_inc}) + scl[49:16];
+    // a part-select is unsigned even of a signed vector: without $signed the sum went unsigned and any negative
+    // correction gave inc_eff = 0, i.e. no steps (11-18, first PI test on the belt; tb_stepper_vscale)
+    wire signed [34:0] inc_s = $signed({3'b000, cur_inc}) + $signed(scl[49:16]);
     wire [31:0] inc_eff = inc_s[34] ? 32'd0 : |inc_s[33:32] ? 32'hFFFF_FFFF : inc_s[31:0];
     wire [32:0] phase_next = {1'b0, phase} + {1'b0, inc_eff};
     wire step_now = moving && (setup_cnt == 0) && phase_next[32] && !(mode && !dist[31] && dist == 32'd0);

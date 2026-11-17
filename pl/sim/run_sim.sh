@@ -16,6 +16,9 @@ case "${1:-des_axi}" in
   stepper)
     iverilog -g2005 -o "$T/sim" tb_stepper_ctrl.v $D/stepper_ctrl.v
     ;;
+  vscale)   # stepper rate under des_bpi's signed correction (11-18: negative corrections stopped the steps)
+    iverilog -g2005 -o "$T/sim" tb_stepper_vscale.v $D/stepper_ctrl.v
+    ;;
   io)
     iverilog -g2005 -I"$D" -o "$T/sim" tb_des_io.v $D/des_io.v
     ;;
