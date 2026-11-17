@@ -164,7 +164,7 @@ REMOTE
 # 新增板端脚本要么进 manifest.tsv（产品件），要么加进这一行（测试件），否则刷新时会被清掉。
 # 用**全量**清单（$tmpd/raw）而不是 --only 过滤后的，免得不带参数的过滤把暂存刷成残缺的一份。
 # 平铺是因为"哪个文件去哪"在清单与 MD5SUMS.txt 里已经写清楚了，再按板端目录分层只是多层嵌套。
-manual_files="pl_check.sh soak.sh display_check.sh des_tool.sh"
+manual_files="pl_check.sh soak.sh display_check.sh des_tool.sh field.sh"
 stage_payload() {
     dup=$(awk -F'\t' '{n=$1; sub(/.*\//,"",n); print n}' "$tmpd/raw" | sort | uniq -d)
     [ -z "$dup" ] || { echo "manifest 里重名文件，平铺暂存会互相覆盖：$dup" >&2; exit 1; }

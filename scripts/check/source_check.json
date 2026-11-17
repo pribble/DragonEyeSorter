@@ -34,6 +34,7 @@
       { "file": "pl_check.sh", "reason": "换比特流回归脚本，手动上板" },
       { "file": "soak.sh", "reason": "长跑测试脚本，手动上板" },
       { "file": "display_check.sh", "reason": "显示对照实验脚本，手动上板" },
+      { "file": "field.sh", "reason": "决赛现场调试菜单，手动上板（见 manifest.tsv 末尾）" },
       { "file": "MD5SUMS.txt", "reason": "部署件校验台账，随 out/ 一起维护" }
     ]
   }

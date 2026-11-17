@@ -74,7 +74,7 @@
     {
       "name": "板端当前版本",
       "regex": "板端当前\\s*v(\\d+)",
-      "expect": "16",
+      "expect": "17",
       "excludeGlobs": [ "docs/log/**" ]
     }
   ]

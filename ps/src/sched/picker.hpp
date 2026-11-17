@@ -288,6 +288,11 @@ struct SpeedAdaptConfig {
     // through the camera view, where measuring / classifying does not depend on the speed. Back to the base speed as
     // soon as a part is decided: the pick stop and the gate drop points are tuned at it. 0 = off.
     double fast_mm_s = 0;
+    // An OK part on its way to the pick line holds the base speed only once it is this close to the line (11-17 user:
+    // with the pick line moved downstream the belt crawled ~300 mm at the base speed after each decision). The stop
+    // itself still runs at the base speed; NG parts due at a gate still hold it from their decision on. 0 = from the
+    // decision on (the old behaviour).
+    double pick_lead_mm = 0;
 };
 enum class AdaptMode : uint8_t { Base, Fast, Slow };
 // base: operator / PLC speed; dist_mm: next pickable part to the pick line (< 0 = none ahead); arm_ready_s: seconds
@@ -311,6 +316,8 @@ inline double adapt_speed(const SpeedAdaptConfig &c, double base, double dist_mm
 }
 // Nothing past the decision line needs the belt at its set speed: no OK part on its way to or at the pick line, no
 // NG part due at a gate (approaching, or held against the closed paddle), no gate closed or moving (a sweep pushing a
-// part off). Parts riding to the belt end (recheck) and parts still in the camera view do not count.
-bool belt_quiet(const Tracker &tr, const std::vector<FlapEvent> &flaps, double belt_mm, const FlapSequencer::State &gates);
+// part off). Parts riding to the belt end (recheck) and parts still in the camera view do not count. pick_lead_mm > 0:
+// an OK part counts only once it is within that distance of pick_x (SpeedAdaptConfig::pick_lead_mm).
+bool belt_quiet(const Tracker &tr, const std::vector<FlapEvent> &flaps, double belt_mm, const FlapSequencer::State &gates,
+                double pick_x = 0, double pick_lead_mm = 0);
 }  // namespace des

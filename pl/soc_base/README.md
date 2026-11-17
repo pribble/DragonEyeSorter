@@ -2,7 +2,7 @@
 
 厂家 NPU demo `soc_prj` 底板 + 我们的全部改动；**仓库里这一份即可直接编译**：TD 6.2.1 打开 `soc_prj.al` → 综合 / 布局布线 → `soc_prj.bit`。来源：米联客 / 安路 NPU 演示套件 `demo.zip → demo/soc_prj/`（2025-12 版）；TD 统一 6.2.1（与厂家比特流同版本，原样重编逐位一致已验证），其他版本打开会提示格式升级。
 
-**板端当前 v16（最新）**：`des_485`（RS485 Modbus-RTU）+ 帧起始锁存编码器（`CAP_ENC0/1`），全量重编上板（`BOOT.bin` `71f41a20…`，比特流 `f0f63c91…`；`pl_check.sh` 0 失败；寄存器 `VERSION` 16；回退点 tag `v15-board-20261024`）。自研各域时序 0 违例，TMDS 视觉待复核 ⚠。逐版改动、候选构建与验证明细见下「板端版本台账」与 [docs/log/](../../docs/log/README.md)；各模块上板状态见 [docs/PL设计.md](../../docs/PL设计.md)。当前构建方式为**单进程**（`read_design`→`bitgen`）+ `timing.sdc` 2 条 `set_clock_groups -asynchronous`，最近一次全流程 59m16s 收敛、Routed 0 违例（余量很薄 ⚠，见 [测试与验证](../../docs/测试与验证.md)「阶段验证」；根因与修复明细见 [log/2026-10-28-PL第六轮构建收敛](../../docs/log/2026-10-28-PL第六轮构建收敛.md)）。
+**v16（卡上退路 `BOOT.bin.v16`；板上现跑 v17b2c，见 [PL设计](../../docs/PL设计.md)）**：`des_485`（RS485 Modbus-RTU）+ 帧起始锁存编码器（`CAP_ENC0/1`），全量重编上板（`BOOT.bin` `71f41a20…`，比特流 `f0f63c91…`；`pl_check.sh` 0 失败；寄存器 `VERSION` 16；回退点 tag `v15-board-20261024`）。自研各域时序 0 违例，TMDS 视觉待复核 ⚠。逐版改动、候选构建与验证明细见下「板端版本台账」与 [docs/log/](../../docs/log/README.md)；各模块上板状态见 [docs/PL设计.md](../../docs/PL设计.md)。当前构建方式为**单进程**（`read_design`→`bitgen`）+ `timing.sdc` 2 条 `set_clock_groups -asynchronous`，最近一次全流程 59m16s 收敛、Routed 0 违例（余量很薄 ⚠，见 [测试与验证](../../docs/测试与验证.md)「阶段验证」；根因与修复明细见 [log/2026-10-28-PL第六轮构建收敛](../../docs/log/2026-10-28-PL第六轮构建收敛.md)）。
 
 ## 板端版本台账
 

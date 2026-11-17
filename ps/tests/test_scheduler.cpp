@@ -419,8 +419,17 @@ static void test_belt_quiet()
         CHECK(undecided_quiet, "class %d: a part still in view (undecided) does not count", cls);
         CHECK(t && t->state == TrackState::Decided, "class %d: decided past decide_x (state %d)", cls,
               t ? int(t->state) : -1);
-        if (cls == 0) CHECK(!belt_quiet(tr, none, 290, gs), "OK part decided for the arm: not quiet");
-        else CHECK(belt_quiet(tr, none, 290, gs), "NG part decided, no gate event: quiet");
+        if (cls == 0) {
+            CHECK(!belt_quiet(tr, none, 290, gs), "OK part decided for the arm: not quiet");
+            // pick_lead_mm (11-17): an OK part counts only within the lead of the pick line
+            const double x = t ? t->x_at(290) : 0, d = 120;   // pick line 120 mm ahead of the part
+            CHECK(!belt_quiet(tr, none, 290, gs, x + d, 0), "lead 0: OK part counts from its decision (old behaviour)");
+            CHECK(belt_quiet(tr, none, 290, gs, x + d, 60), "lead 60, part 120 mm before the pick line: quiet");
+            CHECK(!belt_quiet(tr, none, 290, gs, x + d, 150), "lead 150, part 120 mm before the pick line: not quiet");
+            CHECK(!belt_quiet(tr, none, 290, gs, x - 2, 60), "part at / just past the pick line: not quiet");
+        } else {
+            CHECK(belt_quiet(tr, none, 290, gs), "NG part decided, no gate event: quiet");
+        }
     }
 }
 

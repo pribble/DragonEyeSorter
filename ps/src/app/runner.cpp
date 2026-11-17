@@ -132,8 +132,11 @@ std::string Runner::start()
                 warn = "  <- WARNING: too fast for the gates (parts decided at that speed reach a gate too late)";
         }
         printf("[run] belt adapt: slower (>= %.0f mm/s) while the arm is busy and the next OK part is on its way; %s%s\n",
-               ad.min_mm_s, ad.fast_mm_s > 0 ? fmt("%.0f mm/s while nothing past the decision line is handled",
-                                                   ad.fast_mm_s).c_str() : "no fast mode", warn.c_str());
+               ad.min_mm_s, ad.fast_mm_s > 0 ? fmt("%.0f mm/s while nothing past the decision line is handled%s",
+                                                   ad.fast_mm_s, ad.pick_lead_mm > 0 ? fmt(" (OK parts count from "
+                                                   "%.0f mm before the pick line x %.0f)", ad.pick_lead_mm,
+                                                   double(cfg_.picker.pick_x)).c_str() : "").c_str()
+                                              : "no fast mode", warn.c_str());
     }
     if (cfg_.picker.inner_on())
         printf("[run] arm: round parts at y >= %.0f are picked with the wrist at %.0f deg (turned above the part), "
@@ -442,7 +445,8 @@ void Runner::cycle(Tracker &tr, Picker &pk)
         if (cfg_.belt.adapt.enabled) {
             const double base = speed_mm_s_ > 0 ? speed_mm_s_ : cfg_.belt.run_speed; const double eta = arm_eta_.load();
             const bool quiet = cfg_.belt.adapt.fast_mm_s > 0 && !arm_busy_ && arm_clear_ &&
-                               belt_quiet(tr, out.flaps, in.belt_mm, flaps_.state());
+                               belt_quiet(tr, out.flaps, in.belt_mm, flaps_.state(), pk.config().pick_x,
+                                          cfg_.belt.adapt.pick_lead_mm);
             AdaptMode mode = AdaptMode::Base;
             const double v = adapt_speed(cfg_.belt.adapt, base, nearest_pick, arm_busy_ && eta > now ? eta - now : 0,
                                          quiet, &mode);

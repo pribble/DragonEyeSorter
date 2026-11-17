@@ -87,9 +87,12 @@ std::string load_config(const std::string &path, AppConfig &cfg)
                                      belt.enable_settle_ms)) {
             if (const json *ad = ji::sec(*c, "adapt")) {   // belt speed adaptation (picker.hpp adapt_speed)
                 ji::gets(*ad, "enabled", belt.adapt.enabled, "min_mm_s", belt.adapt.min_mm_s, "change_frac",
-                         belt.adapt.change_frac, "fast_mm_s", belt.adapt.fast_mm_s);
+                         belt.adapt.change_frac, "fast_mm_s", belt.adapt.fast_mm_s, "pick_lead_mm",
+                         belt.adapt.pick_lead_mm);
                 if (belt.adapt.fast_mm_s < 0 || belt.adapt.fast_mm_s > 200)
                     return path + ": belt.adapt.fast_mm_s 0..200 (0 = no fast mode)";
+                if (belt.adapt.pick_lead_mm < 0 || belt.adapt.pick_lead_mm > 1000)
+                    return path + ": belt.adapt.pick_lead_mm 0..1000 (0 = base speed from the decision on)";
             }
             if (const json *p = ji::sec(*c, "pid")) {   // optional PS-side speed PI (speed_pid.hpp)
                 ji::gets(*p, "enabled", belt.pid.enabled, "kp", belt.pid.kp, "ki", belt.pid.ki,

@@ -11,14 +11,14 @@
 
   "belt": { "mm_per_step": 0.0207, "dir": -1, "run_speed": 50, "accel": 400,
             "release_idle": true, "release_after_ms": 300, "enable_settle_ms": 50,
-            "adapt": { "enabled": true, "min_mm_s": 15, "change_frac": 0.05, "fast_mm_s": 80 },
+            "adapt": { "enabled": true, "min_mm_s": 15, "change_frac": 0.05, "fast_mm_s": 80, "pick_lead_mm": 60 },
             "pid": { "enabled": false, "kp": 0.5, "ki": 0.05, "period_ms": 100, "trim_mm_s": 3.0, "deadband_mm_s": 5.0 } },
 
   "tracker": { "fov_x0": 0, "fov_x1": 300, "edge_margin": 10, "decide_x": 195, "tail_x": 709.4,
                "gate_s": 12, "gate_y": 12, "min_hits": 3, "max_miss_new": 2, "max_miss": 8,
                "min_conf": 0.5, "pick_unclassified": false, "unclassified_bin": 0 },
 
-  "picker": { "pick_after_fov_mm": 59.4, "pick_x": 380, "pick_tol": 3, "reach_y0": -50, "reach_y1": 68, "inner_y": 40, "brake_margin": 5,
+  "picker": { "pick_after_fov_mm": 132.0, "pick_x": 380, "pick_tol": 3, "reach_y0": -50, "reach_y1": 68, "inner_y": 40, "brake_margin": 5,
               "finger_w": 12, "finger_t": 6, "grip_clear": 4, "max_open": 60, "round_ratio": 1.3,
               "neighbor_gap": 2, "keep_wrist": true,
               "flying": { "enabled": false, "r0": 50, "r1": 150, "axis_deg": 90, "ready_s": 1.6, "window_mm": 40,
@@ -56,7 +56,7 @@
     "z_safe": 30, "z_grasp": -2, "joint_speed": 220, "yaw_speed": 190,
     "min_ms": 150, "descend_ms": 400, "close_ms": 300, "open_ms": 250,
     "home_deg": [0, 91, -91, -90, 90],
-    "bins_deg": [[113.2, 9.0, -38.0, -62.7, 89.8]]
+    "bins_deg": [[87.6, 45.1, -84.9, -51.4, 6.7]]
   },
 
   "flaps": { "enabled": true, "move_ms": 300, "stagger_ms": 120, "margin_mm": 10,
