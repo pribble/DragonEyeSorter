@@ -58,7 +58,8 @@ fmt() { awk -v v="$1" -v d="$2" 'BEGIN { if (v == "") print "—"; else printf "
 
 config_ok() {   # 配置能不能被程序读进来（离线算一次逆解，不碰硬件、不用停主程序）
     "$DES_TOOLS/des_tool" -c "$CFG" ik 380 0 > /tmp/field_cfg.txt 2>&1 && return 0
-    grep -qiE "json|parse|config|cannot open|syntax" /tmp/field_cfg.txt && { cat /tmp/field_cfg.txt; return 1; }
+    # 「config: ... from ...」是正常的加载提示；配置读坏了会打印解析错误并「using defaults」
+    grep -qiE "json\.exception|parse error|using defaults|cannot open" /tmp/field_cfg.txt && { cat /tmp/field_cfg.txt; return 1; }
     return 0   # 只是这个点算不出来，配置本身没问题
 }
 
@@ -262,7 +263,8 @@ bin_teach() {
     set_bin_pose "$_i" "$_pose" || { echo "** 写入失败，配置没改"; return; }
     grep -o '"bins_deg": *\[\[.*\]\]' "$CFG" | sed 's/^/已写入 /'
     echo; echo "检查这个姿态能不能用（只规划、不动）："
-    _chk() { "$TOOL" arm pick 380 0 keep "$_i" 2>&1 | tail -n 4; }
+    _px=$(awk -v a="$(jsec "$CAL" tracker fov_x1)" -v b="$(grep -o '"pick_after_fov_mm": *[0-9.]*' "$CFG" | grep -o '[0-9.]*$')" 'BEGIN { printf "%.1f", a + b }')
+    _chk() { echo "（抓取线上 ($_px, 0) 抓一件、放进料盒 $_i）"; "$TOOL" arm pick "$_px" 0 keep "$_i" 2>&1 | tail -n 4; }
     paused _chk
     echo; echo "判据：上面没有 plan_pick 报错（报「not pointing down」「cannot rise」= 夹爪没朝下 / 太低，重教或菜单 19 恢复）。"
     echo "之后：菜单 21 重启主程序，过一件良品看是不是落进盒子中心。"
@@ -293,14 +295,18 @@ home_teach() {
 calib_arm() {
     echo "手眼标定（相机挪过、机械臂底座挪过、过件时夹偏 > 3 mm 才做）。约 15 分钟，全程交互："
     echo "  标记物：一个 10~20 mm 的平片或齿轮（厚 10.05 mm 就填 10.05）"
-    echo "  每个点：程序让相机定位标记 → 皮带把它带到机械臂处（--carry 100）→ 你手掰夹爪尖碰标记中心 → 回车"
+    echo "  每个点：程序让相机定位标记 → 皮带把它往下游带一段到机械臂跟前 → 你手掰夹爪尖碰标记中心 → 回车"
     echo "  点要散开（远 / 近 / 左 / 右），共 5 点"
     printf '标记物厚度 mm（直接回车 = 10.05）: '; read -r _h; _h=${_h:-10.05}
+    echo "皮带带多远：≈ 底座沿皮带的位置 − 标记物在画面里的位置（标记放画面下游半段时，底座在 x≈428 填 100，x≈473 填 135）"
+    printf '带多远 mm（直接回车 = 100）: '; read -r _cy; _cy=${_cy:-100}
+    printf '几个点（直接回车 = 5，至少 3）: '; read -r _np; _np=${_np:-5}
+    case "$_cy$_np" in *[!0-9]*) echo "要填整数"; return;; esac
     torque_warn
     ask "开始吗" || return
     backup calib-arm
     _ca() {
-        "$TOOL" calib-arm -n 5 --marker-h "$_h" --carry 100 2>&1 | tee "$TMP"
+        "$TOOL" calib-arm -n "$_np" --marker-h "$_h" --carry "$_cy" 2>&1 | tee "$TMP"
         echo; printf '标定结束，力矩还是关的。手托住机械臂，按回车上力矩'; read -r _
         "$TOOL" arm torque-on
     }
