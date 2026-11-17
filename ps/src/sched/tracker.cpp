@@ -169,7 +169,10 @@ void Tracker::update(const FrameObs &obs)
         if (t.state == TrackState::New && t.misses > cfg_.max_miss_new) {
             t.state = TrackState::Done; t.set_why("noise"); stats.noise++; ++rev_;
         } else if (t.state != TrackState::New && t.misses > cfg_.max_miss) {
-            t.state = TrackState::Done; t.disp = Disposition::Recheck; t.set_why("lost in view"); stats.lost++; ++rev_;
+            // lost before the decision line (decided tracks are never counted as missing): not a part — a gear held
+            // by hand in view, a part taken off the belt. Like noise: no record, no count, no report (11-18 user:
+            // only a part that was recognised and crossed the decision line with the belt counts)
+            t.state = TrackState::Done; t.disp = Disposition::None; t.set_why("lost in view"); stats.lost++; ++rev_;
         }
     }
     // new tracks from unmatched, complete blobs (constructed in place: no per-track copy)

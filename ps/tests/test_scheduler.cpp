@@ -186,7 +186,7 @@ static void test_tracker_edges()
     CHECK(mg && mg->disp == Disposition::Recheck && !strcmp(mg->why, "merged blob"),
           "merged blob -> %s (%s)", mg ? to_str(mg->disp) : "?", mg ? mg->why : "?");
 
-    // a tracked part the locator stops seeing while fully in view is lost after max_miss frames (recheck, dropped)
+    // a tracked part the locator stops seeing while fully in view is lost after max_miss frames (not a part: dropped)
     Tracker tl(tracker_cfg());
     const std::vector<SimPart> dropout = {{-40, 0, 30, 30, 0.f, 0}};
     for (uint32_t f = 0; f < 200; f++) tl.update(observe(dropout, f, f, rng));   // tracked up to x 160
@@ -199,6 +199,8 @@ static void test_tracker_edges()
     CHECK(tl.stats.lost == 1, "lost tracks %llu", (unsigned long long)tl.stats.lost);
     CHECK(lt && lt->state == TrackState::Done && !strcmp(lt->why, "lost in view"),
           "the lost track is done (%s %s)", lt ? to_str(lt->state) : "gone", lt ? lt->why : "");
+    CHECK(lt && lt->disp == Disposition::None, "lost before the decision line: not a part (disp %s, no record / count)",
+          lt ? to_str(lt->disp) : "?");
     tl.retire(220.f);   // a Done track leaves the table on the next retire pass (a Done track is not x-addressed)
     lt = nullptr;
     for (const Track &t : tl.tracks()) if (std::fabs(t.s - dropout[0].s) < 5) lt = &t;
