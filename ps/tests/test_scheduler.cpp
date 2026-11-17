@@ -389,6 +389,48 @@ static void test_speed_adapt()
     CHECK(adapt_speed(c, 50, -1, 0, true, &md) == 50 && md == AdaptMode::Base, "disabled: no fast mode");
 }
 
+// 11-18 user: a gear held by hand right of the decision line (upstream) and taken away must not leave its box, also
+// near the entry edge and with the belt standing; left of it (decided parts, the gate pushing NG parts off) nothing
+// is dropped, so no record is lost
+static void test_stale_boxes()
+{
+    std::mt19937 rng(11);
+    const TrackerConfig c = tracker_cfg();   // view 0..300, margin 10, decision line 270
+    // near the entry edge: centre 15, half length 15 -> never "fully in view"; the belt stands (B = 0)
+    Tracker te(c);
+    std::vector<SimPart> held = {{15, 0, 30, 30, 0.f, 0}};
+    for (uint32_t f = 0; f < 10; f++) te.update(observe(held, 0, f, rng));
+    const Track *t = te.tracks().empty() ? nullptr : &te.tracks().front();
+    CHECK(t && t->state == TrackState::Tracking, "entry edge, belt standing: tracked while held (%s)", t ? to_str(t->state) : "none");
+    held[0].gone = true;
+    for (uint32_t f = 10; f < 10 + uint32_t(c.max_miss) + 2; f++) te.update(observe(held, 0, f, rng));
+    t = te.tracks().empty() ? nullptr : &te.tracks().front();
+    CHECK(t && t->state == TrackState::Done && t->disp == Disposition::None && !strcmp(t->why, "lost in view"),
+          "entry edge, belt standing: taken away -> dropped after max_miss frames, no record (%s %s)", t ? to_str(t->state) : "none",
+          t ? t->why : "");
+    te.retire(0);
+    CHECK(te.tracks().empty(), "entry edge: the box is gone");
+    // mid-way to the decision line, a big held object (half extent 60 at centre 70: not fully in view either)
+    Tracker tb(c);
+    std::vector<SimPart> big = {{70, 20, 120, 40, 0.f, -1}};
+    for (uint32_t f = 0; f < 10; f++) tb.update(observe(big, 0, f, rng));
+    big[0].gone = true;
+    for (uint32_t f = 10; f < 10 + uint32_t(c.max_miss) + 2; f++) tb.update(observe(big, 0, f, rng));
+    t = tb.tracks().empty() ? nullptr : &tb.tracks().front();
+    CHECK(t && t->state == TrackState::Done, "big object right of the line: dropped once gone (%s)", t ? to_str(t->state) : "none");
+    // left of the decision line: a decided part that vanishes (pushed off by the gate, lifted) keeps its track
+    Tracker td(c);
+    std::vector<SimPart> ok = {{240, 0, 20, 20, 0.f, 1}};
+    for (uint32_t f = 0; f <= 35; f++) td.update(observe(ok, f, f, rng));   // rides from x 240 to 275, decided at 270
+    t = td.tracks().empty() ? nullptr : &td.tracks().front();
+    CHECK(t && t->state == TrackState::Decided && t->disp == Disposition::Flap, "left of the line: decided (%s)", t ? to_str(t->state) : "none");
+    ok[0].gone = true;
+    for (uint32_t f = 36; f < 80; f++) td.update(observe(ok, 35, f, rng));   // belt standing, the part gone
+    t = td.tracks().empty() ? nullptr : &td.tracks().front();
+    CHECK(t && t->state == TrackState::Decided && t->disp == Disposition::Flap, "left of the line: a decided part is never dropped (%s)",
+          t ? to_str(t->state) : "none");
+}
+
 // fast mode condition (11-01): the belt is quiet while nothing past the decision line is being handled
 static void test_belt_quiet()
 {
@@ -1985,6 +2027,7 @@ int main()
     test_geom();
     test_tracker();
     test_tracker_edges();
+    test_stale_boxes();
     test_size_rule();
     test_recipes();
     test_votes();

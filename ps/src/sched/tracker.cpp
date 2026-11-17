@@ -161,10 +161,17 @@ void Tracker::update(const FrameObs &obs)
     // missed tracks: only count frames where the whole part should have been visible. Decided tracks are leaving the
     // view (or waiting at the pick line): the belt position carries them, misses no longer matter. (Counting by the
     // center alone dropped 50 mm racks near the FOV exit as "lost": HIL test 10-10.)
+    // Upstream of the decision line (right half of the screen) every frame counts while the center is in the picture:
+    // an object taken away near the entry edge, or a big blob (a gear held by hand) while the belt stands (line
+    // stopped, waiting for the arm), must not leave its box behind (11-18 user). Downstream — decided parts, NG parts
+    // the gate pushes off — stays as it was: decided tracks are never dropped there, their records are safe.
     for (size_t ti = 0; ti < nt; ti++) {
         Track &t = tracks_[ti];
         if (t_used_[ti] || (t.state != TrackState::New && t.state != TrackState::Tracking)) continue;
-        if (!fully_in_view(t, B)) continue;
+        // right of the line the entry side counts from the centre on; the exit side keeps the full-footprint rule
+        const float tx = t.x_at(B);
+        const bool upstream_in = tx > cfg_.fov_x0 && tx < cfg_.decide_x && tx + t.ext_x < cfg_.fov_x1 - cfg_.edge_margin;
+        if (!fully_in_view(t, B) && !upstream_in) continue;
         t.misses++;
         if (t.state == TrackState::New && t.misses > cfg_.max_miss_new) {
             t.state = TrackState::Done; t.set_why("noise"); stats.noise++; ++rev_;
