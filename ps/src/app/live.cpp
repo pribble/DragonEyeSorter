@@ -564,6 +564,9 @@ void worker(Shared &sh, des_hw_t &hw, const AppConfig &cfg, Runner *runner, cons
                 if (arm_manual.take_home(home) && runner) runner->set_home(home);
             }
             if (runner) {   // recipe accepted from the PLC (CAN RECIPE) or the HMI under the run rules
+                // set speed from the PLC / Modbus / 4G: onto the screen first, so re-applying the params (a recipe
+                // change, any parameter press) keeps it instead of putting the old screen value back
+                if (runner->speed_mm_s() > 0) hmi.set_belt_speed(runner->speed_mm_s());
                 const int rc = runner->take_recipe();
                 if (rc > 0 && hmi.set_recipe(rc)) apply_params(hmi.params());
                 runner->set_active_recipe(hmi.params().recipe);

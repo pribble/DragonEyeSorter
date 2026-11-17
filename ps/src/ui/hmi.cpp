@@ -173,6 +173,12 @@ void Hmi::save_params() const
     std::ofstream f(params_path_);
     if (f) f << j.dump(1) << "\n";
 }
+void Hmi::set_belt_speed(double mm_s)
+{
+    if (std::fabs(mm_s - p_.belt_speed) < 0.05) return;
+    p_.belt_speed = mm_s;
+    save_params();
+}
 bool Hmi::set_recipe(int id)
 {
     const Recipe *r = find_recipe(cfg_.recipes, id);
@@ -523,7 +529,7 @@ void Hmi::page_curves(Canvas &c)
 void Hmi::page_params(Canvas &c)
 {
     {   // recipe: changeover only while stopped (same rule as the PLC's CAN RECIPE)
-        const int y = 6;
+        const int y = 4;
         const Recipe *rc = find_recipe(cfg_.recipes, p_.recipe);
         const bool can = st_.run_state != CANP_ST_RUN && cfg_.recipes.size() > 1;
         c.text("配方", 175, y + 3, 20, TEXT);
@@ -534,7 +540,8 @@ void Hmi::page_params(Canvas &c)
         c.text(st_.run_state == CANP_ST_RUN ? "运行中不能换型" : "规格一并切换", 962, y + 6, 16, DIM);
     }
     for (int i = 0; i < kNParams; i++) {
-        const int y = 37 + i * 31;
+        // 9 rows of 28 px under the recipe row inside the 300 px band (31 px pitch cut the last row, 带速 PI, in half)
+        const int y = 34 + i * 29;
         const ParamDef &d = kParams[i];
         c.text(d.label, 175, y + 3, 20, TEXT);
         std::string val;

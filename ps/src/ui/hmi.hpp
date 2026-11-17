@@ -103,6 +103,9 @@ public:
     Hmi(const AppConfig &cfg, const std::string &params_path);
     const HmiParams &params() const { return p_; }
     bool set_recipe(int id);  // known id: switch, load its sizes into the params, save; false = unknown id
+    // the set belt speed changed elsewhere (PLC / Modbus / 4G): show it, and keep it when the next parameter change
+    // re-applies the params (11-18: the screen stayed at 50 and put 50 back over a speed set from the phone)
+    void set_belt_speed(double mm_s);
     void add_part(const PartRecord &r, const cv::Mat &crop, double now);
     void status(const HmiStatus &s, double now);
     std::vector<HmiAction> handle(const std::vector<UiEvent> &ev);   // clicks / keys -> actions for the worker
