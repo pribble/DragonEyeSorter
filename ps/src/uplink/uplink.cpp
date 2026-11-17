@@ -61,6 +61,7 @@ std::string load_uplink_config(const std::string &path, UplinkConfig &c)
         }
         if (const auto m = j.find("parts"); m != j.end() && m->is_object()) {
             opt(*m, "keep", c.parts_keep); opt(*m, "image_kb", c.image_kb); opt(*m, "min_s", c.parts_min_s);
+            opt(*m, "image_slots", c.image_slots);
         }
         if (const auto m = j.find("commands"); m != j.end() && m->is_object()) {
             opt(*m, "key", c.cmd_key); opt(*m, "allow", c.cmd_allow); opt(*m, "speeds", c.speeds);
@@ -97,7 +98,8 @@ std::string load_uplink_config(const std::string &path, UplinkConfig &c)
         if (r.id < 1 || r.id > 65535) return path + ": commands.recipes needs {\"id\": 1..65535, \"name\": ...}";
         if (r.name.empty() || r.name.size() > 48) return path + ": commands.recipes: name must be 1..48 bytes";
     }
-    if (c.parts_keep < 0 || c.parts_keep > 8) return path + ": parts.keep must be 0..8 (one message of at most 1400 bytes)";
+    if (c.parts_keep < 0 || c.parts_keep > 12) return path + ": parts.keep must be 0..12 (one message of at most 1400 bytes)";
+    if (c.image_slots < 1 || c.image_slots > 16) return path + ": parts.image_slots must be 1..16";
     if (c.image_kb < 0 || c.image_kb > 64) return path + ": parts.image_kb must be 0..64";
     if (!(c.parts_min_s >= 0.2 && c.parts_min_s <= 60)) return path + ": parts.min_s must be 0.2..60";
     return "";
@@ -130,7 +132,8 @@ std::string uplink_parts_json(const std::string &session, const std::vector<Part
         if (p.size_mm > 0) e["m"] = r1(p.size_mm, 100);
         if (p.teeth > 0) { e["z"] = p.teeth; if (p.missing > 0) e["x"] = p.missing; }
         if (!p.why.empty()) e["w"] = p.why.substr(0, 40);
-        if (!p.image.empty()) e["i"] = p.image;
+        if (!p.image.empty())   // des_app names it img/<session>_<track>_<label>.jpg: 1 says so in one byte
+            e["i"] = p.image == "img/" + session + "_" + std::to_string(p.track) + "_" + p.label + ".jpg" ? json(1) : json(p.image);
         a.push_back(e);
     }
     for (;;) {
@@ -354,10 +357,13 @@ void Uplink::up_pass(double now)
             std::string name, jpeg;
             img_.clear();
             img_k_ = 0;
-            if (board_.next_image(name, jpeg)) img_ = uplink_image_chunks(name, jpeg);
+            if (board_.next_image(name, jpeg)) {
+                img_ = uplink_image_chunks(name, jpeg);
+                img_slot_ = int(img_count_++ % uint64_t(cfg_.image_slots));   // the oldest of the kept pictures goes
+            }
         }
         for (int i = 0; i < 2 && img_k_ < img_.size() && !link_down_; i++) {
-            if (!publish(cfg_.prefix + "/img/" + std::to_string(img_k_), img_[img_k_], true)) break;
+            if (!publish(cfg_.prefix + "/img/" + std::to_string(img_slot_) + "/" + std::to_string(img_k_), img_[img_k_], true)) break;
             if (++img_k_ == img_.size()) st_.images++;
         }
     }

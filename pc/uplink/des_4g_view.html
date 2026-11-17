@@ -12,8 +12,8 @@
   "环境与设备" shows the state's env (temperature / humidity), vib (belt motor vibration) and sys (board CPU / memory /
   SD card / uptime) when the board sends them.
   "最近零件" (like the wired ops station's list): <prefix>/parts, retained, the board's last parts {"ses","u","p":[{"k"
-  track,"u","l","c","d","o","m","z","x","w","i"}]}, and <prefix>/img/<k>, retained chunks {"f","k","n","d" base64} of the
-  newest NG crop; a picture shows once all its chunks are in. "u" is the board program's up time, turned into a clock
+  track,"u","l","c","d","o","m","z","x","w","i"}]}, and <prefix>/img/<slot>/<k>, retained chunks {"f","k","n","d" base64} of the
+  last 10 NG crops (one slot each, in turn); a picture shows once all its chunks are in. "u" is the board program's up time, turned into a clock
   time with the state's up_s.
   Settings (broker WebSocket URL, topic prefix) are kept in this browser only; they can also come in the address
   after '#':  des_4g_view.html#b=wss://broker.example:8084/mqtt&p=des/your-prefix[&k=<command key>]
@@ -163,7 +163,7 @@ button.thumb { cursor: zoom-in; }
 
   <section class="card wide">
     <h2>最近零件<span id="parts-sum">不良品带裁切图，点图放大</span></h2>
-    <ul class="parts" id="parts"><li class="empty">还没有收到零件。每判定一件，板子发一次最近 5 件；不良品的裁切图随后分片传来，约几秒一张。</li></ul>
+    <ul class="parts" id="parts"><li class="empty">还没有收到零件。每判定一件，板子发一次最近 10 件；不良品的裁切图随后分片传来，约几秒一张。</li></ul>
   </section>
 
   <section class="card">
@@ -656,7 +656,9 @@ function onParts(text, retained) {
     if (!p || typeof p.k !== 'number') continue;
     const key = j.ses + '/' + p.k;
     if (partKeys.has(key)) continue;
-    const e = Object.assign({}, p, { key, got: now, t0: !retained && typeof p.u === 'number' && typeof j.u === 'number' ? now - (j.u - p.u) * 1000 : null });
+    // i: 1 = des_app's usual name img/<session>_<track>_<label>.jpg (saves bytes in the message), else the name
+    const img = p.i === 1 ? 'img/' + j.ses + '_' + p.k + '_' + p.l + '.jpg' : p.i;
+    const e = Object.assign({}, p, { i: img, key, got: now, t0: !retained && typeof p.u === 'number' && typeof j.u === 'number' ? now - (j.u - p.u) * 1000 : null });
     parts.push(e); partKeys.set(key, e);
   }
   while (parts.length > 40) partKeys.delete(parts.shift().key);
@@ -693,7 +695,7 @@ function renderParts() {
   const now = Date.now();
   for (const [f, w] of picWait) if (now - w.at > 120000) picWait.delete(f);   // a picture that never completed
   if (!parts.length) {
-    ul.innerHTML = '<li class="empty">还没有收到零件。每判定一件，板子发一次最近 5 件；不良品的裁切图随后分片传来，约几秒一张。</li>';
+    ul.innerHTML = '<li class="empty">还没有收到零件。每判定一件，板子发一次最近 10 件；不良品的裁切图随后分片传来，约几秒一张。</li>';
     $('parts-sum').textContent = '不良品带裁切图，点图放大';
     return;
   }

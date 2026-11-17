@@ -937,6 +937,18 @@ void test_parts()
     const nlohmann::json p = nlohmann::json::parse(pj, nullptr, false);
     CHECK(pj.size() <= 1400 && p.is_object() && p["p"].size() >= 4 && p["p"].back()["k"] == 107, "8 long parts: trimmed to fit, newest kept (%zu bytes, %zu parts)",
           pj.size(), p.is_object() ? p["p"].size() : 0);
+    std::vector<PartInfo> ten(10);   // 11-18: the last 10 parts, usual fields (no reason text): one message holds all
+    for (size_t i = 0; i < ten.size(); i++) {
+        ten[i].track = int(1000 + i); ten[i].rx = 50; ten[i].label = "gear_flash_h"; ten[i].disp = "flap"; ten[i].dest = "rework";
+        ten[i].image = "img/20261117-101500_" + std::to_string(1000 + i) + "_gear_flash_h.jpg";
+        ten[i].conf = 0.9876; ten[i].size_mm = 32.061; ten[i].teeth = 30;
+    }
+    const std::string tj = uplink_parts_json("20261117-101500", ten, 12345.6, 60);
+    const nlohmann::json tp = nlohmann::json::parse(tj, nullptr, false);
+    CHECK(tp.is_object() && tp["p"].size() == 10 && tp["p"][0]["i"] == 1 && tj.size() <= 1400, "10 usual parts fit one message (%zu bytes)", tj.size());
+    std::vector<PartInfo> odd(1, ten[0]);
+    odd[0].image = "img/other.jpg";
+    CHECK(nlohmann::json::parse(uplink_parts_json("20261117-101500", odd, 1, 1))["p"][0]["i"] == "img/other.jpg", "an unusual image name is sent as it is");
     if (p.is_object() && !p["p"].empty()) {
         const nlohmann::json &e = p["p"].back();
         CHECK(e["u"] == 997.0 && e["c"] == 0.877 && e["m"] == 31.46 && e["z"] == 29 && e["x"] == 1 && e["w"].get<std::string>().size() == 40 &&
@@ -949,7 +961,7 @@ void test_parts()
     FdPort port(fm.host_fd());
     AtChan at(port);
     BoardLink board;
-    board.set_parts(5, 24 * 1024);
+    board.set_parts(10, 24 * 1024);
     board.on_connect(true);
     board.on_frame(fr('H', "s1", hdr));
     UplinkConfig c;
@@ -978,19 +990,24 @@ void test_parts()
             last_chunk_at = int(i);
             retained &= pubs[i].retain;
             const nlohmann::json j = nlohmann::json::parse(pubs[i].payload, nullptr, false);
-            if (j.is_object() && pubs[i].topic == "des/t5/img/" + std::to_string(j["k"].get<int>())) got += j["d"].get<std::string>();
+            if (j.is_object() && pubs[i].topic == "des/t5/img/0/" + std::to_string(j["k"].get<int>())) got += j["d"].get<std::string>();
         }
     }
-    CHECK(retained && got == base64(big_img), "parts: retained, chunk k on img/<k>, the picture joins back");
+    CHECK(retained && got == base64(big_img), "parts: retained, chunk k on img/0/<k> (first slot), the picture joins back");
     CHECK(parts_at >= 0 && parts_at < last_chunk_at && reply_at < last_chunk_at, "parts: the list first, the ping answered between chunks (%d / %d / %d)",
           parts_at, reply_at, last_chunk_at);
     if (parts_at >= 0) {
         const nlohmann::json j = nlohmann::json::parse(pubs[size_t(parts_at)].payload, nullptr, false);
-        CHECK(j.is_object() && j["ses"] == "s1" && j["p"].size() == 1 && j["p"][0]["k"] == 6 && j["p"][0]["i"] == "img/s1_6_gear_short_h.jpg",
-              "parts: the list names the picture");
+        CHECK(j.is_object() && j["ses"] == "s1" && j["p"].size() == 1 && j["p"][0]["k"] == 6 && j["p"][0]["i"] == 1,
+              "parts: the list marks the picture (usual name -> 1)");
     }
     steps(up, t, 0.5, 4, []() { return false; });
     CHECK(topic_count("des/t5/parts") == 1 && topic_count("des/t5/img/") == 6, "parts: nothing new, nothing sent again");
+    // the next pictures take the next slots: the last 10 stay on the broker
+    board.on_frame(fr('I', "img/s1_7_gear_short_h.jpg", std::string(900, 'a')));
+    board.on_frame(fr('R', "", "3,0.3,7,2,gear_short_h,0.874,flap,scrap,,1,31.40,29,1,1,img/s1_7_gear_short_h.jpg"));
+    CHECK(steps(up, t, 0.5, 8, [&]() { return topic_count("des/t5/img/1/") == 1; }), "second picture: slot 1 (one chunk)");
+    CHECK(topic_count("des/t5/img/0/") == 6, "second picture: slot 0 untouched (the first picture stays)");
     UplinkConfig cc;
     const char *path = "/tmp/test_uplink_parts.json";
     auto load = [&](const std::string &body) {
@@ -999,9 +1016,10 @@ void test_parts()
         cc = UplinkConfig();
         return load_uplink_config(path, cc);
     };
-    CHECK(load("").empty() && cc.parts_keep == 5 && cc.image_kb == 24, "config: parts on by default (5 parts, 24 KB pictures)");
+    CHECK(load("").empty() && cc.parts_keep == 10 && cc.image_kb == 24 && cc.image_slots == 10, "config: parts on by default (10 parts, 10 pictures of <= 24 KB)");
     CHECK(load(",\"parts\":{\"keep\":0}").empty() && cc.parts_keep == 0, "config: parts off");
-    CHECK(!load(",\"parts\":{\"keep\":9}").empty() && !load(",\"parts\":{\"image_kb\":65}").empty() && !load(",\"parts\":{\"min_s\":0}").empty(),
+    CHECK(!load(",\"parts\":{\"keep\":13}").empty() && !load(",\"parts\":{\"image_kb\":65}").empty() && !load(",\"parts\":{\"min_s\":0}").empty() &&
+              !load(",\"parts\":{\"image_slots\":0}").empty() && !load(",\"parts\":{\"image_slots\":17}").empty(),
           "config: out-of-range parts settings refused");
     unlink(path);
 }

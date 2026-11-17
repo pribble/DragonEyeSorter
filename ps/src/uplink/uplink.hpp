@@ -18,11 +18,14 @@
 //                    "recipes":[{"id","name"}...]} — the choices the dashboard offers (kept out of the 10 s state)
 //   <prefix>/parts   retained, when parts were decided (at most every parts_min_s): the last parts_keep parts,
 //                    {"ses","u","p":[{"k" track,"u","l" label,"c" conf,"d" disp,"o" dest,"m" OD mm,"z" teeth,
-//                    "x" missing teeth,"w" why,"i" image name}...]} oldest first; "u" = this program's up time (s) when
-//                    sent / when the part arrived, so a page can turn it into a clock time with the state's up_s
-//   <prefix>/img/<k> retained, chunk k of the newest NG crop (des_app's JPEG, at most image_kb):
+//                    "x" missing teeth,"w" why,"i" image}...]} oldest first; "u" = this program's up time (s) when
+//                    sent / when the part arrived, so a page can turn it into a clock time with the state's up_s;
+//                    "i" = 1 when the image has des_app's usual name img/<ses>_<k>_<label>.jpg, else the name
+//   <prefix>/img/<s>/<k> retained, chunk k of an NG crop (des_app's JPEG, at most image_kb) in slot s: the pictures
+//                    take the image_slots slots in turn, so the last image_slots pictures stay on the broker;
 //                    {"f" image name,"k","n" chunks,"d" base64}; a few chunks per pass so commands are not held up
-//                    (11-17 user: the 4G dashboard lists every part and shows the NG pictures like the ops station)
+//                    (11-17 user: the 4G dashboard lists every part and shows the NG pictures like the ops station;
+//                    11-18: the last 10 parts and pictures for a page opened later)
 //
 // With board.modbus_port set the state also carries "line" (run state, belt speed, alarm, recipe) and des_app's own
 // counters ("counts":"app"); without it the counts come from the feed ("counts":"feed", parts since this program
@@ -68,8 +71,9 @@ struct UplinkConfig {
     std::vector<std::string> cmd_allow{"ack", "stop", "pause"};   // nothing that starts motion by default
     std::vector<double> speeds;             // belt speed presets, mm/s: the only values "speed" accepts (empty = any)
     std::vector<RecipeName> recipes;        // the recipes "recipe" accepts, named for the dashboard (empty = any id)
-    int parts_keep = 5;                     // <prefix>/parts: the last N parts (0 = no per-part list, no images)
+    int parts_keep = 10;                    // <prefix>/parts: the last N parts (0 = no per-part list, no images)
     int image_kb = 24;                      // <prefix>/img: NG crops up to this size (0 = no images)
+    int image_slots = 10;                   // the last N pictures stay retained on the broker
     double parts_min_s = 1;                 // at most one parts message per this many seconds
 };
 std::string load_uplink_config(const std::string &path, UplinkConfig &c);   // "" on success
@@ -150,6 +154,8 @@ private:
     double last_parts_ = -1e9;
     std::vector<std::string> img_;                  // the picture being sent, as chunk messages
     size_t img_k_ = 0;                              // next chunk to send
+    uint64_t img_count_ = 0;                        // pictures started: the slot is img_count_ % image_slots
+    int img_slot_ = 0;                              // slot of the picture being sent
 };
 
 }  // namespace des
