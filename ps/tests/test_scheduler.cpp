@@ -431,6 +431,23 @@ static void test_stale_boxes()
           t ? to_str(t->state) : "none");
 }
 
+// 11-18 user: the set speed is the idle speed; parts are handled at the same ratio as the config's 80 / 50
+static void test_idle_speed()
+{
+    SpeedAdaptConfig c;
+    c.enabled = true; c.fast_mm_s = 80;
+    CHECK(fast_mode_on(c, 50) && idle_default(c, 50) == 80, "fast mode: the default set speed is the idle 80");
+    CHECK(std::fabs(handling_speed(c, 50, 80) - 50) < 1e-9, "set 80 -> handled at 50 (today's tuned speed)");
+    CHECK(std::fabs(handling_speed(c, 50, 70) - 43.75) < 1e-9 && std::fabs(handling_speed(c, 50, 50) - 31.25) < 1e-9,
+          "set 70 / 50 -> 43.75 / 31.25 (ratio kept)");
+    c.fast_mm_s = 0;
+    CHECK(!fast_mode_on(c, 50) && idle_default(c, 50) == 50 && handling_speed(c, 50, 70) == 70, "no fast mode: one speed");
+    c.fast_mm_s = 40;
+    CHECK(!fast_mode_on(c, 50) && handling_speed(c, 50, 70) == 70, "fast below run_speed: no fast mode");
+    c.fast_mm_s = 80; c.enabled = false;
+    CHECK(!fast_mode_on(c, 50) && handling_speed(c, 50, 70) == 70, "adaptation off: one speed");
+}
+
 // fast mode condition (11-01): the belt is quiet while nothing past the decision line is being handled
 static void test_belt_quiet()
 {
@@ -2036,6 +2053,7 @@ int main()
     test_flaps();
     test_speed_adapt();
     test_belt_quiet();
+    test_idle_speed();
     test_gate_events();
     test_picker();
     test_picker_flying();

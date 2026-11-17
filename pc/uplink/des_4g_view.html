@@ -511,7 +511,7 @@ function render() {
     if (hasLine) {
       const ln = LINE[s.line.state] || ['', '?', '状态 ' + s.line.state];
       chip($('s-line'), ln[0], ln[1], ln[2]);
-      $('s-line-sub').textContent = '带速 ' + (s.line.speed || 0).toFixed(1) + ' mm/s' + (s.line.set ? '（处理零件时设定 ' + s.line.set + '）' : '') +
+      $('s-line-sub').textContent = '带速 ' + (s.line.speed || 0).toFixed(1) + ' mm/s' + (s.line.set ? '（设定 ' + s.line.set + '）' : '') +
           ' · 配方 ' + recipeName(s.line.recipe) + (s.line.alarm ? ' · 报警码 ' + s.line.alarm : '');
     }
   } else {
@@ -533,8 +533,8 @@ function render() {
     if (plain.length) box.append(ctlRow('线体', plain.map(c => ({ text: CMDS[c][0], click: () => sendCmd(c, CMDS[c][1], CMDS[c][0], CMDS[c][2]) }))
         .concat(cmds.includes('ack') ? [{ text: '演示前复位', click: demoReset }] : [])));
     if (speeds.length) {
-      const row = ctlRow('处理零件时的带速（mm/s）', speeds.map(v => ({ text: String(v), on: Math.abs((ln.set || 0) - v) < 0.05,
-          click: () => sendCmd('speed', Math.round(v * 10), '带速 ' + v + ' mm/s', '把处理零件时的带速设为 ' + v + ' mm/s？空闲时主程序仍会自动提速。') })));
+      const row = ctlRow('带速（皮带空着时的速度，mm/s）', speeds.map(v => ({ text: String(v), on: Math.abs((ln.set || 0) - v) < 0.05,
+          click: () => sendCmd('speed', Math.round(v * 10), '带速 ' + v + ' mm/s', '把带速设为 ' + v + ' mm/s？这是皮带空着时的速度，处理零件时自动降到约六成（设 80 时 50）。') })));
       const note = document.createElement('div'); note.className = 'sub'; note.id = 'speed-note'; note.style.marginTop = '6px';
       row.append(note); box.append(row);
     }
@@ -543,7 +543,7 @@ function render() {
         click: () => sendCmd('recipe', r.id, '切配方 ' + r.name, '切换到配方「' + r.name + '」？\n之后的齿轮按这个配方的尺寸判定，台上的齿轮不是这一种的会被判为尺寸不合格。演示完记得切回来。') }))));
   }
   const sn = $('speed-note');                // refreshed every second: the actual speed moves with the adaptation
-  if (sn) sn.textContent = '带上没有要处理的零件时，主程序会自动提速；有零件要抓或要分流时降到这里设定的速度，机械臂没准备好时还会再慢。现在实际 ' +
+  if (sn) sn.textContent = '这是皮带空着时的速度；有零件要抓或要分流时自动降到它的约六成（设 80 时 50），机械臂没准备好时还会再慢。现在实际 ' +
       (ln.speed || 0).toFixed(1) + ' mm/s。';
   // banner: the one thing to look at first
   let b = null;
@@ -828,7 +828,7 @@ function sendAndWait(key, c, arg, label) {  // resolves with the board's reply, 
     setTimeout(() => { if (waiters.delete(id)) resolve(null); }, 10000);
   });
 }
-// 演示前复位: stop (if running / paused), acknowledge every work order, first recipe, belt speed 50 — skipping what is
+// 演示前复位: stop (if running / paused), acknowledge every work order, first recipe, belt speed 80 (idle; 50 handling) — skipping what is
 // already so; one command at a time, each after the board answered the previous one; stops at the first refusal
 async function demoReset() {
   const key = canSend();
@@ -839,8 +839,8 @@ async function demoReset() {
   if (cmds.includes('stop') && (ln.state === 1 || ln.state === 2)) steps.push(['stop', 0, '停止线体']);
   steps.push(['ack', 65535, '确认全部工单']);
   if (r0 && cmds.includes('recipe') && ln.recipe !== r0.id) steps.push(['recipe', r0.id, '配方切回「' + r0.name + '」']);
-  if (cmds.includes('speed') && meta && Array.isArray(meta.speeds) && meta.speeds.includes(50) && Math.abs((ln.set || 0) - 50) >= 0.05)
-    steps.push(['speed', 500, '带速回 50 mm/s']);
+  if (cmds.includes('speed') && meta && Array.isArray(meta.speeds) && meta.speeds.includes(80) && Math.abs((ln.set || 0) - 80) >= 0.05)
+    steps.push(['speed', 800, '带速回 80 mm/s']);
   if (!confirm('演示前复位：' + steps.map(s => s[2]).join('、') + '？')) return;
   for (let i = 0; i < steps.length; i++) {
     const [c, arg, label] = steps[i];

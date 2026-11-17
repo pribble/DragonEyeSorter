@@ -112,7 +112,7 @@ private:
     std::set<int> reported_;     // track ids already sent as PART
     std::set<int> recheck_log_;  // track ids whose re-check was logged (diagnostic: why a pickable part was dropped)
     std::string last_event_;
-    double speed_mm_s_ = 0;      // last set belt speed (0 = config run_speed)
+    double speed_mm_s_ = 0;      // last set belt speed = the idle speed (0 = idle_default: fast_mm_s, or run_speed)
     int jog_dir_ = 0;            // manual belt jog (IDLE only)
     int pending_recipe_ = -1;    // accepted by select_recipe, not yet applied by the worker
     std::unique_ptr<ModbusTcp> mb_;  // Modbus-TCP slave (cfg.plc.modbus_port > 0)
@@ -154,8 +154,11 @@ private:
     std::atomic<double> pl_scale_{0};  // PL output read back at 1 Hz (fraction), for the panel line
     double cruise_base() const         // the cruise speed the belt is meant to hold: adaptation, operator / PLC, config
     {
-        return (cfg_.belt.adapt.enabled && adapt_v_ > 0) ? adapt_v_ : (speed_mm_s_ > 0 ? speed_mm_s_ : cfg_.belt.run_speed);
+        return (cfg_.belt.adapt.enabled && adapt_v_ > 0) ? adapt_v_ : handling_mm_s();
     }
+    // set speed = idle speed (operator / PLC / Modbus); parts are handled at its handling_speed (picker.hpp)
+    double set_mm_s() const { return speed_mm_s_ > 0 ? speed_mm_s_ : idle_default(cfg_.belt.adapt, cfg_.belt.run_speed); }
+    double handling_mm_s() const { return handling_speed(cfg_.belt.adapt, cfg_.belt.run_speed, set_mm_s()); }
     void pl_pid_enable(bool on);
     std::array<uint16_t, 6> arm_counts_{};   // last commanded pose (arm thread only)
     OpsRegs ops_;

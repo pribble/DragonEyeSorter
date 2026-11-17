@@ -92,7 +92,7 @@ std::string Runner::start()
         }
     }
     // side gates: where a part of the spec gear OD on the belt centre line meets each one, and how early it must be decided
-    const double v = speed_mm_s_ > 0 ? speed_mm_s_ : cfg_.belt.run_speed;
+    const double v = handling_mm_s();   // parts reach the gates at the handling speed
     for (size_t g = 0; g < cfg_.picker.gates.size(); g++) {
         const Gate &G = cfg_.picker.gates[g];
         const float r = 0.5f * cfg_.tracker.size.gear_od, m = cfg_.flaps.margin_mm;
@@ -221,10 +221,13 @@ uint8_t Runner::command(uint8_t cmd, const char *who)
 uint8_t Runner::set_speed(double mm_s, const char *who)
 {
     if (mm_s <= 0 || mm_s > 200) return CANP_ACK_BAD_VALUE;
-    belt_.set_speed(mm_s);
-    speed_mm_s_ = mm_s;
-    adapt_v_ = mm_s; adapt_mode_ = AdaptMode::Base;   // the adaptation starts over from the new set speed
-    last_event_ = fmt("%s 设带速 %.1f mm/s", who, mm_s);
+    speed_mm_s_ = mm_s;   // the idle speed; parts are handled at handling_mm_s() (same ratio as the config's 80 / 50)
+    const double h = handling_mm_s();
+    belt_.set_speed(h);
+    adapt_v_ = h; adapt_mode_ = AdaptMode::Base;   // the adaptation starts over from the new set speed
+    last_event_ = fast_mode_on(cfg_.belt.adapt, cfg_.belt.run_speed)
+                      ? fmt("%s 设带速 %.1f mm/s（空转；处理零件时 %.1f）", who, mm_s, h)
+                      : fmt("%s 设带速 %.1f mm/s", who, mm_s);
     return CANP_ACK_OK;
 }
 uint8_t Runner::jog(int dir, const char *who)
@@ -333,7 +336,7 @@ uint8_t Runner::status_flags(double now) const
 void Runner::update_modbus(double now)
 {
     if (!mb_) return;
-    const double set = speed_mm_s_ > 0 ? speed_mm_s_ : cfg_.belt.run_speed;
+    const double set = set_mm_s();   // the idle speed, as set
     mb_->set_holding(MB_HR_CMD, 0);
     mb_->set_holding(MB_HR_SPEED, canp_mm_s_x10(set));
     mb_->set_holding(MB_HR_RECIPE, uint16_t(active_recipe_));
@@ -427,7 +430,7 @@ void Runner::cycle(Tracker &tr, Picker &pk)
     }
     if (state_ == CANP_ST_RUN) {
         jog_dir_ = 0; Picker::Input in = picker_input(&belt_, hw_, cfg_.belt);
-        in.cruise_mm_s = speed_mm_s_ > 0 ? speed_mm_s_ : cfg_.belt.run_speed;
+        in.cruise_mm_s = handling_mm_s();
         in.arm_idle = !arm_busy_; in.arm_clear = arm_clear_;
         const Picker::Output &out = pk.tick(tr, in); plan_ = out.belt;   // ref into the picker: no per-cycle flaps copy
         // one pass over the tracks: speed adaptation (nearest decided pick ahead) + newly decided parts
@@ -443,12 +446,14 @@ void Runner::cycle(Tracker &tr, Picker &pk)
         // speed adaptation: slower while the arm is busy (fewer full stops; the StopAt still comes from the picker),
         // faster while nothing past the decision line is being handled (fast mode)
         if (cfg_.belt.adapt.enabled) {
-            const double base = speed_mm_s_ > 0 ? speed_mm_s_ : cfg_.belt.run_speed; const double eta = arm_eta_.load();
+            const double base = handling_mm_s(); const double eta = arm_eta_.load();
+            SpeedAdaptConfig ad = cfg_.belt.adapt;   // fast mode = the set (idle) speed
+            if (fast_mode_on(ad, cfg_.belt.run_speed)) ad.fast_mm_s = set_mm_s();
             const bool quiet = cfg_.belt.adapt.fast_mm_s > 0 && !arm_busy_ && arm_clear_ &&
                                belt_quiet(tr, out.flaps, in.belt_mm, flaps_.state(), pk.config().pick_x,
                                           cfg_.belt.adapt.pick_lead_mm);
             AdaptMode mode = AdaptMode::Base;
-            const double v = adapt_speed(cfg_.belt.adapt, base, nearest_pick, arm_busy_ && eta > now ? eta - now : 0,
+            const double v = adapt_speed(ad, base, nearest_pick, arm_busy_ && eta > now ? eta - now : 0,
                                          quiet, &mode);
             if (std::fabs(v - adapt_v_) > cfg_.belt.adapt.change_frac * base) {
                 belt_.set_speed(v); adapt_v_ = v; adapt_mode_ = mode;
@@ -492,7 +497,7 @@ void Runner::cycle(Tracker &tr, Picker &pk)
         } else if (pid_on_ && state_ == CANP_ST_RUN && out.belt.kind == BeltPlan::Run && enc_ok_ &&
             !belt_.stopped()) {
             const double base = (cfg_.belt.adapt.enabled && adapt_v_ > 0) ? adapt_v_
-                                : (speed_mm_s_ > 0 ? speed_mm_s_ : cfg_.belt.run_speed);
+                                : handling_mm_s();
             if (belt_.speed_mm_s() < 0.95 * base) {
                 pid_.reset();   // still ramping up after a start: let the PL profile finish first
                 enc_t_ = -1;
@@ -526,7 +531,7 @@ void Runner::cycle(Tracker &tr, Picker &pk)
             if (pid_off_restore_) {   // switched off while cruising: drop the trim, back to the operator/adapt base
                 if (out.belt.kind == BeltPlan::Run && !belt_.stopped()) {
                     const double base = (cfg_.belt.adapt.enabled && adapt_v_ > 0) ? adapt_v_
-                                        : (speed_mm_s_ > 0 ? speed_mm_s_ : cfg_.belt.run_speed);
+                                        : handling_mm_s();
                     belt_.set_speed(base);
                 }
                 pid_off_restore_ = false;

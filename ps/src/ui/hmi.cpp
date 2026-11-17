@@ -38,7 +38,7 @@ struct ParamDef {
     double lo, hi, step;
 };
 const ParamDef kParams[] = {
-    {"带速", "mm/s（产线运行时生效）", 5, 200, 5},       {"齿轮外径 名义", "mm", 20, 60, 0.01},
+    {"带速", "mm/s（产线运行时生效）", 10, 120, 5},       {"齿轮外径 名义", "mm", 20, 60, 0.01},
     {"齿轮外径 公差 ±", "mm", 0.01, 1, 0.01},          {"齿轮孔径 名义", "mm", 2, 20, 0.05},
     {"齿轮孔径 公差 ±", "mm", 0.05, 2, 0.05},          {"尺寸判废", "超差 / 规格混料 → 报废出口", 0, 1, 1},
     {"置信度门限", "低于它 → 复检", 0.3, 0.95, 0.05},   {"存图", "零件裁切图存 SD 卡", 0, 2, 1},
@@ -118,7 +118,7 @@ std::string dest_cn(const char *d)
 Hmi::Hmi(const AppConfig &cfg, const std::string &params_path) : cfg_(cfg), params_path_(params_path)
 {
     txt_.open();
-    p_.belt_speed = cfg.belt.run_speed;
+    p_.belt_speed = idle_default(cfg.belt.adapt, cfg.belt.run_speed);   // the set speed is the idle speed (11-18)
     p_.size_rule = cfg.tracker.size.enabled;
     p_.gear_od = cfg.tracker.size.gear_od;  p_.gear_od_tol = cfg.tracker.size.gear_od_tol;
     p_.gear_bore = cfg.tracker.size.gear_bore;  p_.gear_bore_tol = cfg.tracker.size.gear_bore_tol;
@@ -148,7 +148,7 @@ void Hmi::load_params()
     try {
         nlohmann::json j;
         f >> j;
-        p_.belt_speed = j.value("belt_speed", p_.belt_speed);
+        p_.belt_speed = j.value("idle_speed", p_.belt_speed);   // "belt_speed" of older files meant the handling speed
         p_.size_rule = j.value("size_rule", p_.size_rule);
         p_.gear_od = j.value("gear_od", p_.gear_od);
         p_.gear_od_tol = j.value("gear_od_tol", p_.gear_od_tol);
@@ -166,7 +166,7 @@ void Hmi::load_params()
 }
 void Hmi::save_params() const
 {
-    nlohmann::json j = {{"belt_speed", p_.belt_speed}, {"size_rule", p_.size_rule}, {"gear_od", p_.gear_od},
+    nlohmann::json j = {{"idle_speed", p_.belt_speed}, {"size_rule", p_.size_rule}, {"gear_od", p_.gear_od},
                         {"gear_od_tol", p_.gear_od_tol}, {"gear_bore", p_.gear_bore}, {"gear_bore_tol", p_.gear_bore_tol},
                         {"min_conf", p_.min_conf}, {"images", p_.images}, {"pl_mode", p_.pl_mode},
                         {"pl_thr", p_.pl_thr}, {"pl_edge_thr", p_.pl_edge_thr}, {"recipe", p_.recipe}};
@@ -556,7 +556,11 @@ void Hmi::page_params(Canvas &c)
                           i == 5 ? A_TOGGLE : i == 7 ? A_IMAGES : A_TOGGLE_PID, 20);
             c.text(d.unit, 772, y + 6, 16, DIM);
         } else {
-            c.stepper(y, val, A_DEC, A_INC, i, d.unit);
+            // the set speed is the idle speed: show what the belt runs at while handling parts next to it
+            const std::string u0 = fast_mode_on(cfg_.belt.adapt, cfg_.belt.run_speed)
+                                       ? fmt("mm/s 空转（处理零件时 %.0f）", handling_speed(cfg_.belt.adapt, cfg_.belt.run_speed, p_.belt_speed))
+                                       : std::string(d.unit);
+            c.stepper(y, val, A_DEC, A_INC, i, i == 0 ? u0.c_str() : d.unit);
         }
     }
     // PL image path (des_vision): what the camera stream shows, binary / edge thresholds. Direct-select grid instead

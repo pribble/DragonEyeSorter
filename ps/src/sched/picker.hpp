@@ -294,6 +294,22 @@ struct SpeedAdaptConfig {
     // decision on (the old behaviour).
     double pick_lead_mm = 0;
 };
+// The operator's set speed is the idle speed (11-18 user: what one sets is what one sees on an empty belt). With fast
+// mode configured (fast_mm_s above run_speed) parts are handled at set × run_speed / fast_mm_s — the default 80 gives
+// 50, the speed the pick stop and the gate drop points were tuned at — so the two speeds keep their ratio; without
+// fast mode the set speed is the one speed.
+inline bool fast_mode_on(const SpeedAdaptConfig &c, double run_speed)
+{
+    return c.enabled && run_speed > 0 && c.fast_mm_s > run_speed;
+}
+inline double idle_default(const SpeedAdaptConfig &c, double run_speed)   // the set speed nobody changed yet
+{
+    return fast_mode_on(c, run_speed) ? c.fast_mm_s : run_speed;
+}
+inline double handling_speed(const SpeedAdaptConfig &c, double run_speed, double set)
+{
+    return fast_mode_on(c, run_speed) ? set * run_speed / c.fast_mm_s : set;
+}
 enum class AdaptMode : uint8_t { Base, Fast, Slow };
 // base: operator / PLC speed; dist_mm: next pickable part to the pick line (< 0 = none ahead); arm_ready_s: seconds
 // until the arm is back at its ready pose (0 = idle); quiet: belt_quiet() and the arm idle. Returns the cruise speed
