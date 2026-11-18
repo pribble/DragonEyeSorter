@@ -46,7 +46,7 @@ if (-not $Whole) {
         }
     }
     if ($end -le 0) { throw 'MBR 里没有分区：用 -Whole。' }
-    $len = [math]::Min($len, $end + 1MB)   # +1MB margin
+    $len = [math]::Min([int64]$len, [int64]($end + 1MB))   # +1MB margin
     $src.Position = 0
 }
 $dir = Split-Path -Parent $Out
@@ -65,7 +65,7 @@ $done = [int64]0
 $sw = [Diagnostics.Stopwatch]::StartNew()
 try {
     while ($done -lt $len) {
-        $want = [int][math]::Min($buf.Length, $len - $done)
+        $want = [int][math]::Min([int64]$buf.Length, [int64]($len - $done))
         $n = $src.Read($buf, 0, $want)
         if ($n -le 0) { break }
         $dst.Write($buf, 0, $n)
