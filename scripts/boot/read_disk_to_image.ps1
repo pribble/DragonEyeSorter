@@ -9,7 +9,8 @@ param(
     [int]$DiskNumber = -1,
     [string]$Out,
     [switch]$Whole,     # 整张卡；默认只读到 MBR 里最后一个分区的结尾（剩下的未分区空间不读）
-    [switch]$Gzip       # 输出 gzip 压缩（空白区压得很小）；flash_to_disk.ps1 只吃未压缩的 .img
+    [switch]$Gzip,      # 输出 gzip 压缩（空白区压得很小）；flash_to_disk.ps1 只吃未压缩的 .img
+    [double]$MaxOutGB = 0   # > 0：输出文件超过这么大就停（防止把盘写满）；同时跳过开始前的空间估算
 )
 $ErrorActionPreference = 'Stop'
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -53,7 +54,8 @@ if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir |
 $free = (Get-PSDrive -Name ($Out.Substring(0, 1))).Free
 $need = if ($Gzip) { [int64]($len * 0.6) } else { $len }
 "Reading $([math]::Round($len/1GB,2)) GB -> $Out （目标盘剩余 $([math]::Round($free/1GB,1)) GB）"
-if ($need -gt $free) { throw "目标盘空间可能不够（估计要 $([math]::Round($need/1GB,1)) GB）。换个盘，或加 -Gzip。" }
+if ($MaxOutGB -gt 0) { if ($MaxOutGB * 1GB -gt $free - 2GB) { throw "-MaxOutGB 比目标盘剩余空间（减 2 GB）还大。" } }
+elseif ($need -gt $free) { throw "目标盘空间可能不够（估计要 $([math]::Round($need/1GB,1)) GB）。换个盘，或加 -Gzip。" }
 
 $fs = [IO.File]::Create($Out)
 $dst = if ($Gzip) { New-Object IO.Compression.GZipStream($fs, [IO.Compression.CompressionLevel]::Fastest) } else { $fs }
@@ -69,6 +71,7 @@ try {
         $dst.Write($buf, 0, $n)
         [void]$md5.TransformBlock($buf, 0, $n, $null, 0)
         $done += $n
+        if ($MaxOutGB -gt 0 -and $fs.Length -gt $MaxOutGB * 1GB) { throw "输出已超过 $MaxOutGB GB 上限，停止（读到 $([int]($done/1MB)) MB）。" }
         if (($done % 512MB) -lt $n) { "  read $([int]($done/1MB)) / $([int]($len/1MB)) MB  ($([int]$sw.Elapsed.TotalSeconds)s)" }
     }
     [void]$md5.TransformFinalBlock($buf, 0, 0)
