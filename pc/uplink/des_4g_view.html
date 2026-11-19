@@ -23,111 +23,121 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>分拣线 4G 远程看板</title>
+<title>龙瞳分拣 · 远程监控</title>
 <style>
 :root {
   color-scheme: light;
-  --plane: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
-  --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,.10);
-  --accent: #2a78d6; --track: #cde2fb;
-  --good: #0ca30c; --warn: #fab219; --serious: #ec835a; --crit: #d03b3b;
+  --plane: #e6e9ed; --surface: #ffffff; --strip: #f1f3f5; --ink: #1c2329; --ink2: #4b5560; --muted: #7d8791;
+  --grid: #e3e7eb; --axis: #b8c0c8; --ring: #cfd5db;
+  --accent: #1f5fa8; --track: #d8e2ee;
+  --good: #2e9e44; --warn: #e0a100; --serious: #e07b39; --crit: #d12f2f;
+  --bar: #1f2a33; --mono: "DIN Alternate", "Roboto Mono", Consolas, "SF Mono", monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
-    --plane: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
-    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,.10);
-    --accent: #3987e5; --track: #0d366b;
+    --plane: #12161a; --surface: #1b2127; --strip: #222a31; --ink: #e6eaee; --ink2: #b0b9c2; --muted: #7f8a94;
+    --grid: #2a3138; --axis: #3d4650; --ring: #313941;
+    --accent: #4a8fe0; --track: #1e3550; --bar: #0b0f12;
   }
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
-body { background: var(--plane); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-       padding: 0 16px calc(24px + env(safe-area-inset-bottom)); -webkit-text-size-adjust: 100%; }
-header { display: flex; align-items: center; gap: 12px; padding: 14px 0 10px; max-width: 980px; margin: 0 auto; }
-header h1 { font-size: 18px; font-weight: 650; margin: 0; flex: 1; min-width: 0; }
-header h1 small { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }
-main { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); max-width: 980px; margin: 0 auto; }
+body { background: var(--plane); color: var(--ink); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+       padding: 0 12px calc(20px + env(safe-area-inset-bottom)); -webkit-text-size-adjust: 100%; }
+header { display: flex; align-items: center; gap: 12px; margin: 0 -12px 12px; padding: 10px 16px; background: var(--bar); color: #fff;
+         border-bottom: 3px solid var(--accent); }
+header h1 { font-size: 16px; font-weight: 700; margin: 0; flex: 1; min-width: 0; letter-spacing: .04em; }
+header h1 small { display: block; font-size: 11px; font-weight: 400; color: #9fb0bf; letter-spacing: .02em; }
+main { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr); max-width: 1080px; margin: 0 auto; }
 @media (min-width: 760px) { main { grid-template-columns: repeat(2, minmax(0, 1fr)); } .wide { grid-column: 1 / -1; } }
-.card { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 14px 16px; min-width: 0; }
-.card h2 { font-size: 13px; font-weight: 600; color: var(--ink2); margin: 0 0 10px; display: flex; gap: 8px; align-items: baseline; }
-.card h2 span { font-weight: 400; color: var(--muted); margin-left: auto; text-align: right; }
+.card { background: var(--surface); border: 1px solid var(--ring); border-radius: 4px; padding: 12px 14px; min-width: 0; }
+.card h2 { font-size: 13px; font-weight: 700; color: var(--ink); margin: -12px -14px 12px; padding: 7px 14px; background: var(--strip);
+           border-bottom: 1px solid var(--ring); border-radius: 4px 4px 0 0; display: flex; gap: 8px; align-items: baseline; letter-spacing: .03em; }
+.card h2 span { font-weight: 400; font-size: 12px; color: var(--muted); margin-left: auto; text-align: right; letter-spacing: 0; }
 .chip { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-.chip i { font-style: normal; width: 18px; height: 18px; border-radius: 9px; display: inline-grid; place-items: center; font-size: 11px;
-          font-weight: 700; color: #fff; background: var(--muted); flex: none; }
-.chip.good i { background: var(--good); } .chip.warn i { background: var(--warn); color: #0b0b0b; }
+.chip i { font-style: normal; width: 16px; height: 16px; border-radius: 3px; display: inline-grid; place-items: center; font-size: 10px;
+          font-weight: 700; color: #fff; background: var(--muted); flex: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+.chip.good i { background: var(--good); } .chip.warn i { background: var(--warn); color: #1c2329; }
 .chip.crit i { background: var(--crit); } .chip.info i { background: var(--accent); }
-.pill { border: 1px solid var(--ring); border-radius: 999px; padding: 4px 10px 4px 6px; font-size: 13px; background: var(--surface); }
-#banner { display: none; max-width: 980px; margin: 0 auto 12px; border-radius: 12px; padding: 10px 14px; border: 1px solid var(--ring);
-          background: var(--surface); border-left: 4px solid var(--muted); }
-#banner.crit { border-left-color: var(--crit); } #banner.warn { border-left-color: var(--warn); } #banner.info { border-left-color: var(--accent); }
+.pill { border: 1px solid rgba(255,255,255,.28); border-radius: 3px; padding: 3px 9px 3px 5px; font-size: 12px; background: rgba(255,255,255,.06); color: #fff; }
+#banner { display: none; max-width: 1080px; margin: 0 auto 10px; border-radius: 4px; padding: 9px 14px; border: 1px solid var(--ring);
+          background: var(--surface); border-left: 5px solid var(--muted); }
+#banner.crit { border-left-color: var(--crit); background: color-mix(in srgb, var(--crit) 8%, var(--surface)); }
+#banner.warn { border-left-color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, var(--surface)); }
+#banner.info { border-left-color: var(--accent); }
 #banner b { display: block; } #banner span { color: var(--ink2); font-size: 13px; }
-.rows { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 14px; align-items: baseline; margin: 0; }
-.rows dt { color: var(--ink2); } .rows dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+.rows { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0; align-items: baseline; margin: 0; }
+.rows dt, .rows dd { padding: 6px 0; border-top: 1px solid var(--grid); }
+.rows dt:first-of-type, .rows dt:first-of-type + dd { border-top: 0; padding-top: 0; }
+.rows dt { color: var(--ink2); padding-right: 14px; } .rows dd { margin: 0; text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .rows dd small, .sub { color: var(--muted); font-size: 12px; }
-.hero { font-size: 52px; line-height: 1.05; font-weight: 650; letter-spacing: -0.01em; }
+.hero { font: 700 44px/1.05 var(--mono); letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
 .herorow { display: flex; align-items: flex-end; gap: 12px; }
 .herorow > div:first-child { flex: 1; min-width: 0; }
 #spark { width: 150px; height: 44px; flex: none; position: relative; touch-action: none; }
 #spark svg { width: 100%; height: 100%; display: block; overflow: visible; }
 #tip { position: absolute; bottom: 100%; transform: translate(-50%, -4px); background: var(--ink); color: var(--surface); font-size: 12px;
-       padding: 2px 6px; border-radius: 6px; white-space: nowrap; display: none; pointer-events: none; }
-.split { display: flex; gap: 2px; height: 8px; border-radius: 4px; overflow: hidden; margin: 14px 0 10px; background: var(--grid); }
+       padding: 2px 6px; border-radius: 3px; white-space: nowrap; display: none; pointer-events: none; }
+.split { display: flex; gap: 1px; height: 10px; border-radius: 2px; overflow: hidden; margin: 12px 0 10px; background: var(--grid); }
 .split div { min-width: 0; }
-.legend { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.legend div b { display: block; font-size: 22px; font-weight: 600; line-height: 1.2; }
-.legend .k { display: flex; align-items: center; gap: 6px; color: var(--ink2); font-size: 13px; }
-.legend .k i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
-.meter { height: 8px; border-radius: 4px; background: var(--track); overflow: hidden; margin: 6px 0 2px; }
-.meter div { height: 100%; border-radius: 4px; background: var(--accent); width: 0; }
+.legend { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; }
+.legend > div { padding: 0 10px; border-left: 1px solid var(--grid); } .legend > div:first-child { padding-left: 0; border-left: 0; }
+.legend div b { display: block; font: 700 22px/1.2 var(--mono); font-variant-numeric: tabular-nums; }
+.legend .k { display: flex; align-items: center; gap: 6px; color: var(--ink2); font-size: 12px; }
+.legend .k i { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+.meter { height: 8px; border-radius: 2px; background: var(--track); overflow: hidden; margin: 6px 0 2px; }
+.meter div { height: 100%; border-radius: 2px; background: var(--accent); width: 0; }
 ul.list { list-style: none; margin: 0; padding: 0; }
-ul.list li { padding: 10px 0; border-top: 1px solid var(--grid); }
+ul.list li { padding: 8px 0; border-top: 1px solid var(--grid); }
 ul.list li:first-child { border-top: 0; padding-top: 0; }
 .wo-head { display: flex; gap: 8px; align-items: baseline; }
 .wo-head b { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.wo-head span { color: var(--ink2); font-size: 13px; white-space: nowrap; }
-.ev { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; font-size: 14px; }
-.ev time { color: var(--muted); font-variant-numeric: tabular-nums; }
+.wo-head span { color: var(--ink2); font-size: 12px; white-space: nowrap; }
+.ev { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; font-size: 13px; }
+.ev time { color: var(--muted); font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .empty { color: var(--muted); font-size: 13px; }
-button { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--axis); border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+button { font: inherit; font-size: 13px; color: var(--ink); background: var(--strip); border: 1px solid var(--axis); border-radius: 3px; padding: 7px 14px; cursor: pointer; }
+button:active { background: var(--grid); }
 button:disabled { color: var(--muted); cursor: default; }
 button.primary, button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 button.on:disabled { color: #fff; opacity: .85; }
 .ctl { margin-top: 12px; }
-.ctl-h { font-size: 13px; color: var(--ink2); margin-bottom: 6px; }
-.ctl-b { display: flex; flex-wrap: wrap; gap: 8px; }
+.ctl-h { font-size: 12px; color: var(--ink2); margin-bottom: 6px; }
+.ctl-b { display: flex; flex-wrap: wrap; gap: 6px; }
 .pingrow { display: flex; gap: 12px; align-items: center; margin-top: 12px; }
 .pingrow div { flex: 1; min-width: 0; }
-label { display: block; font-size: 13px; color: var(--ink2); margin: 10px 0 4px; }
-input { font: inherit; width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--axis); background: var(--plane); color: var(--ink); }
+label { display: block; font-size: 12px; color: var(--ink2); margin: 10px 0 4px; }
+input { font: inherit; width: 100%; padding: 7px 10px; border-radius: 3px; border: 1px solid var(--axis); background: var(--surface); color: var(--ink); }
 details summary { cursor: pointer; color: var(--ink2); font-size: 13px; }
-.envrow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.big { font-size: 34px; line-height: 1.1; font-weight: 650; font-variant-numeric: tabular-nums; }
-.big small { font-size: 16px; font-weight: 500; color: var(--ink2); margin-left: 2px; }
+.envrow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; }
+.envrow > div { padding: 0 12px; border-left: 1px solid var(--grid); } .envrow > div:first-child { padding-left: 0; border-left: 0; }
+.big { font: 700 32px/1.1 var(--mono); font-variant-numeric: tabular-nums; }
+.big small { font: 500 14px system-ui, sans-serif; color: var(--ink2); margin-left: 3px; }
 .big.warn { color: var(--serious); } .big.crit { color: var(--crit); }
-.tag { font-size: 12px; border: 1px solid var(--axis); border-radius: 6px; padding: 1px 6px; color: var(--ink2); margin-left: 6px; font-weight: 400; }
+.tag { font-size: 11px; border: 1px solid var(--axis); border-radius: 2px; padding: 0 5px; color: var(--ink2); margin-left: 6px; font-weight: 400; }
 ul.parts { list-style: none; margin: 0; padding: 0; }
-ul.parts li { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--grid); }
+ul.parts li { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 12px; align-items: center; padding: 8px 0; border-top: 1px solid var(--grid); }
 ul.parts li:first-child { border-top: 0; padding-top: 0; }
 ul.parts li.empty { display: block; }
-.thumb { width: 56px; height: 56px; border-radius: 8px; border: 1px solid var(--ring); background: var(--grid); padding: 0; overflow: hidden;
+.thumb { width: 52px; height: 52px; border-radius: 3px; border: 1px solid var(--ring); background: var(--grid); padding: 0; overflow: hidden;
          display: grid; place-items: center; color: var(--muted); font-size: 12px; text-align: center; line-height: 1.2; }
 .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.thumb.good { color: var(--good); font-size: 22px; font-weight: 700; }
+.thumb.good { color: var(--good); font-size: 20px; font-weight: 700; }
 button.thumb { cursor: zoom-in; }
 .p-head { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
 .p-head b { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
-.p-head time { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-#zoom { position: fixed; inset: 0; z-index: 10; display: none; place-items: center; padding: 16px; background: rgba(0, 0, 0, .72); }
+.p-head time { color: var(--muted); font-size: 12px; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+#zoom { position: fixed; inset: 0; z-index: 10; display: none; place-items: center; padding: 16px; background: rgba(0, 0, 0, .78); }
 #zoom.on { display: grid; }
-#zoom figure { margin: 0; width: min(100%, 420px); background: var(--surface); border-radius: 12px; padding: 12px; }
-#zoom img { width: 100%; display: block; border-radius: 8px; background: #000; }
+#zoom figure { margin: 0; width: min(100%, 420px); background: var(--surface); border-radius: 4px; padding: 10px; }
+#zoom img { width: 100%; display: block; border-radius: 2px; background: #000; }
 #zoom figcaption { font-size: 13px; color: var(--ink2); margin-top: 8px; }
 </style>
 </head>
 <body>
 <header>
-  <h1>分拣线远程看板<small>经 4G 模组上报 · MQTT</small></h1>
+  <h1>龙瞳分拣 1 号线<small>远程监控 · 4G</small></h1>
   <span class="pill chip" id="conn"><i>…</i><span>未连接</span></span>
 </header>
 <div id="banner"><b></b><span></span></div>
@@ -135,17 +145,17 @@ button.thumb { cursor: zoom-in; }
   <section class="card">
     <h2>线体<span id="age">还没有数据</span></h2>
     <dl class="rows">
-      <dt>板子</dt><dd><span class="chip" id="s-board"><i>?</i><span>未知</span></span></dd>
-      <dt>主程序</dt><dd><span class="chip" id="s-app"><i>?</i><span>未知</span></span></dd>
+      <dt>控制器</dt><dd><span class="chip" id="s-board"><i>?</i><span>未知</span></span></dd>
+      <dt>检测程序</dt><dd><span class="chip" id="s-app"><i>?</i><span>未知</span></span></dd>
       <dt id="s-line-k" hidden>线体</dt><dd id="s-line-v" hidden><span class="chip" id="s-line"><i>?</i><span>未知</span></span><br><small id="s-line-sub"></small></dd>
-      <dt>有线网</dt><dd><span class="chip" id="s-eth"><i>?</i><span>未知</span></span></dd>
-      <dt>运维工单</dt><dd><span class="chip" id="s-wo"><i>?</i><span>未知</span></span><br><small id="s-wo-title"></small></dd>
-      <dt>上报程序已运行</dt><dd id="s-up">—</dd>
+      <dt>以太网</dt><dd><span class="chip" id="s-eth"><i>?</i><span>未知</span></span></dd>
+      <dt>活动工单</dt><dd><span class="chip" id="s-wo"><i>?</i><span>未知</span></span><br><small id="s-wo-title"></small></dd>
+      <dt>通信程序运行</dt><dd id="s-up">—</dd>
     </dl>
   </section>
 
   <section class="card">
-    <h2>产量<span id="k-src">4G 程序连上后判定的件数</span></h2>
+    <h2>产量<span id="k-src">本次连接以来</span></h2>
     <div class="herorow">
       <div><div class="hero" id="k-total">—</div><div class="sub">件<span id="k-rate"></span><span id="k-sim"></span></div></div>
       <div id="spark" aria-label="每分钟件数"><svg viewBox="0 0 150 44" preserveAspectRatio="none"></svg><div id="tip"></div></div>
@@ -162,21 +172,21 @@ button.thumb { cursor: zoom-in; }
   </section>
 
   <section class="card wide">
-    <h2>最近零件<span id="parts-sum">不良品带裁切图，点图放大</span></h2>
-    <ul class="parts" id="parts"><li class="empty">还没有收到零件。每判定一件，板子发一次最近 10 件；不良品的裁切图随后分片传来，约几秒一张。</li></ul>
+    <h2>最近零件<span id="parts-sum">点图片放大</span></h2>
+    <ul class="parts" id="parts"><li class="empty">暂无数据。不良品照片在判定后几秒内传到。</li></ul>
   </section>
 
   <section class="card">
     <h2>环境与设备<span id="e-age"></span></h2>
     <div class="envrow">
-      <div><div class="big" id="e-t">—</div><div class="sub">环境温度 · 正常 5～40 °C</div></div>
-      <div><div class="big" id="e-h">—</div><div class="sub">环境湿度 · 正常 ≤ 85 %</div></div>
+      <div><div class="big" id="e-t">—</div><div class="sub">温度 · 正常 5～40 °C</div></div>
+      <div><div class="big" id="e-h">—</div><div class="sub">湿度 · 正常 ≤ 85 %</div></div>
     </div>
     <dl class="rows" style="margin-top:14px">
       <dt>皮带电机振动</dt><dd id="e-vib">—</dd>
-      <dt>板子 CPU / 内存</dt><dd id="e-cpu">—</dd>
+      <dt>CPU / 内存</dt><dd id="e-cpu">—</dd>
       <dt>SD 卡剩余</dt><dd id="e-disk">—</dd>
-      <dt>板子已开机</dt><dd id="e-up">—</dd>
+      <dt>运行时间</dt><dd id="e-up">—</dd>
     </dl>
   </section>
 
@@ -187,27 +197,27 @@ button.thumb { cursor: zoom-in; }
       <dt>上报</dt><dd id="n-tx">—</dd>
     </dl>
     <div class="pingrow">
-      <button id="ping" disabled>测往返时间</button>
-      <div><span id="ping-out" class="sub">从本页发一条命令到板子再回来</span></div>
+      <button id="ping" disabled>测通信延迟</button>
+      <div><span id="ping-out" class="sub">手机 → 控制器 → 手机</span></div>
     </div>
   </section>
 
   <section class="card" id="cmd-card" hidden>
-    <h2>远程操作<span>命令带签名，板子只认密钥对的</span></h2>
-    <label for="c-key">操作密钥（扫控制二维码会自动填好）</label>
+    <h2>远程操作<span>需要操作密钥</span></h2>
+    <label for="c-key">操作密钥（扫控制码自动填入）</label>
     <input id="c-key" type="password" autocomplete="off" spellcheck="false">
     <div id="cmd-btns"></div>
-    <p class="sub" id="cmd-out" style="margin:10px 0 0">还没有发过命令。</p>
+    <p class="sub" id="cmd-out" style="margin:10px 0 0">—</p>
   </section>
 
   <section class="card">
-    <h2>工单<span id="wo-sum"></span></h2>
-    <ul class="list" id="wo-list"><li class="empty">打开本页之后还没有工单变化。当前活动工单数看「线体」一栏。</li></ul>
+    <h2>报警与工单<span id="wo-sum"></span></h2>
+    <ul class="list" id="wo-list"><li class="empty">暂无新工单。</li></ul>
   </section>
 
   <section class="card wide">
-    <h2>事件</h2>
-    <ul class="list" id="ev-list"><li class="empty">还没有事件。</li></ul>
+    <h2>事件记录</h2>
+    <ul class="list" id="ev-list"><li class="empty">暂无。</li></ul>
   </section>
 
   <section class="card wide">
@@ -218,7 +228,7 @@ button.thumb { cursor: zoom-in; }
       <label for="f-p">主题前缀（与板上 des_4g.json 的 topic_prefix 相同）</label>
       <input id="f-p" autocomplete="off" spellcheck="false" placeholder="des/xxxxxxxx">
       <div style="margin-top:12px"><button class="primary" id="f-save">保存并连接</button></div>
-      <p class="sub">设置只存在这个浏览器里。数据经 MQTT 服务器中转，知道前缀的人都能看到。</p>
+      <p class="sub">设置只保存在本浏览器。</p>
     </details>
   </section>
 </main>
@@ -695,7 +705,7 @@ function renderParts() {
   const now = Date.now();
   for (const [f, w] of picWait) if (now - w.at > 120000) picWait.delete(f);   // a picture that never completed
   if (!parts.length) {
-    ul.innerHTML = '<li class="empty">还没有收到零件。每判定一件，板子发一次最近 10 件；不良品的裁切图随后分片传来，约几秒一张。</li>';
+    ul.innerHTML = '<li class="empty">暂无数据。不良品照片在判定后几秒内传到。</li>';
     $('parts-sum').textContent = '不良品带裁切图，点图放大';
     return;
   }
